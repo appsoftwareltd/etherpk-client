@@ -104,20 +104,20 @@ function text({ heading, paragraphs, action, footer }: EmailContent): string {
 /** Inline styles and a table layout: email clients strip stylesheets and ignore most modern CSS. */
 function html({ subject, heading, paragraphs, action, footer }: EmailContent): string {
     const url = escapeHtml(action.url)
-    const paragraph = (line: string, colour = '#111827') =>
+    const paragraph = (line: string, colour = '#171717') =>
         `<p style="margin:0 0 16px;font-size:15px;line-height:1.5;color:${colour}">${escapeHtml(line)}</p>`
     return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(subject)}</title></head>
-<body style="margin:0;padding:24px;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<body style="margin:0;padding:24px;background:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px"><tr><td style="padding:32px">
-<p style="margin:0 0 24px;font-size:15px;font-weight:600;color:#111827">EtherPK</p>
-<h1 style="margin:0 0 16px;font-size:20px;line-height:1.3;color:#111827">${escapeHtml(heading)}</h1>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border:1px solid #e5e5e5;border-radius:8px"><tr><td style="padding:32px">
+<p style="margin:0 0 24px;font-size:15px;font-weight:600;color:#171717">EtherPK</p>
+<h1 style="margin:0 0 16px;font-size:20px;line-height:1.3;color:#171717">${escapeHtml(heading)}</h1>
 ${paragraphs.map((line) => paragraph(line)).join('\n')}
-<p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:12px 20px;border-radius:6px">${escapeHtml(action.label)}</a></p>
-<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#4b5563">If the button does not work, copy this address into your browser:<br><a href="${url}" style="color:#4b5563;word-break:break-all">${url}</a></p>
-${footer.map((line) => paragraph(line, '#4b5563')).join('\n')}
+<p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#171717;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:12px 20px;border-radius:6px">${escapeHtml(action.label)}</a></p>
+<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#525252">If the button does not work, copy this address into your browser:<br><a href="${url}" style="color:#525252;word-break:break-all">${url}</a></p>
+${footer.map((line) => paragraph(line, '#525252')).join('\n')}
 </td></tr></table>
 </td></tr></table>
 </body>

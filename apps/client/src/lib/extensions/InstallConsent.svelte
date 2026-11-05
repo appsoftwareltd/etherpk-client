@@ -9,7 +9,7 @@
     const { name, id }: { name: string; id: string } = $props();
 </script>
 
-<div {id} class="space-y-1 text-sm text-gray-950 dark:text-gray-100">
+<div {id} class="space-y-1 text-sm text-neutral-950 dark:text-neutral-100">
     <p>{name} will run in EtherPK, on this device and on your other devices where you sync with your account. Like every extension, it can:</p>
     <ul class="list-disc space-y-0.5 pl-5">
         <li>Read and change the documents in the graphs you open, protected ones included</li>

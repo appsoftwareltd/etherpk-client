@@ -208,7 +208,7 @@
     onpointerleave={onPointerLeave}
 >
     <div
-        class="overflow-hidden rounded-xl bg-gray-950 shadow-2xl shadow-gray-950/15 ring-1 ring-gray-950/10 sm:rounded-2xl dark:shadow-black/40 dark:ring-white/10"
+        class="overflow-hidden rounded-xl bg-neutral-950 shadow-2xl shadow-neutral-950/15 ring-1 ring-neutral-950/10 sm:rounded-2xl dark:shadow-black/40 dark:ring-white/10"
     >
         <!-- One grid cell holds every screenshot, so the frame is the size of one. The screenshot
              coming in fades in on top, and the one going out stays whole beneath it until it is
@@ -258,7 +258,7 @@
             type="button"
             aria-label={rotating ? "Pause slideshow" : "Play slideshow"}
             title={rotating ? "Pause slideshow" : "Play slideshow"}
-            class="inline-flex size-10 shrink-0 items-center justify-center rounded-full text-gray-700 ring-1 ring-gray-950/10 transition-colors ring-inset hover:bg-gray-950/5 hover:text-gray-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-950 dark:text-gray-300 dark:ring-white/15 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:outline-white"
+            class="inline-flex size-10 shrink-0 items-center justify-center rounded-full text-neutral-700 ring-1 ring-neutral-950/10 transition-colors ring-inset hover:bg-neutral-950/5 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 dark:text-neutral-300 dark:ring-white/15 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:outline-white"
             onclick={() => (rotating ? takeOver() : play())}
         >
             <!-- The icons ignore the pointer, so the node under it is always the button. Chrome
@@ -292,7 +292,7 @@
         <div
             role="tablist"
             aria-label="Screenshots"
-            class="inline-flex items-center gap-0.5 rounded-full bg-gray-950/5 p-1 ring-1 ring-gray-950/5 ring-inset dark:bg-white/5 dark:ring-white/10"
+            class="inline-flex items-center gap-0.5 rounded-full bg-neutral-950/5 p-1 ring-1 ring-neutral-950/5 ring-inset dark:bg-white/5 dark:ring-white/10"
         >
             {#each SCREENSHOTS as shot, index (shot.id)}
                 <button
@@ -303,10 +303,10 @@
                     aria-selected={index === current}
                     tabindex={index === current ? 0 : -1}
                     class={[
-                        "relative h-8 overflow-hidden rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-950 sm:px-4 dark:focus-visible:outline-white",
+                        "relative h-8 overflow-hidden rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 sm:px-4 dark:focus-visible:outline-white",
                         index === current
-                            ? "bg-white text-gray-950 shadow-sm dark:bg-white/15 dark:text-white"
-                            : "text-gray-600 hover:text-gray-950 dark:text-gray-300 dark:hover:text-white",
+                            ? "bg-white text-neutral-950 shadow-sm dark:bg-white/15 dark:text-white"
+                            : "text-neutral-600 hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-white",
                     ]}
                     onfocus={takeOver}
                     onclick={() => {
@@ -321,7 +321,7 @@
                     {#if rotating && index === current}
                         <span
                             aria-hidden="true"
-                            class="turn-progress pointer-events-none absolute inset-x-3 bottom-1 h-0.5 origin-left rounded-full bg-gray-950/30 motion-reduce:hidden dark:bg-white/40"
+                            class="turn-progress pointer-events-none absolute inset-x-3 bottom-1 h-0.5 origin-left rounded-full bg-neutral-950/30 motion-reduce:hidden dark:bg-white/40"
                             style:animation-duration="{TURN_MS}ms"
                             style:animation-play-state={turning
                                 ? "running"
@@ -336,7 +336,7 @@
     <!-- Every caption takes the same grid cell, so the space below is the longest caption's and
          nothing under it moves when the screenshot changes. -->
     <div
-        class="mx-auto mt-4 grid max-w-3xl text-center text-sm leading-6 text-gray-500 dark:text-gray-400"
+        class="mx-auto mt-4 grid max-w-3xl text-center text-sm leading-6 text-neutral-500 dark:text-neutral-400"
     >
         {#each SCREENSHOTS as shot, index (shot.id)}
             <p

@@ -33,7 +33,7 @@
                 {@attach focusField}
                 type="password"
                 autocomplete="off"
-                class="rounded-lg border border-gray-300 bg-(--gk-surface-0) px-2 py-1.5 text-sm text-(--gk-text-default) dark:border-gray-700"
+                class="rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-2 py-1.5 text-sm text-(--gk-text-default) dark:border-neutral-700"
                 bind:value={password}
                 aria-invalid={wrong}
                 aria-describedby={wrong ? "pdf-password-error" : undefined}

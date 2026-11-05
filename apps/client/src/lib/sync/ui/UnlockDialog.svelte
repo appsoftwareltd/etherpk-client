@@ -216,20 +216,20 @@
     {#snippet body()}
         {#if approval || startingApproval}
             {#if !approvalCode}
-                <p class="text-sm text-gray-600 dark:text-gray-400">
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     On a device where your Encryption Keys are already unlocked, an approval prompt will appear.
                     This device then shows a code to compare with it.
                 </p>
                 <!-- The wait, and its outcome, are the only things happening here; a screen reader
                      that is told neither has no way to know the dialog is still working. -->
-                <p class="text-sm text-gray-500 dark:text-gray-400" role="status" data-testid="approval-waiting">Waiting for another device…</p>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400" role="status" data-testid="approval-waiting">Waiting for another device…</p>
             {:else}
-                <p class="text-sm text-gray-600 dark:text-gray-400">
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     Check that your other device shows <strong>this exact code</strong>. Approve there, and
                     select <strong>The codes match</strong> here.
                 </p>
-                <p class="text-center text-2xl font-mono font-semibold tracking-widest text-gray-950 dark:text-gray-100" data-testid="approval-sas">{approvalCode}</p>
-                <p class="text-sm text-gray-500 dark:text-gray-400" role="status" data-testid="approval-waiting">
+                <p class="text-center text-2xl font-mono font-semibold tracking-widest text-neutral-950 dark:text-neutral-100" data-testid="approval-sas">{approvalCode}</p>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400" role="status" data-testid="approval-waiting">
                     {#if approvedKey}
                         Your other device approved. Select The codes match to finish.
                     {:else if codesMatch}
@@ -240,27 +240,27 @@
                 </p>
             {/if}
             <!-- The server drops a request nobody approves within ten minutes (device-approval-store.ts). -->
-            <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="approval-expiry">
+            <p class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="approval-expiry">
                 If nobody approves it within 10 minutes, the request expires and you can start again.
             </p>
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 No other device unlocked?
                 <button
                     type="button"
                     data-testid="unlock-use-recovery-code"
                     onclick={useRecoveryCode}
-                    class="font-medium text-gray-950 underline underline-offset-2 hover:no-underline dark:text-gray-100"
+                    class="font-medium text-neutral-950 underline underline-offset-2 hover:no-underline dark:text-neutral-100"
                     >Use your Recovery Code</button
                 >
             </p>
         {:else}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
-                Enter the Recovery Code you saved for <span class="font-medium text-gray-950 dark:text-gray-100">{host}</span>
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
+                Enter the Recovery Code you saved for <span class="font-medium text-neutral-950 dark:text-neutral-100">{host}</span>
                 to unlock your Encryption Keys on this device. A code for another Sync Server does not
                 open them. It never leaves your browser and the sync server never sees it.
             </p>
             <div>
-                <label for="unlock-code" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">Recovery Code</label>
+                <label for="unlock-code" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">Recovery Code</label>
                 <input
                     id="unlock-code"
                     bind:this={codeInput}
@@ -270,9 +270,9 @@
                     aria-invalid={error ? "true" : undefined}
                     aria-describedby={error ? errorId : undefined}
                     placeholder="EPK1-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX"
-                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm font-mono text-gray-950 dark:text-gray-100 focus:outline-none focus:ring-1 {error
+                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm font-mono text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {error
                         ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                        : 'border-gray-300 dark:border-gray-700 focus:border-gray-950 dark:focus:border-gray-400 focus:ring-gray-950 dark:focus:ring-gray-400'}"
+                        : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
                 />
                 <!-- At the field, not at the foot of the dialog, and announced when it appears. -->
                 {#if error}
@@ -280,9 +280,9 @@
                 {/if}
             </div>
             {#if api}
-                <p class="text-sm text-gray-600 dark:text-gray-400">
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     Or, if another device is already unlocked:
-                    <button type="button" data-testid="unlock-approve-mode" disabled={startingApproval} onclick={startApproval} class="font-medium text-gray-950 dark:text-gray-100 underline underline-offset-2 hover:no-underline disabled:opacity-50">
+                    <button type="button" data-testid="unlock-approve-mode" disabled={startingApproval} onclick={startApproval} class="font-medium text-neutral-950 dark:text-neutral-100 underline underline-offset-2 hover:no-underline disabled:opacity-50">
                         {startingApproval ? "starting…" : "approve from another device"}
                     </button>
                 </p>
@@ -292,8 +292,8 @@
             {/if}
             <!-- Someone without their code and with no unlocked device reaches this dialog too; it
                  names what they can still do rather than leaving them at a field they cannot fill. -->
-            <details class="text-sm text-gray-600 dark:text-gray-400" data-testid="unlock-lost-code">
-                <summary class="cursor-pointer font-medium text-gray-950 dark:text-gray-100">Lost your Recovery Code?</summary>
+            <details class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="unlock-lost-code">
+                <summary class="cursor-pointer font-medium text-neutral-950 dark:text-neutral-100">Lost your Recovery Code?</summary>
                 <div class="mt-1.5 space-y-1.5">
                     <p>
                         If another of your devices still has its Encryption Keys unlocked, approve this one from
@@ -309,7 +309,7 @@
                         href={RECOVERING_ACCESS_URL}
                         target="_blank"
                         rel="noopener"
-                        class="inline-block font-medium text-gray-950 underline underline-offset-2 hover:no-underline dark:text-gray-100"
+                        class="inline-block font-medium text-neutral-950 underline underline-offset-2 hover:no-underline dark:text-neutral-100"
                     >What to do without your code</a>
                 </div>
             </details>
@@ -318,7 +318,7 @@
 
     {#snippet footer()}
         {#if approval || startingApproval}
-            <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+            <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
             {#if approvalCode}
                 <button
                     type="button"
@@ -331,16 +331,16 @@
                     onclick={confirmCodesMatch}
                     disabled={codesMatch}
                     data-testid="approval-confirm"
-                    class="min-w-28 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40"
+                    class="min-w-28 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
                 >{codesMatch ? "Confirmed" : "The codes match"}</button>
             {/if}
         {:else}
-            <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+            <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
             <button
                 type="submit"
                 disabled={busy}
                 data-testid="unlock-submit"
-                class="min-w-28 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40"
+                class="min-w-28 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
             >{busy ? "Unlocking…" : "Unlock"}</button>
         {/if}
     {/snippet}

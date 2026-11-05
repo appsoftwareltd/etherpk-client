@@ -178,9 +178,9 @@
         dateStyle: "medium",
     });
     const SECONDARY_BUTTON =
-        "inline-flex items-center justify-center rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 pointer-coarse:min-h-11 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5";
+        "inline-flex items-center justify-center rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5";
     const PRIMARY_BUTTON =
-        "inline-flex items-center justify-center rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 pointer-coarse:min-h-11 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200";
+        "inline-flex items-center justify-center rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 pointer-coarse:min-h-11 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200";
 </script>
 
 <section
@@ -192,13 +192,13 @@
     <div class="min-w-0">
         <h2
             id={headingId}
-            class="flex items-center gap-2 text-lg font-semibold text-gray-950 dark:text-white"
+            class="flex items-center gap-2 text-lg font-semibold text-neutral-950 dark:text-white"
         >
             <span class="min-w-0 truncate"
                 >Synced graphs on {server.host}</span
             >
             <svg
-                class="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400"
+                class="h-5 w-5 shrink-0 text-neutral-500 dark:text-neutral-400"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -213,7 +213,7 @@
             </svg>
         </h2>
         <p
-            class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+            class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
             data-testid="synced-graphs-account"
         >
             {accountLine}
@@ -223,13 +223,13 @@
     {#if keysLocked}
         <div
             data-testid="synced-graphs-keys-locked"
-            class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-900/15 bg-white p-4 dark:border-gray-100/20 dark:bg-white/5"
+            class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-900/15 bg-white p-4 dark:border-neutral-100/20 dark:bg-white/5"
         >
-            <p class="text-sm text-gray-700 dark:text-gray-200">
+            <p class="text-sm text-neutral-700 dark:text-neutral-200">
                 Unlock Encryption Keys for the synced graphs or go to the <button
                     type="button"
                     onclick={actions.showSettings}
-                    class="font-medium text-gray-950 underline underline-offset-2 hover:no-underline dark:text-white"
+                    class="font-medium text-neutral-950 underline underline-offset-2 hover:no-underline dark:text-white"
                     >Sync tab</button
                 > for more options.
             </p>
@@ -254,7 +254,7 @@
             data-kind={server.shownPlanNotice ?? "none"}
             class="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1 text-sm {server.shownPlanNotice ===
             'pending'
-                ? 'text-gray-600 dark:text-gray-300'
+                ? 'text-neutral-600 dark:text-neutral-300'
                 : 'text-amber-800 dark:text-amber-200'}"
         >
             {#if server.shownPlanNotice === "pending"}
@@ -262,7 +262,7 @@
                 {#if showPending}
                     <span class="flex items-center gap-2" role="status">
                         <svg
-                            class="h-4 w-4 text-gray-500 motion-safe:animate-spin dark:text-gray-400"
+                            class="h-4 w-4 text-neutral-500 motion-safe:animate-spin dark:text-neutral-400"
                             viewBox="0 0 24 24"
                             fill="none"
                             aria-hidden="true"
@@ -321,10 +321,10 @@
     {#if server.invites.length > 0}
         <div
             data-testid="graphs-invites"
-            class="rounded-xl border border-gray-900/15 bg-white p-4 dark:border-gray-100/20 dark:bg-white/5"
+            class="rounded-xl border border-neutral-900/15 bg-white p-4 dark:border-neutral-100/20 dark:bg-white/5"
         >
             <!-- An invite is often what brings a new account here, so it shows on a first visit too. -->
-            <h3 class="text-sm font-semibold text-gray-950 dark:text-white">
+            <h3 class="text-sm font-semibold text-neutral-950 dark:text-white">
                 Pending invites
             </h3>
             <ul class="mt-3 space-y-2">
@@ -336,18 +336,18 @@
                         class="flex flex-wrap items-center justify-between gap-3"
                     >
                         <p
-                            class="min-w-0 text-sm text-gray-700 dark:text-gray-300"
+                            class="min-w-0 text-sm text-neutral-700 dark:text-neutral-300"
                         >
                             <span
-                                class="break-all font-medium text-gray-950 dark:text-white"
+                                class="break-all font-medium text-neutral-950 dark:text-white"
                                 >{sender}</span
                             >
                             invited you to
                             {#if graphName}<span
-                                    class="font-medium text-gray-950 dark:text-white"
+                                    class="font-medium text-neutral-950 dark:text-white"
                                     >{graphName}</span
                                 >{:else}a shared graph{/if}{#if invite.createdAt}<span
-                                    class="text-gray-500 dark:text-gray-400"
+                                    class="text-neutral-500 dark:text-neutral-400"
                                     >, {dayFormat.format(
                                         new Date(invite.createdAt),
                                     )}</span
@@ -361,7 +361,7 @@
                                 data-testid="invite-decline-confirmation"
                             >
                                 <span
-                                    class="text-sm text-gray-600 dark:text-gray-400"
+                                    class="text-sm text-neutral-600 dark:text-neutral-400"
                                     >Decline? {sender === "Someone"
                                         ? "The owner"
                                         : sender} would have to invite you again.</span
@@ -394,7 +394,7 @@
                                     data-testid="invite-accept"
                                     onclick={() => actions.acceptInvite(invite)}
                                     aria-busy={checkingInvite === invite.id}
-                                    class="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+                                    class="rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
                                     >{checkingInvite === invite.id
                                         ? "Checking…"
                                         : "Accept"}</button
@@ -410,15 +410,15 @@
     {#if server.authState === "signed-out"}
         <div
             data-testid="synced-graphs-signed-out"
-            class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-white/5"
+            class="rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-white/10 dark:bg-white/5"
         >
-            <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
+            <p class="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                 {managed
                     ? `You are signed out of ${server.host}.`
                     : `${server.host} did not accept this device's access token.`}
             </p>
             <p
-                class="mt-1 text-sm text-gray-700 dark:text-gray-300"
+                class="mt-1 text-sm text-neutral-700 dark:text-neutral-300"
                 data-testid="graphs-hidden"
             >
                 {managed
@@ -430,7 +430,7 @@
                     type="button"
                     data-testid="sync-sign-in"
                     onclick={actions.signIn}
-                    class="mt-3 rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+                    class="mt-3 rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
                     >Sign in</button
                 >
             {:else}
@@ -463,7 +463,7 @@
             class="flex flex-wrap items-center gap-3"
             data-testid="synced-graphs-locked"
         >
-            <p class="min-w-0 flex-1 text-sm text-gray-600 dark:text-gray-400">
+            <p class="min-w-0 flex-1 text-sm text-neutral-600 dark:text-neutral-400">
                 The access token for {server.host} is protected by this device's
                 passcode. The graphs this device holds for it are listed here.
                 Enter the passcode to see the rest.
@@ -498,7 +498,7 @@
     {#if rows.length > 0}
         <ul
             data-testid="synced-graphs-list"
-            class="divide-y divide-gray-200 overflow-hidden rounded-xl border border-gray-200 bg-white dark:divide-white/10 dark:border-white/10 dark:bg-white/5"
+            class="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white dark:divide-white/10 dark:border-white/10 dark:bg-white/5"
         >
             {#each rows as row (row.id)}
                 {@const view = row.view}
@@ -546,11 +546,11 @@
     {:else if (!server.checked || server.authState === "checking" || server.loading) && !server.error}
         <!-- First load only: later refreshes keep the rows in place while data renews. -->
         <p
-            class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
+            class="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400"
             data-testid="synced-graphs-loading"
         >
             <svg
-                class="h-4 w-4 text-gray-500 motion-safe:animate-spin dark:text-gray-400"
+                class="h-4 w-4 text-neutral-500 motion-safe:animate-spin dark:text-neutral-400"
                 viewBox="0 0 24 24"
                 fill="none"
                 aria-hidden="true"
@@ -572,7 +572,7 @@
         </p>
     {:else if server.listed}
         <p
-            class="text-sm text-gray-500 dark:text-gray-400"
+            class="text-sm text-neutral-500 dark:text-neutral-400"
             data-testid="synced-graphs-empty"
         >
             No synced graphs on {server.host} yet.
@@ -581,7 +581,7 @@
 
     {#if server.ownedStorage && server.ownedStorage.graphs > 0}
         <p
-            class="text-sm text-gray-500 dark:text-gray-400"
+            class="text-sm text-neutral-500 dark:text-neutral-400"
             data-testid="synced-owned-storage"
         >
             Graphs you own use {formatBytes(

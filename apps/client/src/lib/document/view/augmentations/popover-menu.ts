@@ -13,7 +13,7 @@
  * CM owns the positioning; we own the DOM.
  */
 
-import { type EditorState, type Extension, type Facet, Prec, StateEffect, StateField } from '@codemirror/state'
+import { type EditorState, type Extension, type Facet, Prec, StateEffect, StateField, type Transaction } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, tooltips, type Tooltip, type TooltipView } from '@codemirror/view'
 
 import { setTrustedMarkup, type TrustedMarkup } from '#lib/security/trusted-types.js'
@@ -25,8 +25,10 @@ import { isFindReplace, isFindSelect } from '../../find/find-edit'
 export interface PopoverBase {
     /** Opening marker: the preferred horizontal anchor, stable while the query is typed. */
     anchor: number
-    /** Index of the highlighted row. */
+    /** Index of the highlighted row, or -1 for none, which leaves Enter and Tab to the editor. */
     selected: number
+    /** Set once the person moves the highlight, so an answer landing leaves it where they put it. */
+    moved?: boolean
 }
 
 /** One rendered row: an optional icon (inner `<svg>` markup), a label, and a detail hint. */
@@ -44,16 +46,26 @@ export interface PopoverMenuOptions<S extends PopoverBase> {
     testid: string
     /** BEM-ish class prefix for the surface (`gk-wl-complete`, `gk-cmd-menu`, …). */
     classPrefix: string
-    /** Recompute the menu from editor state, or null to close it. */
+    /**
+     * Recompute the menu from editor state, or null to close it. A menu with no rows is open but
+     * shows nothing and takes no keys, which keeps an `opensOn` menu alive through a query that
+     * matches nothing for the moment.
+     */
     compute(state: EditorState): S | null
     /** The rows to render for `menu`, in order (length defines navigation wrap-around). */
     rows(menu: S): PopoverRow[]
     /** Accept the row at `index`: mutate the doc / run side effects. Returns whether handled. */
     accept(view: EditorView, menu: S, index: number): boolean
+    /**
+     * Whether `tr` asks for this menu (slash-complete.ts). Absent, any edit or caret move that
+     * `compute` answers for opens it. Present, only a transaction this says yes to opens it, a new
+     * state starts with it closed, and one already open lasts while `compute` answers for its anchor.
+     */
+    opensOn?(tr: Transaction): boolean
     /** The list's accessible name, for a list whose rows do not say what picking one does. */
     label?(menu: S): string
-    /** Where the menu says whether it is open, for code outside it that must know (slash-complete.ts). */
-    isOpen?: Facet<(state: EditorState) => boolean, readonly ((state: EditorState) => boolean)[]>
+    /** Where the menu says what it has open, for code outside it that must know (slash-complete.ts). */
+    openMenu?: Facet<(state: EditorState) => S | null, readonly ((state: EditorState) => S | null)[]>
 }
 
 const TAILWIND_MENU =
@@ -91,29 +103,60 @@ const paneTooltips = tooltips({
  */
 export const refreshPopovers = StateEffect.define<null>()
 
+/**
+ * Recompute the popovers that are open, and open none. For an answer that only adds rows to a menu
+ * the person already has (the `#` helper's Free Tags): one that Escape, a pick or a blur has shut
+ * stays shut, however late the answer comes.
+ */
+export const refreshOpenPopovers = StateEffect.define<null>()
+
+/**
+ * Shut every popover, and keep it shut through the transaction carrying this. A popover otherwise
+ * recomputes on any document change, so a write that is not the user typing (a task's line menu)
+ * would open one at a caret that happens to sit behind a `#`.
+ */
+export const closePopovers = StateEffect.define<null>()
+
 export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>): Extension {
     const { classPrefix: p } = opts
 
     const selectIndex = StateEffect.define<number>() // absolute highlight index
     const closeMenu = StateEffect.define<null>()
 
+    const showing = (menu: S | null | undefined): boolean => menu != null && opts.rows(menu).length > 0
+
+    /** The menu after an edit or a caret move. */
+    function recompute(value: S | null, tr: Transaction): S | null {
+        if (!opts.opensOn || opts.opensOn(tr)) return opts.compute(tr.state)
+        if (!value) return null
+        const next = opts.compute(tr.state)
+        // A caret that reaches another marker has not asked for a menu there.
+        return next?.anchor === tr.changes.mapPos(value.anchor, 1) ? next : null
+    }
+
+    /** The menu after a refresh. An answer landing is not the person doing anything, so the row they moved to stays highlighted. */
+    function refreshed(value: S | null, next: S | null): S | null {
+        if (!value?.moved || !next) return next
+        return { ...next, moved: true, selected: Math.min(value.selected, opts.rows(next).length - 1) }
+    }
+
     const menuField = StateField.define<S | null>({
-        create: (state) => opts.compute(state),
+        create: (state) => (opts.opensOn ? null : opts.compute(state)),
         update(value, tr) {
+            if (tr.effects.some((e) => e.is(closeMenu) || e.is(closePopovers))) return null
             for (const e of tr.effects) {
-                if (e.is(closeMenu)) return null
-                if (e.is(selectIndex) && value) value = { ...value, selected: e.value } as S
+                if (e.is(selectIndex) && value) value = { ...value, selected: e.value, moved: true } as S
             }
             // Find puts the selection on a match, and replaces, while focus is in its box: neither
             // is the user typing here, so neither opens a popover, and one already open closes.
             if (isFindSelect(tr) || isFindReplace(tr)) return null
-            if (tr.docChanged || tr.selection || tr.effects.some((e) => e.is(refreshPopovers))) return opts.compute(tr.state)
-            return value
+            if (tr.docChanged || tr.selection) return recompute(value, tr)
+            const refresh = tr.effects.some((e) => e.is(refreshPopovers) || (value !== null && e.is(refreshOpenPopovers)))
+            return refresh ? refreshed(value, recompute(value, tr)) : value
         },
         provide: (f) =>
             showTooltip.compute([f, 'selection'], (state): Tooltip | null => {
-                const menu = state.field(f)
-                return menu
+                return showing(state.field(f))
                     ? { pos: state.selection.main.head, above: false, strictSide: false, arrow: false, create: renderTooltip }
                     : null
             }),
@@ -142,14 +185,18 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
         if (!menu) return false
         const n = opts.rows(menu).length
         if (n === 0) return false
-        view.dispatch({ effects: selectIndex.of((menu.selected + delta + n) % n) })
+        // From no highlight, Up goes to the last row as Down goes to the first.
+        const from = menu.selected < 0 && delta < 0 ? 0 : menu.selected
+        view.dispatch({ effects: selectIndex.of((from + delta + n) % n) })
         return true
     }
 
     function close(view: EditorView): boolean {
-        if (!view.state.field(menuField)) return false
+        const menu = view.state.field(menuField)
+        if (!menu) return false
         view.dispatch({ effects: closeMenu.of(null) })
-        return true
+        // A menu showing nothing has nothing to dismiss, so the key goes on to whatever else wants it.
+        return showing(menu)
     }
 
     function renderTooltip(view: EditorView): TooltipView {
@@ -268,8 +315,8 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
         }
     }
 
-    // Active only while the menu is open; otherwise these keys fall through (each `run`
-    // returns false when the field is null). Higher precedence than the outliner keymap.
+    // Active only while the menu shows rows; otherwise these keys fall through (each `run`
+    // returns false when the field is null or has no rows). Higher precedence than the outliner keymap.
     const completionKeymap = Prec.highest(
         keymap.of([
             { key: 'ArrowDown', run: (v) => move(v, 1) },
@@ -300,5 +347,5 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
         [`.${p}__detail`]: { minWidth: '0', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
     })
 
-    return [paneTooltips, menuField, closeOnBlur, completionKeymap, theme, opts.isOpen ? opts.isOpen.of((state) => state.field(menuField, false) != null) : []]
+    return [paneTooltips, menuField, closeOnBlur, completionKeymap, theme, opts.openMenu ? opts.openMenu.of((state) => state.field(menuField, false) ?? null) : []]
 }

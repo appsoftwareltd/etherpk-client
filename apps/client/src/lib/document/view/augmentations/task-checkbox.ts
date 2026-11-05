@@ -181,7 +181,7 @@ export function taskCheckboxAugmentation(): Extension {
                 overflow: 'hidden',
                 color: 'transparent',
                 cursor: 'pointer',
-                border: '1.5px solid var(--gk-text-subtle, #9ca3af)',
+                border: '1.5px solid var(--gk-text-subtle, #a3a3a3)',
                 borderRadius: '3px',
                 // The glyphs inside must not wrap or size the box: whatever font the device
                 // uses for them, they are clipped to this fixed box.

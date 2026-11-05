@@ -48,8 +48,8 @@ const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
  * the routes' colour (map-drawing.ts), and the names and the credit on plates in the theme's own
  * surface colour.
  */
-const LIGHT = { pin: '#1d5fd1', pinEdge: '#ffffff', plate: 'rgba(255, 255, 255, 0.92)', name: '#111827', credit: '#374151' }
-const DARK = { pin: '#7cc4ff', pinEdge: '#0b0d10', plate: 'rgba(17, 20, 24, 0.92)', name: '#f3f4f6', credit: '#d1d5db' }
+const LIGHT = { pin: '#1d5fd1', pinEdge: '#ffffff', plate: 'rgba(255, 255, 255, 0.92)', name: '#171717', credit: '#404040' }
+const DARK = { pin: '#7cc4ff', pinEdge: '#0a0a0a', plate: 'rgba(23, 23, 23, 0.92)', name: '#f5f5f5', credit: '#d4d4d4' }
 type Palette = typeof LIGHT
 
 export interface MapPictureOptions {

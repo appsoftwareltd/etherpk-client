@@ -21,6 +21,10 @@ The source of the [EtherPK](https://etherpk.com) Client and Headless Client, ava
 
 ![A Kanban board of the tasks about one concept, gathered from across the graph, with the chosen task shown in its journal entry below the board](.github/assets/etherpk-kanban-board.webp)
 
+**Handing a Task to a Coding Agent**
+
+![An animation, sped up: tasks typed into a note, the Kanban board, the task editor with a picture and a comment added, an agent instruction copied, Claude Code working through the task in a terminal, the card in Test with its subtasks ticked, and the Agents tab in Settings](.github/assets/etherpk-task-handoff.gif)
+
 **Aggregate Map View**
 
 ![A Map View of the gardens noted under one concept across the graph, on one map with a list beside it grouped by document](.github/assets/etherpk-maps.webp)

@@ -888,7 +888,7 @@
     }
 
     .spot::backdrop {
-        background: rgb(3 7 18 / 0.25);
+        background: rgb(10 10 10 / 0.25);
     }
 
     :global(:root[data-theme='dark']) .spot::backdrop {

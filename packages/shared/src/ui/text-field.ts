@@ -4,14 +4,14 @@
  *
  * Every form takes them from here so the valid and invalid states are defined once. The class
  * names are also what each app's dark theme hooks onto: `html.dark [class~="bg-white"]`,
- * `[class~="border-gray-300"]` and `[class~="text-gray-950"]` in `app.css` repaint the field for
+ * `[class~="border-neutral-300"]` and `[class~="text-neutral-950"]` in `app.css` repaint the field for
  * the dark surface, so a class swapped here needs a matching rule there.
  */
 
 /** Shape, size and focus treatment, the same for every standard field. */
 const TEXT_FIELD_BASE = 'block w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors'
 
-const VALID = 'border-gray-300 text-gray-950 focus:border-gray-950 focus:ring-gray-950/10'
+const VALID = 'border-neutral-300 text-neutral-950 focus:border-neutral-950 focus:ring-neutral-950/10'
 
 /**
  * The typed text keeps the valid field's colour, so it reads the same in both themes. The error
@@ -19,7 +19,7 @@ const VALID = 'border-gray-300 text-gray-950 focus:border-gray-950 focus:ring-gr
  * `aria-invalid` it sets. Red-500 holds at least 3:1 (WCAG 1.4.11) against the field in both
  * themes, and the dark theme leaves it as it is.
  */
-const INVALID = 'border-red-500 text-gray-950 focus:ring-red-500/10'
+const INVALID = 'border-red-500 text-neutral-950 focus:ring-red-500/10'
 
 /**
  * A field's border, text colour and focus colours for its state. For a field that needs its own

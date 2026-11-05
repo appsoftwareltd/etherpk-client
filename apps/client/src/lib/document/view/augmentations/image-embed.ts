@@ -846,7 +846,7 @@ const theme = EditorView.baseTheme({
         textAlign: 'center',
         lineHeight: '1.4',
         overflow: 'hidden',
-        color: 'var(--gk-text-muted, #6b7280)',
+        color: 'var(--gk-text-muted, #737373)',
     },
     '.cm-md-image-spinner': {
         width: '1em',

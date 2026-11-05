@@ -10,8 +10,8 @@
  * owns the actual colours through {@link DARK_INK} and {@link LIGHT_INK}.
  */
 
-/** Ink for a light background - Tailwind's gray-950, the row text the header already uses. */
-export const DARK_INK = '#030712'
+/** Ink for a light background - Tailwind's neutral-950, the row text the header already uses. */
+export const DARK_INK = '#0a0a0a'
 /** Ink for a dark background. */
 export const LIGHT_INK = '#ffffff'
 

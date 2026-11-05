@@ -40,7 +40,7 @@
         gap: 0.25rem 1rem;
         min-height: 2.25rem;
         padding: 0.3rem 1rem;
-        background: color-mix(in srgb, var(--gk-accent, #2563eb) 12%, var(--gk-surface-1));
+        background: color-mix(in srgb, var(--gk-text-default) 12%, var(--gk-surface-1));
         border-bottom: 1px solid var(--gk-border-soft);
         color: var(--gk-text-default);
         font-size: 0.875rem;

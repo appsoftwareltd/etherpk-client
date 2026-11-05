@@ -24,6 +24,7 @@ import {
     type TaskConceptRow,
     type TaskRow,
     parseTaskTextFilter,
+    taskFreeTags,
     taskTagNeedle,
 } from './index-derive'
 import type { IndexProperty } from './properties'
@@ -174,8 +175,9 @@ export interface SqlDb {
  * `tasks.test` and `tasks.archived`, the `#T` and `#A` states (ADR 0167). 20 adds
  * `tasks.parent_task_local_id`, a task's [[Parent Task]] (ADR 0174). 21 adds `tasks.title_key`, what
  * a [[Lane Filter]] searches. 22 adds `tasks.tags_key`, the tags a [[Task Text Filter]] searches.
+ * 23 reads a [[Task Tag]] in any case (ADR 0032, amended 2026-11-05).
  */
-export const INDEX_SCHEMA_VERSION = 22
+export const INDEX_SCHEMA_VERSION = 23
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS index_metadata (
@@ -1834,6 +1836,38 @@ export function propertyKeys(db: SqlDb): PropertyKeyInfo[] {
          ORDER BY documents DESC, pr.key_lc, pr.key`,
         [activeIndexGeneration(db)],
     )
+}
+
+/**
+ * Every [[Free Tag]] on a task in the graph, once ignoring case, most used first and then A–Z, each
+ * in the spelling most tasks write it in: what the `#` helper offers. Read from the tasks' text at
+ * each ask rather than kept in a table of its own. It runs in the worker, once per `#` typed, and
+ * `tags_key` has already ruled out every task with no tag at all.
+ */
+export function usedFreeTags(db: SqlDb): string[] {
+    const rows = db.all<{ text: string }>(
+        `SELECT t.text FROM tasks t JOIN pages p ON p.id = t.page_id
+         WHERE p.generation = ? AND t.tags_key <> ''`,
+        [activeIndexGeneration(db)],
+    )
+    const spellingsByKey = new Map<string, Map<string, number>>()
+    for (const { text } of rows) {
+        for (const tag of taskFreeTags(text)) {
+            const key = tag.toLowerCase()
+            const spellings = spellingsByKey.get(key) ?? new Map<string, number>()
+            spellingsByKey.set(key, spellings.set(tag, (spellings.get(tag) ?? 0) + 1))
+        }
+    }
+    return [...spellingsByKey]
+        .map(([key, spellings]) => ({ key, ...mostUsedSpelling(spellings) }))
+        .sort((a, b) => b.total - a.total || a.key.localeCompare(b.key))
+        .map((entry) => entry.spelling)
+}
+
+/** The spelling most tasks write, A–Z on a tie, and how many tasks write any of them. */
+function mostUsedSpelling(spellings: ReadonlyMap<string, number>): { spelling: string; total: number } {
+    const [[spelling]] = [...spellings].sort(([a, m], [b, n]) => n - m || a.localeCompare(b))
+    return { spelling, total: [...spellings.values()].reduce((sum, n) => sum + n, 0) }
 }
 
 /** The values `key` has across the graph, grouped ignoring case, most used first. */

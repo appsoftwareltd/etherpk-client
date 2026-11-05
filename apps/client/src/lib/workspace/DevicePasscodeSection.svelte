@@ -24,9 +24,9 @@
     let dialog = $state<DevicePasscodeDialogMode | null>(null);
 
     const SECONDARY_BUTTON =
-        "inline-flex items-center justify-center rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 pointer-coarse:min-h-11 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5";
+        "inline-flex items-center justify-center rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5";
     const PRIMARY_BUTTON =
-        "inline-flex items-center justify-center rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 pointer-coarse:min-h-11 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200";
+        "inline-flex items-center justify-center rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 pointer-coarse:min-h-11 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200";
 </script>
 
 <section
@@ -36,13 +36,13 @@
 >
     <h2
         id="device-passcode-heading"
-        class="text-lg font-semibold text-gray-950 dark:text-white"
+        class="text-lg font-semibold text-neutral-950 dark:text-white"
     >
         Device Passcode
     </h2>
     <!-- Polite: it changes when the passcode is set or turned off here or in another tab. -->
     <p
-        class="text-sm text-gray-600 dark:text-gray-400"
+        class="text-sm text-neutral-600 dark:text-neutral-400"
         data-testid="device-passcode-status"
         data-state={passcode}
         aria-live="polite"
@@ -61,7 +61,7 @@
             passcode.
         {/if}
     </p>
-    <p class="text-sm text-gray-600 dark:text-gray-400">
+    <p class="text-sm text-neutral-600 dark:text-neutral-400">
         One passcode covers every Sync Server on this device. It protects
         Encryption Keys and access tokens, not the documents already stored on
         this device.

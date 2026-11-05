@@ -22,7 +22,7 @@
     const styles: Record<Variant, string> = {
         error: "bg-red-50 border-red-200 text-red-700 dark:!bg-red-950/70 dark:!border-red-800 dark:!text-red-100",
         success: "bg-green-50 border-green-200 text-green-700 dark:!bg-green-950/70 dark:!border-green-800 dark:!text-green-100",
-        info: "bg-blue-50 border-blue-200 text-blue-700 dark:!bg-blue-950/70 dark:!border-blue-800 dark:!text-blue-100",
+        info: "bg-neutral-100 border-neutral-200 text-neutral-700 dark:!bg-white/5 dark:!border-white/15 dark:!text-neutral-100",
         warning: "bg-amber-50 border-amber-200 text-amber-700 dark:!bg-amber-950/70 dark:!border-amber-800 dark:!text-amber-100",
     };
 </script>

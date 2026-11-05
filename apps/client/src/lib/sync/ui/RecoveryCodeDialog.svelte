@@ -112,13 +112,13 @@
 
 <Modal {open} {title} closeOnBackdrop={false} onclose={oncancel ? cancel : undefined}>
     {#snippet body()}
-        <p data-testid="recovery-server" class="text-sm text-gray-700 dark:text-gray-200">
-            For your account on <span class="font-semibold text-gray-950 dark:text-white">{host}</span
+        <p data-testid="recovery-server" class="text-sm text-neutral-700 dark:text-neutral-200">
+            For your account on <span class="font-semibold text-neutral-950 dark:text-white">{host}</span
             >{#if account}&nbsp;({account}){/if}. It unlocks your Encryption Keys on this Sync Server only. A code you
             saved for another Sync Server stays valid and is not replaced by this one: keep each one.
         </p>
         {#if reason}
-            <p data-testid="recovery-reason" class="text-sm text-gray-600 dark:text-gray-300">{reason}</p>
+            <p data-testid="recovery-reason" class="text-sm text-neutral-600 dark:text-neutral-300">{reason}</p>
         {/if}
         <div class="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-950/30 p-3">
             <p class="text-sm font-medium text-amber-900 dark:text-amber-200">
@@ -132,7 +132,7 @@
 
         <code
             data-testid="recovery-code-value"
-            class="block break-all rounded-lg bg-gray-100 dark:bg-white/5 px-4 py-3 text-center text-base font-mono tracking-wide text-gray-950 dark:text-gray-100 select-all"
+            class="block break-all rounded-lg bg-neutral-100 dark:bg-white/5 px-4 py-3 text-center text-base font-mono tracking-wide text-neutral-950 dark:text-neutral-100 select-all"
         >{code}</code>
 
         <div class="flex gap-2">
@@ -141,7 +141,7 @@
                 onclick={copy}
                 data-autofocus
                 data-testid="recovery-copy"
-                class="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                class="flex-1 rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
             >
                 {copied ? "Copied" : "Copy"}
             </button>
@@ -149,7 +149,7 @@
                 type="button"
                 onclick={download}
                 data-testid="recovery-download"
-                class="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                class="flex-1 rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
             >
                 Download
             </button>
@@ -159,12 +159,12 @@
             <p role="alert" data-testid="recovery-save-error" class="text-sm text-red-600 dark:text-red-400">{saveError}</p>
         {/if}
 
-        <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+        <label class="flex items-start gap-2 text-sm text-neutral-700 dark:text-neutral-300">
             <input
                 type="checkbox"
                 bind:checked={acknowledged}
                 data-testid="recovery-ack"
-                class="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-gray-600"
+                class="mt-0.5 h-4 w-4 rounded border-neutral-300 dark:border-neutral-600"
             />
             <span>{acknowledgement}</span>
         </label>
@@ -178,7 +178,7 @@
                 type="button"
                 onclick={cancel}
                 data-testid="recovery-cancel"
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
             >
                 {cancelLabel}
             </button>
@@ -188,7 +188,7 @@
             onclick={() => { open = false; onconfirm(); }}
             disabled={!acknowledged}
             data-testid="recovery-confirm"
-            class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
         >
             {confirmLabel}
         </button>

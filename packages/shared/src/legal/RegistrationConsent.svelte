@@ -8,11 +8,11 @@
      */
     let { legalLinks }: { legalLinks: LegalLinks } = $props();
 
-    const linkClass = "font-medium text-gray-950 underline underline-offset-2 hover:text-gray-700 dark:text-white dark:hover:text-gray-300";
+    const linkClass = "font-medium text-neutral-950 underline underline-offset-2 hover:text-neutral-700 dark:text-white dark:hover:text-neutral-300";
 </script>
 
 {#if legalLinks.termsUrl || legalLinks.privacyUrl}
-    <p class="mt-6 text-center text-sm text-gray-500 dark:text-gray-400" data-testid="registration-consent">
+    <p class="mt-6 text-center text-sm text-neutral-500 dark:text-neutral-400" data-testid="registration-consent">
         {#if legalLinks.termsUrl}
             By creating an account you agree to the <a href={legalLinks.termsUrl} class={linkClass}>Terms of Service</a>.
         {/if}

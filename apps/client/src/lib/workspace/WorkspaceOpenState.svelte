@@ -17,6 +17,8 @@
         missing = null,
         settingUp = false,
         setupError = null,
+        granting = false,
+        grantError = null,
         shareWaiting = false,
         shareLanded = false,
         accessLost = null,
@@ -46,6 +48,10 @@
         settingUp?: boolean
         /** Why "Set it up here" failed, in user copy. */
         setupError?: string | null
+        /** Grant access has asked, and the browser has not answered yet. */
+        granting?: boolean
+        /** Why Grant access did not get the folder, in user copy. */
+        grantError?: string | null
         /**
          * A [[Share Target]] share is waiting for this graph (ADR 0087). A stalled open says the
          * text is safe and will land once the graph opens; a failed one says where to take it.
@@ -291,7 +297,18 @@
 {:else if phase === 'needs-permission'}
     <div class="notice" data-testid="graph-needs-permission">
         <p>EtherPK needs permission to read and write this graph's folder.</p>
-        <button data-testid="graph-grant" onclick={ongrant}>Grant access</button>
+        {#if grantError}
+            <p role="alert" class="notice__error" data-testid="graph-grant-error">{grantError}</p>
+        {/if}
+        <div class="notice__actions">
+            <!-- aria-disabled, not disabled: a disabled button loses focus, which would leave a
+                 keyboard user on nothing when the refusal comes back. The handler ignores a second press. -->
+            <button data-testid="graph-grant" onclick={ongrant} aria-disabled={granting} aria-busy={granting}>
+                {granting ? 'Waiting for the browser…' : 'Grant access'}
+            </button>
+            <!-- The notice covers the whole workspace, and a person who refused needs a way out. -->
+            <button data-testid="graph-grant-back" onclick={onback}>Back to graphs</button>
+        </div>
         <!-- Chrome and Edge on a computer keep an installed app's folder access between visits,
              so this question stops coming back; the offer shows only there. -->
         <div class="notice__offer">
@@ -329,7 +346,8 @@
     </div>
 {:else if phase === 'error'}
     <div class="notice" data-testid="graph-error" role="alert">
-        <!-- `message` is already a full sentence from sync-error-copy.ts: what happened,
+        <!-- `message` is already a full sentence from sync-error-copy.ts or
+             folder-open-copy.ts: what happened,
              why, what next. Prefixing it here produced "Could not open the graph: Could not
              open the graph." -->
         <p>{message}</p>
@@ -377,7 +395,7 @@
         display: none;
     }
     .notice__share {
-        color: var(--gk-text-subtle, #6b7280);
+        color: var(--gk-text-subtle, #737373);
     }
     .notice__share a {
         color: inherit;
@@ -464,6 +482,9 @@
     }
     .notice button:disabled {
         opacity: 0.6;
+        cursor: default;
+    }
+    .notice button[aria-disabled='true'] {
         cursor: default;
     }
 </style>

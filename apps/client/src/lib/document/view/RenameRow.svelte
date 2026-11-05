@@ -66,7 +66,7 @@
 
 {#snippet names()}
     {#if label.visible}
-        <span class="text-gray-600 dark:text-gray-400">{label.text}</span>
+        <span class="text-neutral-600 dark:text-neutral-400">{label.text}</span>
     {:else}
         <span class="sr-only">{label.text}</span>
     {/if}
@@ -74,13 +74,13 @@
     <span aria-hidden="true">→</span><span class="sr-only">to</span>
     <span class="font-mono break-words">"{after}"</span>
     {#if status}
-        <span class="ml-1 text-gray-500 dark:text-gray-400" data-testid="{testIdPrefix}-status">{status}</span>
+        <span class="ml-1 text-neutral-500 dark:text-neutral-400" data-testid="{testIdPrefix}-status">{status}</span>
     {/if}
 {/snippet}
 
-<div class={["space-y-2", framed && "rounded-lg border border-gray-200 dark:border-gray-700 p-3"]} data-testid="{testIdPrefix}-row" data-before={before} data-after={after}>
+<div class={["space-y-2", framed && "rounded-lg border border-neutral-200 dark:border-neutral-700 p-3"]} data-testid="{testIdPrefix}-row" data-before={before} data-after={after}>
     {#if tick}
-        <label class="flex items-start gap-2 text-sm text-gray-950 dark:text-gray-100">
+        <label class="flex items-start gap-2 text-sm text-neutral-950 dark:text-neutral-100">
             <input
                 type="checkbox"
                 class="mt-1 shrink-0"
@@ -99,7 +99,7 @@
             <span class="min-w-0">{@render names()}</span>
         </label>
     {:else if showNames}
-        <p class="min-w-0 text-sm text-gray-950 dark:text-gray-100">{@render names()}</p>
+        <p class="min-w-0 text-sm text-neutral-950 dark:text-neutral-100">{@render names()}</p>
     {/if}
     {#if problem}
         <p id={problemId} role="alert" class="text-sm text-red-600" data-testid="{testIdPrefix}-error">{problem}</p>

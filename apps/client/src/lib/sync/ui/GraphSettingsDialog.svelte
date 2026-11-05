@@ -401,7 +401,7 @@
      */
     // svelte-ignore state_referenced_locally
     let toolbarColor = $state<string | null>(settings.toolbarColor ?? null);
-    const TOOLBAR_COLOR_STAND_IN = "#e5e7eb";
+    const TOOLBAR_COLOR_STAND_IN = "#e5e5e5";
     // svelte-ignore state_referenced_locally
     let draftFolderPath = $state(folderPath?.path ?? "");
     // svelte-ignore state_referenced_locally
@@ -511,7 +511,7 @@
                 below is: one Tab stop, and the arrow keys move between them.
             -->
             <div
-                class="mb-4 inline-flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-white/10"
+                class="mb-4 inline-flex gap-1 rounded-lg bg-neutral-100 p-1 dark:bg-white/10"
                 role="tablist"
                 aria-label="Settings, Extensions and Install"
             >
@@ -528,8 +528,8 @@
                         onkeydown={onAreaKeydown}
                         class="rounded-md px-4 py-1.5 text-sm font-semibold transition-colors pointer-coarse:min-h-11 {area ===
                         entry.id
-                            ? 'bg-white text-gray-950 shadow-sm dark:bg-white/15 dark:text-gray-100'
-                            : 'text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-gray-100'}"
+                            ? 'bg-white text-neutral-950 shadow-sm dark:bg-white/15 dark:text-neutral-100'
+                            : 'text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-neutral-100'}"
                         >{entry.label}</button
                     >
                 {/each}
@@ -555,13 +555,13 @@
                 <select
                     value={activeTab}
                     onchange={(event) => selectTab(event.currentTarget.value as Tab)}
-                    class="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-950 dark:border-gray-700 dark:bg-white/10 dark:text-gray-100"
+                    class="block w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-950 dark:border-neutral-700 dark:bg-white/10 dark:text-neutral-100"
                     data-testid="settings-tab-select"
                 >
                     {#each tabs as entry (entry.id)}
                         <option
                             value={entry.id}
-                            class="bg-white text-gray-950 dark:bg-(--gk-surface-1) dark:text-gray-100"
+                            class="bg-white text-neutral-950 dark:bg-(--gk-surface-1) dark:text-neutral-100"
                             >{entry.label}</option
                         >
                     {/each}
@@ -574,7 +574,7 @@
                 strip a single Tab stop, and Left/Right/Home/End move between them.
             -->
             <div
-                class="-mt-1 hidden gap-1 border-b border-gray-100 md:flex dark:border-gray-800"
+                class="-mt-1 hidden gap-1 border-b border-neutral-100 md:flex dark:border-neutral-800"
                 role="tablist"
                 aria-label="Settings sections"
             >
@@ -591,8 +591,8 @@
                         onkeydown={onTabKeydown}
                         class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab ===
                         entry.id
-                            ? 'border-gray-900 dark:border-gray-100 text-gray-950 dark:text-gray-100'
-                            : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}"
+                            ? 'border-neutral-900 dark:border-neutral-100 text-neutral-950 dark:text-neutral-100'
+                            : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300'}"
                         >{entry.label}</button
                     >
                 {/each}
@@ -614,13 +614,13 @@
                 <div
                     class="text-sm {warn
                         ? 'text-amber-700 dark:text-amber-400'
-                        : 'text-gray-600 dark:text-gray-400'}"
+                        : 'text-neutral-600 dark:text-neutral-400'}"
                 >
                     <details data-testid={testId}>
                         <summary class="cursor-pointer">{summary}</summary>
                         <ul
                             data-testid="{testId}-names"
-                            class="mt-2 max-h-40 overflow-y-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 p-2 font-mono text-sm"
+                            class="mt-2 max-h-40 overflow-y-auto rounded-md border border-neutral-900/10 dark:border-neutral-100/15 p-2 font-mono text-sm"
                         >
                             <!-- Keyed on position as well as name: two documents can hold the same dangling
                      link, and a repeated key would throw where a plain list would simply show both. -->
@@ -645,7 +645,7 @@
                      where someone looks when a graph is slow to open or has gone missing on a
                      device. The same steps as the Install dialog. -->
                 <div class="space-y-2" data-testid="app-install">
-                    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">Install on this device</h3>
+                    <h3 class="text-sm font-medium text-neutral-500 dark:text-neutral-400">Install on this device</h3>
                     <InstallSteps />
                 </div>
             {:else if activeTab === "publish" && publish}
@@ -657,7 +657,7 @@
                 <!-- Nothing here is a setting either: choosing a folder starts the mirror at once,
                  and there is nothing for Save to apply, so the footer offers Done. -->
                 <div class="space-y-3" data-testid="mirror-tab">
-                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                    <p class="text-sm text-neutral-600 dark:text-neutral-400">
                         A Local Mirror keeps a plain Markdown copy of this graph
                         in a folder you choose, updated as you edit. It is
                         one-way - EtherPK writes to the folder and never reads
@@ -667,7 +667,7 @@
                     {#if mirror.heldElsewhere && !mirror.status}
                         <p
                             role="status"
-                            class="text-sm text-gray-950 dark:text-gray-100"
+                            class="text-sm text-neutral-950 dark:text-neutral-100"
                             data-testid="mirror-held-elsewhere"
                         >
                             Another tab of this browser is mirroring this graph.
@@ -679,14 +679,14 @@
                                 type="button"
                                 onclick={mirror.onstop}
                                 data-testid="mirror-stop"
-                                class="rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                                 >Stop mirroring</button
                             >
                         </div>
                     {:else if mirror.status}
                         <p
                             role="status"
-                            class="text-sm text-gray-950 dark:text-gray-100"
+                            class="text-sm text-neutral-950 dark:text-neutral-100"
                             data-testid="mirror-status"
                         >
                             {#if mirror.status.paused}
@@ -788,7 +788,7 @@
                                 false,
                             )}
                         {/if}
-                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                        <p class="text-sm text-neutral-600 dark:text-neutral-400">
                             Mirroring runs while this graph is open here, and
                             picks up where it left off next time you open it on
                             this device.
@@ -799,7 +799,7 @@
                                     type="button"
                                     onclick={mirror.onresume}
                                     data-testid="mirror-resume"
-                                    class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+                                    class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
                                     >{mirror.status.paused.kind === "folder"
                                         ? "Choose the folder again…"
                                         : "Reconnect and carry on"}</button
@@ -810,7 +810,7 @@
                                     onclick={mirror.onsync}
                                     disabled={mirror.status.syncing}
                                     data-testid="mirror-sync-now"
-                                    class="rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                                    class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
                                     >Mirror now</button
                                 >
                             {/if}
@@ -818,13 +818,13 @@
                                 type="button"
                                 onclick={mirror.onstop}
                                 data-testid="mirror-stop"
-                                class="rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                                 >Stop mirroring</button
                             >
                         </div>
                     {:else if !mirror.supported}
                         <p
-                            class="text-sm text-gray-600 dark:text-gray-400"
+                            class="text-sm text-neutral-600 dark:text-neutral-400"
                             data-testid="mirror-unsupported"
                         >
                             This browser can't give EtherPK a folder to write
@@ -832,7 +832,7 @@
                             Chrome on Android.
                         </p>
                     {:else}
-                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                        <p class="text-sm text-neutral-600 dark:text-neutral-400">
                             The mirror is set up per device. It runs while the
                             graph is open here and resumes by itself next time.
                             If the folder you pick already has files in it,
@@ -842,7 +842,7 @@
                             type="button"
                             onclick={mirror.onenable}
                             data-testid="mirror-enable"
-                            class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+                            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
                             >Choose a folder and start mirroring…</button
                         >
                     {/if}
@@ -851,13 +851,13 @@
                          Nothing here is a setting either; the export starts on its own click and
                          reports through the Activity toast, and an incomplete one waits here. -->
                     <div
-                        class="space-y-3 border-t border-gray-900/10 dark:border-gray-100/15 pt-4"
+                        class="space-y-3 border-t border-neutral-900/10 dark:border-neutral-100/15 pt-4"
                         data-testid="export-section"
                     >
-                        <h3 class="text-sm font-semibold text-gray-950 dark:text-gray-100">
+                        <h3 class="text-sm font-semibold text-neutral-950 dark:text-neutral-100">
                             Export as zip
                         </h3>
-                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                        <p class="text-sm text-neutral-600 dark:text-neutral-400">
                             A one-off copy of this graph as a zip: the same
                             plain Markdown files, attachments and settings a
                             mirror folder holds, importable again as a new graph
@@ -865,7 +865,7 @@
                             included.
                         </p>
                         <p
-                            class="text-sm text-gray-950 dark:text-gray-100"
+                            class="text-sm text-neutral-950 dark:text-neutral-100"
                             role="status"
                             data-testid="export-estimate"
                         >
@@ -897,7 +897,7 @@
                                 class="space-y-2 rounded-lg border border-amber-600/40 bg-amber-50 dark:bg-amber-950/30 p-3"
                                 data-testid="export-pending"
                             >
-                                <p class="text-sm text-gray-950 dark:text-gray-100">
+                                <p class="text-sm text-neutral-950 dark:text-neutral-100">
                                     The last export finished with something left
                                     out. Keep it as it is, marked incomplete, or
                                     discard it.
@@ -923,14 +923,14 @@
                                         type="button"
                                         onclick={exportGraph.pending.onkeep}
                                         data-testid="export-keep"
-                                        class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+                                        class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
                                         >Keep the incomplete export</button
                                     >
                                     <button
                                         type="button"
                                         onclick={exportGraph.pending.ondiscard}
                                         data-testid="export-discard"
-                                        class="rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                        class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                                         >Discard</button
                                     >
                                 </div>
@@ -944,7 +944,7 @@
                                         exportGraph.estimate === "offline" ||
                                         exportGraph.estimate === null}
                                     data-testid="export-start"
-                                    class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50"
+                                    class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50"
                                     >{exportGraph.running
                                         ? "Exporting…"
                                         : "Export as zip…"}</button
@@ -953,7 +953,7 @@
                         {/if}
                         {#if exportGraph.leftover}
                             <p
-                                class="text-sm text-gray-600 dark:text-gray-400"
+                                class="text-sm text-neutral-600 dark:text-neutral-400"
                                 data-testid="export-leftover"
                             >
                                 An earlier export's download file ({formatBytes(
@@ -964,7 +964,7 @@
                                     type="button"
                                     onclick={exportGraph.leftover.onremove}
                                     data-testid="export-leftover-remove"
-                                    class="font-medium text-gray-950 dark:text-gray-100 underline hover:no-underline"
+                                    class="font-medium text-neutral-950 dark:text-neutral-100 underline hover:no-underline"
                                     >Remove it</button
                                 >
                             </p>
@@ -979,17 +979,17 @@
                                  what to do instead rather than showing commands that cannot work. -->
                             <div class="space-y-4" data-testid="agents-tab-browser">
                                 {@render mcpHeading()}
-                                <p class="text-sm text-gray-600 dark:text-gray-400">
+                                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                                     Use to allow an AI agent on your device to read and modify a graph. This graph is
                                     kept inside this browser, so an agent cannot reach it.
                                 </p>
-                                <p class="text-sm text-gray-950 dark:text-gray-100">
+                                <p class="text-sm text-neutral-950 dark:text-neutral-100">
                                     To work with an agent, open a local graph, which is a folder of plain files an agent
                                     can open like any other project, or a synced graph, which an agent reaches through the
                                     EtherPK Headless Client. You can do either from the
                                     <a
                                         href="/graphs"
-                                        class="underline decoration-gray-400 underline-offset-2 hover:decoration-gray-950 dark:hover:decoration-gray-100"
+                                        class="underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-950 dark:hover:decoration-neutral-100"
                                         >Graphs page</a
                                     >.
                                 </p>
@@ -1000,17 +1000,17 @@
                                  the one extra, and comes before what the folder's AGENTS.md covers. -->
                             <div class="space-y-4" data-testid="agents-tab-local">
                                 {@render mcpHeading()}
-                                <p class="text-sm text-gray-600 dark:text-gray-400">
+                                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                                     Use to allow an AI agent on your device, such as Claude Code, Codex or VS Code, to read
                                     and modify this graph. The agent connects to the MCP server that the EtherPK Headless
                                     Client runs.
                                 </p>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">
+                                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                                     The MCP server is optional on a local graph. The graph is a folder, so the agent can open
                                     its files like any other project, and the MCP server adds search, backlinks and task
                                     tools. The MCP can see a count of protected documents, but no names or text.
                                 </p>
-                                <p class="text-sm text-gray-950 dark:text-gray-100">
+                                <p class="text-sm text-neutral-950 dark:text-neutral-100">
                                     To hand the agent a task or a Kanban lane, use
                                     <span class="font-medium">Copy agent instruction</span>
                                     on it and paste the text into the agent's chat.
@@ -1020,14 +1020,14 @@
                              with no sign-in: search, backlinks, tasks and format-safe edits over the
                              files, alongside the files themselves. A person reads this, never an
                              agent; AGENTS.md stays about the file format on purpose. -->
-                        <div class="space-y-1 border-t border-gray-900/10 dark:border-gray-100/15 pt-4">
+                        <div class="space-y-1 border-t border-neutral-900/10 dark:border-neutral-100/15 pt-4">
                             <div class="flex flex-wrap items-center gap-2">
-                                <span class="text-sm font-medium text-gray-950 dark:text-gray-100">Optional: add the MCP server</span>
-                                <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                                <span class="text-sm font-medium text-neutral-950 dark:text-neutral-100">Optional: add the MCP server</span>
+                                <label class="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
                                     for
                                     <select
                                         bind:value={agentTool}
-                                        class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
+                                        class="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
                                         data-testid="agents-tool"
                                     >
                                         {#each AGENT_TOOLS as toolOption (toolOption.id)}
@@ -1036,7 +1036,7 @@
                                     </select>
                                 </label>
                             </div>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">
+                            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                                 It needs no sign-in. It keeps an index of the notes, so
                                 the agent can search them, follow links and list tasks,
                                 and its edits keep the format. Edits the agent makes to
@@ -1044,7 +1044,7 @@
                             </p>
                             <div class="flex items-start gap-2">
                                 <pre
-                                    class="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
+                                    class="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-neutral-900/10 dark:border-neutral-100/15 bg-neutral-50 dark:bg-white/5 p-3 font-mono text-sm"
                                     data-testid="agents-register-folder-command">{registerFolderCommand(agentTool, agents.folderPath, agents.headlessClient, agents.folderName)}</pre>
                                 <button
                                     type="button"
@@ -1053,18 +1053,18 @@
                                             "register",
                                             registerFolderCommand(agentTool, agents!.kind === "local" ? agents!.folderPath! : "", agents!.headlessClient, agents!.kind === "local" ? agents!.folderName : ""),
                                         )}
-                                    class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                    class="shrink-0 rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                                     data-testid="agents-copy-register-folder"
                                     >{agentCopied === "register" ? "Copied" : "Copy"}</button
                                 >
                             </div>
-                            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="agents-register-note">{registerNote(agentTool)}</p>
+                            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-register-note">{registerNote(agentTool)}</p>
                             {#if agentCopyError?.key === "register"}
                                 <p role="status" class="text-sm text-red-700 dark:text-red-400">{agentCopyError.message}</p>
                             {/if}
                         </div>
                                 {:else}
-                                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                                    <p class="text-sm text-neutral-600 dark:text-neutral-400">
                             To hand an agent a full path, or to serve the folder
                             to an agent over MCP with search, backlinks and
                             tasks, set
@@ -1074,7 +1074,7 @@
                             on a document's tab.
                         </p>
                                 {/if}
-                                <p class="text-sm text-gray-950 dark:text-gray-100">
+                                <p class="text-sm text-neutral-950 dark:text-neutral-100">
                         EtherPK keeps an <code class="font-mono">AGENTS.md</code>
                         at the top of the folder
                         (<code class="font-mono" data-testid="agents-local-folder">{agents.folderName}</code>),
@@ -1090,7 +1090,7 @@
                         A <code class="font-mono">CLAUDE.md</code> beside it
                         just points Claude Code at the same file.
                     </p>
-                    <p class="text-sm text-gray-950 dark:text-gray-100">
+                    <p class="text-sm text-neutral-950 dark:text-neutral-100">
                         Both files are yours to add to. Anything you write
                         outside the part between the
                         <code class="font-mono">&lt;!-- BEGIN ETHERPK --&gt;</code>
@@ -1099,18 +1099,18 @@
                         graph opens, so it always matches this version.
                     </p>
                                 {#if agents.folderPath}
-                            <p class="text-sm text-gray-600 dark:text-gray-400">
+                            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                                 Path on this device:
                                 <code class="font-mono" data-testid="agents-local-path">{agents.folderPath}/AGENTS.md</code>
                             </p>
                                 {/if}
                                 {@render agentOptional(agents.folderPath ? agents : null)}
-                                <p class="text-sm text-gray-600 dark:text-gray-400">
+                                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                         <a
                             href="https://docs.etherpk.com/using-ai-agents-with-your-notes"
                             target="_blank"
                             rel="noreferrer"
-                            class="underline decoration-gray-400 underline-offset-2 hover:decoration-gray-950 dark:hover:decoration-gray-100"
+                            class="underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-950 dark:hover:decoration-neutral-100"
                             >Read the guide</a
                         >, including what to do when the notes folder sits inside a
                         bigger project.
@@ -1119,28 +1119,28 @@
                         {:else if agents?.kind === "synced"}
                             <div class="space-y-4" data-testid="agents-tab">
                     {@render mcpHeading()}
-                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                    <p class="text-sm text-neutral-600 dark:text-neutral-400">
                                     Use to allow an AI agent on your device, such as Claude Code, Codex or VS Code, to read
                                     and modify this graph. The agent connects to the MCP server that the EtherPK Headless
                                     Client runs.
                                 </p>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">
+                                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                                     The Headless Client signs in and acts as one of your devices. Your notes are encrypted
                                     before sending to the Sync Server. The MCP can see a count of protected documents, but
                                     no names or text.
                                 </p>
-                    <ol class="space-y-3 text-sm text-gray-950 dark:text-gray-100">
+                    <ol class="space-y-3 text-sm text-neutral-950 dark:text-neutral-100">
                         <li class="space-y-2">
                             <HeadlessClientSignIn serverBaseUrl={agents.serverBaseUrl} headlessClient={agents.headlessClient} createSetupCode={agents.createSetupCode} numbered />
                         </li>
                         <li class="space-y-1">
                             <div class="flex flex-wrap items-center gap-2">
                                 <span class="font-medium">2. Tell the agent about this graph</span>
-                                <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                                <label class="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
                                     for
                                     <select
                                         bind:value={agentTool}
-                                        class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
+                                        class="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
                                         data-testid="agents-tool"
                                     >
                                         {#each AGENT_TOOLS as toolOption (toolOption.id)}
@@ -1151,7 +1151,7 @@
                             </div>
                             <div class="flex items-start gap-2">
                                 <pre
-                                    class="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
+                                    class="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-neutral-900/10 dark:border-neutral-100/15 bg-neutral-50 dark:bg-white/5 p-3 font-mono text-sm"
                                     data-testid="agents-register-command">{registerCommand(agentTool, agents.graphId, agents.serverBaseUrl, agents.headlessClient, agents.graphName)}</pre>
                                 <button
                                     type="button"
@@ -1160,16 +1160,16 @@
                                             "register",
                                             registerCommand(agentTool, agents!.graphId, agents!.serverBaseUrl, agents!.headlessClient, agents!.graphName),
                                         )}
-                                    class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                    class="shrink-0 rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                                     data-testid="agents-copy-register"
                                     >{agentCopied === "register" ? "Copied" : "Copy"}</button
                                 >
                             </div>
-                            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="agents-register-note">{registerNote(agentTool)}</p>
+                            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-register-note">{registerNote(agentTool)}</p>
                         </li>
                         <li class="space-y-1" data-testid="agents-hand-task">
                             <span class="font-medium">3. Hand the agent a task</span>
-                            <p class="text-gray-600 dark:text-gray-400">
+                            <p class="text-neutral-600 dark:text-neutral-400">
                                 Use <span class="font-medium">Copy agent instruction</span>
                                 on a task or a Kanban lane, and paste the text into
                                 the agent's chat.
@@ -1180,21 +1180,21 @@
                         <p role="status" class="text-sm text-red-700 dark:text-red-400">{agentCopyError.message}</p>
                     {/if}
                     {@render agentOptional(agents, "4. ")}
-                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                    <p class="text-sm text-neutral-600 dark:text-neutral-400">
                         This graph's id is <code class="font-mono" data-testid="agents-graph-id">{agents.graphId}</code>.
                         Each agent's token is listed as "Agent on" its device's name on
                         <a
                             href={tokensPageUrl(agents.serverBaseUrl)}
                             target="_blank"
                             rel="noreferrer"
-                            class="underline decoration-gray-400 underline-offset-2 hover:decoration-gray-950 dark:hover:decoration-gray-100"
+                            class="underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-950 dark:hover:decoration-neutral-100"
                             data-testid="agents-tokens-link">the Sync Server's Access tokens page</a
                         >. Revoke it there to cut the agent off.
                         <a
                             href="https://docs.etherpk.com/using-ai-agents-with-your-notes"
                             target="_blank"
                             rel="noreferrer"
-                            class="underline decoration-gray-400 underline-offset-2 hover:decoration-gray-950 dark:hover:decoration-gray-100"
+                            class="underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-950 dark:hover:decoration-neutral-100"
                             >Read the guide</a
                         >.
                     </p>
@@ -1207,7 +1207,7 @@
                  mistaken for, only Done, and below the footer they read as an empty tab until
                  scrolled to. Each acts the moment it is pressed, and every button in them is
                  `type="button"`, so none submits the form. -->
-                <p class="text-sm text-gray-600 dark:text-gray-400">
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     Housekeeping for this graph. Nothing here is a setting -
                     each control acts as soon as you press it.
                 </p>
@@ -1216,12 +1216,12 @@
                     <DuplicateNamesSection session={duplicateNames} />
                 {/if}
                 {#if showStorage}
-                    <div class={duplicateNames ? "border-t border-gray-100 dark:border-gray-800 pt-4" : ""}>
+                    <div class={duplicateNames ? "border-t border-neutral-100 dark:border-neutral-800 pt-4" : ""}>
                         {@render storageTools()}
                     </div>
                 {/if}
                 {#if formatting}
-                    <div class="border-t border-gray-100 dark:border-gray-800 pt-4">
+                    <div class="border-t border-neutral-100 dark:border-neutral-800 pt-4">
                         <FormattingSection
                             {...formatting}
                             onexport={mirror ? () => selectTab("mirror") : null}
@@ -1232,23 +1232,23 @@
                 <div>
                     <label
                         for="graph-name"
-                        class="mb-1.5 block text-sm font-medium text-gray-600 dark:text-gray-300"
+                        class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
                         >Graph name</label
                     >
                     <input
                         id="graph-name"
                         data-testid="graph-name"
                         bind:value={draftName}
-                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                     />
-                    <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+                    <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                         {nameHelp}
                     </p>
                 </div>
                 <div>
                     <label
                         for="graph-display-size"
-                        class="mb-1.5 block text-sm font-medium text-gray-600 dark:text-gray-300"
+                        class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
                         >Default maximum image display size on upload</label
                     >
                     <input
@@ -1257,9 +1257,9 @@
                         bind:value={displaySize}
                         placeholder={DEFAULT_IMAGE_DISPLAY_SIZE}
                         inputmode="numeric"
-                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                     />
-                    <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+                    <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                         Uploaded images get this added to their description, e.g.
                         <code>![photo|{DEFAULT_IMAGE_DISPLAY_SIZE}]</code>. A width like
                         800 or width×height like 800x600, or 0 for natural size.
@@ -1268,7 +1268,7 @@
                 <div>
                     <label
                         for="graph-code-language"
-                        class="mb-1.5 block text-sm font-medium text-gray-600 dark:text-gray-300"
+                        class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
                         >Default code language</label
                     >
                     <input
@@ -1276,13 +1276,13 @@
                         data-testid="graph-code-language"
                         bind:value={codeLanguage}
                         placeholder="e.g. text, ts, python"
-                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                     />
                 </div>
                 <div>
                     <label
                         for="graph-recent-count"
-                        class="mb-1.5 block text-sm font-medium text-gray-600 dark:text-gray-300"
+                        class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
                         >Recent documents shown in the sidebar</label
                     >
                     <input
@@ -1292,9 +1292,9 @@
                         min={MIN_RECENT_COUNT}
                         max={MAX_RECENT_COUNT}
                         bind:value={recentCount}
-                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                     />
-                    <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+                    <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                         Which documents are recent is remembered per device - how
                         many are listed is shared.
                     </p>
@@ -1303,7 +1303,7 @@
                     <div>
                         <label
                             for="graph-journal-template"
-                            class="mb-1.5 block text-sm font-medium text-gray-600 dark:text-gray-300"
+                            class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
                             >Journal Template</label
                         >
                         <select
@@ -1312,7 +1312,7 @@
                             bind:value={journalTemplate}
                             aria-describedby="graph-journal-template-help{journalTemplateMissing ? ' graph-journal-template-missing' : ''}"
                             aria-invalid={journalTemplateMissing}
-                            class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                            class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                         >
                             <option value="">None</option>
                             <!-- The saved name stays choosable while the list loads, and when it
@@ -1334,7 +1334,7 @@
                                 this graph, so new days open empty. Choose another, or None.
                             </p>
                         {/if}
-                        <p id="graph-journal-template-help" class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+                        <p id="graph-journal-template-help" class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                             Today and later days open holding this Template, and nothing is
                             saved until you type. A page becomes a Template when its
                             frontmatter says <code>template: true</code>.
@@ -1344,7 +1344,7 @@
                 <div>
                     <label
                         for="graph-toolbar-color"
-                        class="mb-1.5 block text-sm font-medium text-gray-600 dark:text-gray-300"
+                        class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
                         >Toolbar colour</label
                     >
                     <!-- Eight ready-made pastels first - the presence palette, so a graph's bar
@@ -1367,9 +1367,9 @@
                                 data-color={swatch.color}
                                 onclick={() => (toolbarColor = swatch.color)}
                                 style="background-color: {swatch.color}"
-                                class="h-8 w-8 rounded-full border border-gray-900/15 dark:border-white/20 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 transition-shadow hover:ring-2 hover:ring-gray-400 dark:hover:ring-gray-500 {toolbarColor ===
+                                class="h-8 w-8 rounded-full border border-neutral-900/15 dark:border-white/20 ring-offset-2 ring-offset-white dark:ring-offset-neutral-900 transition-shadow hover:ring-2 hover:ring-neutral-400 dark:hover:ring-neutral-500 {toolbarColor ===
                                 swatch.color
-                                    ? 'ring-2 ring-gray-900 dark:ring-gray-100'
+                                    ? 'ring-2 ring-neutral-900 dark:ring-neutral-100'
                                     : ''}"
                             ></button>
                         {/each}
@@ -1387,29 +1387,29 @@
                                 (toolbarColor = (
                                     event.currentTarget as HTMLInputElement
                                 ).value)}
-                            class="h-9 w-14 cursor-pointer rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 p-1"
+                            class="h-9 w-14 cursor-pointer rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 p-1"
                         />
                         {#if toolbarColor !== null}
                             <code
-                                class="font-mono text-sm text-gray-700 dark:text-gray-300"
+                                class="font-mono text-sm text-neutral-700 dark:text-neutral-300"
                                 data-testid="graph-toolbar-color-value">{toolbarColor}</code
                             >
                             <button
                                 type="button"
                                 onclick={() => (toolbarColor = null)}
                                 data-testid="graph-toolbar-color-clear"
-                                class="rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
                                 >Use theme colour</button
                             >
                         {:else}
                             <span
-                                class="text-sm text-gray-500 dark:text-gray-400"
+                                class="text-sm text-neutral-500 dark:text-neutral-400"
                                 data-testid="graph-toolbar-color-default"
                                 >Theme colour</span
                             >
                         {/if}
                     </div>
-                    <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">
+                    <p class="mt-3 text-sm text-neutral-500 dark:text-neutral-400">
                         Colours the bar of buttons above the panes (the tab strip on
                         a phone), so this graph is easy to tell apart. Pick one of
                         the ready-made colours or any colour of your own - one colour
@@ -1420,7 +1420,7 @@
                     <div>
                         <label
                             for="graph-folder-path-setting"
-                            class="mb-1.5 block text-sm font-medium text-gray-600 dark:text-gray-300"
+                            class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
                             >Folder path on this device</label
                         >
                         <input
@@ -1430,20 +1430,20 @@
                             autocomplete="off"
                             spellcheck="false"
                             placeholder={`e.g. /home/you/notes/${folderPath.folderName}`}
-                            class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 font-mono text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                            class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 font-mono text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                         />
-                        <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+                        <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                             Where the <strong class="font-medium">{folderPath.folderName}</strong> folder is on this
                             device. Used by "Copy full file path" on a document tab, and
                             remembered here only - the browser cannot see it for itself.
                         </p>
                     </div>
                 {/if}
-                <p class="text-sm text-gray-500 dark:text-gray-400">
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">
                     Settings are shared by every member of the graph and sync
                     end-to-end encrypted.
                 </p>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">
                     Graph id: <code
                         data-testid="graph-id"
                         class="font-mono select-all">{graphId}</code
@@ -1468,7 +1468,7 @@
             type="button"
             onclick={close}
             data-testid="settings-dismiss"
-            class="rounded-lg px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+            class="rounded-lg px-4 py-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
         >
             {activeTab === "general" ? "Cancel" : "Done"}
         </button>
@@ -1476,7 +1476,7 @@
             <button
                 type="submit"
                 data-testid="graph-settings-save"
-                class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+                class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
                 >Save</button
             >
         {/if}
@@ -1502,8 +1502,8 @@
         AGENT_SKILL_ROW,
         ...(publish ? [{ key: "publish" as const, label: "Publish from the agent's machine", text: publish, note: "Publishes once and remembers the folder. The agent's publish tool then writes there and cannot choose another folder." }] : []),
     ]}
-    <div class="space-y-3 border-t border-gray-900/10 dark:border-gray-100/15 pt-4" data-testid="agents-optional">
-        <p class="text-sm font-medium text-gray-950 dark:text-gray-100">{step}(Optional) Additional Capabilities</p>
+    <div class="space-y-3 border-t border-neutral-900/10 dark:border-neutral-100/15 pt-4" data-testid="agents-optional">
+        <p class="text-sm font-medium text-neutral-950 dark:text-neutral-100">{step}(Optional) Additional Capabilities</p>
         <ul class="space-y-3">
             {#each rows as row (row.key)}
                 <li class="space-y-1">{@render agentCommand(row)}</li>
@@ -1514,8 +1514,8 @@
 
 <!-- The heading over the MCP Server sub-tab, which also stands alone when no extension adds a sub-tab. -->
 {#snippet mcpHeading()}
-    <h3 class="flex items-center gap-2 text-base font-semibold text-gray-950 dark:text-gray-100">
-        <span class="text-gray-600 dark:text-gray-400">
+    <h3 class="flex items-center gap-2 text-base font-semibold text-neutral-950 dark:text-neutral-100">
+        <span class="text-neutral-600 dark:text-neutral-400">
             <!-- eslint-disable-next-line svelte/no-at-html-tags -- the Client's own icon markup (icons.ts) -->
             {@html iconSvg("headless-client", { size: 20 })}
         </span>MCP Server
@@ -1530,26 +1530,26 @@
 
 {#snippet storageTools()}
     <div class="space-y-2">
-        <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
+        <p class="text-sm font-medium text-neutral-500 dark:text-neutral-400">
             Storage
         </p>
         {#if storageInfo}
             <p
-                class="text-sm text-gray-600 dark:text-gray-300"
+                class="text-sm text-neutral-600 dark:text-neutral-300"
                 data-testid="graph-storage"
             >
                 {formatBytes(storageInfo.docBytes)} documents · {formatBytes(
                     storageInfo.assetBytes,
                 )} assets on the server.
             </p>
-            <p class="text-sm text-gray-500 dark:text-gray-400">
+            <p class="text-sm text-neutral-500 dark:text-neutral-400">
                 The documents figure includes encrypted edit history — it
                 shrinks when history is compacted.
             </p>
         {/if}
         {#if indexPersisted !== null}
             <p
-                class="text-sm text-gray-500 dark:text-gray-400"
+                class="text-sm text-neutral-500 dark:text-neutral-400"
                 data-testid="index-persistence"
             >
                 {indexPersisted
@@ -1570,21 +1570,21 @@
                     onclick={rebuildIndex}
                     disabled={rebuilding}
                     data-testid="index-rebuild"
-                    class="rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40"
+                    class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
                     >{rebuilding
                         ? indexProgress && indexProgress.total > 0
                             ? `Rebuilding… ${indexProgress.done.toLocaleString()} of ${indexProgress.total.toLocaleString()}`
                             : "Rebuilding…"
                         : "Rebuild search index"}</button
                 >
-                <p class="pt-1 text-sm text-gray-500 dark:text-gray-400">
+                <p class="pt-1 text-sm text-neutral-500 dark:text-neutral-400">
                     Re-reads every document to rebuild backlinks, tasks and
                     search from scratch. Use it if a sidebar disagrees with a
                     document. Your documents are not changed.
                 </p>
                 {#if rebuilt}
                     <p
-                        class="text-sm text-gray-600 dark:text-gray-300"
+                        class="text-sm text-neutral-600 dark:text-neutral-300"
                         data-testid="index-rebuilt"
                     >
                         Search index rebuilt{indexProgress &&

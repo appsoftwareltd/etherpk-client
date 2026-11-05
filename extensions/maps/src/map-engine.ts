@@ -351,7 +351,7 @@ export class MapEngine {
         const empty = { type: 'FeatureCollection' as const, features: [] }
         if (!this.map.getSource(ROUTES)) this.map.addSource(ROUTES, { type: 'geojson', data: empty })
         if (!this.map.getSource(DRAFT)) this.map.addSource(DRAFT, { type: 'geojson', data: empty })
-        const casing = this.dark ? '#0b0d10' : '#ffffff'
+        const casing = this.dark ? '#0a0a0a' : '#ffffff'
         const selectedColour = this.dark ? '#ffd166' : '#c2410c'
         const round = { 'line-cap': 'round' as const, 'line-join': 'round' as const }
         for (const layer of routeLayers(ROUTES, this.dark)) this.map.addLayer(layer)

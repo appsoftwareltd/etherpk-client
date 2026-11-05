@@ -77,17 +77,17 @@
 
 <Dialog open={true} title="Add frontmatter" testId="add-frontmatter-dialog" busy={adding} busyReason="Adding…" {onclose} onsubmit={() => void add()}>
     {#snippet body()}
-        <p class="text-sm text-gray-600 dark:text-gray-400">
+        <p class="text-sm text-neutral-600 dark:text-neutral-400">
             Adds the keys EtherPK reads to the top of
-            <span class="font-medium text-gray-900 dark:text-gray-100">{concept}</span>. Each starts with a value that changes nothing, so you can fill it in now, later, or not at all.
+            <span class="font-medium text-neutral-900 dark:text-neutral-100">{concept}</span>. Each starts with a value that changes nothing, so you can fill it in now, later, or not at all.
         </p>
         {#if missing.length === 0}
-            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="add-frontmatter-complete">This document already has every key EtherPK reads.</p>
+            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="add-frontmatter-complete">This document already has every key EtherPK reads.</p>
         {:else}
             <fieldset class="space-y-3" data-testid="add-frontmatter-keys">
                 <legend class="sr-only">Keys to add</legend>
                 {#each choices as choice (choice.key)}
-                    <label class="flex items-start gap-2 text-sm text-gray-950 dark:text-gray-100">
+                    <label class="flex items-start gap-2 text-sm text-neutral-950 dark:text-neutral-100">
                         <input
                             type="checkbox"
                             class="mt-1 shrink-0"
@@ -102,10 +102,10 @@
                         <span>
                             <code class="font-medium">{choice.key}</code>
                             {#if choice.present}
-                                <span class="text-gray-500 dark:text-gray-400" data-testid="add-frontmatter-present-{choice.key}">Already in this document</span>
+                                <span class="text-neutral-500 dark:text-neutral-400" data-testid="add-frontmatter-present-{choice.key}">Already in this document</span>
                             {/if}
                             <br />
-                            <span id="add-frontmatter-summary-{choice.key}" class="text-gray-600 dark:text-gray-400">
+                            <span id="add-frontmatter-summary-{choice.key}" class="text-neutral-600 dark:text-neutral-400">
                                 {#each segments(choice.summary) as part (part.id)}{#if part.code}<code>{part.text}</code>{:else}{part.text}{/if}{/each}
                             </span>
                         </span>
@@ -113,16 +113,16 @@
                 {/each}
             </fieldset>
             {#if toAdd.length === 0}
-                <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="add-frontmatter-nothing-ticked">Tick a key to add it.</p>
+                <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="add-frontmatter-nothing-ticked">Tick a key to add it.</p>
             {/if}
         {/if}
         {#if addError}<p role="alert" class="text-sm text-red-700 dark:text-red-300" data-testid="add-frontmatter-error">{addError}</p>{/if}
     {/snippet}
 
     {#snippet footer()}
-        <button type="button" class="rounded-lg px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10" onclick={onclose}>{missing.length === 0 ? "Close" : "Cancel"}</button>
+        <button type="button" class="rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/10" onclick={onclose}>{missing.length === 0 ? "Close" : "Cancel"}</button>
         {#if missing.length > 0}
-            <button type="submit" class="rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-2 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50" disabled={toAdd.length === 0 || adding} data-testid="add-frontmatter-add">{adding ? "Adding…" : "Add"}</button>
+            <button type="submit" class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-3 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50" disabled={toAdd.length === 0 || adding} data-testid="add-frontmatter-add">{adding ? "Adding…" : "Add"}</button>
         {/if}
     {/snippet}
 </Dialog>

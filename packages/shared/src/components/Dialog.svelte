@@ -170,7 +170,7 @@
         top; toasts stay in their slot under the first panel.
     -->
     <div
-        class="fixed inset-0 bg-gray-950/25 dark:bg-black/50"
+        class="fixed inset-0 bg-neutral-950/25 dark:bg-black/50"
         style:z-index={dialogLayer("backdrop", depth)}
         aria-hidden="true"
         data-dialog-backdrop
@@ -193,7 +193,7 @@
         style:z-index={dialogLayer("panel", depth)}
     >
         <div
-            class="pointer-events-auto relative flex max-h-[calc(100dvh-var(--dialog-top)-1rem)] w-full flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[var(--gk-surface-0)] shadow-xl {sizeClass} {fillPhone ? 'max-sm:h-dvh max-sm:max-h-dvh max-sm:max-w-none max-sm:rounded-none max-sm:border-0' : ''}"
+            class="pointer-events-auto relative flex max-h-[calc(100dvh-var(--dialog-top)-1rem)] w-full flex-col rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[var(--gk-surface-0)] shadow-xl {sizeClass} {fillPhone ? 'max-sm:h-dvh max-sm:max-h-dvh max-sm:max-w-none max-sm:rounded-none max-sm:border-0' : ''}"
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
@@ -210,8 +210,8 @@
                 fold, where a click cannot land. The footer is not pinned: it follows the
                 inputs it commits, with any `tools` after it.
             -->
-            <div class="flex shrink-0 items-center justify-between gap-3 px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-                <h2 id={titleId} class="text-base font-semibold text-gray-950 dark:text-gray-100">{title}</h2>
+            <div class="flex shrink-0 items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
+                <h2 id={titleId} class="text-base font-semibold text-neutral-950 dark:text-neutral-100">{title}</h2>
                 {#if dismissible}
                     <button
                         type="button"
@@ -219,7 +219,7 @@
                         aria-label="Close"
                         data-dialog-dismiss
                         data-testid="modal-close"
-                        class="rounded-lg p-1.5 pointer-coarse:-my-1.5 pointer-coarse:p-3 text-gray-500 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                        class="rounded-lg p-1.5 pointer-coarse:-my-1.5 pointer-coarse:p-3 text-neutral-500 dark:text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-white/10 transition-colors"
                     >
                         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                             <path d="M6 18 18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
@@ -231,7 +231,7 @@
                         broken dialog. Say why it is gone, in persistent text rather than a
                         tooltip on a control that is not there to hover.
                     -->
-                    <span id={busyId} data-testid="modal-busy-reason" class="shrink-0 text-sm text-gray-500 dark:text-gray-400">
+                    <span id={busyId} data-testid="modal-busy-reason" class="shrink-0 text-sm text-neutral-500 dark:text-neutral-400">
                         {busyReason}
                     </span>
                 {/if}
@@ -257,7 +257,7 @@
                         </div>
 
                         {#if footer}
-                            <div class="flex justify-end gap-2 border-t border-gray-100 dark:border-gray-800 px-5 py-3 pointer-coarse:[&_button]:min-h-11">
+                            <div class="flex justify-end gap-2 border-t border-neutral-100 dark:border-neutral-800 px-5 py-3 pointer-coarse:[&_button]:min-h-11">
                                 {@render footer()}
                             </div>
                         {/if}
@@ -265,7 +265,7 @@
                 </form>
 
                 {#if tools}
-                    <div class="border-t border-gray-100 dark:border-gray-800 px-5 py-4 space-y-4" data-testid="modal-tools">
+                    <div class="border-t border-neutral-100 dark:border-neutral-800 px-5 py-4 space-y-4" data-testid="modal-tools">
                         {@render tools()}
                     </div>
                 {/if}

@@ -526,12 +526,12 @@
     }
 
     const actionClass =
-        "inline-flex h-12 w-full items-center justify-center gap-2.5 rounded-xl bg-gray-950 px-6 text-base font-semibold text-white shadow-sm transition-colors hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-950 sm:flex-1 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-100 dark:focus-visible:outline-white";
+        "inline-flex h-12 w-full items-center justify-center gap-2.5 rounded-xl bg-neutral-950 px-6 text-base font-semibold text-white shadow-sm transition-colors hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 sm:flex-1 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 dark:focus-visible:outline-white";
 
     // Every text link on the page looks the same. The links beneath the hero add an icon, and
     // share one class list so the repository, the docs, the blog and the Discord community match.
     const textLinkClass =
-        "font-medium text-gray-700 underline decoration-gray-400 underline-offset-2 transition-colors hover:text-gray-950 dark:text-gray-300 dark:hover:text-white";
+        "font-medium text-neutral-700 underline decoration-neutral-400 underline-offset-2 transition-colors hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-white";
     const iconLinkClass = `inline-flex items-center gap-1.5 ${textLinkClass}`;
 </script>
 
@@ -576,7 +576,7 @@
 {#snippet inline(text: string)}
     {#each segments(text) as segment, index (index)}
         {#if segment.code}<code
-                class="rounded bg-gray-950/6 px-1 py-0.5 font-mono text-gray-800 dark:bg-white/10 dark:text-gray-100"
+                class="rounded bg-neutral-950/6 px-1 py-0.5 font-mono text-neutral-800 dark:bg-white/10 dark:text-neutral-100"
                 >{segment.text}</code
             >{:else}{segment.text}{/if}
     {/each}
@@ -667,7 +667,7 @@
     <div class="mx-auto max-w-7xl px-4 pt-16 text-center sm:px-6 sm:pt-24">
         <MarketingHeadline id="hero-heading" />
         <p
-            class="mx-auto mt-5 max-w-3xl text-balance text-xl font-medium leading-8 text-gray-800 sm:text-2xl sm:leading-9 dark:text-gray-100"
+            class="mx-auto mt-5 max-w-3xl text-balance text-xl font-medium leading-8 text-neutral-800 sm:text-2xl sm:leading-9 dark:text-neutral-100"
         >
             Journal, Link Thoughts and Ideas, Manage Tasks and Projects,
             Publish, Own Your Data
@@ -678,10 +678,10 @@
         >
             {#each highlights as highlight (highlight)}
                 <li
-                    class="inline-flex items-center gap-1.5 text-sm font-medium leading-6 text-gray-700 dark:text-gray-300"
+                    class="inline-flex items-center gap-1.5 text-sm font-medium leading-6 text-neutral-700 dark:text-neutral-300"
                 >
                     <svg
-                        class="size-4 shrink-0 text-gray-950 dark:text-white"
+                        class="size-4 shrink-0 text-neutral-950 dark:text-white"
                         viewBox="0 0 16 16"
                         fill="none"
                         stroke="currentColor"
@@ -702,7 +702,7 @@
         </div>
         <p
             data-testid="marketing-hero-note"
-            class="mx-auto mt-4 max-w-2xl text-pretty text-sm leading-6 text-gray-500 dark:text-gray-400"
+            class="mx-auto mt-4 max-w-2xl text-pretty text-sm leading-6 text-neutral-500 dark:text-neutral-400"
         >
             EtherPK is free to use for folder-based graphs. {#if managed}Use our
                 Sync+ service for access to your graphs across devices, or bring
@@ -718,7 +718,7 @@
     <!-- What EtherPK offers, then where to read more and talk about it, beneath the screenshots. -->
     <div class="mx-auto max-w-7xl px-4 pt-12 text-center sm:px-6 sm:pt-16">
         <p
-            class="mx-auto max-w-3xl text-balance text-xl font-medium leading-8 text-gray-800 sm:text-2xl sm:leading-9 dark:text-gray-100"
+            class="mx-auto max-w-3xl text-balance text-xl font-medium leading-8 text-neutral-800 sm:text-2xl sm:leading-9 dark:text-neutral-100"
         >
             EtherPK is a notes app and <abbr
                 class="no-underline"
@@ -730,12 +730,12 @@
              the {#if} and {offer} on one line: a line break between them would be a space. -->
         <ul
             data-testid="marketing-hero-offers"
-            class="mx-auto mt-4 max-w-5xl text-pretty text-base leading-7 text-gray-600 sm:text-lg sm:leading-8 dark:text-gray-300"
+            class="mx-auto mt-4 max-w-5xl text-pretty text-base leading-7 text-neutral-600 sm:text-lg sm:leading-8 dark:text-neutral-300"
         >
             {#each offers as offer, index (offer)}
                 <li class="inline">
                     {#if index > 0}<span
-                            class="px-2 text-gray-950 dark:text-white"
+                            class="px-2 text-neutral-950 dark:text-white"
                             aria-hidden="true">•</span
                         >{/if}{offer}
                 </li>
@@ -835,14 +835,14 @@
 >
     <h2
         id="ways-heading"
-        class="text-xl font-semibold tracking-tight text-gray-950 dark:text-white"
+        class="text-xl font-semibold tracking-tight text-neutral-950 dark:text-white"
     >
         Ways to run EtherPK
     </h2>
-    <dl class="mt-5 space-y-3 text-sm leading-6 text-gray-600 dark:text-gray-300">
+    <dl class="mt-5 space-y-3 text-sm leading-6 text-neutral-600 dark:text-neutral-300">
         {#each waysToRun as way (way.id)}
             <div class="sm:flex sm:gap-4" data-testid="marketing-way-{way.id}">
-                <dt class="shrink-0 font-semibold text-gray-950 sm:w-32 dark:text-white">{way.lead}</dt>
+                <dt class="shrink-0 font-semibold text-neutral-950 sm:w-32 dark:text-white">{way.lead}</dt>
                 <dd>
                     <!-- The space sits between the blocks on one line: whitespace at the end of an
                          {#if} block is dropped. -->
@@ -852,10 +852,10 @@
             </div>
         {/each}
     </dl>
-    <dl class="mt-5 space-y-2 border-t border-gray-950/5 pt-5 text-sm leading-6 text-gray-600 dark:border-white/10 dark:text-gray-300">
+    <dl class="mt-5 space-y-2 border-t border-neutral-950/5 pt-5 text-sm leading-6 text-neutral-600 dark:border-white/10 dark:text-neutral-300">
         {#each browserSupport as support (support.lead)}
             <div class="sm:flex sm:gap-4">
-                <dt class="shrink-0 font-semibold text-gray-950 sm:w-32 dark:text-white">{support.lead}</dt>
+                <dt class="shrink-0 font-semibold text-neutral-950 sm:w-32 dark:text-white">{support.lead}</dt>
                 <dd>{support.text}</dd>
             </div>
         {/each}
@@ -870,12 +870,12 @@
     <div class="max-w-3xl">
         <h2
             id="features-heading"
-            class="text-3xl font-semibold tracking-tight text-gray-950 sm:text-4xl dark:text-white"
+            class="text-3xl font-semibold tracking-tight text-neutral-950 sm:text-4xl dark:text-white"
         >
             Features at a glance
         </h2>
         <p
-            class="mt-4 text-pretty text-base leading-7 text-gray-600 dark:text-gray-300"
+            class="mt-4 text-pretty text-base leading-7 text-neutral-600 dark:text-neutral-300"
         >
             A list of EtherPK features.{#if demoHref}
                 To get a feel for EtherPK, <a
@@ -891,15 +891,15 @@
                 id={group.id}
                 data-testid="marketing-feature-group"
                 aria-labelledby="feature-{group.id}"
-                class="grid grid-cols-1 border-t border-gray-950/10 sm:grid-cols-4 sm:gap-x-8 dark:border-white/10"
+                class="grid grid-cols-1 border-t border-neutral-950/10 sm:grid-cols-4 sm:gap-x-8 dark:border-white/10"
             >
                 <!-- Compass's section label: the rule darkens for the width of the word. -->
                 <div class="sm:col-span-1">
                     <div
-                        class="-mt-px inline-flex border-t border-gray-950 pt-px dark:border-white"
+                        class="-mt-px inline-flex border-t border-neutral-950 pt-px dark:border-white"
                     >
                         <p
-                            class="pt-4 text-sm font-semibold leading-7 text-gray-950 sm:pt-8 dark:text-white"
+                            class="pt-4 text-sm font-semibold leading-7 text-neutral-950 sm:pt-8 dark:text-white"
                         >
                             {group.label}
                         </p>
@@ -908,12 +908,12 @@
                 <div class="pt-5 sm:col-span-3 sm:pt-8">
                     <h3
                         id="feature-{group.id}"
-                        class="text-pretty text-xl font-semibold tracking-tight text-gray-950 dark:text-white"
+                        class="text-pretty text-xl font-semibold tracking-tight text-neutral-950 dark:text-white"
                     >
                         {group.heading}
                     </h3>
                     <p
-                        class="mt-3 max-w-2xl text-pretty text-sm leading-6 text-gray-600 dark:text-gray-400"
+                        class="mt-3 max-w-2xl text-pretty text-sm leading-6 text-neutral-600 dark:text-neutral-400"
                     >
                         {group.intro}
                     </p>
@@ -923,15 +923,15 @@
                     <ul class="-mb-3 mt-6 md:columns-2 md:gap-x-8">
                         {#each group.items as item (item.lead)}
                             <li
-                                class="mb-3 flex items-start gap-3 break-inside-avoid text-sm leading-6 text-gray-600 dark:text-gray-400"
+                                class="mb-3 flex items-start gap-3 break-inside-avoid text-sm leading-6 text-neutral-600 dark:text-neutral-400"
                             >
                                 <span
-                                    class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-950 dark:bg-white"
+                                    class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-950 dark:bg-white"
                                     aria-hidden="true"
                                 ></span>
                                 <span
                                     ><span
-                                        class="font-medium text-gray-950 dark:text-white"
+                                        class="font-medium text-neutral-950 dark:text-white"
                                         >{@render inline(item.lead)}</span
                                     >{@render inline(item.text)}</span
                                 >
@@ -939,12 +939,12 @@
                         {/each}
                     </ul>
                     <p
-                        class="mt-6 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm leading-6 text-gray-500 dark:text-gray-400"
+                        class="mt-6 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm leading-6 text-neutral-500 dark:text-neutral-400"
                     >
                         <span>In the docs:</span>
                         {#each group.docs as doc, index (doc.slug)}
                             {#if index > 0}<span
-                                    class="text-gray-500 dark:text-gray-400"
+                                    class="text-neutral-500 dark:text-neutral-400"
                                     aria-hidden="true">&middot;</span
                                 >{/if}
                             <a
@@ -969,12 +969,12 @@
     <div class="mb-10 text-center">
         <h2
             id="run-heading"
-            class="text-3xl font-semibold tracking-tight text-gray-950 sm:text-4xl dark:text-white"
+            class="text-3xl font-semibold tracking-tight text-neutral-950 sm:text-4xl dark:text-white"
         >
             Two ways to use EtherPK
         </h2>
         <p
-            class="mx-auto mt-4 max-w-xl text-pretty text-base leading-7 text-gray-600 dark:text-gray-300"
+            class="mx-auto mt-4 max-w-xl text-pretty text-base leading-7 text-neutral-600 dark:text-neutral-300"
         >
             Same editor, same format. Choose local or {syncOption}. We will
             always ensure your data is yours.
@@ -982,50 +982,50 @@
     </div>
     <div class="grid gap-6 lg:grid-cols-2">
         <article
-            class="flex flex-col rounded-3xl border border-gray-200/80 bg-white p-8 shadow-sm dark:border-white/10 dark:bg-zinc-900/85"
+            class="flex flex-col rounded-3xl border border-neutral-200/80 bg-white p-8 shadow-sm dark:border-white/10 dark:bg-neutral-900/85"
         >
             <p
-                class="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400"
+                class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500 dark:text-neutral-400"
             >
                 Free
             </p>
             <h3
-                class="mt-3 text-xl font-semibold text-gray-950 dark:text-white"
+                class="mt-3 text-xl font-semibold text-neutral-950 dark:text-white"
             >
                 Your files, your machine
             </h3>
-            <p class="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-300">
+            <p class="mt-3 text-sm leading-6 text-neutral-600 dark:text-neutral-300">
                 Point EtherPK at a folder and your graph is a directory of
                 markdown files and images. Back it up, put it in git, open it
                 elsewhere. Or run the source-available Client on your own
                 computer, with no EtherPK account or service involved.
             </p>
             <ul
-                class="mt-5 flex-1 space-y-2 text-sm leading-6 text-gray-700 dark:text-gray-200"
+                class="mt-5 flex-1 space-y-2 text-sm leading-6 text-neutral-700 dark:text-neutral-200"
             >
                 <li class="flex items-start gap-3">
                     <span
-                        class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-950 dark:bg-white"
+                        class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-950 dark:bg-white"
                         aria-hidden="true"
                     ></span>The whole editor, with no limit on what you write
                 </li>
                 <li class="flex items-start gap-3">
                     <span
-                        class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-950 dark:bg-white"
+                        class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-950 dark:bg-white"
                         aria-hidden="true"
                     ></span>Folder graphs in Chrome or Edge on a desktop or Chrome
                     on Android, or the Client on your own machine
                 </li>
                 <li class="flex items-start gap-3">
                     <span
-                        class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-950 dark:bg-white"
+                        class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-950 dark:bg-white"
                         aria-hidden="true"
                     ></span>Run the source-available Client yourself, as a Node
                     bundle or a Docker image
                 </li>
                 <li class="flex items-start gap-3">
                     <span
-                        class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-950 dark:bg-white"
+                        class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-950 dark:bg-white"
                         aria-hidden="true"
                     ></span>{managed
                         ? "Join synced graphs shared with you by a Sync+ subscriber"
@@ -1034,7 +1034,7 @@
             </ul>
             <a
                 href={appHref}
-                class="mt-6 inline-flex h-11 items-center justify-center rounded-xl border border-gray-300 px-5 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-950 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5 dark:focus-visible:outline-white"
+                class="mt-6 inline-flex h-11 items-center justify-center rounded-xl border border-neutral-300 px-5 text-sm font-semibold text-neutral-800 transition-colors hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 dark:border-white/15 dark:text-neutral-100 dark:hover:bg-white/5 dark:focus-visible:outline-white"
                 >Open The App</a
             >
         </article>
@@ -1042,17 +1042,17 @@
              bullets white: each app.css repaints a plain bg-white as the page surface in the dark theme. -->
         {#if managed}
             <article
-                class="flex flex-col rounded-3xl border border-gray-950 bg-gray-950 p-8 text-white shadow-xl dark:border-white/10"
+                class="flex flex-col rounded-3xl border border-neutral-950 bg-neutral-950 p-8 text-white shadow-xl dark:border-white/10"
             >
                 <p
-                    class="text-sm font-semibold uppercase tracking-[0.2em] text-gray-300"
+                    class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300"
                 >
                     Sync+
                 </p>
                 <h3 class="mt-3 text-xl font-semibold">
                     Every device, end-to-end encrypted
                 </h3>
-                <p class="mt-3 text-sm leading-6 text-gray-300">
+                <p class="mt-3 text-sm leading-6 text-neutral-300">
                     We run the sync service for you. Your graph is encrypted on
                     your device with keys only you hold, then synced to your
                     phone, tablet and laptop, and to the people you choose to
@@ -1060,7 +1060,7 @@
                     files yours.
                 </p>
                 <ul
-                    class="mt-5 flex-1 space-y-2 text-sm leading-6 text-gray-100"
+                    class="mt-5 flex-1 space-y-2 text-sm leading-6 text-neutral-100"
                 >
                     <li class="flex items-start gap-3">
                         <span
@@ -1090,7 +1090,7 @@
                 {#if pricingHref}
                     <a
                         href={pricingHref}
-                        class="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-semibold text-gray-950 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                        class="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-semibold text-neutral-950 transition-colors hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                         >Sync+ Pricing</a
                     >
                 {/if}
@@ -1098,24 +1098,24 @@
         {:else}
             <article
                 data-testid="home-sync-server"
-                class="flex flex-col rounded-3xl border border-gray-950 bg-gray-950 p-8 text-white shadow-xl dark:border-white/10"
+                class="flex flex-col rounded-3xl border border-neutral-950 bg-neutral-950 p-8 text-white shadow-xl dark:border-white/10"
             >
                 <p
-                    class="text-sm font-semibold uppercase tracking-[0.2em] text-gray-300"
+                    class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300"
                 >
                     Sync Server
                 </p>
                 <h3 class="mt-3 text-xl font-semibold">
                     Your team's Sync Server
                 </h3>
-                <p class="mt-3 text-sm leading-6 text-gray-300">
+                <p class="mt-3 text-sm leading-6 text-neutral-300">
                     Your team runs the sync service. Your graph is encrypted on
                     your device with keys only you hold, then synced to your
                     phone, tablet and laptop, and to the people you choose to
                     share it with. The server stores what it cannot read.
                 </p>
                 <ul
-                    class="mt-5 flex-1 space-y-2 text-sm leading-6 text-gray-100"
+                    class="mt-5 flex-1 space-y-2 text-sm leading-6 text-neutral-100"
                 >
                     <li class="flex items-start gap-3">
                         <span
@@ -1140,7 +1140,7 @@
                 {#if syncServerHref}
                     <a
                         href={syncServerHref}
-                        class="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-semibold text-gray-950 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                        class="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-semibold text-neutral-950 transition-colors hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                         >Go To Your Sync Server</a
                     >
                 {/if}
@@ -1156,17 +1156,17 @@
 >
     <h2
         id="using-heading"
-        class="text-xl font-semibold tracking-tight text-gray-950 dark:text-white"
+        class="text-xl font-semibold tracking-tight text-neutral-950 dark:text-white"
     >
         Using EtherPK
     </h2>
     <ul class="mt-5 space-y-4">
         {#each usageNotes as note (note)}
             <li
-                class="flex items-start gap-3 text-sm leading-6 text-gray-600 dark:text-gray-300"
+                class="flex items-start gap-3 text-sm leading-6 text-neutral-600 dark:text-neutral-300"
             >
                 <span
-                    class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-400"
+                    class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-400"
                     aria-hidden="true"
                 ></span>
                 <span>{note}</span>
@@ -1182,12 +1182,12 @@
 >
     <h2
         id="close-heading"
-        class="text-3xl font-semibold tracking-tight text-gray-950 sm:text-4xl dark:text-white"
+        class="text-3xl font-semibold tracking-tight text-neutral-950 sm:text-4xl dark:text-white"
     >
         Start with today's journal
     </h2>
     <p
-        class="mx-auto mt-4 max-w-xl text-pretty text-base leading-7 text-gray-600 dark:text-gray-300"
+        class="mx-auto mt-4 max-w-xl text-pretty text-base leading-7 text-neutral-600 dark:text-neutral-300"
     >
         Open EtherPK, choose a folder, and write the day. When something in it
         deserves a page of its own, wrap the words in double brackets and follow
@@ -1197,7 +1197,7 @@
         {@render actionRow("marketing-closing-actions")}
     </div>
     {#if supportEmail}
-        <p class="mt-4 text-sm leading-6 text-gray-500 dark:text-gray-400">
+        <p class="mt-4 text-sm leading-6 text-neutral-500 dark:text-neutral-400">
             Need support? Email us at <a
                 href="mailto:{supportEmail}"
                 class={textLinkClass}>{supportEmail}</a

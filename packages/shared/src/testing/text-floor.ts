@@ -57,7 +57,7 @@ const CLASS_VALUE = /\bclass(?:Name)?\s*=\s*("[^"]*"|'[^']*'|`[^`]*`|\{[^}]*\})/
 const OPACITY_CLASS = /(^|[\s"'`{])opacity-(\d+)\b/g
 
 /** Comments blanked out, keeping every line where it was, so prose cannot pass for a rule. */
-function withoutComments(source: string): string {
+export function withoutComments(source: string): string {
     const blank = (match: string) => match.replace(/[^\n]/g, ' ')
     return source.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/<!--[\s\S]*?-->/g, blank)
 }
@@ -126,7 +126,7 @@ export function findTextFloorViolations(source: string, file: string): TextFloor
     return found.sort((a, b) => a.line - b.line)
 }
 
-function sourceFiles(dir: string): string[] {
+export function sourceFiles(dir: string): string[] {
     return readdirSync(dir).flatMap((name) => {
         const path = join(dir, name)
         if (statSync(path).isDirectory()) return name === 'node_modules' || name.startsWith('.') ? [] : sourceFiles(path)

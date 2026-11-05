@@ -86,8 +86,8 @@
 
 <div class="notice" data-testid="demo-page">
     {#if phase.kind === "confirm-reset"}
-        <h1 class="text-lg font-semibold text-gray-950 dark:text-white">Reset the demo?</h1>
-        <p class="max-w-md text-sm text-gray-600 dark:text-gray-400">
+        <h1 class="text-lg font-semibold text-neutral-950 dark:text-white">Reset the demo?</h1>
+        <p class="max-w-md text-sm text-neutral-600 dark:text-neutral-400">
             Every page goes back to how it shipped and anything you wrote or uploaded in the demo is discarded.
         </p>
         <div class="flex flex-wrap justify-center gap-2">
@@ -98,14 +98,14 @@
         <p data-testid="demo-working" role="status">
             {phase.reset ? "Resetting the demo…" : "Preparing the demo…"}
             {#if phase.progress}
-                <span class="block text-sm text-gray-500 dark:text-gray-400" data-testid="demo-progress">
+                <span class="block text-sm text-neutral-500 dark:text-neutral-400" data-testid="demo-progress">
                     {formatBytes(phase.progress.loadedBytes)} of {formatBytes(phase.progress.totalBytes)}
                 </span>
             {/if}
         </p>
     {:else if phase.kind === "held"}
-        <h1 class="text-lg font-semibold text-gray-950 dark:text-white">The demo is open in another tab</h1>
-        <p class="max-w-md text-sm text-gray-600 dark:text-gray-400" data-testid="demo-held">
+        <h1 class="text-lg font-semibold text-neutral-950 dark:text-white">The demo is open in another tab</h1>
+        <p class="max-w-md text-sm text-neutral-600 dark:text-neutral-400" data-testid="demo-held">
             Close the demo in your other tabs first, then try again. Nothing has been changed.
         </p>
         <div class="flex flex-wrap justify-center gap-2">
@@ -113,7 +113,7 @@
             <a href="/graphs" class="secondary">Go to graphs</a>
         </div>
     {:else}
-        <h1 class="text-lg font-semibold text-gray-950 dark:text-white">The demo could not be prepared</h1>
+        <h1 class="text-lg font-semibold text-neutral-950 dark:text-white">The demo could not be prepared</h1>
         <p class="max-w-md text-sm text-red-600" data-testid="demo-error">{phase.message}</p>
         <div class="flex flex-wrap justify-center gap-2">
             <button type="button" data-testid="demo-retry" onclick={() => void run(phase.kind === "error" && phase.reset)} class="primary">Try again</button>

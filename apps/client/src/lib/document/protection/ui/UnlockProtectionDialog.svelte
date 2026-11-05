@@ -99,7 +99,7 @@
     onsubmit={submit}
 >
     {#snippet body()}
-        <p class="text-sm text-gray-600 dark:text-gray-400">
+        <p class="text-sm text-neutral-600 dark:text-neutral-400">
             Enter your protection passphrase to read this graph's protected
             documents. It never leaves this device, and the sync service never
             sees it.
@@ -108,7 +108,7 @@
         <div>
             <label
                 for="protection-unlock"
-                class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                 >Protection passphrase</label
             >
             <input
@@ -119,9 +119,9 @@
                 autocomplete="current-password"
                 aria-invalid={error ? "true" : undefined}
                 aria-describedby={error ? errorId : undefined}
-                class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:outline-none focus:ring-1 {error
+                class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {error
                     ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 dark:border-gray-700 focus:border-gray-950 dark:focus:border-gray-400 focus:ring-gray-950 dark:focus:ring-gray-400'}"
+                    : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
             />
             {#if error}
                 <p
@@ -136,14 +136,14 @@
         </div>
 
         {#if hasPasskey}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 Or use the passkey bound to this device:
                 <button
                     type="button"
                     data-testid="protection-unlock-passkey"
                     disabled={passkeyBusy}
                     onclick={() => void tryPasskey(true)}
-                    class="font-medium text-gray-950 dark:text-gray-100 underline underline-offset-2 hover:no-underline disabled:opacity-50"
+                    class="font-medium text-neutral-950 dark:text-neutral-100 underline underline-offset-2 hover:no-underline disabled:opacity-50"
                 >
                     {passkeyBusy ? "waiting…" : "unlock with a passkey"}
                 </button>
@@ -155,14 +155,14 @@
         <button
             type="button"
             onclick={close}
-            class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
             >Cancel</button
         >
         <button
             type="submit"
             disabled={busy || passkeyBusy}
             data-testid="protection-unlock-submit"
-            class="min-w-24 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40"
+            class="min-w-24 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
             >{busy ? "Checking…" : "Enter passphrase"}</button
         >
     {/snippet}

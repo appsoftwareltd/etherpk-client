@@ -115,6 +115,13 @@ describe('createDocumentRenderer', () => {
         expect(html).toContain('<span class="task-tag priority-1">Priority 1</span> #bug Fix the gate #paint')
     })
 
+    it('badges a task tag written in lower case', () => {
+        const { html } = renderer().render('- [ ] #p1 #d-2026-07-01 Fix the gate\n')
+        expect(html).toContain('<span class="task-tag priority-1">Priority 1</span>')
+        expect(html).toContain('<span class="task-tag due-date">Due 2026-07-01</span>')
+        expect(html).not.toContain('#p1')
+    })
+
     it('renders a task as a disabled checkbox with badges for every tag the editor knows', () => {
         const { html } = renderer().render('- [ ] #P1 #D #D-2026-07-01 #S-2026-06-30 Ship it [[Physics]]\n- [x] #C done\n')
         expect(html).toContain('<li class="task"><input type="checkbox" disabled> ')

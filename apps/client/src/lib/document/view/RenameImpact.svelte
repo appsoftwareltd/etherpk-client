@@ -99,7 +99,7 @@
 -->
 {#if aliasRewrites.length > 0}
     <div
-        class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-white/5 p-3 text-sm text-gray-700 dark:text-gray-300"
+        class="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-white/5 p-3 text-sm text-neutral-700 dark:text-neutral-300"
         data-testid="rename-alias-rewrites"
     >
         <p class="font-medium">
@@ -126,7 +126,7 @@
 -->
 <!-- Said before the choice, since it changes what both arms mean: the page's title stays. -->
 {#if aliasOf !== null}
-    <p class="text-sm text-gray-700 dark:text-gray-200" data-testid="rename-alias-of">
+    <p class="text-sm text-neutral-700 dark:text-neutral-200" data-testid="rename-alias-of">
         "{concept}" is an alias of "{aliasOf}".{#if !aliasOfRetitled}
             Renaming it leaves that page's title as it is.{/if}
     </p>
@@ -134,7 +134,7 @@
 
 {#if redirectsTo !== null}
     <p
-        class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-white/5 p-3 text-sm text-gray-700 dark:text-gray-300"
+        class="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-white/5 p-3 text-sm text-neutral-700 dark:text-neutral-300"
         data-testid="rename-redirect"
     >
         {#if plan && redirectsTo !== plan.direct.to}
@@ -150,7 +150,7 @@
     </p>
 {:else if pageless}
     <!-- No strategy: there is no document to hold an alias (ADR 0064 §1). -->
-    <p class="text-sm text-gray-700 dark:text-gray-200" data-testid="rename-pageless-effect">
+    <p class="text-sm text-neutral-700 dark:text-neutral-200" data-testid="rename-pageless-effect">
         {#if plan === null}
             Checking what links here…
         {:else if linkCount === 0}
@@ -161,7 +161,7 @@
     </p>
 {:else}
     <fieldset {disabled}>
-        <legend class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">
+        <legend class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">
             {#if plan === null}
                 Checking what links here…
             {:else if linkCount === 0}
@@ -172,7 +172,7 @@
         </legend>
         <div class="space-y-2">
             <!-- The default first: updating the links leaves no alias behind. -->
-            <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+            <label class="flex items-start gap-2 text-sm text-neutral-700 dark:text-neutral-200">
                 <input type="radio" name="{uid}-strategy" bind:group={strategy} value="rewrite" data-testid="rename-strategy-rewrite" class="mt-0.5" />
                 <span>
                     <span class="font-medium">Update the links</span>:
@@ -182,7 +182,7 @@
                     to use the new name.
                 </span>
             </label>
-            <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+            <label class="flex items-start gap-2 text-sm text-neutral-700 dark:text-neutral-200">
                 <input type="radio" name="{uid}-strategy" bind:group={strategy} value="alias" data-testid="rename-strategy-alias" class="mt-0.5" />
                 <span>
                     {#if aliasOf !== null}

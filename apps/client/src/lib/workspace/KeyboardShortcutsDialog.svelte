@@ -121,7 +121,7 @@
             onclick={onclose}
             data-dialog-dismiss
             data-testid="keyboard-shortcuts-close"
-            class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
         >Close</button>
     {/snippet}
 </Modal>
@@ -149,12 +149,12 @@
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        color: var(--gk-text-muted, #6b7280);
+        color: var(--gk-text-muted, #737373);
     }
     .note {
         margin: 0.15rem 0 0;
         font-size: 0.875rem;
-        color: var(--gk-text-muted, #6b7280);
+        color: var(--gk-text-muted, #737373);
     }
     .rows {
         display: grid;
@@ -177,7 +177,7 @@
     }
     .or {
         font-size: 0.875rem;
-        color: var(--gk-text-muted, #6b7280);
+        color: var(--gk-text-muted, #737373);
     }
     .chord {
         display: inline-flex;

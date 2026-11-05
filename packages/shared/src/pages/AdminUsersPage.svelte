@@ -450,8 +450,8 @@
 
 <div class="max-w-4xl">
     <div class="mb-8">
-        <h1 class="text-2xl font-semibold tracking-tight text-gray-950">User Management</h1>
-        <p class="mt-1 text-sm text-gray-500">Manage user accounts, roles, sessions, and access.</p>
+        <h1 class="text-2xl font-semibold tracking-tight text-neutral-950">User Management</h1>
+        <p class="mt-1 text-sm text-neutral-500">Manage user accounts, roles, sessions, and access.</p>
     </div>
 
     <!-- ── Feedback alerts ───────────────────────────────────────── -->
@@ -470,30 +470,30 @@
 
     <!-- ── Search / filter row ───────────────────────────────────── -->
     <!-- Roles are not set here: the server reconciles them to its configuration on every request. -->
-    <p class="mb-3 text-sm text-gray-500 dark:text-gray-400">Administrators are named by ADMINISTRATOR_EMAIL_ADDRESS in the server configuration.</p>
+    <p class="mb-3 text-sm text-neutral-500 dark:text-neutral-400">Administrators are named by ADMINISTRATOR_EMAIL_ADDRESS in the server configuration.</p>
     <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div class="flex items-center gap-1">
-            <button onclick={() => setRoleFilter("all")} class="rounded-full px-3 py-1 text-sm font-medium transition-colors {roleFilter === 'all' ? 'bg-gray-950 dark:bg-white/15 text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/15'}">All</button>
-            <button onclick={() => setRoleFilter("admin")} class="rounded-full px-3 py-1 text-sm font-medium transition-colors {roleFilter === 'admin' ? 'bg-gray-950 dark:bg-white/15 text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/15'}">Admin</button>
-            <button onclick={() => setRoleFilter("user")} class="rounded-full px-3 py-1 text-sm font-medium transition-colors {roleFilter === 'user' ? 'bg-gray-950 dark:bg-white/15 text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/15'}">User</button>
+            <button onclick={() => setRoleFilter("all")} class="rounded-full px-3 py-1 text-sm font-medium transition-colors {roleFilter === 'all' ? 'bg-neutral-950 dark:bg-white/15 text-white' : 'bg-neutral-100 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-white/15'}">All</button>
+            <button onclick={() => setRoleFilter("admin")} class="rounded-full px-3 py-1 text-sm font-medium transition-colors {roleFilter === 'admin' ? 'bg-neutral-950 dark:bg-white/15 text-white' : 'bg-neutral-100 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-white/15'}">Admin</button>
+            <button onclick={() => setRoleFilter("user")} class="rounded-full px-3 py-1 text-sm font-medium transition-colors {roleFilter === 'user' ? 'bg-neutral-950 dark:bg-white/15 text-white' : 'bg-neutral-100 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-white/15'}">User</button>
         </div>
         <div class="flex items-center gap-3">
-            <input type="search" aria-label="Search users by email" value={searchValue} oninput={handleSearchInput} placeholder="Search by email…" class="w-56 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 focus:border-gray-950 focus:outline-none focus:ring-1 focus:ring-gray-950" />
-            <span class="text-sm text-gray-500 dark:text-gray-400">{total} user{total !== 1 ? "s" : ""}</span>
+            <input type="search" aria-label="Search users by email" value={searchValue} oninput={handleSearchInput} placeholder="Search by email…" class="w-56 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 focus:border-neutral-950 focus:outline-none focus:ring-1 focus:ring-neutral-950" />
+            <span class="text-sm text-neutral-500 dark:text-neutral-400">{total} user{total !== 1 ? "s" : ""}</span>
         </div>
     </div>
 
     <!-- ── User list ─────────────────────────────────────────────── -->
-    <div class="rounded-xl border border-gray-950/8 bg-white shadow-sm divide-y divide-gray-950/5">
+    <div class="rounded-xl border border-neutral-950/8 bg-white shadow-sm divide-y divide-neutral-950/5">
         {#if loading && users.length === 0}
             <!-- Loading skeleton: first load only, when there is nothing worth keeping on screen. -->
             {#each Array(3) as _, skeletonRow (skeletonRow)}
                 <div class="px-6 py-5 motion-safe:animate-pulse">
                     <div class="flex items-center gap-3">
-                        <div class="h-9 w-9 rounded-full bg-gray-200"></div>
+                        <div class="h-9 w-9 rounded-full bg-neutral-200"></div>
                         <div class="flex-1 space-y-2">
-                            <div class="h-3.5 w-32 rounded bg-gray-200"></div>
-                            <div class="h-3 w-48 rounded bg-gray-100"></div>
+                            <div class="h-3.5 w-32 rounded bg-neutral-200"></div>
+                            <div class="h-3 w-48 rounded bg-neutral-100"></div>
                         </div>
                     </div>
                 </div>
@@ -501,31 +501,31 @@
         {:else if error}
             <div class="px-6 py-8 text-center">
                 <p class="text-sm text-red-600">{error}</p>
-                <button onclick={() => fetchUsers(debouncedSearch, roleFilter, currentPage)} class="mt-2 text-sm text-gray-500 hover:text-gray-700 underline underline-offset-2">Retry</button>
+                <button onclick={() => fetchUsers(debouncedSearch, roleFilter, currentPage)} class="mt-2 text-sm text-neutral-500 hover:text-neutral-700 underline underline-offset-2">Retry</button>
             </div>
         {:else if users.length === 0}
             <div class="px-6 py-8 text-center">
-                <p class="text-sm text-gray-500 dark:text-gray-400">No users found.</p>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">No users found.</p>
                 {#if debouncedSearch || roleFilter !== "all"}
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Try adjusting your search or filter.</p>
+                    <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Try adjusting your search or filter.</p>
                 {/if}
             </div>
         {:else}
             <!-- A refresh dims the existing rows rather than replacing them with a skeleton:
                  the results are stale, not absent (rule 12). -->
-            <div class="divide-y divide-gray-950/5 motion-safe:transition-opacity duration-150" class:opacity-60={loading} aria-busy={loading}>
+            <div class="divide-y divide-neutral-950/5 motion-safe:transition-opacity duration-150" class:opacity-60={loading} aria-busy={loading}>
             {#each users as user (user.id)}
                 <div class="px-6 py-4 {user.banned ? 'bg-red-50/50' : ''}">
                     <!-- User info row -->
                     <div class="flex items-start gap-3">
-                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold text-gray-500">
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-semibold text-neutral-500">
                             {initial(user.name)}
                         </div>
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-2 flex-wrap">
-                                <p class="text-sm font-medium text-gray-950 truncate">{user.name || "\u2014"}</p>
+                                <p class="text-sm font-medium text-neutral-950 truncate">{user.name || "\u2014"}</p>
                                 {#if user.role === "admin"}
-                                    <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-sm font-medium text-gray-700 ring-1 ring-gray-600/20">Admin</span>
+                                    <span class="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-sm font-medium text-neutral-700 ring-1 ring-neutral-600/20">Admin</span>
                                 {/if}
                                 {#if user.banned}
                                     <span class="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-sm font-medium text-red-700 ring-1 ring-red-600/20">Banned</span>
@@ -538,11 +538,11 @@
                                     <span class="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-sm font-medium text-amber-700 ring-1 ring-amber-600/20">Unverified</span>
                                 {/if}
                                 {#if isSelf(user.id)}
-                                    <span class="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-sm font-medium text-blue-700 ring-1 ring-blue-600/20">You</span>
+                                    <span class="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-sm font-medium text-neutral-700 ring-1 ring-neutral-500/20">You</span>
                                 {/if}
                             </div>
-                            <p class="text-sm text-gray-500 truncate">{user.email}</p>
-                            <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Joined {formatDate(user.createdAt)}</p>
+                            <p class="text-sm text-neutral-500 truncate">{user.email}</p>
+                            <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">Joined {formatDate(user.createdAt)}</p>
                             {#if user.banned && user.banReason}
                                 <p class="text-sm text-red-600 mt-0.5">Reason: {user.banReason}</p>
                             {/if}
@@ -563,22 +563,22 @@
                         {/if}
 
                         <!-- Reset password -->
-                        <button onclick={() => openResetPasswordModal(user)} class="rounded-md px-2 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"> Reset password </button>
+                        <button onclick={() => openResetPasswordModal(user)} class="rounded-md px-2 py-1 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors"> Reset password </button>
 
                         <!-- Reset two-factor: an administrator turns their own off from the Account page. -->
                         {#if user.twoFactorEnabled && !isSelf(user.id)}
-                            <button onclick={() => (resetTwoFactorUser = user)} class="rounded-md px-2 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"> Reset two-factor </button>
+                            <button onclick={() => (resetTwoFactorUser = user)} class="rounded-md px-2 py-1 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors"> Reset two-factor </button>
                         {/if}
 
                         <!-- Impersonate -->
                         {#if !isSelf(user.id) && user.role !== "admin"}
-                            <button onclick={() => impersonateUser(user)} disabled={impersonating === user.id} class="rounded-md px-2 py-1 text-sm font-medium text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-50">
+                            <button onclick={() => impersonateUser(user)} disabled={impersonating === user.id} class="rounded-md px-2 py-1 text-sm font-medium text-neutral-700 hover:bg-neutral-100 transition-colors disabled:opacity-50">
                                 {impersonating === user.id ? "Impersonating\u2026" : "Impersonate"}
                             </button>
                         {/if}
 
                         <!-- Sessions -->
-                        <button onclick={() => toggleSessions(user.id)} class="rounded-md px-2 py-1 text-sm font-medium transition-colors {expandedSessionsUserId === user.id ? 'bg-gray-200 text-gray-950' : 'text-gray-600 hover:bg-gray-100'}"> Sessions </button>
+                        <button onclick={() => toggleSessions(user.id)} class="rounded-md px-2 py-1 text-sm font-medium transition-colors {expandedSessionsUserId === user.id ? 'bg-neutral-200 text-neutral-950' : 'text-neutral-600 hover:bg-neutral-100'}"> Sessions </button>
 
                         <!-- Delete -->
                         {#if !isSelf(user.id)}
@@ -588,26 +588,26 @@
 
                     <!-- Expanded sessions -->
                     {#if expandedSessionsUserId === user.id}
-                        <div class="mt-3 ml-12 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        <div class="mt-3 ml-12 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
                             {#if loadingSessions}
-                                <p class="text-sm text-gray-500 dark:text-gray-400 motion-safe:animate-pulse">Loading sessions\u2026</p>
+                                <p class="text-sm text-neutral-500 dark:text-neutral-400 motion-safe:animate-pulse">Loading sessions\u2026</p>
                             {:else if userSessions.length === 0}
-                                <p class="text-sm text-gray-500 dark:text-gray-400">No active sessions.</p>
+                                <p class="text-sm text-neutral-500 dark:text-neutral-400">No active sessions.</p>
                             {:else}
                                 <div class="space-y-2">
                                     {#each userSessions as session (session.id)}
-                                        <div class="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 border border-gray-100">
+                                        <div class="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 border border-neutral-100">
                                             <div class="min-w-0 flex-1">
                                                 <div class="flex items-center gap-2 flex-wrap">
-                                                    <code class="text-sm font-mono text-gray-500">{truncateToken(session.token)}</code>
-                                                    <span class="text-sm text-gray-500 dark:text-gray-400">{parseUserAgent(session.userAgent)}</span>
+                                                    <code class="text-sm font-mono text-neutral-500">{truncateToken(session.token)}</code>
+                                                    <span class="text-sm text-neutral-500 dark:text-neutral-400">{parseUserAgent(session.userAgent)}</span>
                                                 </div>
                                                 <div class="flex items-center gap-3 mt-0.5">
                                                     {#if session.ipAddress}
-                                                        <span class="text-sm text-gray-500 dark:text-gray-400">IP: {session.ipAddress}</span>
+                                                        <span class="text-sm text-neutral-500 dark:text-neutral-400">IP: {session.ipAddress}</span>
                                                     {/if}
-                                                    <span class="text-sm text-gray-500 dark:text-gray-400">Created: {formatDateTime(session.createdAt)}</span>
-                                                    <span class="text-sm text-gray-500 dark:text-gray-400">Expires: {formatDateTime(session.expiresAt)}</span>
+                                                    <span class="text-sm text-neutral-500 dark:text-neutral-400">Created: {formatDateTime(session.createdAt)}</span>
+                                                    <span class="text-sm text-neutral-500 dark:text-neutral-400">Expires: {formatDateTime(session.expiresAt)}</span>
                                                 </div>
                                             </div>
                                             <button onclick={() => revokeSession(session.token)} disabled={revokingSession === session.token} class="shrink-0 rounded-md px-2 py-1 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50">
@@ -638,11 +638,11 @@
                     if (currentPage > 1) currentPage--;
                 }}
                 disabled={currentPage <= 1}
-                class="rounded-lg ring-1 ring-gray-950/15 bg-white px-3 py-1.5 text-sm font-medium text-gray-950 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                class="rounded-lg ring-1 ring-neutral-950/15 bg-white px-3 py-1.5 text-sm font-medium text-neutral-950 hover:bg-neutral-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
                 Previous
             </button>
-            <span class="text-sm text-gray-500">
+            <span class="text-sm text-neutral-500">
                 Page {currentPage} of {totalPages} ({total} total)
             </span>
             <button
@@ -650,7 +650,7 @@
                     if (currentPage < totalPages) currentPage++;
                 }}
                 disabled={currentPage >= totalPages}
-                class="rounded-lg ring-1 ring-gray-950/15 bg-white px-3 py-1.5 text-sm font-medium text-gray-950 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                class="rounded-lg ring-1 ring-neutral-950/15 bg-white px-3 py-1.5 text-sm font-medium text-neutral-950 hover:bg-neutral-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
                 Next
             </button>
@@ -678,18 +678,18 @@
         onsubmit={() => void confirmBan()}
     >
         {#snippet body()}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 Ban <strong>{user.name || user.email}</strong> from their account. They are signed
                 out everywhere, and every device and access token they use for Sync stops syncing until the ban
                 ends or you lift it.
             </p>
             <div>
-                <label for="ban-reason" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">Reason (optional)</label>
-                <input id="ban-reason" type="text" bind:value={banReason} placeholder="e.g. Terms of service violation" class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400" />
+                <label for="ban-reason" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">Reason (optional)</label>
+                <input id="ban-reason" type="text" bind:value={banReason} placeholder="e.g. Terms of service violation" class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400" />
             </div>
             <div>
-                <label for="ban-duration" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">Duration</label>
-                <select id="ban-duration" bind:value={banDuration} class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400">
+                <label for="ban-duration" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">Duration</label>
+                <select id="ban-duration" bind:value={banDuration} class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400">
                     <option value="1h">1 hour</option>
                     <option value="24h">24 hours</option>
                     <option value="7d">7 days</option>
@@ -699,7 +699,7 @@
             </div>
         {/snippet}
         {#snippet footer()}
-            <button type="button" onclick={() => (banModalUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+            <button type="button" onclick={() => (banModalUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
             <button type="submit" disabled={banning} data-testid="admin-ban-confirm" class="min-w-28 rounded-lg bg-amber-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50">
                 {banning ? "Banning\u2026" : "Ban user"}
             </button>
@@ -719,11 +719,11 @@
         onsubmit={() => void confirmResetPassword()}
     >
         {#snippet body()}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 Set a new password for <strong>{user.name || user.email}</strong>. This signs them out everywhere and revokes their sync access, as their own password reset would.
             </p>
             <div>
-                <label for="new-password" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">New password</label>
+                <label for="new-password" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">New password</label>
                 <input
                     id="new-password"
                     type="password"
@@ -732,17 +732,17 @@
                     autocomplete="new-password"
                     aria-invalid={resetPasswordError !== null}
                     aria-describedby={resetPasswordError ? "new-password-error new-password-help" : "new-password-help"}
-                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400 {resetPasswordError ? 'border-red-400' : 'border-gray-300 dark:border-gray-700'}"
+                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400 {resetPasswordError ? 'border-red-400' : 'border-neutral-300 dark:border-neutral-700'}"
                 />
                 {#if resetPasswordError}
                     <p id="new-password-error" role="alert" class="mt-1.5 text-sm text-red-600">{resetPasswordError}</p>
                 {/if}
-                <p id="new-password-help" class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{PASSWORD_HELP}</p>
+                <p id="new-password-help" class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">{PASSWORD_HELP}</p>
             </div>
         {/snippet}
         {#snippet footer()}
-            <button type="button" onclick={() => (resetPasswordUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
-            <button type="submit" disabled={resettingPassword} data-testid="admin-reset-password-confirm" class="min-w-36 rounded-lg bg-gray-950 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 disabled:opacity-50">
+            <button type="button" onclick={() => (resetPasswordUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
+            <button type="submit" disabled={resettingPassword} data-testid="admin-reset-password-confirm" class="min-w-36 rounded-lg bg-neutral-950 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 disabled:opacity-50">
                 {resettingPassword ? "Resetting\u2026" : "Reset password"}
             </button>
         {/snippet}
@@ -761,7 +761,7 @@
         onsubmit={() => void confirmResetTwoFactor()}
     >
         {#snippet body()}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 This turns off two-factor authentication for <strong>{user.name || user.email}</strong>.
                 Their authenticator app and backup codes stop working, and they sign in with their password alone
                 until they turn it on again from their Account page. Do this only once you are sure the request comes
@@ -769,8 +769,8 @@
             </p>
         {/snippet}
         {#snippet footer()}
-            <button type="button" onclick={() => (resetTwoFactorUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
-            <button type="submit" disabled={resettingTwoFactor} data-testid="admin-reset-two-factor-confirm" class="min-w-36 rounded-lg bg-gray-950 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 disabled:opacity-50">
+            <button type="button" onclick={() => (resetTwoFactorUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
+            <button type="submit" disabled={resettingTwoFactor} data-testid="admin-reset-two-factor-confirm" class="min-w-36 rounded-lg bg-neutral-950 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 disabled:opacity-50">
                 {resettingTwoFactor ? "Resetting\u2026" : "Turn off two-factor"}
             </button>
         {/snippet}
@@ -789,24 +789,24 @@
         onsubmit={() => void confirmDelete()}
     >
         {#snippet body()}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 This permanently deletes the account of <strong>{user.name || user.email}</strong>.
                 They are signed out everywhere, and every device and access token they use for Sync stops syncing
                 at once. Graphs they own stay on the Sync Server until an administrator deletes them. This cannot be
                 undone.
             </p>
             <div>
-                <label for="delete-confirm" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Type <code class="rounded bg-gray-100 dark:bg-white/10 px-1 py-0.5 text-sm font-mono">{user.email}</code> to confirm
+                <label for="delete-confirm" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">
+                    Type <code class="rounded bg-neutral-100 dark:bg-white/10 px-1 py-0.5 text-sm font-mono">{user.email}</code> to confirm
                 </label>
-                <input id="delete-confirm" type="text" bind:value={deleteConfirmEmail} placeholder={user.email} autocomplete="off" aria-describedby="delete-confirm-hint" class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500" />
+                <input id="delete-confirm" type="text" bind:value={deleteConfirmEmail} placeholder={user.email} autocomplete="off" aria-describedby="delete-confirm-hint" class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500" />
                 {#if deleteConfirmEmail !== user.email}
-                    <p id="delete-confirm-hint" class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Delete user stays unavailable until this matches exactly.</p>
+                    <p id="delete-confirm-hint" class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">Delete user stays unavailable until this matches exactly.</p>
                 {/if}
             </div>
         {/snippet}
         {#snippet footer()}
-            <button type="button" onclick={() => (deleteModalUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+            <button type="button" onclick={() => (deleteModalUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
             <button type="submit" disabled={deleting || deleteConfirmEmail !== user.email} data-testid="admin-delete-confirm" class="min-w-32 rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
                 {deleting ? "Deleting\u2026" : "Delete user"}
             </button>

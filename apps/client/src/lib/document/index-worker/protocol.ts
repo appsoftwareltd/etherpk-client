@@ -80,6 +80,7 @@ export type IndexRequest =
      * documents passing a set of filters (Search's names group when filters narrow it).
      */
     | { type: 'property-keys'; id: number }
+    | { type: 'free-tags'; id: number }
     | { type: 'property-values'; id: number; key: string }
     | { type: 'property-match'; id: number; filters: PropertyFilter[] }
     /** The graph's [[Template]]s, for the `/Template` picker and the Journal Template's setting (ADR 0144). */
@@ -187,6 +188,7 @@ export type IndexResponse =
     | { type: 'search-text'; id: number; groups: SearchDocumentGroup[]; hasMore: boolean }
     | { type: 'search-count'; id: number; total: number; capped: boolean }
     | { type: 'property-keys'; id: number; keys: PropertyKeyInfo[] }
+    | { type: 'free-tags'; id: number; tags: string[] }
     | { type: 'property-values'; id: number; values: PropertyValueInfo[] }
     | { type: 'property-match'; id: number; documents: PropertyMatch[] }
     | { type: 'templates'; id: number; templates: TemplateEntry[] }

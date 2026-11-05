@@ -222,7 +222,7 @@
      continuations, which clear every managed host-only session. -->
 {#snippet signOutOfEtherPK()}
     <form method="POST" action="/auth/logout/managed" onsubmit={prepareManagedSignOut}>
-        <button type="submit" class="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white">
+        <button type="submit" class="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-white">
             Sign out of EtherPK
         </button>
     </form>
@@ -237,7 +237,7 @@
             data-testid="client-user-menu-trigger"
             aria-label={`Signed in as ${accountLabel}`}
             title={accountLabel}
-            class="flex min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg border border-gray-950/10 bg-white px-2.5 py-1.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-950 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white [&::-webkit-details-marker]:hidden"
+            class="flex min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg border border-neutral-950/10 bg-white px-2.5 py-1.5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:border-white/10 dark:bg-white/5 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white [&::-webkit-details-marker]:hidden"
         >
             <span class="min-w-0 max-w-36 truncate whitespace-nowrap sm:max-w-none">{displayedAccountLabel}</span>
             <svg class="h-3.5 w-3.5 shrink-0 motion-safe:transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -245,23 +245,23 @@
             </svg>
         </summary>
 
-        <div class="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-gray-950/10 bg-white shadow-xl dark:border-white/10 dark:bg-[#202023]">
-            <div class="border-b border-gray-950/5 px-4 py-3 dark:border-white/10">
-                <p class="break-all text-sm text-gray-500 dark:text-gray-400">{accountLabel}</p>
+        <div class="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-neutral-950/10 bg-white shadow-xl dark:border-white/10 dark:bg-[#262626]">
+            <div class="border-b border-neutral-950/5 px-4 py-3 dark:border-white/10">
+                <p class="break-all text-sm text-neutral-500 dark:text-neutral-400">{accountLabel}</p>
                 {#if otherServers.length > 0 && serverBaseUrl}
-                    <p data-testid="client-user-menu-server" class="break-all text-sm text-gray-500 dark:text-gray-400">
+                    <p data-testid="client-user-menu-server" class="break-all text-sm text-neutral-500 dark:text-neutral-400">
                         on {serverHost(serverBaseUrl)}
                     </p>
                 {/if}
             </div>
             {#if otherServers.length > 0}
                 <!-- Each other server's account and keys are on its own sub-tab of the Sync tab. -->
-                <div data-testid="client-user-menu-other-servers" class="border-b border-gray-950/5 p-2 dark:border-white/10">
-                    <p class="px-3 pb-1 pt-1 text-sm text-gray-500 dark:text-gray-400">Also connected to</p>
+                <div data-testid="client-user-menu-other-servers" class="border-b border-neutral-950/5 p-2 dark:border-white/10">
+                    <p class="px-3 pb-1 pt-1 text-sm text-neutral-500 dark:text-neutral-400">Also connected to</p>
                     {#each otherServers as origin (origin)}
                         <a
                             href={`/graphs?tab=sync&server=${encodeURIComponent(serverHost(origin))}`}
-                            class="block break-all rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white"
+                            class="block break-all rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-white"
                             >{serverHost(origin)}</a
                         >
                     {/each}
@@ -269,14 +269,14 @@
             {/if}
             <AccountMenuLinks {menu} />
             <InstallEntry placement="account" />
-            <div class="border-t border-gray-950/5 p-2 dark:border-white/10">
+            <div class="border-t border-neutral-950/5 p-2 dark:border-white/10">
                 {#if connectionMode === "managed"}
                     {@render signOutOfEtherPK()}
                 {:else}
-                    <p class="px-3 pb-1 pt-2 text-sm leading-4 text-gray-500 dark:text-gray-400">
+                    <p class="px-3 pb-1 pt-2 text-sm leading-4 text-neutral-500 dark:text-neutral-400">
                         {STANDALONE_DEVICE_DISCONNECT_HELP}
                     </p>
-                    <button type="button" onclick={disconnectThisDevice} class="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white">
+                    <button type="button" onclick={disconnectThisDevice} class="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-white">
                         Disconnect this device
                     </button>
                 {/if}
@@ -284,14 +284,14 @@
         </div>
     </details>
 {:else if accountState === "checking"}
-    <span data-testid="client-auth-status" class="hidden text-sm font-medium text-gray-500 sm:inline dark:text-gray-400">Checking Sync…</span>
+    <span data-testid="client-auth-status" class="hidden text-sm font-medium text-neutral-500 sm:inline dark:text-neutral-400">Checking Sync…</span>
 {:else if accountState === "locked"}
     <!-- The Graphs page asks for the passcode as it loads; on it, the This Device tab's Device
          Passcode section asks. -->
     <a
         href={page.url.pathname === "/graphs" ? "/graphs?tab=device" : "/graphs"}
         data-testid="client-auth-passcode"
-        class="rounded-lg border border-gray-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-950 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
+        class="rounded-lg border border-neutral-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:border-white/10 dark:bg-white/5 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white"
     >
         Enter passcode
     </a>
@@ -301,7 +301,7 @@
     <details class="group relative min-w-0" {@attach dismissibleMenu}>
         <summary
             data-testid="client-auth-unavailable"
-            class="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-gray-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-950 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white [&::-webkit-details-marker]:hidden"
+            class="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-neutral-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:border-white/10 dark:bg-white/5 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white [&::-webkit-details-marker]:hidden"
         >
             Sync unavailable
             <svg class="h-3.5 w-3.5 shrink-0 motion-safe:transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -309,18 +309,18 @@
             </svg>
         </summary>
 
-        <div class="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-gray-950/10 bg-white shadow-xl dark:border-white/10 dark:bg-[#202023]">
-            <p class="border-b border-gray-950/5 px-4 py-3 text-sm text-gray-500 dark:border-white/10 dark:text-gray-400">
+        <div class="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-neutral-950/10 bg-white shadow-xl dark:border-white/10 dark:bg-[#262626]">
+            <p class="border-b border-neutral-950/5 px-4 py-3 text-sm text-neutral-500 dark:border-white/10 dark:text-neutral-400">
                 The Sync Server is not answering right now.
             </p>
             <nav class="p-2" aria-label="Account navigation">
                 <a
                     href={syncConnectHref(page.url.pathname === "/graphs" ? null : currentReturnPath(page.url))}
-                    class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white"
+                    class="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-white"
                     >Sync settings</a
                 >
             </nav>
-            <div class="border-t border-gray-950/5 p-2 dark:border-white/10">
+            <div class="border-t border-neutral-950/5 p-2 dark:border-white/10">
                 {@render signOutOfEtherPK()}
             </div>
         </div>
@@ -329,14 +329,14 @@
     <button
         type="button"
         onclick={connectManagedSync}
-        class="rounded-lg border border-gray-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-950 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
+        class="rounded-lg border border-neutral-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:border-white/10 dark:bg-white/5 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white"
     >
         Sign in
     </button>
 {:else}
     <a
         href={syncConnectHref(page.url.pathname === "/graphs" ? null : currentReturnPath(page.url))}
-        class="rounded-lg border border-gray-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-950 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
+        class="rounded-lg border border-neutral-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:border-white/10 dark:bg-white/5 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white"
     >
         {accountState === "unavailable" ? "Sync unavailable" : "Connect Sync"}
     </a>

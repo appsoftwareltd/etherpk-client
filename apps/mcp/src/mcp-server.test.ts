@@ -125,6 +125,16 @@ describe('the MCP server', () => {
         expect(instructions).toContain('Leave its status as it is unless the user asks')
     })
 
+    // An agent reads a task, then the images on it, and carries the same word from one call to the next.
+    it('takes an asset by reference, as it takes a task, and answers with the same word', async () => {
+        const { client } = await connected()
+        const { tools } = await client.listTools()
+        const readAsset = tools.find((t) => t.name === 'read_asset')
+        expect(readAsset?.inputSchema.properties).toHaveProperty('reference')
+        expect(readAsset?.inputSchema.properties).not.toHaveProperty('ref')
+        expect(readAsset?.inputSchema.required).toContain('reference')
+    })
+
     // A whole lane of a Kanban board, handed over to work through or triage: the tasks tool lists it.
     it('says how to list the tasks of a lane reference, and that the tasks tool takes one', async () => {
         const { client } = await connected()

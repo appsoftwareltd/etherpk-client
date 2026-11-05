@@ -92,7 +92,7 @@
 
 <header
     data-testid={testId}
-    class="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center gap-4 border-b border-gray-950/8 bg-white/92 px-4 shadow-[0_1px_0_rgba(0,0,0,0.02)] backdrop-blur-md sm:px-6 dark:border-white/10 dark:bg-[#18181b]/92 dark:shadow-none"
+    class="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center gap-4 border-b border-neutral-950/8 bg-white/92 px-4 shadow-[0_1px_0_rgba(0,0,0,0.02)] backdrop-blur-md sm:px-6 dark:border-white/10 dark:bg-[#171717]/92 dark:shadow-none"
 >
     <!-- The badge sits beside the brand link rather than inside it, so it neither joins the
          link's accessible name nor fades with its hover state. -->
@@ -100,7 +100,7 @@
         <a
             href={brandHref}
             aria-label="EtherPK home"
-            class="flex shrink-0 items-center gap-2 text-gray-950 transition-opacity hover:opacity-75 dark:text-white"
+            class="flex shrink-0 items-center gap-2 text-neutral-950 transition-opacity hover:opacity-75 dark:text-white"
         >
             <svg class="h-5 w-auto" viewBox="0 0 191.82 166.13" fill="currentColor" aria-hidden="true">
                 <path fill-rule="evenodd" d="M67.09,132.92,47.93,166.13H9.59L0,149.52,86.33,0H105.5L19.17,149.52H38.34l19.17-33.2h76.8l9.59,16.6Zm48-83.12,9.65,16.71H143.9L115.08,16.6q-24,41.57-48,83.12H143.9q14.37,24.9,28.76,49.8h-96l-9.59,16.61H182.24l9.58-16.61-38.34-66.4H96C95.85,82.9,113.39,52.73,115.08,49.8Z" />
@@ -118,7 +118,7 @@
             <span
                 data-testid="release-stage-badge"
                 title="EtherPK is in {releaseStageBadge.label.toLowerCase()} testing"
-                class="inline-flex h-5 items-center rounded-md border border-gray-950/15 px-1.5 text-sm font-semibold uppercase leading-none tracking-wider text-gray-600 select-none dark:border-white/15 dark:text-gray-400"
+                class="inline-flex h-5 items-center rounded-md border border-neutral-950/15 px-1.5 text-sm font-semibold uppercase leading-none tracking-wider text-neutral-600 select-none dark:border-white/15 dark:text-neutral-400"
             >
                 <!-- The trim goes on a flex item of its own: the property is not inherited, so on
                      the badge itself it would never reach the anonymous box holding the text. -->
@@ -131,8 +131,8 @@
         {#each items as item (item.href + item.label)}
             {@const menu = itemMenu && item.label === itemMenu.label ? itemMenu : null}
             {@const itemClass = item.current
-                ? "bg-gray-100 text-gray-950 dark:bg-white/10 dark:text-white"
-                : "text-gray-600 hover:bg-gray-50 hover:text-gray-950 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"}
+                ? "bg-neutral-100 text-neutral-950 dark:bg-white/10 dark:text-white"
+                : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-950 dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-white"}
             {#if menu}
                 <!-- Compass shapes this as one control with the chevron inside it. The whole
                      control is the disclosure — the item's own destination is offered inside the
@@ -156,7 +156,7 @@
                         <div
                             id={itemMenuId}
                             data-testid="{testId}-item-menu"
-                            class="absolute left-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-xl border border-gray-950/10 bg-white shadow-xl dark:border-white/10 dark:bg-[#202023]"
+                            class="absolute left-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-xl border border-neutral-950/10 bg-white shadow-xl dark:border-white/10 dark:bg-[#262626]"
                         >
                             {@render menu.panel()}
                         </div>
@@ -181,7 +181,7 @@
         <button
             type="button"
             data-testid={mobileToggleTestId}
-            class="-mr-1 flex shrink-0 items-center justify-center rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-950 lg:hidden dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
+            class="-mr-1 flex shrink-0 items-center justify-center rounded-lg p-2 text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-neutral-950 lg:hidden dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-white"
             aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
             aria-expanded={mobileOpen}
             aria-controls={mobilePanelId}
@@ -210,7 +210,7 @@
 {#if mobileOpen}
     <button
         type="button"
-        class="fixed inset-0 z-40 bg-gray-950/35 backdrop-blur-[2px] lg:hidden"
+        class="fixed inset-0 z-40 bg-neutral-950/35 backdrop-blur-[2px] lg:hidden"
         aria-label="Close navigation menu"
         tabindex="-1"
         onclick={closeMobile}
@@ -224,14 +224,14 @@
         aria-label="Application navigation"
         tabindex="-1"
         {@attach dialogFocus}
-        class="fixed inset-y-0 right-0 z-50 flex w-72 max-w-[86vw] flex-col border-l border-gray-950/10 bg-white shadow-2xl lg:hidden dark:border-white/10 dark:bg-[#18181b]"
+        class="fixed inset-y-0 right-0 z-50 flex w-72 max-w-[86vw] flex-col border-l border-neutral-950/10 bg-white shadow-2xl lg:hidden dark:border-white/10 dark:bg-[#171717]"
     >
-        <div class="flex h-14 shrink-0 items-center justify-between border-b border-gray-950/8 px-4 dark:border-white/10">
-            <span class="text-sm font-semibold text-gray-950 dark:text-white">Navigate</span>
+        <div class="flex h-14 shrink-0 items-center justify-between border-b border-neutral-950/8 px-4 dark:border-white/10">
+            <span class="text-sm font-semibold text-neutral-950 dark:text-white">Navigate</span>
             <button
                 type="button"
                 data-dialog-dismiss
-                class="rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
+                class="rounded-lg p-2 text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-white"
                 aria-label="Close navigation menu"
                 onclick={closeMobile}
             >
@@ -249,7 +249,7 @@
                     <a
                         href={item.href}
                         aria-current={item.current ? "page" : undefined}
-                        class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {item.current ? 'bg-gray-100 text-gray-950 dark:bg-white/10 dark:text-white' : 'text-gray-700 hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white'}"
+                        class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {item.current ? 'bg-neutral-100 text-neutral-950 dark:bg-white/10 dark:text-white' : 'text-neutral-700 hover:bg-neutral-50 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-white'}"
                         onclick={closeMobile}
                     >
                         {item.label}
@@ -257,7 +257,7 @@
                     {#if itemMenu && item.label === itemMenu.label}
                         <!-- No nested disclosure at this size: the menu is simply part of the
                              list, indented under the item it belongs to. -->
-                        <div class="mb-1 ml-3 border-l border-gray-950/8 pl-2 dark:border-white/10">
+                        <div class="mb-1 ml-3 border-l border-neutral-950/8 pl-2 dark:border-white/10">
                             {@render itemMenu.panel()}
                         </div>
                     {/if}
@@ -265,14 +265,14 @@
             </nav>
 
             {#if sections}
-                <div class="shrink-0 border-t border-gray-950/8 dark:border-white/10">
+                <div class="shrink-0 border-t border-neutral-950/8 dark:border-white/10">
                     {@render sections(closeMobile)}
                 </div>
             {/if}
         </div>
 
         {#if mobileUtilities}
-            <div class="shrink-0 border-t border-gray-950/8 p-4 dark:border-white/10">
+            <div class="shrink-0 border-t border-neutral-950/8 p-4 dark:border-white/10">
                 {@render mobileUtilities()}
             </div>
         {/if}

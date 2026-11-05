@@ -10,7 +10,7 @@ export interface AnnotationColour {
     colour: string
 }
 
-export const DEFAULT_INK = '#111827'
+export const DEFAULT_INK = '#171717'
 /** The palette's yellow, the colour a person expects of a highlighter. */
 export const DEFAULT_HIGHLIGHT = '#fcd34d'
 /** What the colour picker opens on until a person has chosen a colour of their own. */

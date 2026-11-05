@@ -79,11 +79,11 @@
 </script>
 
 <div class="p-2">
-    <p class="px-3 pb-1 pt-1 text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+    <p class="px-3 pb-1 pt-1 text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
         On this device
     </p>
     {#if loaded && graphs.length === 0}
-        <p data-testid="graph-menu-empty" class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+        <p data-testid="graph-menu-empty" class="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">
             No graphs yet.
         </p>
     {:else}
@@ -98,8 +98,8 @@
                 class="flex items-center gap-2 px-3 py-2 text-sm transition-colors {current ? 'font-semibold' : 'font-medium'} {accent
                     ? `${cornerClass(index)} hover:brightness-95 dark:hover:brightness-110`
                     : current
-                      ? 'rounded-lg bg-gray-100 text-gray-950 dark:bg-white/10 dark:text-white'
-                      : 'rounded-lg text-gray-700 hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white'}"
+                      ? 'rounded-lg bg-neutral-100 text-neutral-950 dark:bg-white/10 dark:text-white'
+                      : 'rounded-lg text-neutral-700 hover:bg-neutral-50 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-white'}"
                 style:background-color={accent}
                 style:color={accent ? inkFor(accent) : null}
                 title={graph.name}
@@ -116,10 +116,10 @@
         {/each}
     {/if}
 </div>
-<div class="border-t border-gray-950/5 p-2 dark:border-white/10">
+<div class="border-t border-neutral-950/5 p-2 dark:border-white/10">
     <a
         href="/graphs"
-        class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white"
+        class="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-white"
     >
         All Graphs
     </a>

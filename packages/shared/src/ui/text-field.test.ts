@@ -26,7 +26,7 @@ describe('textFieldState', () => {
     })
 
     it('keeps a focus ring in each state, red for an invalid field', () => {
-        expect(classesOf(textFieldState(false))).toContain('focus:ring-gray-950/10')
+        expect(classesOf(textFieldState(false))).toContain('focus:ring-neutral-950/10')
         expect(classesOf(textFieldState(true))).toContain('focus:ring-red-500/10')
     })
 })

@@ -725,7 +725,7 @@
         background: var(--gk-surface-2);
     }
     :global(html.dark) .tabmenu-item.active {
-        background: #313139;
+        background: #404040;
     }
     .tabmenu-label {
         flex: 1;
@@ -1021,7 +1021,7 @@
         inset: var(--top-bar-over, 0px) 0 0;
         z-index: 10;
         border: 0;
-        background: rgba(3, 7, 18, 0.35);
+        background: rgba(10, 10, 10, 0.35);
         cursor: pointer;
     }
     .drawer {

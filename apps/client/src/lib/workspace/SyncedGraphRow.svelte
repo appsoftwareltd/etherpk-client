@@ -135,21 +135,21 @@
     }
 
     const TEXT_BUTTON =
-        'shrink-0 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 pointer-coarse:min-h-11 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5'
+        'shrink-0 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5'
     const DANGER_BUTTON =
         'shrink-0 rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-progress pointer-coarse:min-h-11 dark:border-red-500/40 dark:hover:bg-red-950/30'
     const ICON_BUTTON =
-        'shrink-0 rounded-lg p-1.5 pointer-coarse:p-3 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200'
+        'shrink-0 rounded-lg p-1.5 pointer-coarse:p-3 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-200'
 </script>
 
 {#snippet badges()}
-    <span class="truncate text-sm font-medium text-gray-950 dark:text-white">{name}</span>
+    <span class="truncate text-sm font-medium text-neutral-950 dark:text-white">{name}</span>
     {#if role}
         <span
             data-testid="synced-role"
             class="rounded-full px-2 py-0.5 text-sm {owner
-                ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
-                : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400'}">{owner ? 'Owner' : 'Player'}</span
+                ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                : 'bg-neutral-100 text-neutral-600 dark:bg-white/10 dark:text-neutral-400'}">{owner ? 'Owner' : 'Player'}</span
         >
     {/if}
     {#if importInterrupted}
@@ -173,7 +173,7 @@
         <p
             data-testid="synced-graph-status"
             role={message.tone === 'error' ? 'alert' : 'status'}
-            class="text-sm {message.tone === 'error' ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'}"
+            class="text-sm {message.tone === 'error' ? 'text-red-600 dark:text-red-400' : 'text-neutral-600 dark:text-neutral-400'}"
         >
             {message.text}
         </p>
@@ -193,7 +193,7 @@
             <div class="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span class="flex min-w-0 flex-wrap items-center gap-2">{@render badges()}</span>
                 <span
-                    class="truncate text-sm text-gray-500 dark:text-gray-400"
+                    class="truncate text-sm text-neutral-500 dark:text-neutral-400"
                     data-testid="graphs-cache-hint"
                     title="A synced graph's copy is stored in the browser, not in a folder">On this device</span
                 >
@@ -230,7 +230,7 @@
         {:else}
             <div class="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span class="flex min-w-0 flex-wrap items-center gap-2">{@render badges()}</span>
-                <span class="text-sm text-gray-500 dark:text-gray-400" data-testid="synced-not-local">Not on this device</span>
+                <span class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="synced-not-local">Not on this device</span>
             </div>
             <button data-testid="graphs-add-device" onclick={onadd} class={TEXT_BUTTON}>Add to this device</button>
         {/if}
@@ -239,10 +239,10 @@
     {#if nameNote}
         <!-- The row could not be labelled yet. Say why and what changes it; the line must never
              read as a key failure: "Encrypted name" once sent a user towards Reset (2026-09-01). -->
-        <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="synced-name-encrypted" aria-live="polite">{nameNote}</p>
+        <p class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="synced-name-encrypted" aria-live="polite">{nameNote}</p>
     {/if}
 
-    <p class="flex flex-wrap gap-x-3 text-sm text-gray-500 dark:text-gray-400">
+    <p class="flex flex-wrap gap-x-3 text-sm text-neutral-500 dark:text-neutral-400">
         {#if storage}
             <span data-testid="synced-storage">{formatBytes(storage.docBytes)} notes · {formatBytes(storage.assetBytes)} assets</span>
         {/if}
@@ -251,7 +251,7 @@
 
     {#if owner && members !== undefined}
         {#if members}
-            <ul data-testid="synced-members" class="space-y-1 border-t border-gray-100 pt-2 dark:border-white/10">
+            <ul data-testid="synced-members" class="space-y-1 border-t border-neutral-100 pt-2 dark:border-white/10">
                 {#each members as m (m.userId)}
                     <li
                         data-testid="synced-member"
@@ -259,8 +259,8 @@
                         data-trust={m.trust}
                         class="flex flex-wrap items-center gap-2 text-sm"
                     >
-                        <span class="truncate text-gray-700 dark:text-gray-300">{m.email}</span>
-                        <span class="rounded-full bg-gray-100 px-2 py-0.5 text-sm text-gray-600 dark:bg-white/10 dark:text-gray-400">
+                        <span class="truncate text-neutral-700 dark:text-neutral-300">{m.email}</span>
+                        <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-sm text-neutral-600 dark:bg-white/10 dark:text-neutral-400">
                             {m.role === 'owner' ? 'Owner' : m.status === 'invited' ? 'Invited' : 'Player'}
                         </span>
                         <!-- What the owner's pins say about the member's key (ADR 0126); shown only
@@ -278,11 +278,11 @@
                                 >Key changed</span
                             >
                         {:else if m.trust === 'unverified'}
-                            <span data-testid="member-trust" class="rounded-full bg-gray-100 px-2 py-0.5 text-sm text-gray-600 dark:bg-white/10 dark:text-gray-400"
+                            <span data-testid="member-trust" class="rounded-full bg-neutral-100 px-2 py-0.5 text-sm text-neutral-600 dark:bg-white/10 dark:text-neutral-400"
                                 >Unverified</span
                             >
                         {:else if m.trust === 'not-upgraded'}
-                            <span data-testid="member-trust" class="text-sm text-gray-500 dark:text-gray-400"
+                            <span data-testid="member-trust" class="text-sm text-neutral-500 dark:text-neutral-400"
                                 >Can be verified once they next open EtherPK</span
                             >
                         {:else if m.trust === 'signing-key-missing'}
@@ -299,7 +299,7 @@
                                 <button
                                     data-testid="member-verify"
                                     onclick={() => onverify(m)}
-                                    class="rounded-lg px-2 py-1 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-950 pointer-coarse:min-h-11 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
+                                    class="rounded-lg px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-50 hover:text-neutral-950 pointer-coarse:min-h-11 dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-white"
                                     >Verify</button
                                 >
                             {/if}
@@ -308,7 +308,7 @@
                                     data-testid="member-cancel-invite"
                                     disabled={cancellingInvite === m.inviteId}
                                     onclick={() => oncancelinvite(m)}
-                                    class="rounded-lg px-2 py-1 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-950 disabled:cursor-progress dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
+                                    class="rounded-lg px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-50 hover:text-neutral-950 disabled:cursor-progress dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-white"
                                     >{cancellingInvite === m.inviteId ? 'Cancelling…' : 'Cancel invite'}</button
                                 >
                             {/if}
@@ -353,7 +353,7 @@
                 {/each}
             </ul>
         {:else}
-            <p class="border-t border-gray-100 pt-2 text-sm text-gray-500 dark:border-white/10 dark:text-gray-400">
+            <p class="border-t border-neutral-100 pt-2 text-sm text-neutral-500 dark:border-white/10 dark:text-neutral-400">
                 Could not load the member list.
             </p>
         {/if}

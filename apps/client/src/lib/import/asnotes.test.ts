@@ -251,6 +251,12 @@ describe('convertAsNotes', () => {
                 'Task "#S-2026-10-01 later" - EtherPK reads #S-2026-10-01 as a task tag, where AS Notes read it as text',
             ])
         })
+
+        it('reports a task tag in lower case, which AS Notes reads as text and EtherPK reads in any case', async () => {
+            const graph = await convertAsNotes(workspace(src('todo.md', '- [ ] #p1 fix the gate')))
+            expect(doc(graph, 'todo').text).toBe('---\ntitle: todo\n---\n- [ ] #p1 fix the gate')
+            expect(details(graph, 'degradation')).toEqual(['Task "#p1 fix the gate" - EtherPK reads #p1 as a task tag, where AS Notes read it as text'])
+        })
     })
 
     describe('files', () => {

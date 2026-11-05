@@ -107,45 +107,45 @@
 <div class="flex h-full w-full flex-col bg-[var(--gk-surface-0,transparent)]" data-testid="asset-view">
     {#if damaged}
         <div class="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-            <p class="text-sm text-gray-600 dark:text-gray-400" role="alert" data-testid="asset-view-damaged">
-                <span class="font-medium text-gray-900 dark:text-gray-100">{fallbackName}</span> could not
+            <p class="text-sm text-neutral-600 dark:text-neutral-400" role="alert" data-testid="asset-view-damaged">
+                <span class="font-medium text-neutral-900 dark:text-neutral-100">{fallbackName}</span> could not
                 be shown because it arrived incomplete. Nothing was saved from it.
             </p>
             <button
                 type="button"
                 onclick={() => (attempt += 1)}
-                class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
                 >Retry</button
             >
         </div>
     {:else if failed}
         <div class="flex flex-1 items-center justify-center p-6 text-center">
-            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="asset-view-missing">
-                <span class="font-medium text-gray-900 dark:text-gray-100">{fallbackName}</span> is no longer
+            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="asset-view-missing">
+                <span class="font-medium text-neutral-900 dark:text-neutral-100">{fallbackName}</span> is no longer
                 in this graph.
             </p>
         </div>
     {:else if !resolved && unavailable}
         <div class="flex flex-1 items-center justify-center p-6 text-center">
-            <p class="text-sm text-gray-600 dark:text-gray-400" role="status" data-testid="asset-view-unavailable">
-                <span class="font-medium text-gray-900 dark:text-gray-100">{waitingName ?? "This file"}</span> could not
+            <p class="text-sm text-neutral-600 dark:text-neutral-400" role="status" data-testid="asset-view-unavailable">
+                <span class="font-medium text-neutral-900 dark:text-neutral-100">{waitingName ?? "This file"}</span> could not
                 be fetched just now. EtherPK keeps trying, and shows it once the connection is back.
             </p>
         </div>
     {:else if !resolved}
         <!-- At the top, where the reader's own "Opening" line follows it, and clear of a phone's keyboard. -->
-        <p class="p-6 text-center text-sm text-gray-500 dark:text-gray-400" role="status" data-testid="asset-view-loading">Loading {waitingName ?? "this file"}…</p>
+        <p class="p-6 text-center text-sm text-neutral-500 dark:text-neutral-400" role="status" data-testid="asset-view-loading">Loading {waitingName ?? "this file"}…</p>
     {:else if Viewer}
         <Viewer url={resolved.url} name={resolved.name} type={resolved.type} target={view.target} />
     {:else}
         <div class="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="asset-view-unsupported">
-                <span class="font-medium text-gray-900 dark:text-gray-100">{name}</span> cannot be shown here.
+            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="asset-view-unsupported">
+                <span class="font-medium text-neutral-900 dark:text-neutral-100">{name}</span> cannot be shown here.
             </p>
             <button
                 type="button"
                 onclick={download}
-                class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
                 >Download it instead</button
             >
         </div>

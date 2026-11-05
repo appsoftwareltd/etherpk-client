@@ -21,7 +21,7 @@ export type PlaceholderSource = (show: (text: string | null) => void) => () => v
 
 const theme = EditorView.baseTheme({
     // The hint reads as a hint: muted, and never taken for text already in the document.
-    '.cm-placeholder': { color: 'var(--gk-text-muted, #6b7280)' },
+    '.cm-placeholder': { color: 'var(--gk-text-muted, #737373)' },
 })
 
 /** The placeholder a View drives, or nothing for a host with no hint to give. */

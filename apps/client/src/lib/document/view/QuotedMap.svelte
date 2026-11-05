@@ -204,7 +204,7 @@
         object-fit: cover;
     }
     .quoted-map__note {
-        color: var(--gk-text-muted, #6b7280);
+        color: var(--gk-text-muted, #737373);
     }
     .quoted-map__caption {
         margin: 0.25em 0 0;

@@ -604,7 +604,7 @@ const theme = EditorView.baseTheme({
         // A ribbon with a notch at its foot.
         clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%)',
     },
-    '.gk-bookmark.gk-bookmark-ghost': { backgroundColor: 'var(--gk-border-strong, #9ca3af)' },
+    '.gk-bookmark.gk-bookmark-ghost': { backgroundColor: 'var(--gk-border-strong, #a3a3a3)' },
     '.gk-bookmark-flash': {
         backgroundColor: 'var(--gk-find-current, rgba(234, 88, 12, 0.25))',
         transition: 'background-color 160ms ease-out',

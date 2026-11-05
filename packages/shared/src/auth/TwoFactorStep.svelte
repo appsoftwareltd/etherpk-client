@@ -81,14 +81,14 @@
 
 <div class="text-center">
     <div class="flex justify-center mb-4">
-        <div class="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 ring-1 ring-blue-600/20">
-            <svg class="h-6 w-6 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <div class="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-100 ring-1 ring-neutral-500/20">
+            <svg class="h-6 w-6 text-neutral-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
             </svg>
         </div>
     </div>
-    <h1 class="text-lg font-semibold text-gray-950">Two-factor authentication</h1>
-    <p class="mt-1 text-sm text-gray-500" id="two-factor-instructions">
+    <h1 class="text-lg font-semibold text-neutral-950">Two-factor authentication</h1>
+    <p class="mt-1 text-sm text-neutral-500" id="two-factor-instructions">
         {#if mode === "totp"}
             Enter the 6-digit code from your authenticator app
         {:else}
@@ -100,7 +100,7 @@
 <form onsubmit={submit} novalidate class="mt-6 space-y-4">
     <div>
         {#if mode === "totp"}
-            <label for="two-factor-code" class="block text-sm font-medium text-gray-700 mb-1.5">Authenticator code</label>
+            <label for="two-factor-code" class="block text-sm font-medium text-neutral-700 mb-1.5">Authenticator code</label>
             <input
                 bind:this={input}
                 {@attach focusOnMount}
@@ -121,7 +121,7 @@
         {:else}
             <!-- Backup codes look like "LDR6D-nBJCn": letters, digits and a hyphen, case-sensitive,
                  so no numeric keyboard, no length cap, no autocorrect and no autofill. -->
-            <label for="two-factor-code" class="block text-sm font-medium text-gray-700 mb-1.5">Backup code</label>
+            <label for="two-factor-code" class="block text-sm font-medium text-neutral-700 mb-1.5">Backup code</label>
             <input
                 bind:this={input}
                 id="two-factor-code"
@@ -144,16 +144,16 @@
         {/if}
     </div>
 
-    <button type="submit" disabled={verifying || !ready} class="mt-2 w-full rounded-lg bg-gray-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+    <button type="submit" disabled={verifying || !ready} class="mt-2 w-full rounded-lg bg-neutral-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
         {verifying ? "Verifying…" : "Verify"}
     </button>
 </form>
 
-<div class="mt-6 flex flex-col items-center gap-3 text-sm text-gray-500">
+<div class="mt-6 flex flex-col items-center gap-3 text-sm text-neutral-500">
     {#if mode === "totp"}
-        <button type="button" onclick={() => switchMode("backup")} disabled={verifying} class="font-medium text-gray-950 hover:underline disabled:opacity-50">Use a backup code</button>
+        <button type="button" onclick={() => switchMode("backup")} disabled={verifying} class="font-medium text-neutral-950 hover:underline disabled:opacity-50">Use a backup code</button>
     {:else}
-        <button type="button" onclick={() => switchMode("totp")} disabled={verifying} class="font-medium text-gray-950 hover:underline disabled:opacity-50">Use an authenticator code</button>
+        <button type="button" onclick={() => switchMode("totp")} disabled={verifying} class="font-medium text-neutral-950 hover:underline disabled:opacity-50">Use an authenticator code</button>
     {/if}
-    <button type="button" onclick={onback} disabled={verifying} class="font-medium text-gray-950 hover:underline disabled:opacity-50">Back to sign in</button>
+    <button type="button" onclick={onback} disabled={verifying} class="font-medium text-neutral-950 hover:underline disabled:opacity-50">Back to sign in</button>
 </div>

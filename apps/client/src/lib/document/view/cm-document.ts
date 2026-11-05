@@ -265,7 +265,7 @@ export function createDocumentEditor(options: DocumentEditorOptions): DocumentEd
                         textIndent: '0',
                         // Dark on the pastel presence palette (presence-identity.ts) in both themes;
                         // the base theme's white assumed a saturated background.
-                        color: '#1e293b',
+                        color: '#262626',
                         padding: '1px 5px',
                         borderRadius: '4px',
                         // Lifted to clear the added padding (the base theme's -1.05em assumes none).

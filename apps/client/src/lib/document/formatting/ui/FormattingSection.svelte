@@ -162,14 +162,14 @@
     }
 
     const button =
-        "rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40";
+        "rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40";
     const primary =
-        "rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40";
+        "rounded-lg bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40";
 </script>
 
 <section bind:this={root} class="space-y-3" aria-labelledby="{uid}-heading" data-testid="formatting-section">
-    <h3 id="{uid}-heading" class="text-sm font-medium text-gray-500 dark:text-gray-400">Formatting</h3>
-    <p class="text-sm text-gray-600 dark:text-gray-300">
+    <h3 id="{uid}-heading" class="text-sm font-medium text-neutral-500 dark:text-neutral-400">Formatting</h3>
+    <p class="text-sm text-neutral-600 dark:text-neutral-300">
         The scan finds text that EtherPK reads differently from the way it writes it, e.g., tabs and uneven
         indentation, bullets written with * or +, no-break spaces in indentation, Windows line endings and unclosed
         code blocks. Fixing indentation can change how a page's bullets nest in the editor, so that they nest the way
@@ -208,7 +208,7 @@
                 autocomplete="off"
                 autocapitalize="off"
                 spellcheck="false"
-                class="block w-full max-w-md rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                class="block w-full max-w-md rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                 data-testid="formatting-confirm"
             />
         </div>
@@ -236,12 +236,12 @@
         {/if}
     </div>
     {#if !session.backupConfirmed}
-        <p id={confirmReasonId} class="text-sm text-gray-500 dark:text-gray-400" data-testid="formatting-confirm-reason">
+        <p id={confirmReasonId} class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="formatting-confirm-reason">
             Type the phrase above to turn on the scan.
         </p>
     {/if}
     {#if session.busy && session.phase !== "scanning"}
-        <p class="text-sm text-gray-500 dark:text-gray-400">A new scan can start once the fixes in progress finish.</p>
+        <p class="text-sm text-neutral-500 dark:text-neutral-400">A new scan can start once the fixes in progress finish.</p>
     {/if}
 
     <p class="sr-only" aria-live="polite">{announcement}</p>
@@ -258,20 +258,20 @@
     {#if report}
         <div class="space-y-1" data-testid="formatting-summary">
             {#if report.stopped}
-                <p class="text-sm text-gray-600 dark:text-gray-300" data-testid="formatting-stopped">
+                <p class="text-sm text-neutral-600 dark:text-neutral-300" data-testid="formatting-stopped">
                     Scan stopped after {session.done.toLocaleString()} of {plural(report.total, "page", "pages")}.
                 </p>
             {/if}
-            <p class="text-sm text-gray-600 dark:text-gray-300" data-testid="formatting-result">{summary}</p>
+            <p class="text-sm text-neutral-600 dark:text-neutral-300" data-testid="formatting-result">{summary}</p>
             {#if report.protectedCount > 0}
-                <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="formatting-protected">
+                <p class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="formatting-protected">
                     {report.protectedCount === 1
                         ? "1 Protected Document was not checked."
                         : `${report.protectedCount.toLocaleString()} Protected Documents were not checked.`}
                 </p>
             {/if}
             {#if syncing.length > 0}
-                <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="formatting-syncing">
+                <p class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="formatting-syncing">
                     {syncing.length === 1
                         ? "1 page was not checked because it has not finished syncing."
                         : `${syncing.length.toLocaleString()} pages were not checked because they have not finished syncing.`}
@@ -280,13 +280,13 @@
                         onclick={() => session.scan()}
                         disabled={session.busy || !session.backupConfirmed}
                         aria-describedby={scanReason}
-                        class="font-medium text-gray-700 dark:text-gray-200 underline underline-offset-2 disabled:opacity-40"
+                        class="font-medium text-neutral-700 dark:text-neutral-200 underline underline-offset-2 disabled:opacity-40"
                         >Scan again</button
                     >
                 </p>
             {/if}
             {#if unreadable.length > 0}
-                <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="formatting-unreadable">
+                <p class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="formatting-unreadable">
                     {unreadable.length === 1 ? "1 page" : `${unreadable.length.toLocaleString()} pages`} could not be read, so
                     {unreadable.length === 1 ? "it was" : "they were"} not checked: {unreadable.map((entry) => entry.document.concept).join(", ")}.
                 </p>
@@ -298,21 +298,21 @@
             {@const pending = group.issues.filter((issue) => issue.status === "pending")}
             {@const canFix = group.issues.some(fixable)}
             <div
-                class="space-y-2 border-t border-gray-100 dark:border-gray-800 pt-3"
+                class="space-y-2 border-t border-neutral-100 dark:border-neutral-800 pt-3"
                 role="group"
                 aria-labelledby="{uid}-group-{check.id}"
                 data-testid="formatting-group"
                 data-check={check.id}
             >
                 <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
-                    <h4 id="{uid}-group-{check.id}" class="text-sm font-medium text-gray-950 dark:text-gray-100">
+                    <h4 id="{uid}-group-{check.id}" class="text-sm font-medium text-neutral-950 dark:text-neutral-100">
                         {check.label}
-                        <span class="font-normal text-gray-500 dark:text-gray-400">({plural(group.issues.length, "page", "pages")})</span>
+                        <span class="font-normal text-neutral-500 dark:text-neutral-400">({plural(group.issues.length, "page", "pages")})</span>
                     </h4>
                     {#if canFix && pending.length > 0}
                         <div class="flex flex-wrap items-center gap-2">
                             {#if !session.reviewed[check.id]}
-                                <span class="text-sm text-gray-500 dark:text-gray-400" id="{uid}-approve-all-why-{check.id}"
+                                <span class="text-sm text-neutral-500 dark:text-neutral-400" id="{uid}-approve-all-why-{check.id}"
                                     >Show the changes for one page in the group first.</span
                                 >
                             {/if}
@@ -329,7 +329,7 @@
                         </div>
                     {/if}
                 </div>
-                <p class="text-sm text-gray-500 dark:text-gray-400">{check.help}</p>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">{check.help}</p>
 
                 {#if confirming === check.id}
                     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -357,7 +357,7 @@
                 {/if}
                 {#if session.lastApproveAll?.check === check.id}
                     {@const tally = session.lastApproveAll}
-                    <p class="text-sm text-gray-600 dark:text-gray-300" tabindex="-1" data-approve-all-result={check.id} data-testid="formatting-approve-all-result">
+                    <p class="text-sm text-neutral-600 dark:text-neutral-300" tabindex="-1" data-approve-all-result={check.id} data-testid="formatting-approve-all-result">
                         Fixed {tally.fixed.toLocaleString()} of {tally.total.toLocaleString()}.{tally.changed > 0
                             ? ` ${plural(tally.changed, "page", "pages")} changed since the scan and ${tally.changed === 1 ? "is" : "are"} shown again.`
                             : ""}
@@ -368,18 +368,18 @@
                     {#each group.issues as issue (issue.id)}
                         {@const open = OPEN.has(issue.status)}
                         <li
-                            class="space-y-2 rounded-lg border border-gray-200 dark:border-gray-800 p-3"
+                            class="space-y-2 rounded-lg border border-neutral-200 dark:border-neutral-800 p-3"
                             data-issue={issue.id}
                             data-status={issue.status}
                             data-testid="formatting-issue"
                         >
                             <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                                 <div class="min-w-0">
-                                    <p class="break-words text-sm font-medium text-gray-950 dark:text-gray-100" data-testid="formatting-issue-page">
+                                    <p class="break-words text-sm font-medium text-neutral-950 dark:text-neutral-100" data-testid="formatting-issue-page">
                                         {issue.document.concept}
                                     </p>
                                     {#if issue.status !== "skipped"}
-                                        <p class="text-sm text-gray-500 dark:text-gray-400">{issue.finding.reason}</p>
+                                        <p class="text-sm text-neutral-500 dark:text-neutral-400">{issue.finding.reason}</p>
                                     {/if}
                                 </div>
                                 <div class="flex flex-wrap gap-2">
@@ -429,7 +429,7 @@
                             </div>
                             {#if issue.status !== "pending" && issue.status !== "applying"}
                                 <p
-                                    class="text-sm {issue.status === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-300'}"
+                                    class="text-sm {issue.status === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-neutral-600 dark:text-neutral-300'}"
                                     tabindex="-1"
                                     data-issue-status
                                     data-testid="formatting-issue-status"

@@ -59,12 +59,12 @@ import { type TableCaret, tableAtCaret, tableInsertable } from '../view/table-co
 import { toggleBold, toggleHighlight, toggleItalic, wikilinkButtonSpec } from '../view/wrap-selection'
 
 /** Insert `text` at the caret and place the cursor after it. */
-function insertAtCursor(view: EditorView, text: string): void {
+function insertAtCursor(view: EditorView, text: string, userEvent = 'input.complete'): void {
     const at = view.state.selection.main.head
     view.dispatch({
         changes: { from: at, insert: text },
         selection: { anchor: at + text.length },
-        userEvent: 'input.complete',
+        userEvent,
     })
 }
 
@@ -350,7 +350,8 @@ function openCommandMenu(view: EditorView): void {
     const head = view.state.selection.main.head
     const line = view.state.doc.lineAt(head)
     const before = head > line.from ? view.state.sliceDoc(head - 1, head) : ''
-    insertAtCursor(view, slashInsertText(before))
+    // As typing, because the menu opens only on a typed `/` (slash-complete.ts).
+    insertAtCursor(view, slashInsertText(before), 'input.type')
 }
 
 /**

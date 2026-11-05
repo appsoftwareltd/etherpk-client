@@ -8,7 +8,7 @@ const rules = (source: string, file = 'Example.svelte') => findTextFloorViolatio
 
 describe('findTextFloorViolations', () => {
     it('refuses text-xs, whatever variant it hides behind', () => {
-        expect(rules('<p class="text-xs text-gray-500">x</p>')).toEqual(['xs-class'])
+        expect(rules('<p class="text-xs text-neutral-500">x</p>')).toEqual(['xs-class'])
         expect(rules('<p class="sm:text-xs">x</p>')).toEqual(['xs-class'])
         expect(rules('<p class="text-sm">x</p>')).toEqual([])
     })

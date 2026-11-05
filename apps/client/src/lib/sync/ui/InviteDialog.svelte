@@ -160,13 +160,13 @@
 {#snippet appLinkOffer()}
     {#if inviteeMissing}
         <div data-testid="invite-app-link" class="flex flex-wrap items-center gap-2">
-            <code class="break-all rounded bg-gray-100 px-2 py-1 font-mono text-sm text-gray-900 dark:bg-white/10 dark:text-gray-100">{appLink}</code>
+            <code class="break-all rounded bg-neutral-100 px-2 py-1 font-mono text-sm text-neutral-900 dark:bg-white/10 dark:text-neutral-100">{appLink}</code>
             <button
                 type="button"
                 onclick={copyAppLink}
-                class="min-h-9 rounded-lg border border-gray-300 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+                class="min-h-9 rounded-lg border border-neutral-300 px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5"
             >{linkCopy === "copied" ? "Copied" : "Copy link"}</button>
-            <span role="status" class="text-sm text-gray-600 dark:text-gray-400">
+            <span role="status" class="text-sm text-neutral-600 dark:text-neutral-400">
                 {#if linkCopy !== "idle" && linkCopy !== "copied"}{linkCopy}{/if}
             </span>
         </div>
@@ -176,13 +176,13 @@
 <Modal {open} title="Invite a player" busy={busy} busyReason="Working…" onclose={() => close()} onsubmit={submitStep}>
     {#snippet body()}
         {#if step === "email"}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 Enter the email address of the person you want to share this graph with. They need
                 {needs} and Encryption Keys, which EtherPK creates with their first synced graph or from
                 Sync settings.
             </p>
             <div>
-                <label for="invite-email" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">Email address</label>
+                <label for="invite-email" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">Email address</label>
                 <input
                     id="invite-email"
                     type="email"
@@ -191,9 +191,9 @@
                     placeholder="name@example.com"
                     aria-invalid={error && step === "email" ? "true" : undefined}
                     aria-describedby={error && step === "email" ? errorId : undefined}
-                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:outline-none focus:ring-1 {error
+                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {error
                         ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                        : 'border-gray-300 dark:border-gray-700 focus:border-gray-950 dark:focus:border-gray-400 focus:ring-gray-950 dark:focus:ring-gray-400'}"
+                        : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
                 />
                 {#if error && step === "email"}
                     <p id={errorId} role="alert" class="mt-1.5 text-sm text-red-600" data-testid="invite-error">{error}</p>
@@ -202,22 +202,22 @@
             {@render appLinkOffer()}
         {:else if step === "verify" && prep}
             {#if fingerprintState === "unchecked"}
-                <p class="text-sm text-gray-600 dark:text-gray-400">
-                    Before sharing your key, confirm this is really <span class="font-medium text-gray-900 dark:text-gray-200">{email}</span>.
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
+                    Before sharing your key, confirm this is really <span class="font-medium text-neutral-900 dark:text-neutral-200">{email}</span>.
                     Check that the security fingerprint below matches theirs, verified in person or over a
                     call you trust.
                 </p>
             {/if}
             <SecurityFingerprint fingerprint={prep.fingerprint} state={fingerprintState} name={email.trim()} />
             {#if fingerprintState !== "verified"}
-                <p class="text-sm text-gray-500 dark:text-gray-400">
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">
                     They can find theirs under <span class="font-medium">Sync settings</span>, as
                     <span class="font-medium">Your security fingerprint</span>.
                 </p>
             {/if}
         {:else if step === "done"}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
-                Invite sent to <span class="font-medium text-gray-900 dark:text-gray-200">{email}</span>.
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
+                Invite sent to <span class="font-medium text-neutral-900 dark:text-neutral-200">{email}</span>.
                 They will see it under Pending invites on their Graphs page. Until they
                 accept, they are listed on this graph as Invited, where you can cancel the invite.
             </p>
@@ -231,22 +231,22 @@
 
     {#snippet footer()}
         {#if step === "email"}
-            <button type="button" onclick={() => close()} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+            <button type="button" onclick={() => close()} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
             <button
                 type="submit"
                 disabled={busy}
                 data-testid="invite-lookup"
-                class="min-w-32 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40"
+                class="min-w-32 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
             >{busy ? "Looking up…" : "Continue"}</button>
         {:else if step === "verify"}
-            <button type="button" onclick={() => (step = "email")} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Back</button>
+            <button type="button" onclick={() => (step = "email")} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Back</button>
             <!-- Reserved width: this label loses ~150px when it becomes "Sending…", which slid
                  the Back button out from under the pointer that had just clicked. -->
             <button
                 type="submit"
                 disabled={busy}
                 data-testid="invite-send"
-                class="min-w-64 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40"
+                class="min-w-64 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
             >{busy
                     ? "Sending…"
                     : fingerprintState === "verified"
@@ -258,7 +258,7 @@
             <button
                 type="submit"
                 data-testid="invite-done"
-                class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+                class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
             >Done</button>
         {/if}
     {/snippet}

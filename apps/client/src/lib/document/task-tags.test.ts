@@ -27,10 +27,30 @@ describe('parseTaskTags', () => {
         expect(tags.text).toBe('triage the #P2 backlog #W')
     })
 
-    it('is case-sensitive: lowercase priority is prose', () => {
-        const tags = parseTaskTags('#p1 lower case')
-        expect(tags.priority).toBeNull()
-        expect(tags.text).toBe('#p1 lower case')
+    it('reads a tag in any case', () => {
+        expect(parseTaskTags('#p1 #w #d #t #c #a #d-2026-09-15 #c-2026-09-20 #s-2026-09-10 Ship it')).toEqual({
+            priority: 1,
+            waiting: true,
+            doing: true,
+            test: true,
+            cancelled: true,
+            archived: true,
+            due: '2026-09-15',
+            completion: '2026-09-20',
+            scheduled: '2026-09-10',
+            text: 'Ship it',
+        })
+    })
+
+    it('lets the first of a kind win whatever the case of each', () => {
+        expect(parseTaskTags('#p2 #P1 Fix it')).toMatchObject({ priority: 2, text: 'Fix it' })
+    })
+
+    it('reads only the known tags in any case: anything else ends the run', () => {
+        expect(parseTaskTags('#p4 water').text).toBe('#p4 water')
+        expect(parseTaskTags('#d-tomorrow water').due).toBeNull()
+        // Upper-casing `ſ` gives `S`, but `#ſ-` is not a tag a person wrote in lower case.
+        expect(parseTaskTags('#\u017f-2026-09-10 water').scheduled).toBeNull()
     })
 
     it('lets the first of a kind win without ending the run', () => {
@@ -85,6 +105,7 @@ describe('a Free Tag in the leading run', () => {
 
     it('lists the Task Tags in the run as written, without the Free Tags', () => {
         expect(taskTagTokens('#bug #P1 #D-2026-11-02 Fix the gate #W')).toEqual(['#P1', '#D-2026-11-02'])
+        expect(taskTagTokens('#bug #p1 #d-2026-11-02 Fix the gate')).toEqual(['#p1', '#d-2026-11-02'])
     })
 
     it('does not make a hash word that is not a Free Tag part of the run', () => {
@@ -215,6 +236,10 @@ describe('taskTagRun', () => {
         expect(run('- [ ] #P2 ')).toBe('#P2')
     })
 
+    it('covers tags in any case', () => {
+        expect(run('- [ ] #p1 #d-2026-07-01 Ship the release')).toBe('#p1 #d-2026-07-01')
+    })
+
     it('covers a Free Tag in the run, and stops at one after prose', () => {
         expect(run('- [ ] #bug #P1 Fix the gate #paint')).toBe('#bug #P1')
         expect(run('- [ ] #bug Fix the gate')).toBe('#bug')
@@ -285,6 +310,12 @@ describe('applyTaskTag', () => {
     it('refuses a line that is not a task', () => {
         expect(applyTaskTag('- a plain bullet', { kind: 'waiting' })).toBeNull()
     })
+
+    it('reads a lower-case tag as its tag, and writes the run in upper case', () => {
+        expect(applyTaskTag('- [ ] #p1 Fix it', { kind: 'priority', value: 1 })).toBe('- [ ] Fix it')
+        expect(applyTaskTag('- [ ] #p1 Fix it', { kind: 'priority', value: 2 })).toBe('- [ ] #P2 Fix it')
+        expect(applyTaskTag('- [ ] #w #d-2026-09-15 Fix it', { kind: 'priority', value: 2 })).toBe('- [ ] #P2 #W #D-2026-09-15 Fix it')
+    })
 })
 
 describe('applyStrayTaskTags', () => {
@@ -342,12 +373,25 @@ describe('applyStrayTaskTags', () => {
         expect(applyStrayTaskTags('- [ ] read https://example.com/#P1 now')).toBeNull()
         expect(applyStrayTaskTags('- [ ] read #P1, then water')).toBeNull()
         expect(applyStrayTaskTags('- [ ] read item#P1 now')).toBeNull()
-        expect(applyStrayTaskTags('- [ ] read #p1 and #P4 now')).toBeNull()
+        expect(applyStrayTaskTags('- [ ] read #p4 and #P4 now')).toBeNull()
         // Columns the caller knows are not prose (inline maths) are skipped too.
         expect(applyStrayTaskTags('- [ ] read $a #P1 b$ now', [{ from: 11, to: 20 }])).toBeNull()
         expect(applyStrayTaskTags('- [ ] read $a #P1 b$ now #P2', [{ from: 11, to: 20 }])).toBe('- [ ] #P2 read $a #P1 b$ now')
         // The code span stays as written while a stray tag beside it moves.
         expect(applyStrayTaskTags('- [ ] read `#P1` notes #P2')).toBe('- [ ] #P2 read `#P1` notes')
+    })
+
+    it('moves a stray tag written in lower case, and writes it in upper case', () => {
+        expect(applyStrayTaskTags('- [ ] water the beans #p1')).toBe('- [ ] #P1 water the beans')
+        expect(applyStrayTaskTags('- [ ] water the beans #d-2026-09-15')).toBe('- [ ] #D-2026-09-15 water the beans')
+        expect(applyStrayTaskTags('- [ ] water the beans #c')).toBe('- [x] #C water the beans')
+        expect(applyStrayTaskTags('- [x] water the beans #w')).toBe('- [ ] #W water the beans')
+    })
+
+    it('leaves a lower-case tag in the run until a stray tag rewrites the run', () => {
+        expect(applyStrayTaskTags('- [ ] #p1 water the beans')).toBeNull()
+        expect(applyStrayTaskTags('  - [x] #w #d-2026-09-15 water the beans')).toBeNull()
+        expect(applyStrayTaskTags('- [ ] #p3 water the beans #W')).toBe('- [ ] #P3 #W water the beans')
     })
 
     it('is null for a task with no stray tag, and for a line that is not a task', () => {
@@ -364,8 +408,9 @@ describe('the Test and Archived states', () => {
         expect(parseTaskLine('- [x] #A Water the beans')).toMatchObject({ archived: true, test: false, text: 'Water the beans' })
     })
 
-    it('is case-sensitive, so #t and #a are Free Tags in the text', () => {
-        expect(parseTaskLine('- [ ] #t Check')).toMatchObject({ test: false, text: '#t Check' })
+    it('reads them in lower case too, and never as Free Tags', () => {
+        expect(parseTaskLine('- [ ] #t Check')).toMatchObject({ test: true, text: 'Check' })
+        expect(parseTaskLine('- [x] #a Check')).toMatchObject({ archived: true, text: 'Check' })
         expect(freeTagsIn('#t #a Check')).toEqual([])
     })
 

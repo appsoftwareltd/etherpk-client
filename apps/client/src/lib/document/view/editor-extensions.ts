@@ -304,7 +304,7 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
                 loading: () => services.graphIndex()?.isBuilding() ?? false,
             }),
         },
-        { name: 'task-tag-completion', extension: taskTagCompletion() },
+        { name: 'task-tag-completion', extension: taskTagCompletion({ freeTags: () => services.graphIndex() }) },
         { name: 'slash-completion', extension: slashCompletion() },
         // Keys and values in the frontmatter, from EtherPK's list and the graph's index.
         { name: 'frontmatter-completion', extension: frontmatterCompletion({ properties: () => services.graphIndex() }) },

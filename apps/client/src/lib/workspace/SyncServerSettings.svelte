@@ -163,31 +163,31 @@
     }
 
     const SECONDARY_BUTTON =
-        "inline-flex items-center justify-center rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 pointer-coarse:min-h-11 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5";
+        "inline-flex items-center justify-center rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5";
     const CARD =
-        "rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-white/5";
+        "rounded-xl border border-neutral-200 bg-white p-4 dark:border-white/10 dark:bg-white/5";
     const PRIMARY_BUTTON =
-        "inline-flex rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200";
+        "inline-flex rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200";
     /**
      * A part of a card, such as the Recovery Code in the Encryption Keys card, in a tinted panel of
      * its own. The heading is only a little larger than the help text, so the panel's edge is what
      * shows where each part starts.
      */
-    const SUBSECTION = "rounded-lg bg-gray-50 p-4 dark:bg-white/5";
+    const SUBSECTION = "rounded-lg bg-neutral-50 p-4 dark:bg-white/5";
     /** A part's heading: smaller than the card's own (16px), larger and heavier than its text (14px). */
     const SUBHEADING =
-        "text-[0.9375rem] font-semibold text-gray-950 dark:text-white";
+        "text-[0.9375rem] font-semibold text-neutral-950 dark:text-white";
 </script>
 
 <div data-testid="sync-server" data-origin={server.origin} class="space-y-6">
     <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
             <h3
-                class="flex items-center gap-2 text-base font-semibold text-gray-950 dark:text-white"
+                class="flex items-center gap-2 text-base font-semibold text-neutral-950 dark:text-white"
             >
                 <span class="min-w-0 truncate">{server.host}</span>
                 <svg
-                    class="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400"
+                    class="h-5 w-5 shrink-0 text-neutral-500 dark:text-neutral-400"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -201,7 +201,7 @@
                     />
                 </svg>
             </h3>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                 {managed ? "Managed Sync" : "Custom server"} ·
                 <span
                     data-testid="sync-server-status"
@@ -211,7 +211,7 @@
         </div>
         <div class="flex flex-wrap items-center gap-2">
             {#if confirmingForget}
-                <span class="text-sm text-gray-700 dark:text-gray-300"
+                <span class="text-sm text-neutral-700 dark:text-neutral-300"
                     >Forget {server.host} on this device?</span
                 >
                 <button
@@ -238,7 +238,7 @@
         </div>
         {#if confirmingForget}
             <p
-                class="w-full text-sm text-gray-500 dark:text-gray-400"
+                class="w-full text-sm text-neutral-500 dark:text-neutral-400"
                 data-testid="sync-server-forget-consequence"
             >
                 {managed
@@ -255,7 +255,7 @@
     >
         <h4
             id="sync-account-heading"
-            class="mb-3 text-base font-semibold text-gray-950 dark:text-white"
+            class="mb-3 text-base font-semibold text-neutral-950 dark:text-white"
         >
             Account on {server.host}
         </h4>
@@ -263,7 +263,7 @@
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <p
-                        class="text-sm font-semibold text-gray-950 dark:text-white"
+                        class="text-sm font-semibold text-neutral-950 dark:text-white"
                     >
                         {account.authentication.mode === "managed"
                             ? "Signed in"
@@ -272,7 +272,7 @@
                             "Sync account"}
                     </p>
                     {#if account.principal.name && account.principal.email}
-                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                        <p class="text-sm text-neutral-500 dark:text-neutral-400">
                             {account.principal.email}
                         </p>
                     {/if}
@@ -283,7 +283,7 @@
                      the Sync Server's dashboard shows them. -->
                 <p
                     data-testid="sync-plan-line"
-                    class="mt-3 text-sm font-medium text-gray-700 dark:text-gray-200"
+                    class="mt-3 text-sm font-medium text-neutral-700 dark:text-neutral-200"
                 >
                     {planLabel(account.entitlement.plan)} Plan
                 </p>
@@ -297,7 +297,7 @@
                 {#if !isServerAllowance(account.entitlement.plan) && notice !== "pending"}
                     <p
                         data-testid="sync-plan-line"
-                        class="mt-3 text-sm font-medium text-gray-700 dark:text-gray-200"
+                        class="mt-3 text-sm font-medium text-neutral-700 dark:text-neutral-200"
                     >
                         {planStatusLine(account.entitlement, formatDay)}
                     </p>
@@ -306,7 +306,7 @@
                     data-testid="sync-usage-line"
                     class="{isServerAllowance(account.entitlement.plan)
                         ? 'mt-3'
-                        : 'mt-1'} text-sm text-gray-500 dark:text-gray-400"
+                        : 'mt-1'} text-sm text-neutral-500 dark:text-neutral-400"
                 >
                     {ownedUsageLine(account.entitlement)}
                 </p>
@@ -346,12 +346,12 @@
                          enough to notice, so a fast answer never flashes them. -->
                     <div
                         data-testid="sync-plan-pending"
-                        class="mt-2 min-h-5 text-sm leading-5 text-gray-600 dark:text-gray-300"
+                        class="mt-2 min-h-5 text-sm leading-5 text-neutral-600 dark:text-neutral-300"
                     >
                         {#if showPending}
                             <p role="status" class="flex items-center gap-2">
                                 <svg
-                                    class="h-4 w-4 text-gray-500 motion-safe:animate-spin dark:text-gray-400"
+                                    class="h-4 w-4 text-neutral-500 motion-safe:animate-spin dark:text-neutral-400"
                                     viewBox="0 0 24 24"
                                     fill="none"
                                     aria-hidden="true"
@@ -398,7 +398,7 @@
                 <div
                     role="status"
                     data-testid="sharing-needs-verified-email"
-                    class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm leading-5 text-gray-700 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"
+                    class="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm leading-5 text-neutral-700 dark:border-white/10 dark:bg-white/5 dark:text-neutral-300"
                 >
                     <p>
                         Verify your email address so people can share graphs
@@ -420,7 +420,7 @@
                  so the card does not repeat those. A custom server is left with Forget. -->
             {#if !managed}
                 <p
-                    class="mt-4 border-t border-gray-200 pt-3 text-sm leading-5 text-gray-500 dark:border-white/10 dark:text-gray-400"
+                    class="mt-4 border-t border-neutral-200 pt-3 text-sm leading-5 text-neutral-500 dark:border-white/10 dark:text-neutral-400"
                 >
                     To disconnect this device, use <span class="font-medium"
                         >Forget this server</span
@@ -431,10 +431,10 @@
             {/if}
         {:else if server.authState === "checking"}
             <p
-                class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
+                class="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400"
             >
                 <svg
-                    class="h-4 w-4 text-gray-500 motion-safe:animate-spin dark:text-gray-400"
+                    class="h-4 w-4 text-neutral-500 motion-safe:animate-spin dark:text-neutral-400"
                     viewBox="0 0 24 24"
                     fill="none"
                     aria-hidden="true"
@@ -455,12 +455,12 @@
                 Checking your account on {server.host}…
             </p>
         {:else if server.authState === "signed-out"}
-            <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
+            <p class="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                 {managed
                     ? "You are signed out of EtherPK on this device."
                     : `${server.host} did not accept this device's access token.`}
             </p>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                 {managed
                     ? "Your synced graphs there are hidden until you sign in. Local folder graphs are not affected."
                     : "The token may have been revoked, or it expired. Synced graphs from this server stay hidden until you add a new token."}
@@ -482,7 +482,7 @@
                 >
             {/if}
         {:else if server.authState === "locked"}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 This device's access token for {server.host} is protected by the
                 device's passcode, so your account there is checked once the passcode
                 is entered.
@@ -497,7 +497,7 @@
             <p class="text-sm font-medium text-amber-800 dark:text-amber-200">
                 Could not confirm your account on {server.host}.
             </p>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                 Synced graphs already open in a tab keep working, and your edits
                 there wait on this device until the server responds. Opening a
                 graph needs the server.
@@ -508,7 +508,7 @@
     <section aria-labelledby="sync-keys-heading" class="space-y-4 {CARD}">
         <h4
             id="sync-keys-heading"
-            class="text-base font-semibold text-gray-950 dark:text-white"
+            class="text-base font-semibold text-neutral-950 dark:text-white"
         >
             Encryption Keys for {server.host}
         </h4>
@@ -516,7 +516,7 @@
             <!-- Every key action needs the account, so none is offered before it answers. -->
             <p
                 data-testid="keys-after-connecting"
-                class="text-sm text-gray-500 dark:text-gray-400"
+                class="text-sm text-neutral-500 dark:text-neutral-400"
             >
                 Your Encryption Keys and Recovery Code for {server.host} show here
                 once {managed
@@ -529,7 +529,7 @@
             <div>
                 <p
                     data-testid="regenerate-code-none"
-                    class="text-sm text-gray-500 dark:text-gray-400"
+                    class="text-sm text-neutral-500 dark:text-neutral-400"
                 >
                     No Encryption Keys yet. Your first synced graph on {server.host}
                     creates them, or you can create them now. Nobody can share a
@@ -549,7 +549,7 @@
                  on each device for itself. The heading alone read as if they were on the server. -->
             <p
                 data-testid="keys-where"
-                class="text-sm text-gray-500 dark:text-gray-400"
+                class="text-sm text-neutral-500 dark:text-neutral-400"
             >
                 Your account on {server.host} has its own Encryption Keys. The server
                 stores them sealed and cannot read them. They can be unlocked by
@@ -557,22 +557,22 @@
             </p>
             <div class={SUBSECTION}>
                 <h5 class={SUBHEADING}>Recovery Code</h5>
-                <p class="text-sm mt-1 text-gray-500 dark:text-gray-400">
+                <p class="text-sm mt-1 text-neutral-500 dark:text-neutral-400">
                     Your Recovery Code unlocks your Encryption Keys on a device
                     when no other device of yours is unlocked to approve it. One
                     code covers every synced graph on {server.host}, including
                     graphs you join later.
                 </p>
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                     The server never sees the Recovery Code. <strong
-                        class="font-semibold text-gray-700 dark:text-gray-200"
+                        class="font-semibold text-neutral-700 dark:text-neutral-200"
                         >If you lose it and every unlocked device, nobody can
                         recover your notes. You must keep the Recovery Code safe</strong
                     >. Other Sync Servers have Recovery Codes of their own, and
                     a code saved for one of them does not unlock Encryption Keys
                     for another.
                 </p>
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                     Regenerate the Recovery Code if you did not save it or have
                     lost it. If someone else may have seen it, replace your
                     Encryption Keys below instead. The current code keeps
@@ -589,7 +589,7 @@
             </div>
             <div class={SUBSECTION}>
                 <h5 class={SUBHEADING}>Replace Encryption Keys</h5>
-                <p class="text-sm mt-1 text-gray-500 dark:text-gray-400">
+                <p class="text-sm mt-1 text-neutral-500 dark:text-neutral-400">
                     Replace your Encryption Keys if someone may have copied them
                     or your Recovery Code, or if a device that is still unlocked
                     is lost or no longer yours. You get a new Recovery Code and
@@ -628,7 +628,7 @@
                                 data-testid="replace-keys-cancel"
                                 onkeydown={escapeCancels}
                                 onclick={cancelReplace}
-                                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 hover:text-gray-950 pointer-coarse:min-h-11 dark:text-gray-200 dark:hover:text-white"
+                                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-700 hover:text-neutral-950 pointer-coarse:min-h-11 dark:text-neutral-200 dark:hover:text-white"
                                 >Cancel</button
                             >
                         </div>
@@ -651,7 +651,7 @@
                 <h5 class={SUBHEADING}>Encryption Keys on this device</h5>
                 <p
                     data-testid="keys-state"
-                    class="text-sm mt-1 text-gray-500 dark:text-gray-400"
+                    class="text-sm mt-1 text-neutral-500 dark:text-neutral-400"
                 >
                     {server.vaultUnlocked
                         ? "Encryption Keys are already unlocked on this device."
@@ -659,7 +659,7 @@
                 </p>
                 <p
                     data-testid="keys-help"
-                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                    class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
                 >
                     Your synced graphs on {server.host} open in this browser only
                     while your Encryption Keys are unlocked here. They stay unlocked
@@ -679,7 +679,7 @@
             </div>
             <div class={SUBSECTION}>
                 <h5 class={SUBHEADING}>Your security fingerprint</h5>
-                <p class="text-sm mt-1 text-gray-500 dark:text-gray-400">
+                <p class="text-sm mt-1 text-neutral-500 dark:text-neutral-400">
                     When someone invites you to a graph, they see a fingerprint
                     for your account and are asked to check that it is yours.
                     Read them this one in person, or on a call you trust. The
@@ -688,7 +688,7 @@
                 {#if server.fingerprint}
                     <code
                         data-testid="own-fingerprint"
-                        class="mt-2 block rounded-lg bg-gray-100 px-4 py-3 text-center font-mono text-sm tracking-wide break-all text-gray-950 dark:bg-white/5 dark:text-gray-100"
+                        class="mt-2 block rounded-lg bg-neutral-100 px-4 py-3 text-center font-mono text-sm tracking-wide break-all text-neutral-950 dark:bg-white/5 dark:text-neutral-100"
                         >{server.fingerprint}</code
                     >
                 {:else}
@@ -724,14 +724,14 @@
                 Danger zone
             </h4>
             <h5 class={SUBHEADING}>Reset Encryption Keys</h5>
-            <p class="text-sm text-gray-500 dark:text-gray-400">
+            <p class="text-sm text-neutral-500 dark:text-neutral-400">
                 Reset only if you cannot unlock your Encryption Keys anywhere,
                 because you have lost your Recovery Code and no device of yours
                 is still unlocked. A reset deletes your Encryption Keys on {server.host},
                 and creating new ones afterwards gives you a new Recovery Code.
             </p>
-            <p class="text-sm text-gray-500 dark:text-gray-400">
-                <strong class="font-semibold text-gray-700 dark:text-gray-200"
+            <p class="text-sm text-neutral-500 dark:text-neutral-400">
+                <strong class="font-semibold text-neutral-700 dark:text-neutral-200"
                     >Graphs you own on {server.host} will be deleted PERMANENTLY,
                     and you leave the graphs other people own that are shared with
                     you.</strong
@@ -740,7 +740,7 @@
                 reset lists them and offers that. A reset cannot be undone. Other
                 Sync Servers are not affected.
             </p>
-            <p class="text-sm text-gray-500 dark:text-gray-400">
+            <p class="text-sm text-neutral-500 dark:text-neutral-400">
                 A reset does not fix a problem on one device. A graph marked
                 <span class="font-medium">Not on this device</span> comes back
                 with

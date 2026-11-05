@@ -621,8 +621,8 @@
         return publications.map((p) => p.name).join(", ");
     }
 
-    const inputClass = "block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100";
-    const labelClass = "mb-1 block text-sm font-medium text-gray-500 dark:text-gray-400";
+    const inputClass = "block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100";
+    const labelClass = "mb-1 block text-sm font-medium text-neutral-500 dark:text-neutral-400";
     // EtherPK's control classes (controls.css, ADR 0151), which are disabled by colour rather than
     // opacity: a faded light button on the dark surface left its label unreadable ("Publish to
     // folder" with no folder chosen read as a blank grey block).
@@ -631,13 +631,13 @@
     const dangerButton = "gk-button gk-button--danger";
     const linkButton = "gk-link text-sm";
     /** The same link while it cannot be followed: the text colour, underlined, no hover change. */
-    const linkButtonUnavailable = "text-sm font-medium text-gray-700 dark:text-gray-300 underline underline-offset-2 cursor-default";
-    const helpClass = "mt-1 text-sm text-gray-500 dark:text-gray-400";
+    const linkButtonUnavailable = "text-sm font-medium text-neutral-700 dark:text-neutral-300 underline underline-offset-2 cursor-default";
+    const helpClass = "mt-1 text-sm text-neutral-500 dark:text-neutral-400";
     const warnClass = "text-amber-800 dark:text-amber-200";
 </script>
 
 <div class="space-y-5" data-testid="publish-tab">
-    <p class="text-sm text-gray-600 dark:text-gray-400">
+    <p class="text-sm text-neutral-600 dark:text-neutral-400">
         A publication is a named selection of public documents rendered as one website, into a
         folder or a GitHub repository that your host deploys from. A document is published when its frontmatter says
         <code>public: true</code> and names the publication in <code>publications</code>
@@ -650,7 +650,7 @@
              to find the publications, which on a large graph is seconds, not a blink. -->
         <div role="status" class="space-y-2 py-2" data-testid="publish-loading">
             <LoadingSweep label="Reading the graph" />
-            <p class="text-sm text-gray-500 dark:text-gray-400">Reading the graph…</p>
+            <p class="text-sm text-neutral-500 dark:text-neutral-400">Reading the graph…</p>
         </div>
     {:else if loadError}
         <div role="alert" class="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-800 dark:text-red-200">
@@ -676,10 +676,10 @@
         {#if showGitHub}
             <!-- One token for every repository the person publishes to, kept with their settings
                  rather than the graph (ADR 0152). Its value is never read back into the page. -->
-            <section class="space-y-2 rounded-lg border border-gray-200 dark:border-gray-800 p-3" aria-labelledby="publish-github-heading" data-testid="publish-github">
-                <h3 id="publish-github-heading" class="text-sm font-semibold text-gray-950 dark:text-gray-100">GitHub</h3>
+            <section class="space-y-2 rounded-lg border border-neutral-200 dark:border-neutral-800 p-3" aria-labelledby="publish-github-heading" data-testid="publish-github">
+                <h3 id="publish-github-heading" class="text-sm font-semibold text-neutral-950 dark:text-neutral-100">GitHub</h3>
                 {#if token.set && !replacingToken}
-                    <p class="text-sm text-gray-950 dark:text-gray-100" data-testid="publish-github-token-state">
+                    <p class="text-sm text-neutral-950 dark:text-neutral-100" data-testid="publish-github-token-state">
                         A GitHub token is set{token.follows ? ". It follows you to your other devices through your account." : " on this device."}
                     </p>
                     {#if tokenRefused}
@@ -689,7 +689,7 @@
                     {/if}
                     <div class="flex flex-wrap items-center gap-2">
                         {#if forgetTokenArmed}
-                            <span class="text-sm text-gray-950 dark:text-gray-100">Forget the token on this device{token.follows ? " and your other devices" : ""}? Publishing to GitHub then needs a new one.</span>
+                            <span class="text-sm text-neutral-950 dark:text-neutral-100">Forget the token on this device{token.follows ? " and your other devices" : ""}? Publishing to GitHub then needs a new one.</span>
                             <button type="button" class={dangerButton} onclick={forgetToken} data-testid="publish-github-forget-confirm">Forget token</button>
                             <button type="button" class={secondaryButton} onclick={() => (forgetTokenArmed = false)}>Keep</button>
                         {:else}
@@ -743,8 +743,8 @@
                     </form>
                 {/if}
                 <details class="text-sm" data-testid="publish-github-steps">
-                    <summary class="cursor-pointer font-medium text-gray-700 dark:text-gray-300">How to make a token</summary>
-                    <ol class="mt-2 list-decimal space-y-1 pl-5 text-gray-600 dark:text-gray-400">
+                    <summary class="cursor-pointer font-medium text-neutral-700 dark:text-neutral-300">How to make a token</summary>
+                    <ol class="mt-2 list-decimal space-y-1 pl-5 text-neutral-600 dark:text-neutral-400">
                         <li>On GitHub, open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" class="underline">Settings → Developer settings → Fine-grained tokens → Generate new token</a>.</li>
                         <li>Give it a name and an expiry date. When it expires, make a new one and replace it here.</li>
                         <li>For Resource owner, choose the account or organisation that owns the site's repository. An organisation's owners may have to approve the token before it works.</li>
@@ -762,7 +762,7 @@
 
         <section class="space-y-4" aria-labelledby="publications-heading">
             <div class="flex items-center justify-between gap-3">
-                <h3 id="publications-heading" class="text-sm font-semibold text-gray-950 dark:text-gray-100">Publications</h3>
+                <h3 id="publications-heading" class="text-sm font-semibold text-neutral-950 dark:text-neutral-100">Publications</h3>
                 {#if !creating}
                     <button type="button" class={secondaryButton} data-testid="publish-new" onclick={() => (creating = true)}>New publication</button>
                 {/if}
@@ -770,7 +770,7 @@
 
             {#if creating}
                 <form
-                    class="space-y-3 rounded-lg border border-gray-200 dark:border-gray-800 p-3"
+                    class="space-y-3 rounded-lg border border-neutral-200 dark:border-neutral-800 p-3"
                     data-testid="publish-new-form"
                     onsubmit={(e) => {
                         e.preventDefault();
@@ -780,7 +780,7 @@
                     <div>
                         <label for="publish-new-title" class={labelClass}>Name</label>
                         <input id="publish-new-title" class={inputClass} bind:value={newTitle} placeholder="Docs Site" data-testid="publish-new-title" />
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Becomes the title of the publication page and of the site.</p>
+                        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Becomes the title of the publication page and of the site.</p>
                     </div>
                     <div>
                         <label for="publish-new-id" class={labelClass}>Id</label>
@@ -795,7 +795,7 @@
                             placeholder="docs"
                             data-testid="publish-new-id"
                         />
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">What documents name in <code>publications: [{effectiveId || "docs"}]</code>. Lower-case letters, digits and hyphens - fixed once documents use it.</p>
+                        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">What documents name in <code>publications: [{effectiveId || "docs"}]</code>. Lower-case letters, digits and hyphens - fixed once documents use it.</p>
                     </div>
                     <div class="grid gap-3 sm:grid-cols-2">
                         <div>
@@ -817,12 +817,12 @@
                         <div>
                             <label for="publish-new-home" class={labelClass}>Home page (optional)</label>
                             <input id="publish-new-home" class={inputClass} bind:value={newHome} placeholder="Welcome" data-testid="publish-new-home" />
-                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">The document whose content is the front page. Without one the front page lists the pages.</p>
+                            <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">The document whose content is the front page. Without one the front page lists the pages.</p>
                         </div>
                         <div>
                             <label for="publish-new-url" class={labelClass}>Site address (optional)</label>
                             <input id="publish-new-url" class={inputClass} bind:value={newUrl} placeholder="https://docs.example.com" data-testid="publish-new-url" />
-                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Needed for the sitemap and the feed.</p>
+                            <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Needed for the sitemap and the feed.</p>
                         </div>
                     </div>
                     {#if createError}<p role="alert" class="text-sm text-red-700 dark:text-red-300" data-testid="publish-new-error">{createError}</p>{/if}
@@ -834,7 +834,7 @@
             {/if}
 
             {#if graph.publications.length === 0 && !creating}
-                <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="publish-empty">
+                <p class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="publish-empty">
                     No publication yet. Create one, mark documents public, and publish to a folder or a zip.
                 </p>
             {/if}
@@ -856,11 +856,11 @@
                 {@const themeDirty = draft ? themeRefOf(draft) !== p.theme : false}
                 {@const problems = draft ? pageProblems(p, draft, themeSlots) : []}
                 {@const home = draft ? homeProblem(p, draft) : null}
-                <article class="space-y-3 rounded-lg border border-gray-200 dark:border-gray-800 p-3" data-testid="publication-{p.id}" aria-busy={working ? "true" : "false"}>
+                <article class="space-y-3 rounded-lg border border-neutral-200 dark:border-neutral-800 p-3" data-testid="publication-{p.id}" aria-busy={working ? "true" : "false"}>
                     <div class="flex flex-wrap items-baseline justify-between gap-2">
                         <div>
-                            <h4 class="text-sm font-semibold text-gray-950 dark:text-gray-100">{p.name}</h4>
-                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                            <h4 class="text-sm font-semibold text-neutral-950 dark:text-neutral-100">{p.name}</h4>
+                            <p class="text-sm text-neutral-500 dark:text-neutral-400">
                                 <code>{p.id}</code>
                                 {#if p.url}· <a href={p.url} rel="noopener" target="_blank" class="underline">{p.url}</a>{/if}
                             </p>
@@ -913,7 +913,7 @@
                                         <button type="button" class={!!working || themeDirty ? linkButtonUnavailable : linkButton} onclick={() => void customise(p)} disabled={!!working || themeDirty} data-testid="publication-{p.id}-customise">Customise theme…</button>
                                     {/if}
                                     {#if themeDirty}
-                                        <span class="text-sm text-gray-500 dark:text-gray-400">Save the theme change first.</span>
+                                        <span class="text-sm text-neutral-500 dark:text-neutral-400">Save the theme change first.</span>
                                     {/if}
                                 </div>
                             </div>
@@ -959,7 +959,7 @@
                                     disabled={!!working}
                                     data-testid="publication-{p.id}-url"
                                 />
-                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Needed for the sitemap and the feed.</p>
+                                <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Needed for the sitemap and the feed.</p>
                             </div>
                             {#if draft.kind === "blog"}
                                 <div>
@@ -975,7 +975,7 @@
                                         disabled={!!working}
                                         data-testid="publication-{p.id}-recent"
                                     />
-                                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                                    <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                                         The latest posts, newest first. Every post is on <code>posts.html</code>, by year - add <code>[All posts](posts.html)</code> to the outline to put it in the menu.
                                     </p>
                                 </div>
@@ -984,8 +984,8 @@
 
                         {#if themeSlots && themeSlots.length > 0}
                             <details class="text-sm">
-                                <summary class="cursor-pointer font-medium text-gray-700 dark:text-gray-300">Includes ({Object.keys(p.includes).length} of {themeSlots.length} set)</summary>
-                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Names of pages whose markdown or HTML body fills each slot. A page's wikilinks resolve like any other - the <code>styles</code> slot takes the page's first <code>css</code> fenced code block. A page named here has to be public and in this publication like any other content, and is then a snippet: it fills its slot and is not published as a page of its own.</p>
+                                <summary class="cursor-pointer font-medium text-neutral-700 dark:text-neutral-300">Includes ({Object.keys(p.includes).length} of {themeSlots.length} set)</summary>
+                                <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Names of pages whose markdown or HTML body fills each slot. A page's wikilinks resolve like any other - the <code>styles</code> slot takes the page's first <code>css</code> fenced code block. A page named here has to be public and in this publication like any other content, and is then a snippet: it fills its slot and is not published as a page of its own.</p>
                                 <div class="mt-2 grid gap-2 sm:grid-cols-2">
                                     {#each themeSlots as slot (slot.name)}
                                         {@const named = (draft.includes[slot.name] ?? "").trim()}
@@ -1050,7 +1050,7 @@
                         <div class="flex flex-wrap items-center gap-2">
                             <button type="button" class={primaryButton} onclick={() => void save(p)} disabled={!!working || !changes} data-testid="publication-{p.id}-save">{working === "Saving" ? "Saving…" : "Save changes"}</button>
                             <button type="button" class={secondaryButton} onclick={() => discard(p)} disabled={!!working || !changes} data-testid="publication-{p.id}-discard">Discard</button>
-                            <span role="status" class="text-sm {changes && working !== 'Saving' ? 'text-amber-800 dark:text-amber-200' : 'text-gray-500 dark:text-gray-400'}" data-testid="publication-{p.id}-save-state">
+                            <span role="status" class="text-sm {changes && working !== 'Saving' ? 'text-amber-800 dark:text-amber-200' : 'text-neutral-500 dark:text-neutral-400'}" data-testid="publication-{p.id}-save-state">
                                 {#if working === "Saving"}Saving…{:else if changes}Unsaved changes{:else if justSaved === p.id}Saved{/if}
                             </span>
                             {#if working === "Saving"}
@@ -1060,29 +1060,29 @@
                         </div>
                     {/if}
 
-                    <div class="space-y-3 rounded-md bg-gray-50 dark:bg-white/5 p-2" data-testid="publication-{p.id}-destination">
+                    <div class="space-y-3 rounded-md bg-neutral-50 dark:bg-white/5 p-2" data-testid="publication-{p.id}-destination">
                         {#if folderSupported}
                             <!-- One destination per device: picking only shows the other's controls; setting
                                  one up (choosing a folder, saving a repository) replaces the remembered one. -->
                             <fieldset>
                                 <legend class={labelClass}>Publish to</legend>
                                 <div class="flex flex-wrap gap-x-5 gap-y-2">
-                                    <label class="inline-flex items-center gap-2 text-sm text-gray-950 dark:text-gray-100">
+                                    <label class="inline-flex items-center gap-2 text-sm text-neutral-950 dark:text-neutral-100">
                                         <input type="radio" name="publication-{p.id}-destination" value="folder" checked={choice === "folder"} onchange={() => (choices = { ...choices, [p.id]: "folder" })} disabled={!!working} data-testid="publication-{p.id}-destination-folder" />
                                         A folder on this device
                                     </label>
-                                    <label class="inline-flex items-center gap-2 text-sm text-gray-950 dark:text-gray-100">
+                                    <label class="inline-flex items-center gap-2 text-sm text-neutral-950 dark:text-neutral-100">
                                         <input type="radio" name="publication-{p.id}-destination" value="github" checked={choice === "github"} onchange={() => (choices = { ...choices, [p.id]: "github" })} disabled={!!working} data-testid="publication-{p.id}-destination-github" />
                                         A GitHub repository
                                     </label>
                                 </div>
                             </fieldset>
                         {:else}
-                            <p class="text-sm text-gray-600 dark:text-gray-400">This browser cannot write a folder, so the site goes to a GitHub repository or into a zip. Chrome or Edge on a desktop, or Chrome on Android, can also publish straight into a folder.</p>
+                            <p class="text-sm text-neutral-600 dark:text-neutral-400">This browser cannot write a folder, so the site goes to a GitHub repository or into a zip. Chrome or Edge on a desktop, or Chrome on Android, can also publish straight into a folder.</p>
                         {/if}
 
                         {#if choice === "folder"}
-                            <p class="text-sm text-gray-950 dark:text-gray-100" data-testid="publication-{p.id}-folder">
+                            <p class="text-sm text-neutral-950 dark:text-neutral-100" data-testid="publication-{p.id}-folder">
                                 {#if folder}
                                     Folder: <strong>{folder.folder}</strong>{#if folder.publishedAt} · last published {new Date(folder.publishedAt).toLocaleString()}{/if}
                                     <button type="button" class={linkButton + " ml-2"} onclick={() => void forgetDestination(p)} disabled={!!working}>Forget</button>
@@ -1098,7 +1098,7 @@
                                 <button type="button" class={secondaryButton} onclick={() => void publish(p, "zip")} disabled={!!working} data-testid="publication-{p.id}-zip">{working === "Building the zip" ? "Building…" : "Download zip"}</button>
                             </div>
                             {#if !folder}
-                                <p class="text-sm text-gray-500 dark:text-gray-400">Choose a folder of its own to publish into, outside any graph. The same folder is reused on this device each time.</p>
+                                <p class="text-sm text-neutral-500 dark:text-neutral-400">Choose a folder of its own to publish into, outside any graph. The same folder is reused on this device each time.</p>
                             {/if}
                         {:else}
                             <form
@@ -1154,7 +1154,7 @@
                                     {#if (repositoryCheck === "empty" || repositoryCheck === "branch-missing") && savedRepository && !repositoryUnsaved}
                                         <button type="button" class={secondaryButton} onclick={() => void createBranch(p)} disabled={!!working} data-testid="publication-{p.id}-create-branch">{working === "Creating the branch" ? "Creating…" : `Create branch ${savedRepository.branch}`}</button>
                                     {/if}
-                                    <span role="status" class="text-sm {repositoryUnsaved ? 'text-amber-800 dark:text-amber-200' : 'text-gray-600 dark:text-gray-400'}" data-testid="publication-{p.id}-repository-state">
+                                    <span role="status" class="text-sm {repositoryUnsaved ? 'text-amber-800 dark:text-amber-200' : 'text-neutral-600 dark:text-neutral-400'}" data-testid="publication-{p.id}-repository-state">
                                         {#if working === "Checking"}
                                             Checking {repositoryDraft.repository.trim()}…
                                         {:else if repositoryUnsaved}
@@ -1206,13 +1206,13 @@
                                 {/if}
                             </div>
                             {#if !savedRepository}
-                                <p class="text-sm text-gray-500 dark:text-gray-400">
+                                <p class="text-sm text-neutral-500 dark:text-neutral-400">
                                     Save a repository to publish to it. It is remembered on this device{folder ? `, in place of the folder ${folder.folder}` : ""}.
                                 </p>
                             {/if}
                         {/if}
                         {#if changes}
-                            <p class="text-sm text-gray-500 dark:text-gray-400">A publish uses the saved settings, not the unsaved edits above.</p>
+                            <p class="text-sm text-neutral-500 dark:text-neutral-400">A publish uses the saved settings, not the unsaved edits above.</p>
                         {/if}
                     </div>
 
@@ -1224,12 +1224,12 @@
                         {@const r = outcome.report}
                         <div class="space-y-1 text-sm" data-testid="publication-{p.id}-report" role="status">
                             {#if r.ok && outcome.repository && outcome.commit === null}
-                                <p class="text-gray-950 dark:text-gray-100" data-testid="publication-{p.id}-unchanged">
+                                <p class="text-neutral-950 dark:text-neutral-100" data-testid="publication-{p.id}-unchanged">
                                     Nothing had changed on {outcome.repository.owner}/{outcome.repository.name}@{outcome.repository.branch}, so no commit was made. The site has
                                     {r.included.length} document{r.included.length === 1 ? "" : "s"}{#if r.warnings.length > 0}, and the report {r.warnings.length} warning{r.warnings.length === 1 ? "" : "s"}{/if}.
                                 </p>
                             {:else if r.ok}
-                                <p class="text-gray-950 dark:text-gray-100">
+                                <p class="text-neutral-950 dark:text-neutral-100">
                                     Published {r.included.length} document{r.included.length === 1 ? "" : "s"}
                                     {#if outcome.target === "zip"}as a zip{:else if outcome.repository && outcome.written}to {outcome.repository.owner}/{outcome.repository.name}@{outcome.repository.branch} ({outcome.written.written} written{#if outcome.written.deleted.length > 0}, {outcome.written.deleted.length} removed{/if}){:else if outcome.written}to the folder ({outcome.written.written} written, {outcome.written.unchanged} unchanged{#if outcome.written.deleted.length > 0}, {outcome.written.deleted.length} removed{/if}){/if}
                                     with the theme {r.theme?.source === "graph" ? themeTitle(p.theme) : themeTitle(r.theme?.name ?? p.theme)}{#if r.warnings.length > 0}, {r.warnings.length} warning{r.warnings.length === 1 ? "" : "s"}{/if}.
@@ -1244,13 +1244,13 @@
                                 {expandedReport === p.id ? "Hide report" : "Show report"}
                             </button>
                             {#if expandedReport === p.id}
-                                <div class="space-y-2 rounded-md border border-gray-200 dark:border-gray-800 p-2" data-testid="publication-{p.id}-report-detail">
+                                <div class="space-y-2 rounded-md border border-neutral-200 dark:border-neutral-800 p-2" data-testid="publication-{p.id}-report-detail">
                                     {#each r.warnings as w (w.code + w.message)}
                                         <p class="text-amber-800 dark:text-amber-200">{w.message}</p>
                                     {/each}
                                     {#if r.excluded.length > 0}
-                                        <p class="text-gray-700 dark:text-gray-300">Left out:</p>
-                                        <ul class="list-disc pl-5 text-gray-600 dark:text-gray-400">
+                                        <p class="text-neutral-700 dark:text-neutral-300">Left out:</p>
+                                        <ul class="list-disc pl-5 text-neutral-600 dark:text-neutral-400">
                                             {#each r.excluded as e (e.concept)}
                                                 <li>
                                                     <button type="button" class={linkButton} onclick={() => onopenpage(e.concept)}>{e.concept}</button>
@@ -1260,20 +1260,20 @@
                                         </ul>
                                     {/if}
                                     {#if r.missingLinks.length > 0}
-                                        <p class="text-gray-700 dark:text-gray-300">Links to pages that are not on the site:</p>
-                                        <ul class="list-disc pl-5 text-gray-600 dark:text-gray-400">
+                                        <p class="text-neutral-700 dark:text-neutral-300">Links to pages that are not on the site:</p>
+                                        <ul class="list-disc pl-5 text-neutral-600 dark:text-neutral-400">
                                             {#each r.missingLinks as l (l.from + "→" + l.concept)}
                                                 <li>{l.from} → {l.concept} {#if l.status === "elsewhere"}(published in {l.publishedIn?.join(", ")}, not here){:else if l.status === "private"}(not public){:else}(no such document){/if}</li>
                                             {/each}
                                         </ul>
                                     {/if}
                                     {#if r.assets.missing.length > 0}
-                                        <p class="text-gray-700 dark:text-gray-300">Assets the graph does not hold: {r.assets.missing.map((a) => `${a.name} (${a.from})`).join(", ")}</p>
+                                        <p class="text-neutral-700 dark:text-neutral-300">Assets the graph does not hold: {r.assets.missing.map((a) => `${a.name} (${a.from})`).join(", ")}</p>
                                     {/if}
                                     {#if r.external.length > 0}
-                                        <p class="text-gray-700 dark:text-gray-300">Loaded from elsewhere by the theme or an include: {r.external.join(", ")}</p>
+                                        <p class="text-neutral-700 dark:text-neutral-300">Loaded from elsewhere by the theme or an include: {r.external.join(", ")}</p>
                                     {/if}
-                                    <p class="text-gray-600 dark:text-gray-400">Includes: {r.includes.map((i) => `${i.name} (${i.source === "page" ? i.concept : "theme"})`).join(", ") || "none"}.</p>
+                                    <p class="text-neutral-600 dark:text-neutral-400">Includes: {r.includes.map((i) => `${i.name} (${i.source === "page" ? i.concept : "theme"})`).join(", ") || "none"}.</p>
                                 </div>
                             {/if}
                         </div>
@@ -1291,10 +1291,10 @@
                         {orphans === 1 ? "One document is" : `${orphans} documents are`} public but in no publication. Name a publication in
                         {orphans === 1 ? "its" : "their"} frontmatter (right-click the document → <strong>Publish…</strong>), or make a publication that takes every public document.
                     </p>
-                    <ul class="max-h-48 overflow-y-auto rounded-md border border-amber-200 dark:border-amber-900 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800" aria-label="Public documents in no publication">
+                    <ul class="max-h-48 overflow-y-auto rounded-md border border-amber-200 dark:border-amber-900 bg-white dark:bg-neutral-900 divide-y divide-neutral-100 dark:divide-neutral-800" aria-label="Public documents in no publication">
                         {#each orphanList as concept (concept)}
                             <li>
-                                <button type="button" class="block w-full truncate px-3 py-1.5 text-left text-sm font-medium text-agent-600 dark:text-agent-300 hover:bg-gray-50 dark:hover:bg-white/5 hover:underline" title={concept} onclick={() => onopenpage(concept)}>{concept}</button>
+                                <button type="button" class="block w-full truncate px-3 py-1.5 text-left text-sm font-medium text-(--gk-accent) hover:bg-neutral-50 dark:hover:bg-white/5 hover:underline" title={concept} onclick={() => onopenpage(concept)}>{concept}</button>
                             </li>
                         {/each}
                     </ul>
@@ -1304,18 +1304,18 @@
 
         <section class="space-y-3" aria-labelledby="themes-heading">
             <div class="flex items-center justify-between gap-3">
-                <h3 id="themes-heading" class="text-sm font-semibold text-gray-950 dark:text-gray-100">Themes in this graph</h3>
+                <h3 id="themes-heading" class="text-sm font-semibold text-neutral-950 dark:text-neutral-100">Themes in this graph</h3>
                 {#if !addingTheme}
                     <button type="button" class={secondaryButton} data-testid="theme-add" onclick={() => (addingTheme = true)}>Add theme</button>
                 {/if}
             </div>
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 A theme is templates, a stylesheet and a search script, never code that runs in EtherPK. The bundled themes ship with the app - a copy in the graph can be edited in the Theme editor and travels with the graph.
             </p>
 
             {#if addingTheme}
                 <form
-                    class="space-y-3 rounded-lg border border-gray-200 dark:border-gray-800 p-3"
+                    class="space-y-3 rounded-lg border border-neutral-200 dark:border-neutral-800 p-3"
                     data-testid="theme-add-form"
                     onsubmit={(e) => {
                         e.preventDefault();
@@ -1365,16 +1365,16 @@
             {/if}
 
             {#if themes.length === 0 && !addingTheme}
-                <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="themes-empty">No theme has been copied into this graph - the publications use the bundled ones.</p>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="themes-empty">No theme has been copied into this graph - the publications use the bundled ones.</p>
             {/if}
             <ul class="space-y-2">
                 {#each themes as t (t.id)}
                     {@const users = usedBy(t.id)}
                     {@const drafted = draftedBy(t.id)}
-                    <li class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 dark:border-gray-800 p-2 text-sm" data-testid="theme-{t.id}">
+                    <li class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-neutral-200 dark:border-neutral-800 p-2 text-sm" data-testid="theme-{t.id}">
                         <div>
-                            <span class="font-medium text-gray-950 dark:text-gray-100">{t.name}</span>
-                            <span class="text-gray-500 dark:text-gray-400"> · <code>{t.id}</code>{#if t.origin} · from {t.origin}{/if}{#if users.length > 0} · used by {listNames(users)}{/if}</span>
+                            <span class="font-medium text-neutral-950 dark:text-neutral-100">{t.name}</span>
+                            <span class="text-neutral-500 dark:text-neutral-400"> · <code>{t.id}</code>{#if t.origin} · from {t.origin}{/if}{#if users.length > 0} · used by {listNames(users)}{/if}</span>
                         </div>
                         <div class="flex flex-wrap gap-2">
                             <button type="button" class={secondaryButton} onclick={() => onopentheme(t.id)} data-testid="theme-{t.id}-open">Open editor</button>
@@ -1397,9 +1397,9 @@
                         </div>
                         {#if deleteThemeArmed !== t.id}
                             {#if users.length > 0}
-                                <p class="w-full text-sm text-gray-500 dark:text-gray-400" data-testid="theme-{t.id}-in-use">In use by {listNames(users)}, so it cannot be deleted - point {users.length === 1 ? "that publication" : "those publications"} at another theme and save first.</p>
+                                <p class="w-full text-sm text-neutral-500 dark:text-neutral-400" data-testid="theme-{t.id}-in-use">In use by {listNames(users)}, so it cannot be deleted - point {users.length === 1 ? "that publication" : "those publications"} at another theme and save first.</p>
                             {:else if drafted.length > 0}
-                                <p class="w-full text-sm text-gray-500 dark:text-gray-400" data-testid="theme-{t.id}-in-draft">Selected in the unsaved changes of {listNames(drafted)} - save or discard them first.</p>
+                                <p class="w-full text-sm text-neutral-500 dark:text-neutral-400" data-testid="theme-{t.id}-in-draft">Selected in the unsaved changes of {listNames(drafted)} - save or discard them first.</p>
                             {/if}
                         {/if}
                     </li>

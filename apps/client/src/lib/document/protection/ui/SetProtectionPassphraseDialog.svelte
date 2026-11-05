@@ -85,7 +85,7 @@
     onsubmit={submit}
 >
     {#snippet body()}
-        <p class="text-sm text-gray-600 dark:text-gray-400">
+        <p class="text-sm text-neutral-600 dark:text-neutral-400">
             {#if concept}
                 Before <strong>{concept}</strong> can be protected, this graph needs a passphrase.
             {:else}
@@ -95,7 +95,7 @@
         </p>
 
         <div>
-            <label for="protection-passphrase" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">Passphrase</label>
+            <label for="protection-passphrase" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">Passphrase</label>
             <input
                 id="protection-passphrase"
                 type="password"
@@ -104,9 +104,9 @@
                 autocomplete="new-password"
                 aria-invalid={error ? "true" : undefined}
                 aria-describedby={error ? errorId : undefined}
-                class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:outline-none focus:ring-1 {error
+                class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {error
                     ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 dark:border-gray-700 focus:border-gray-950 dark:focus:border-gray-400 focus:ring-gray-950 dark:focus:ring-gray-400'}"
+                    : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
             />
             {#if strength}
                 <p
@@ -123,14 +123,14 @@
         </div>
 
         <div>
-            <label for="protection-passphrase-confirm" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">Confirm passphrase</label>
+            <label for="protection-passphrase-confirm" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">Confirm passphrase</label>
             <input
                 id="protection-passphrase-confirm"
                 type="password"
                 bind:value={confirmation}
                 data-testid="protection-passphrase-confirm"
                 autocomplete="new-password"
-                class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:outline-none focus:ring-1 focus:border-gray-950 dark:focus:border-gray-400 focus:ring-gray-950 dark:focus:ring-gray-400"
+                class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400"
             />
         </div>
 
@@ -151,7 +151,7 @@
             </label>
         </div>
 
-        <p class="text-sm text-gray-600 dark:text-gray-400">
+        <p class="text-sm text-neutral-600 dark:text-neutral-400">
             Once this is set, add a second device. A device with a passkey bound to it can still
             unlock if you forget the passphrase, and let you choose a new one. It is the closest
             thing to a backup there is.
@@ -163,12 +163,12 @@
     {/snippet}
 
     {#snippet footer()}
-        <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+        <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
         <button
             type="submit"
             disabled={busy}
             data-testid="protection-passphrase-submit"
-            class="min-w-28 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40"
+            class="min-w-28 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
         >{busy ? "Setting up…" : "Set passphrase"}</button>
     {/snippet}
 </Modal>

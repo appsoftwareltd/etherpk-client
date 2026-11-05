@@ -669,9 +669,9 @@
               : "None of your Sync Servers can take a new graph now. Each one's group below says why.",
     );
     const SECONDARY_BUTTON =
-        "inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 pointer-coarse:min-h-11 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5";
+        "inline-flex items-center justify-center rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 pointer-coarse:min-h-11 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5";
     /** The rule between the Sync tab's top-level sections. */
-    const SECTION_RULE = "border-gray-200 dark:border-white/10";
+    const SECTION_RULE = "border-neutral-200 dark:border-white/10";
 
     /**
      * What this tab has put back from the device's safety copy after the browser dropped
@@ -3707,25 +3707,25 @@
     <div data-testid="graphs-loading" class="space-y-3" role="status">
         <span class="sr-only">{label}</span>
         <div
-            class="h-7 w-40 rounded-md bg-gray-200 motion-safe:animate-pulse dark:bg-white/10"
+            class="h-7 w-40 rounded-md bg-neutral-200 motion-safe:animate-pulse dark:bg-white/10"
             aria-hidden="true"
         ></div>
         <div
-            class="divide-y divide-gray-200 overflow-hidden rounded-xl border border-gray-200 bg-white dark:divide-white/10 dark:border-white/10 dark:bg-white/5"
+            class="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white dark:divide-white/10 dark:border-white/10 dark:bg-white/5"
             aria-hidden="true"
         >
             {#each [0, 1, 2] as row (row)}
                 <div class="flex items-center gap-3 px-4 py-3">
                     <div class="flex-1 space-y-2">
                         <div
-                            class="h-4 w-48 max-w-full rounded bg-gray-200 motion-safe:animate-pulse dark:bg-white/10"
+                            class="h-4 w-48 max-w-full rounded bg-neutral-200 motion-safe:animate-pulse dark:bg-white/10"
                         ></div>
                         <div
-                            class="h-4 w-28 rounded bg-gray-100 motion-safe:animate-pulse dark:bg-white/5"
+                            class="h-4 w-28 rounded bg-neutral-100 motion-safe:animate-pulse dark:bg-white/5"
                         ></div>
                     </div>
                     <div
-                        class="h-8 w-20 rounded-lg bg-gray-200 motion-safe:animate-pulse dark:bg-white/10"
+                        class="h-8 w-20 rounded-lg bg-neutral-200 motion-safe:animate-pulse dark:bg-white/10"
                     ></div>
                 </div>
             {/each}
@@ -3754,7 +3754,7 @@
 
 <div class="mx-auto max-w-5xl px-4 py-8 space-y-6">
     <header class="flex min-h-9 flex-wrap items-center justify-between gap-3">
-        <h1 class="text-2xl font-semibold text-gray-950 dark:text-white">
+        <h1 class="text-2xl font-semibold text-neutral-950 dark:text-white">
             Graphs
         </h1>
         <!-- Offered once the page knows what this browser holds: before then, which actions apply
@@ -3783,7 +3783,7 @@
                         : undefined}
                     aria-busy={createPending}
                     title={createDisabledReason ?? undefined}
-                    class="aria-busy:cursor-progress disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:border-white/10 dark:disabled:bg-white/5 dark:disabled:text-gray-400 {SECONDARY_BUTTON}"
+                    class="aria-busy:cursor-progress disabled:cursor-not-allowed disabled:border-neutral-200 disabled:bg-neutral-100 disabled:text-neutral-500 dark:disabled:border-white/10 dark:disabled:bg-white/5 dark:disabled:text-neutral-400 {SECONDARY_BUTTON}"
                     >New synced graph</button
                 >
                 <button
@@ -3808,7 +3808,7 @@
         tabindex="-1"
         aria-label="Graphs, sync settings, agents and this device"
         onkeydown={onTabKeydown}
-        class="flex gap-1 border-b border-gray-200 dark:border-white/10"
+        class="flex gap-1 border-b border-neutral-200 dark:border-white/10"
     >
         <button
             type="button"
@@ -3821,8 +3821,8 @@
             onclick={() => showTab("graphs")}
             class="-mb-px border-b-2 px-3 py-2 text-sm font-medium pointer-coarse:min-h-11 {activeTab ===
             'graphs'
-                ? 'border-gray-900 text-gray-950 dark:border-white dark:text-white'
-                : 'border-transparent text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white'}"
+                ? 'border-neutral-900 text-neutral-950 dark:border-white dark:text-white'
+                : 'border-transparent text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white'}"
             >Graphs</button
         >
         <button
@@ -3836,8 +3836,8 @@
             onclick={() => showTab("sync")}
             class="-mb-px border-b-2 px-3 py-2 text-sm font-medium pointer-coarse:min-h-11 {activeTab ===
             'sync'
-                ? 'border-gray-900 text-gray-950 dark:border-white dark:text-white'
-                : 'border-transparent text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white'}"
+                ? 'border-neutral-900 text-neutral-950 dark:border-white dark:text-white'
+                : 'border-transparent text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white'}"
             >Sync</button
         >
         <button
@@ -3851,8 +3851,8 @@
             onclick={() => showTab("agents")}
             class="-mb-px border-b-2 px-3 py-2 text-sm font-medium pointer-coarse:min-h-11 {activeTab ===
             'agents'
-                ? 'border-gray-900 text-gray-950 dark:border-white dark:text-white'
-                : 'border-transparent text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white'}"
+                ? 'border-neutral-900 text-neutral-950 dark:border-white dark:text-white'
+                : 'border-transparent text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white'}"
             >Agents</button
         >
         <button
@@ -3866,8 +3866,8 @@
             onclick={() => showTab("device")}
             class="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium pointer-coarse:min-h-11 {activeTab ===
             'device'
-                ? 'border-gray-900 text-gray-950 dark:border-white dark:text-white'
-                : 'border-transparent text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white'}"
+                ? 'border-neutral-900 text-neutral-950 dark:border-white dark:text-white'
+                : 'border-transparent text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white'}"
         >
             This Device
             {#if passcodeNotSet}
@@ -3900,7 +3900,7 @@
             role={statusTone === "error" ? "alert" : "status"}
             class="text-sm {statusTone === 'error'
                 ? 'text-red-600 dark:text-red-400'
-                : 'text-gray-600 dark:text-gray-400'}"
+                : 'text-neutral-600 dark:text-neutral-400'}"
         >
             {status}
         </p>
@@ -4115,31 +4115,31 @@
                          graph, so the card names those actions rather than repeating them. -->
                     <div
                         data-testid="graphs-first-run"
-                        class="rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 p-5 space-y-3"
+                        class="rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-white/5 p-5 space-y-3"
                     >
                         <p
                             data-testid="first-run-summary"
-                            class="text-sm text-gray-700 dark:text-gray-300"
+                            class="text-sm text-neutral-700 dark:text-neutral-300"
                         >
                             You don't have any graphs yet. Choose
-                            {#if supported}<span class="font-medium text-gray-950 dark:text-white"
+                            {#if supported}<span class="font-medium text-neutral-950 dark:text-white"
                                     >Open folder</span
                                 >,{/if}
-                            <span class="font-medium text-gray-950 dark:text-white"
+                            <span class="font-medium text-neutral-950 dark:text-white"
                                 >New synced graph</span
                             >
-                            or <span class="font-medium text-gray-950 dark:text-white">Import</span> to
+                            or <span class="font-medium text-neutral-950 dark:text-white">Import</span> to
                             create a graph.
                         </p>
                         {#if !supported}
-                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                            <p class="text-sm text-neutral-500 dark:text-neutral-400">
                                 Folders need Chrome or Edge on a desktop, or
                                 Chrome on Android.
                             </p>
                         {/if}
                         <p
                             data-testid="first-run-import"
-                            class="text-sm text-gray-500 dark:text-gray-400"
+                            class="text-sm text-neutral-500 dark:text-neutral-400"
                         >
                             You can import graphs from Logseq, Obsidian, EtherPK
                             and AS Notes.
@@ -4147,7 +4147,7 @@
                                 href="{PUBLIC_DOCS_URL}/importing-a-knowledge-base"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                class="font-medium text-gray-700 underline dark:text-gray-200"
+                                class="font-medium text-neutral-700 underline dark:text-neutral-200"
                                 >Importing an existing knowledge base</a
                             >
                         </p>
@@ -4165,11 +4165,11 @@
                         <div>
                             <h2
                                 id="local-graphs-heading"
-                                class="flex items-center gap-2 text-lg font-semibold text-gray-950 dark:text-white"
+                                class="flex items-center gap-2 text-lg font-semibold text-neutral-950 dark:text-white"
                             >
                                 Local graphs
                                 <svg
-                                    class="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400"
+                                    class="h-5 w-5 shrink-0 text-neutral-500 dark:text-neutral-400"
                                     viewBox="0 0 24 24"
                                     fill="none"
                                     stroke="currentColor"
@@ -4184,7 +4184,7 @@
                                 </svg>
                             </h2>
                             <p
-                                class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
                             >
                                 Folders on this computer, in plain Markdown
                                 files, and the demo.
@@ -4203,7 +4203,7 @@
                         {:else if localGraphs.length > 0}
                             <ul
                                 data-testid="graphs-list"
-                                class="divide-y divide-gray-200 overflow-hidden rounded-xl border border-gray-200 bg-white dark:divide-white/10 dark:border-white/10 dark:bg-white/5"
+                                class="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white dark:divide-white/10 dark:border-white/10 dark:bg-white/5"
                             >
                                 {#each localGraphs as graph (graph.id)}
                                     {@render pickerRow(graph)}
@@ -4213,7 +4213,7 @@
                         {#if demoGraph}
                             <ul
                                 data-testid="graphs-demo-list"
-                                class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-white/5"
+                                class="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-white/10 dark:bg-white/5"
                             >
                                 {@render pickerRow(demoGraph)}
                             </ul>
@@ -4255,11 +4255,11 @@
                         <div>
                             <h2
                                 id="synced-graphs-heading"
-                                class="flex items-center gap-2 text-lg font-semibold text-gray-950 dark:text-white"
+                                class="flex items-center gap-2 text-lg font-semibold text-neutral-950 dark:text-white"
                             >
                                 Synced graphs
                                 <svg
-                                    class="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400"
+                                    class="h-5 w-5 shrink-0 text-neutral-500 dark:text-neutral-400"
                                     viewBox="0 0 24 24"
                                     fill="none"
                                     stroke="currentColor"
@@ -4274,7 +4274,7 @@
                                 </svg>
                             </h2>
                             <p
-                                class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
                             >
                                 End-to-end encrypted: the server only ever sees
                                 ciphertext.
@@ -4282,9 +4282,9 @@
                         </div>
                         <div
                             data-testid="synced-graphs-connect"
-                            class="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-white/5"
+                            class="rounded-xl border border-neutral-200 bg-white p-4 dark:border-white/10 dark:bg-white/5"
                         >
-                            <p class="text-sm text-gray-700 dark:text-gray-300">
+                            <p class="text-sm text-neutral-700 dark:text-neutral-300">
                                 {signsInToManagedSync()
                                     ? "Sign in with your EtherPK account to see and create synced graphs. Graphs of your own need Sync+. Graphs others share with you work on any plan."
                                     : "Connect this device to a Sync Server to see and create synced graphs."}
@@ -4304,7 +4304,7 @@
                     </section>
                 {:else if !firstRun}
                     <p
-                        class="text-sm text-gray-500 dark:text-gray-400"
+                        class="text-sm text-neutral-500 dark:text-neutral-400"
                         data-testid="synced-graphs-import-hint"
                     >
                         Synced graphs are end-to-end encrypted: their servers
@@ -4312,7 +4312,7 @@
                         synced storage, create a new graph with
                         <button
                             type="button"
-                            class="font-medium text-gray-700 underline dark:text-gray-200"
+                            class="font-medium text-neutral-700 underline dark:text-neutral-200"
                             onclick={() => (importDialog = true)}>Import</button
                         >.
                     </p>
@@ -4338,11 +4338,11 @@
                     <div>
                         <h2
                             id="sync-servers-heading"
-                            class="text-lg font-semibold text-gray-950 dark:text-white"
+                            class="text-lg font-semibold text-neutral-950 dark:text-white"
                         >
                             Sync Servers
                         </h2>
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                             Each Sync Server keeps its own account, Encryption
                             Keys and Recovery Code. A synced graph always syncs
                             through the server it was created on.
@@ -4373,8 +4373,8 @@
                                     tabindex={selected ? 0 : -1}
                                     onclick={() => showSyncPanel(server)}
                                     class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium pointer-coarse:min-h-11 {selected
-                                        ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
-                                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'}"
+                                        ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                                        : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white'}"
                                 >
                                     {@render serverIcon(server, "h-4 w-4")}
                                     {server.host}
@@ -4403,8 +4403,8 @@
                                 onclick={() => void openSyncPanel("add")}
                                 class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium pointer-coarse:min-h-11 {syncPanel ===
                                 'add'
-                                    ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
-                                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'}"
+                                    ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                                    : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white'}"
                             >
                                 <svg
                                     class="h-4 w-4"
@@ -4442,16 +4442,16 @@
                                     e.preventDefault();
                                     void saveSyncConfig();
                                 }}
-                                class="space-y-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-white/5 p-5"
+                                class="space-y-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-white/5 p-5"
                             >
                                 <h3
-                                    class="text-base font-semibold text-gray-950 dark:text-white"
+                                    class="text-base font-semibold text-neutral-950 dark:text-white"
                                 >
                                     Add a Sync Server
                                 </h3>
                                 {#if addOffersManaged}
                                     <div
-                                        class="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-white/10"
+                                        class="grid grid-cols-2 gap-1 rounded-lg bg-neutral-100 p-1 dark:bg-white/10"
                                         role="tablist"
                                         aria-label="Kind of Sync Server"
                                     >
@@ -4464,8 +4464,8 @@
                                                 (connectionMode = "managed")}
                                             class="rounded-md px-3 py-2 text-sm font-medium {connectionMode ===
                                             'managed'
-                                                ? 'bg-white text-gray-950 shadow-sm dark:bg-(--gk-surface-2) dark:text-white'
-                                                : 'text-gray-600 dark:text-gray-300'}"
+                                                ? 'bg-white text-neutral-950 shadow-sm dark:bg-(--gk-surface-2) dark:text-white'
+                                                : 'text-neutral-600 dark:text-neutral-300'}"
                                             >Managed Sync</button
                                         >
                                         <button
@@ -4477,8 +4477,8 @@
                                                 (connectionMode = "custom")}
                                             class="rounded-md px-3 py-2 text-sm font-medium {connectionMode ===
                                             'custom'
-                                                ? 'bg-white text-gray-950 shadow-sm dark:bg-(--gk-surface-2) dark:text-white'
-                                                : 'text-gray-600 dark:text-gray-300'}"
+                                                ? 'bg-white text-neutral-950 shadow-sm dark:bg-(--gk-surface-2) dark:text-white'
+                                                : 'text-neutral-600 dark:text-neutral-300'}"
                                             >Custom server</button
                                         >
                                     </div>
@@ -4486,15 +4486,15 @@
 
                                 {#if addOffersManaged && connectionMode === "managed"}
                                     <div
-                                        class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-white/5"
+                                        class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-white/10 dark:bg-white/5"
                                     >
                                         <p
-                                            class="text-sm font-medium text-gray-950 dark:text-white"
+                                            class="text-sm font-medium text-neutral-950 dark:text-white"
                                         >
                                             EtherPK Managed Sync
                                         </p>
                                         <p
-                                            class="mt-1 text-sm leading-5 text-gray-600 dark:text-gray-300"
+                                            class="mt-1 text-sm leading-5 text-neutral-600 dark:text-neutral-300"
                                         >
                                             Sign in with your EtherPK account to
                                             connect this device. There is no
@@ -4509,7 +4509,7 @@
                                                 type="button"
                                                 data-testid="managed-sync-connect"
                                                 onclick={connectManagedSync}
-                                                class="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+                                                class="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
                                                 >Continue to secure sign in</button
                                             >
                                         </div>
@@ -4518,7 +4518,7 @@
                                     <div>
                                         <label
                                             for="sync-url"
-                                            class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                            class="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300"
                                             >Sync server URL</label
                                         >
                                         <input
@@ -4543,11 +4543,11 @@
                                                 : "sync-url-help"}
                                             class="block w-full rounded-lg border {syncUrlError
                                                 ? 'border-red-500'
-                                                : 'border-gray-300 dark:border-gray-700'} bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                                                : 'border-neutral-300 dark:border-neutral-700'} bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                                         />
                                         <p
                                             id="sync-url-help"
-                                            class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                                            class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
                                         >
                                             Include the scheme. Use http:// for
                                             a local server, https:// for a
@@ -4567,7 +4567,7 @@
                                     <div>
                                         <label
                                             for="sync-token"
-                                            class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                            class="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300"
                                             >Personal Access Token</label
                                         >
                                         <input
@@ -4592,7 +4592,7 @@
                                                 : "sync-token-help"}
                                             class="block w-full rounded-lg border {syncTokenError
                                                 ? 'border-red-500'
-                                                : 'border-gray-300 dark:border-gray-700'} bg-white dark:bg-white/10 px-3 py-2 text-sm font-mono text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                                                : 'border-neutral-300 dark:border-neutral-700'} bg-white dark:bg-white/10 px-3 py-2 text-sm font-mono text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                                         />
                                         {#if syncTokenError}
                                             <p
@@ -4615,7 +4615,7 @@
                                     </div>
                                     <p
                                         id="sync-token-help"
-                                        class="text-sm text-gray-500 dark:text-gray-400"
+                                        class="text-sm text-neutral-500 dark:text-neutral-400"
                                         data-testid="sync-token-help"
                                     >
                                         {#if customServerOrigin}
@@ -4653,7 +4653,7 @@
                                                         primaryServer,
                                                     );
                                                 }}
-                                                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white"
+                                                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white"
                                                 >Cancel</button
                                             >
                                         {/if}
@@ -4661,7 +4661,7 @@
                                             type="submit"
                                             data-testid="sync-save"
                                             aria-busy={syncSaving}
-                                            class="aria-busy:cursor-progress rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+                                            class="aria-busy:cursor-progress rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
                                             >{syncSaving
                                                 ? "Checking the connection…"
                                                 : "Save custom server"}</button
@@ -4703,13 +4703,13 @@
                 {#snippet mcp()}
                     <section class="space-y-4" data-testid="graphs-agents-headless">
                         <div class="space-y-1">
-                            <h3 class="flex items-center gap-2 text-base font-semibold text-gray-950 dark:text-gray-100">
-                                <span class="text-gray-600 dark:text-gray-400">
+                            <h3 class="flex items-center gap-2 text-base font-semibold text-neutral-950 dark:text-neutral-100">
+                                <span class="text-neutral-600 dark:text-neutral-400">
                                     <!-- eslint-disable-next-line svelte/no-at-html-tags -- the Client's own icon markup (icons.ts) -->
                                     {@html iconSvg("headless-client", { size: 20 })}
                                 </span>MCP Server
                             </h3>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">
+                            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                                 Use to allow an AI agent on your device, such as Claude Code, Codex or VS Code, to read and modify your notes. The agent connects to the MCP server that the EtherPK
                                 Headless Client runs. A folder graph needs no setup: point the agent at the folder. For a synced graph, sign in the agent's device once
                                 (below), then add the graph's MCP command from that graph's Settings &gt; Agents.
@@ -4718,16 +4718,16 @@
                         {#if !listReady}
                             {@render loadingSkeleton("Loading your Sync Servers…")}
                         {:else if servers.length === 0}
-                            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="graphs-agents-no-server">
+                            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="graphs-agents-no-server">
                                 Signing in needs a Sync Server. Add one in the Sync tab to reach your synced graphs from an agent.
                             </p>
                         {:else}
                             {@const server = servers.find((candidate) => candidate.host === agentsServerHost) ?? servers[0]}
                             {#if servers.length > 1}
-                                <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                                <label class="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
                                     Sync Server
                                     <select
-                                        class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
+                                        class="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
                                         value={server.host}
                                         onchange={(event) => (agentsServerHost = event.currentTarget.value)}
                                         data-testid="graphs-agents-server"
@@ -4736,7 +4736,7 @@
                                     </select>
                                 </label>
                             {/if}
-                            <div class="space-y-2 text-sm text-gray-950 dark:text-gray-100">
+                            <div class="space-y-2 text-sm text-neutral-950 dark:text-neutral-100">
                                 {#key server.host}
                                     <HeadlessClientSignIn
                                         serverBaseUrl={server.connection.serverBaseUrl}
@@ -4746,7 +4746,7 @@
                                 {/key}
                             </div>
                         {/if}
-                        <div class="space-y-1 border-t border-gray-200 pt-4 dark:border-white/10 text-gray-950 dark:text-gray-100">
+                        <div class="space-y-1 border-t border-neutral-200 pt-4 dark:border-white/10 text-neutral-950 dark:text-neutral-100">
                             <AgentCommandRow {...AGENT_SKILL_ROW} />
                         </div>
                     </section>
@@ -4785,11 +4785,11 @@
                     <div>
                         <h2
                             id="synced-copies-heading"
-                            class="text-lg font-semibold text-gray-950 dark:text-white"
+                            class="text-lg font-semibold text-neutral-950 dark:text-white"
                         >
                             Synced graphs in this browser
                         </h2>
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                             This browser keeps a readable copy of each synced
                             graph it has opened, for every account that has used
                             it. Signing out leaves the copies in place, so on a
@@ -4799,7 +4799,7 @@
                     </div>
                     {#if servers.length === 0 && copyCounts.unheld === 0}
                         <p
-                            class="text-sm text-gray-500 dark:text-gray-400"
+                            class="text-sm text-neutral-500 dark:text-neutral-400"
                             data-testid="synced-copies-none"
                         >
                             No synced graphs are stored in this browser.
@@ -4808,7 +4808,7 @@
                         <!-- A row per Sync Server, and one for servers this device no longer holds,
                              whose copies no server's row offers. -->
                         <ul
-                            class="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white dark:divide-white/10 dark:border-white/10 dark:bg-white/5"
+                            class="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white dark:divide-white/10 dark:border-white/10 dark:bg-white/5"
                         >
                             {#each orderedServers as server (server.origin)}
                                 {@const held =
@@ -4822,7 +4822,7 @@
                                 >
                                     <div class="min-w-0">
                                         <p
-                                            class="flex items-center gap-2 text-sm font-medium text-gray-950 dark:text-white"
+                                            class="flex items-center gap-2 text-sm font-medium text-neutral-950 dark:text-white"
                                         >
                                             {@render serverIcon(
                                                 server,
@@ -4834,7 +4834,7 @@
                                         </p>
                                         {#if held > 0}
                                             <p
-                                                class="text-sm text-gray-500 dark:text-gray-400"
+                                                class="text-sm text-neutral-500 dark:text-neutral-400"
                                             >
                                                 {held === 1
                                                     ? "1 synced graph"
@@ -4843,7 +4843,7 @@
                                             </p>
                                         {:else}
                                             <p
-                                                class="text-sm text-gray-500 dark:text-gray-400"
+                                                class="text-sm text-neutral-500 dark:text-neutral-400"
                                                 data-testid="remove-synced-none"
                                             >
                                                 No synced graphs from {server.host}
@@ -4881,12 +4881,12 @@
                                 >
                                     <div class="min-w-0">
                                         <p
-                                            class="text-sm font-medium text-gray-950 dark:text-white"
+                                            class="text-sm font-medium text-neutral-950 dark:text-white"
                                         >
                                             Other Sync Servers
                                         </p>
                                         <p
-                                            class="text-sm text-gray-500 dark:text-gray-400"
+                                            class="text-sm text-neutral-500 dark:text-neutral-400"
                                         >
                                             {copyCounts.unheld === 1
                                                 ? "1 synced graph"
@@ -4928,13 +4928,13 @@
                 >
                     <h2
                         id="device-storage-heading"
-                        class="text-lg font-semibold text-gray-950 dark:text-white"
+                        class="text-lg font-semibold text-neutral-950 dark:text-white"
                     >
                         This browser
                     </h2>
                     {#if deviceStorage?.persisted === true}
                         <p
-                            class="text-sm text-gray-500 dark:text-gray-400"
+                            class="text-sm text-neutral-500 dark:text-neutral-400"
                             data-testid="device-storage-persisted"
                         >
                             This browser has agreed to keep EtherPK's data on
@@ -4944,7 +4944,7 @@
                         <!-- The honest version of "your data is safe here": on a phone it is not, unless the
                              browser has been given a reason to keep it. -->
                         <p
-                            class="text-sm text-gray-500 dark:text-gray-400"
+                            class="text-sm text-neutral-500 dark:text-neutral-400"
                             data-testid="device-storage-best-effort"
                         >
                             This browser may clear EtherPK's data on this device
@@ -4959,7 +4959,7 @@
                         </p>
                     {:else}
                         <p
-                            class="text-sm text-gray-500 dark:text-gray-400"
+                            class="text-sm text-neutral-500 dark:text-neutral-400"
                             data-testid="device-storage-unknown"
                         >
                             This browser does not say whether it will keep
@@ -4971,7 +4971,7 @@
                     {/if}
                     {#if deviceStorage?.usage !== null && deviceStorage?.usage !== undefined}
                         <p
-                            class="text-sm text-gray-500 dark:text-gray-400"
+                            class="text-sm text-neutral-500 dark:text-neutral-400"
                             data-testid="device-storage-usage"
                         >
                             EtherPK is using {formatBytes(deviceStorage.usage)} here{deviceStorage.quota !==
@@ -5107,13 +5107,13 @@
     >
         {#snippet body()}
             {@render unsentWarning("Deleting the graph", target.name, false)}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 Permanently delete <span
-                    class="font-medium text-gray-900 dark:text-gray-200"
+                    class="font-medium text-neutral-900 dark:text-neutral-200"
                     >{target.name}</span
                 >? This deletes the graph from {deleteConfirm?.server.host ??
                     "the sync server"}
-                <span class="font-medium text-gray-900 dark:text-gray-200"
+                <span class="font-medium text-neutral-900 dark:text-neutral-200"
                     >for every member</span
                 >
                 - the encrypted notes are discarded and cannot be recovered.
@@ -5129,7 +5129,7 @@
             </p>
             {#if target.onDevice}
                 <p
-                    class="text-sm text-gray-600 dark:text-gray-400"
+                    class="text-sm text-neutral-600 dark:text-neutral-400"
                     data-testid="delete-local-note"
                 >
                     The synced copy in this browser, and its search index, are
@@ -5138,7 +5138,7 @@
                 </p>
             {:else}
                 <p
-                    class="text-sm text-gray-600 dark:text-gray-400"
+                    class="text-sm text-neutral-600 dark:text-neutral-400"
                     data-testid="delete-remote-note"
                 >
                     This graph is not on this device — the deletion happens on
@@ -5146,7 +5146,7 @@
                 </p>
             {/if}
             <p
-                class="text-sm text-gray-600 dark:text-gray-400"
+                class="text-sm text-neutral-600 dark:text-neutral-400"
                 data-testid="delete-agent-note"
             >
                 Computers running the Headless Client for this graph drop their
@@ -5155,10 +5155,10 @@
             <div>
                 <label
                     for="delete-confirm"
-                    class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                    class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                 >
                     Type <span
-                        class="font-semibold text-gray-700 dark:text-gray-300"
+                        class="font-semibold text-neutral-700 dark:text-neutral-300"
                         >DELETE</span
                     > to confirm
                 </label>
@@ -5169,9 +5169,9 @@
                     autocomplete="off"
                     aria-invalid={deleteError ? "true" : undefined}
                     aria-describedby={deleteError ? "delete-error" : undefined}
-                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 {deleteError
+                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 {deleteError
                         ? 'border-red-400 dark:border-red-500/60'
-                        : 'border-gray-300 dark:border-gray-700'}"
+                        : 'border-neutral-300 dark:border-neutral-700'}"
                 />
             </div>
             <!-- A transient failure used to close the dialog and throw away the typed DELETE,
@@ -5194,7 +5194,7 @@
                     deleteConfirm = null;
                     discardUnsent = null;
                 }}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                 >Cancel</button
             >
             {#if discardUnsent?.graphId === target.id && discardUnsent.unsent.length > 0}
@@ -5202,7 +5202,7 @@
                     type="button"
                     data-testid="discard-unsent-download"
                     onclick={() => downloadDiscardUnsent(target.name)}
-                    class="rounded-lg border border-gray-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    class="rounded-lg border border-neutral-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
                     >Download unsent changes</button
                 >
             {/if}
@@ -5231,7 +5231,7 @@
             <div>
                 <label
                     for="create-graph-name"
-                    class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                    class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                     >Graph name</label
                 >
                 <input
@@ -5240,11 +5240,11 @@
                     bind:value={createName}
                     placeholder="e.g. Work Notes"
                     autocomplete="off"
-                    class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                    class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                 />
                 <p
                     id="create-graph-hint"
-                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                    class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
                 >
                     {createName.trim() === ""
                         ? "Give the graph a name to create it."
@@ -5256,14 +5256,14 @@
                      server that cannot take it now stays listed, saying why. -->
                 <fieldset data-testid="create-graph-server">
                     <legend
-                        class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                        class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                         >Sync Server</legend
                     >
                     <div class="space-y-2">
                         {#each orderedServers as server, index (server.origin)}
                             {@const reason = server.createBlockedReason}
                             <label
-                                class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200"
+                                class="flex items-start gap-2 text-sm text-neutral-700 dark:text-neutral-200"
                             >
                                 <input
                                     type="radio"
@@ -5283,7 +5283,7 @@
                                 <span class="flex min-w-0 flex-col">
                                     <span
                                         class="inline-flex items-center gap-1.5 font-medium {reason
-                                            ? 'text-gray-500 dark:text-gray-400'
+                                            ? 'text-neutral-500 dark:text-neutral-400'
                                             : ''}"
                                     >
                                         {@render serverIcon(server, "h-4 w-4")}
@@ -5292,12 +5292,12 @@
                                     {#if reason}
                                         <span
                                             id="create-server-reason-{index}"
-                                            class="text-gray-600 dark:text-gray-300"
+                                            class="text-neutral-600 dark:text-neutral-300"
                                             >{reason}</span
                                         >
                                     {:else}
                                         <span
-                                            class="text-gray-500 dark:text-gray-400"
+                                            class="text-neutral-500 dark:text-neutral-400"
                                         >
                                             {server.connection.kind ===
                                             "managed"
@@ -5311,13 +5311,13 @@
                             </label>
                         {/each}
                     </div>
-                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    <p class="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
                         A synced graph stays on the server it is created on.
                     </p>
                 </fieldset>
             {:else if chosenServer}
                 <p
-                    class="text-sm text-gray-500 dark:text-gray-400"
+                    class="text-sm text-neutral-500 dark:text-neutral-400"
                     data-testid="create-graph-server-note"
                 >
                     It is stored on {chosenServer.host}, end-to-end encrypted.
@@ -5337,7 +5337,7 @@
             <button
                 type="button"
                 onclick={() => (createDialog = false)}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                 >Cancel</button
             >
             <button
@@ -5347,7 +5347,7 @@
                     !chosenServer}
                 aria-describedby="create-graph-hint"
                 data-testid="create-graph-confirm"
-                class="min-w-36 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                class="min-w-36 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
                 >{createBusy ? "Creating…" : "Create graph"}</button
             >
         {/snippet}
@@ -5450,7 +5450,7 @@
     >
         {#snippet body()}
             <div class="space-y-3">
-                <p class="text-sm text-gray-600 dark:text-gray-400">
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     This removes this browser's copy of {removeSynced!.held
                         .length === 1
                         ? "1 synced graph"
@@ -5488,7 +5488,7 @@
                 type="button"
                 data-autofocus
                 onclick={() => (removeSynced = null)}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                 >Cancel</button
             >
             {#if unsentDocuments > 0}
@@ -5496,7 +5496,7 @@
                     type="button"
                     data-testid="remove-synced-download"
                     onclick={downloadRemoveSyncedUnsent}
-                    class="rounded-lg border border-gray-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    class="rounded-lg border border-neutral-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
                     >Download unsent changes</button
                 >
             {/if}
@@ -5534,9 +5534,9 @@
             {#if forgetConfirm!.backend === "server"}
                 <div class="space-y-3">
                     {@render unsentWarning("Forgetting", forgetConfirm!.name)}
-                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                    <p class="text-sm text-neutral-600 dark:text-neutral-400">
                         Forget <span
-                            class="font-medium text-gray-900 dark:text-gray-200"
+                            class="font-medium text-neutral-900 dark:text-neutral-200"
                             >{forgetConfirm!.name}</span
                         >? This deletes the graph's local copy and its search
                         index from this browser.
@@ -5548,9 +5548,9 @@
                     </p>
                 </div>
             {:else}
-                <p class="text-sm text-gray-600 dark:text-gray-400">
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     Forget <span
-                        class="font-medium text-gray-900 dark:text-gray-200"
+                        class="font-medium text-neutral-900 dark:text-neutral-200"
                         >{forgetConfirm!.name}</span
                     >? Forgetting removes the graph from this list and its
                     search index from this browser. Delete the files on disk
@@ -5576,7 +5576,7 @@
                     discardUnsent = null;
                     forgetError = null;
                 }}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                 >Cancel</button
             >
             {#if unsentCount > 0}
@@ -5584,7 +5584,7 @@
                     type="button"
                     data-testid="discard-unsent-download"
                     onclick={() => downloadDiscardUnsent(forgetConfirm!.name)}
-                    class="rounded-lg border border-gray-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    class="rounded-lg border border-neutral-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
                     >Download unsent changes</button
                 >
                 <button
@@ -5599,7 +5599,7 @@
                     type="submit"
                     disabled={forgetBusy}
                     data-testid="graphs-forget-confirm"
-                    class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
                     >Forget</button
                 >
             {/if}
@@ -5625,9 +5625,9 @@
         {#snippet body()}
             <div class="space-y-3">
                 {@render unsentWarning("Leaving", leaving.name)}
-                <p class="text-sm text-gray-600 dark:text-gray-400">
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     Leave <span
-                        class="font-medium text-gray-900 dark:text-gray-200"
+                        class="font-medium text-neutral-900 dark:text-neutral-200"
                         >{leaving.name}</span
                     >? You lose access until the owner invites you again. The
                     graph itself, and the other members, are untouched. The copy
@@ -5645,7 +5645,7 @@
                     leaveConfirm = null;
                     discardUnsent = null;
                 }}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                 >Cancel</button
             >
             {#if unsentCount > 0}
@@ -5653,7 +5653,7 @@
                     type="button"
                     data-testid="discard-unsent-download"
                     onclick={() => downloadDiscardUnsent(leaving.name)}
-                    class="rounded-lg border border-gray-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    class="rounded-lg border border-neutral-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
                     >Download unsent changes</button
                 >
             {/if}
@@ -5684,16 +5684,16 @@
     >
         {#snippet body()}
             <div data-testid="invite-unsent-changes" class="space-y-3">
-                <p class="text-sm text-gray-600 dark:text-gray-400">
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     This browser still holds a copy of <span
-                        class="font-medium text-gray-900 dark:text-gray-200"
+                        class="font-medium text-neutral-900 dark:text-neutral-200"
                         >{staleCopy!.graphName}</span
                     >
                     with changes to {documents} that the server never received. Accepting
                     the invite replaces the copy with the server's version, and those
                     changes are lost.
                 </p>
-                <p class="text-sm text-gray-600 dark:text-gray-400">
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     Download them first to keep them. Cancel keeps everything
                     and leaves the invite waiting.
                 </p>
@@ -5701,7 +5701,7 @@
                     <p
                         role="status"
                         data-testid="invite-unsent-grew"
-                        class="text-sm text-gray-600 dark:text-gray-400"
+                        class="text-sm text-neutral-600 dark:text-neutral-400"
                     >
                         More changes arrived since this opened - the count is
                         current.
@@ -5710,7 +5710,7 @@
                 {#if staleCopy!.downloaded}
                     <p
                         role="status"
-                        class="text-sm text-gray-600 dark:text-gray-400"
+                        class="text-sm text-neutral-600 dark:text-neutral-400"
                     >
                         Downloaded as “{staleCopy!.graphName} unsent changes.md”.
                     </p>
@@ -5722,14 +5722,14 @@
                 type="button"
                 onclick={() => (staleCopy = null)}
                 data-testid="invite-unsent-cancel"
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                 >Cancel</button
             >
             <button
                 type="button"
                 onclick={downloadStaleCopy}
                 data-testid="invite-unsent-download"
-                class="rounded-lg border border-gray-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                class="rounded-lg border border-neutral-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
                 >Download unsent changes</button
             >
             <button

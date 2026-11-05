@@ -9,6 +9,7 @@ import type { EditorState, TransactionSpec } from '@codemirror/state'
 import { lineWriteChanges, nestedTaskWrites } from '../task-cascade'
 import { type TaskChanges, taskLineWith } from '../task-tags'
 import { analysisFor } from './analysis/editor-analysis'
+import { closePopovers } from './augmentations/popover-menu'
 
 /**
  * The transaction that makes `changes` to the task on line `number` (1-based, as the editor counts
@@ -18,7 +19,9 @@ import { analysisFor } from './analysis/editor-analysis'
  *
  * `userEvent: 'input'` keeps it out of CodeMirror's join with an adjacent edit, so Mod+Z takes back
  * this change alone, and the selection maps forward so a caret in the rewritten tag run lands after
- * it rather than inside the replaced span.
+ * it rather than inside the replaced span. It opens no popover at that caret, which a right-click on
+ * the tag run leaves inside it or at its end: the person just chose from a menu, and is not typing a
+ * tag.
  */
 export function taskChangeSpec(state: EditorState, number: number, expected: string, changes: TaskChanges): TransactionSpec | null {
     if (number < 1 || number > state.doc.lines) return null
@@ -29,5 +32,5 @@ export function taskChangeSpec(state: EditorState, number: number, expected: str
     if (next === null || next === lines[index]) return null
     const writes = [{ index, before: lines[index], after: next }, ...nestedTaskWrites(lines, index, next, fencedBlocks)]
     const set = state.changes(lineWriteChanges(lines, writes))
-    return { changes: set, selection: state.selection.map(set, 1), userEvent: 'input' }
+    return { changes: set, selection: state.selection.map(set, 1), effects: closePopovers.of(null), userEvent: 'input' }
 }

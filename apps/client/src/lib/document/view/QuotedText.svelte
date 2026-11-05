@@ -138,7 +138,7 @@
         border-left: 3px solid var(--gk-border-strong, rgba(127, 127, 127, 0.4));
         border-radius: 0 4px 4px 0;
         background: var(--gk-quote-bg, rgba(127, 127, 127, 0.1));
-        color: var(--gk-text-muted, #6b7280);
+        color: var(--gk-text-muted, #737373);
     }
     /* A thematic break: the editor's 2px rule in the strong border colour, centred on a row. */
     .quoted-rule {

@@ -30,12 +30,12 @@
     ];
 </script>
 
-<p class="text-sm font-semibold uppercase tracking-[0.2em] text-gray-950 dark:text-white">
+<p class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-950 dark:text-white">
     Ether Personal Knowledge
 </p>
 <h1
     {id}
-    class="mx-auto mt-5 max-w-4xl text-balance text-4xl font-semibold leading-[1.1] tracking-tight text-gray-950 sm:text-6xl dark:text-white"
+    class="mx-auto mt-5 max-w-4xl text-balance text-4xl font-semibold leading-[1.1] tracking-tight text-neutral-950 sm:text-6xl dark:text-white"
 >
     One Markdown PKMS For
     <TypedWord words={headlineWords} testId="marketing-headline-word" />

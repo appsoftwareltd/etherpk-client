@@ -130,3 +130,76 @@ describe('the registry when the browser loses its IndexedDB but keeps localStora
         expect(await (await port()).getAll()).toEqual([])
     })
 })
+
+/**
+ * Folder permission, over handles that answer as the File System Access API does. The browser
+ * refuses a request made without a user gesture by throwing, not by answering `denied`.
+ */
+describe('folder permission', () => {
+    const noGesture = () =>
+        new DOMException("Failed to execute 'requestPermission' on 'FileSystemHandle': User activation is required to request permissions.", 'SecurityError')
+
+    function handle(query: PermissionState, request: () => Promise<PermissionState>) {
+        return { queryPermission: vi.fn(async () => query), requestPermission: vi.fn(request) }
+    }
+
+    async function permissions() {
+        const { ensurePermission, hasPermission, tryEnsurePermission } = await import('./graph-registry-idb')
+        return { ensurePermission, hasPermission, tryEnsurePermission }
+    }
+
+    describe('ensurePermission', () => {
+        it('does not ask when the permission is already held', async () => {
+            const { ensurePermission } = await permissions()
+            const held = handle('granted', async () => 'denied')
+            expect(await ensurePermission(held)).toBe(true)
+            expect(held.requestPermission).not.toHaveBeenCalled()
+        })
+
+        it('asks otherwise, and answers what the person chose', async () => {
+            const { ensurePermission } = await permissions()
+            expect(await ensurePermission(handle('prompt', async () => 'granted'))).toBe(true)
+            expect(await ensurePermission(handle('prompt', async () => 'denied'))).toBe(false)
+        })
+
+        it('treats a handle with no permission model as usable', async () => {
+            const { ensurePermission } = await permissions()
+            expect(await ensurePermission({})).toBe(true)
+        })
+
+        it('lets the browser’s refusal to ask reach its caller, which holds a gesture', async () => {
+            const { ensurePermission } = await permissions()
+            await expect(ensurePermission(handle('prompt', async () => Promise.reject(noGesture())))).rejects.toThrow(/User activation/)
+        })
+    })
+
+    describe('hasPermission', () => {
+        it('only ever queries', async () => {
+            const { hasPermission } = await permissions()
+            const unheld = handle('prompt', async () => 'granted')
+            expect(await hasPermission(unheld)).toBe(false)
+            expect(unheld.requestPermission).not.toHaveBeenCalled()
+            expect(await hasPermission(handle('granted', async () => 'denied'))).toBe(true)
+        })
+    })
+
+    describe('tryEnsurePermission', () => {
+        it('answers as ensurePermission does when the browser can ask', async () => {
+            const { tryEnsurePermission } = await permissions()
+            expect(await tryEnsurePermission(handle('granted', async () => 'denied'))).toBe(true)
+            expect(await tryEnsurePermission(handle('prompt', async () => 'granted'))).toBe(true)
+            expect(await tryEnsurePermission(handle('prompt', async () => 'denied'))).toBe(false)
+        })
+
+        it('answers not granted when there is no gesture for the browser to ask on', async () => {
+            const { tryEnsurePermission } = await permissions()
+            expect(await tryEnsurePermission(handle('prompt', async () => Promise.reject(noGesture())))).toBe(false)
+        })
+
+        it('still throws a fault that is not about the gesture', async () => {
+            const { tryEnsurePermission } = await permissions()
+            const fault = new DOMException('The folder is gone', 'NotFoundError')
+            await expect(tryEnsurePermission(handle('prompt', async () => Promise.reject(fault)))).rejects.toBe(fault)
+        })
+    })
+})

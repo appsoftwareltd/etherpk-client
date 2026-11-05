@@ -80,7 +80,7 @@ export const mermaidRenderer: AugmentationRenderer = {
         const startedIn = generation
         const mermaid = await loadMermaid()
         if (initializedDark !== dark) {
-            mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: dark ? 'dark' : 'default' })
+            mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: dark ? 'dark' : 'neutral' })
             initializedDark = dark
         }
         const id = `gk-mermaid-${++renderSeq}`

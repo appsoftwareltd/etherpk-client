@@ -88,10 +88,10 @@
         onclick={runScan}
         disabled={scanning}
         data-testid="orphan-scan"
-        class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40"
+        class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
     >{scanning ? "Scanning…" : "Scan for orphaned assets"}</button>
     {#if scanResult}
-        <p class="text-sm text-gray-600 dark:text-gray-300" data-testid="orphan-result">
+        <p class="text-sm text-neutral-600 dark:text-neutral-300" data-testid="orphan-result">
             {#if scanResult.totalAssets === 0}
                 This graph has no assets.
             {:else if scanResult.orphans.length === 0}
@@ -110,14 +110,14 @@
         {/if}
         {#if scanResult.dedupBackfill && (scanResult.dedupBackfill.tokened > 0 || scanResult.dedupBackfill.failed > 0)}
             <!-- TEMPORARY (ADR 0053): reports the ride-along dedup-token backfill; delete with asset-dedup-backfill.ts. -->
-            <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="orphan-dedup-backfill">
+            <p class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="orphan-dedup-backfill">
                 Indexed {scanResult.dedupBackfill.tokened} existing {scanResult.dedupBackfill.tokened === 1 ? "asset" : "assets"} for reuse{scanResult.dedupBackfill.failed > 0 ? ` - ${scanResult.dedupBackfill.failed} could not be indexed and will be retried on the next scan` : ""}.
             </p>
         {/if}
         {#if scanResult.orphans.length > 0}
-            <ul class="max-h-32 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm font-mono text-gray-600 dark:text-gray-400 space-y-1" data-testid="orphan-list">
+            <ul class="max-h-32 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm font-mono text-neutral-600 dark:text-neutral-400 space-y-1" data-testid="orphan-list">
                 {#each scanResult.orphans as orphan (orphan.id)}
-                    <li class="truncate" data-testid="orphan-row">{orphan.label}{#if orphan.note}<span class="text-gray-600 dark:text-gray-300" data-testid="orphan-note"> ({orphan.note})</span>{/if}</li>
+                    <li class="truncate" data-testid="orphan-row">{orphan.label}{#if orphan.note}<span class="text-neutral-600 dark:text-neutral-300" data-testid="orphan-note"> ({orphan.note})</span>{/if}</li>
                 {/each}
             </ul>
             <button
@@ -130,7 +130,7 @@
         {/if}
     {/if}
     {#if deletedCount !== null}
-        <p class="text-sm text-gray-600 dark:text-gray-300" data-testid="orphan-deleted">Deleted {deletedCount} {deletedCount === 1 ? "asset" : "assets"}.</p>
+        <p class="text-sm text-neutral-600 dark:text-neutral-300" data-testid="orphan-deleted">Deleted {deletedCount} {deletedCount === 1 ? "asset" : "assets"}.</p>
     {/if}
     {#if error}<p class="text-sm text-red-600" data-testid="orphan-error">{error}</p>{/if}
 </div>

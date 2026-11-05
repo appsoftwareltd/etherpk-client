@@ -68,21 +68,21 @@
 
 <Modal {open} title="Where is this graph's folder?" onclose={close} onsubmit={save}>
     {#snippet body()}
-        <p class="text-sm text-gray-600 dark:text-gray-400">
+        <p class="text-sm text-neutral-600 dark:text-neutral-400">
             Browser restrictions mean that the graph's location on your file system is not
             known. Enter the full path of the
-            <strong class="font-medium text-gray-900 dark:text-gray-100">{folderName}</strong>
+            <strong class="font-medium text-neutral-900 dark:text-neutral-100">{folderName}</strong>
             folder - it is remembered on this device.
         </p>
         {#if skippable}
-            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="folder-path-skip-note">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="folder-path-skip-note">
                 With it, an agent can open the file from anywhere. Without it, the agent gets the file's place inside the folder.
             </p>
         {/if}
         <div>
             <label
                 for="graph-folder-path"
-                class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                 >Folder path</label
             >
             <input
@@ -95,9 +95,9 @@
                 placeholder={`e.g. /home/you/notes/${folderName}`}
                 aria-describedby="graph-folder-path-help"
                 aria-invalid={error !== null}
-                class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 font-mono text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 font-mono text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
             />
-            <p id="graph-folder-path-help" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            <p id="graph-folder-path-help" class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                 {#if leafDiffers}
                     <span data-testid="folder-path-mismatch" class="text-amber-700 dark:text-amber-400">
                         This ends in <code>{typedLeaf}</code>, but the folder is called <code>{folderName}</code>.
@@ -112,11 +112,11 @@
     {/snippet}
 
     {#snippet footer()}
-        <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300" data-testid="folder-path-dismiss">{skippable ? "Skip and copy" : "Cancel"}</button>
+        <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300" data-testid="folder-path-dismiss">{skippable ? "Skip and copy" : "Cancel"}</button>
         <button
             type="submit"
             data-testid="folder-path-save"
-            class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
         >Remember and copy</button>
     {/snippet}
 </Modal>

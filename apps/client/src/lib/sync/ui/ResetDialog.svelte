@@ -217,7 +217,7 @@
             {#if showLoading.current}
                 <p
                     role="status"
-                    class="text-sm text-gray-500 dark:text-gray-400"
+                    class="text-sm text-neutral-500 dark:text-neutral-400"
                 >
                     Loading your graphs…
                 </p>
@@ -240,7 +240,7 @@
                 </p>
             </div>
         {:else if step === "review"}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 Resetting deletes your Encryption Keys, and creating new ones
                 afterwards gives you a new identity and Recovery Code. Everything below that you
                 own will be affected. Graphs you only take part in as a player
@@ -250,27 +250,27 @@
 
             {#if shared.length > 0}
                 <div
-                    class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-3"
+                    class="rounded-lg border border-neutral-200 dark:border-neutral-700 p-3 space-y-3"
                 >
                     <p
-                        class="text-sm font-medium text-gray-950 dark:text-white"
+                        class="text-sm font-medium text-neutral-950 dark:text-white"
                     >
                         Shared graphs you own
                     </p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                    <p class="text-sm text-neutral-500 dark:text-neutral-400">
                         Hand each to a player to keep it alive. They can share
                         it back to your new identity later.
                     </p>
                     {#each shared as g (g.graphId)}
                         <div class="flex items-center justify-between gap-2">
                             <span
-                                class="text-sm font-mono text-gray-500 dark:text-gray-400 truncate"
+                                class="text-sm font-mono text-neutral-500 dark:text-neutral-400 truncate"
                                 >{g.graphId.slice(0, 8)}…</span
                             >
                             <button
                                 type="button"
                                 data-testid="reset-transfer-{g.graphId}"
-                                class="rounded-md border border-gray-300 dark:border-gray-700 px-2 py-1 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                                class="rounded-md border border-neutral-300 dark:border-neutral-700 px-2 py-1 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
                                 onclick={() => (transferFor = g)}
                                 >Transfer…</button
                             >
@@ -292,7 +292,7 @@
                 </p>
             </div>
         {:else if step === "confirm"}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 {#if deleting === 0}
                     This resets your Encryption Keys. You own no graphs, so nothing is
                     deleted. It cannot be undone.
@@ -305,11 +305,11 @@
             <div>
                 <label
                     for="reset-confirm"
-                    class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                    class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                 >
                     Type <span
                         data-testid="reset-confirm-phrase"
-                        class="font-semibold text-gray-700 dark:text-gray-300"
+                        class="font-semibold text-neutral-700 dark:text-neutral-300"
                         >{confirmPhrase}</span
                     > to confirm
                 </label>
@@ -320,11 +320,11 @@
                     autocomplete="off"
                     autocapitalize="characters"
                     spellcheck="false"
-                    class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
+                    class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
                 />
             </div>
         {:else if step === "portal"}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 {host} needs you to sign in to it again before a reset, so the last
                 step is on its own page. Open it, sign in if it asks, and type the
                 phrase it shows.
@@ -338,11 +338,11 @@
                 >Open the reset page on {host}</a
             >
             {#if portalWatchesVault}
-                <p role="status" class="text-sm text-gray-600 dark:text-gray-400" data-testid="reset-portal-waiting">
+                <p role="status" class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="reset-portal-waiting">
                     This dialog finishes by itself once the reset is done.
                 </p>
             {:else}
-                <p class="text-sm text-gray-600 dark:text-gray-400">
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     This account has no Encryption Keys on {host} yet, so this dialog
                     cannot tell when the reset is done. Close it when you have finished.
                 </p>
@@ -351,7 +351,7 @@
                 <p role="alert" class="text-sm text-red-600">{portalCheckError}</p>
             {/if}
         {:else if step === "done"}
-            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="reset-summary">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="reset-summary">
                 {#if summary}
                     Your Encryption Keys have been reset. {summary.ownedGraphsDeleted} owned
                     graph{summary.ownedGraphsDeleted === 1 ? "" : "s"}
@@ -381,7 +381,7 @@
             <button
                 type="button"
                 onclick={() => close()}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                 >Cancel</button
             >
             {#if previewFailed}
@@ -389,7 +389,7 @@
                     type="button"
                     onclick={() => void load()}
                     data-testid="reset-preview-retry"
-                    class="min-w-32 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+                    class="min-w-32 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
                     >Try again</button
                 >
             {:else}
@@ -406,7 +406,7 @@
             <button
                 type="button"
                 onclick={() => (step = "review")}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                 >Back</button
             >
             <button
@@ -423,13 +423,13 @@
                     stopWatchingForPortalReset();
                     step = "review";
                 }}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                 >Back</button
             >
             <button
                 type="button"
                 onclick={() => close()}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                 >Close</button
             >
         {:else}
@@ -437,7 +437,7 @@
                 type="button"
                 onclick={() => close(true)}
                 data-testid="reset-done"
-                class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+                class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
                 >Done</button
             >
         {/if}

@@ -265,7 +265,7 @@ const guidePlugin = ViewPlugin.fromClass(
 const theme = EditorView.baseTheme({
     // The overlay sits behind the text; the threads are GUIDE_WIDTH_PX wide, in the strong border colour.
     '.cm-outline-guides': { position: 'absolute', top: '0', left: '0', zIndex: '0', pointerEvents: 'none' },
-    '.cm-outline-guide': { background: 'var(--gk-border-strong, rgba(3,7,18,0.16))' },
+    '.cm-outline-guide': { background: 'var(--gk-border-strong, rgba(10,10,10,0.16))' },
 })
 
 /** The outline guide-line augmentation (Dual Mode Editor.md). Mounted in DocumentView. */

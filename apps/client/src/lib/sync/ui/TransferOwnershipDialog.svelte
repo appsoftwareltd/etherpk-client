@@ -68,27 +68,27 @@
                 It used to render an empty picker under a "New owner" label with a dead button
                 and no explanation of what was missing.
             -->
-            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="transfer-no-candidates">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="transfer-no-candidates">
                 There is nobody to hand
-                {#if graphName}<span class="font-medium text-gray-900 dark:text-gray-200">{graphName}</span>{:else}this graph{/if}
+                {#if graphName}<span class="font-medium text-neutral-900 dark:text-neutral-200">{graphName}</span>{:else}this graph{/if}
                 to. Ownership can only move to an active player, so invite someone and wait for them
                 to accept first.
             </p>
         {:else}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
-                Hand {#if graphName}<span class="font-medium text-gray-900 dark:text-gray-200">{graphName}</span>{:else}this graph{/if}
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
+                Hand {#if graphName}<span class="font-medium text-neutral-900 dark:text-neutral-200">{graphName}</span>{:else}this graph{/if}
                 to one of its players. They become the Owner and you stay on as a Player — nothing is
                 re-encrypted, and they can hand it back later.
             </p>
             <div>
-                <label for="transfer-target" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">New owner</label>
+                <label for="transfer-target" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">New owner</label>
                 <select
                     id="transfer-target"
                     data-testid="transfer-target"
                     bind:value={selected}
                     aria-invalid={error ? "true" : undefined}
                     aria-describedby={error ? errorId : undefined}
-                    class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                    class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                 >
                     {#each candidates as m (m.userId)}
                         <option value={m.userId}>{m.email}</option>
@@ -102,7 +102,7 @@
     {/snippet}
 
     {#snippet footer()}
-        <button type="button" onclick={() => close()} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+        <button type="button" onclick={() => close()} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">
             {candidates.length === 0 ? "Close" : "Cancel"}
         </button>
         {#if candidates.length > 0}
@@ -110,7 +110,7 @@
                 type="submit"
                 disabled={busy || !selected}
                 data-testid="transfer-confirm"
-                class="min-w-44 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                class="min-w-44 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
             >{busy ? "Transferring…" : "Transfer ownership"}</button>
         {/if}
     {/snippet}

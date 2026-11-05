@@ -342,7 +342,7 @@ const theme = EditorView.baseTheme({
         // Follows the editor zoom, never below the app's 14px floor for text.
         fontSize: 'max(0.875rem, 0.8em)',
         lineHeight: '1',
-        color: 'var(--gk-text-subtle, #6b7280)',
+        color: 'var(--gk-text-subtle, #737373)',
         whiteSpace: 'nowrap',
         userSelect: 'none',
     },

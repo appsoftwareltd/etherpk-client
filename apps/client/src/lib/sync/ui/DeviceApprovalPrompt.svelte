@@ -228,28 +228,28 @@
         {#snippet body()}
             <div data-testid="device-approval-prompt" class="space-y-3">
                 {#if !current?.session}
-                    <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="device-approval-taken">
+                    <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="device-approval-taken">
                         A device signed in to your account on
-                        <span class="font-medium text-gray-950 dark:text-gray-100">{serverHost(current?.origin ?? "")}</span>
+                        <span class="font-medium text-neutral-950 dark:text-neutral-100">{serverHost(current?.origin ?? "")}</span>
                         asked for your Encryption Keys, and another of your devices is already handling the request.
                     </p>
                 {:else}
-                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                    <p class="text-sm text-neutral-600 dark:text-neutral-400">
                         A device signed in to your account on
-                        <span class="font-medium text-gray-950 dark:text-gray-100" data-testid="device-approval-server">{serverHost(current?.origin ?? "")}</span>
+                        <span class="font-medium text-neutral-950 dark:text-neutral-100" data-testid="device-approval-server">{serverHost(current?.origin ?? "")}</span>
                         is asking for your Encryption Keys there.
                         Approve <strong>only if you are setting that device up right now</strong> and
                         its screen shows this exact code:
                     </p>
                     {#if current?.sas}
-                        <p class="text-center text-2xl font-mono font-semibold tracking-widest text-gray-950 dark:text-gray-100" data-testid="device-approval-sas">{current.sas}</p>
+                        <p class="text-center text-2xl font-mono font-semibold tracking-widest text-neutral-950 dark:text-neutral-100" data-testid="device-approval-sas">{current.sas}</p>
                     {:else if !tampered}
-                        <p class="text-center text-sm text-gray-500 dark:text-gray-400" role="status" data-testid="device-approval-checking">Checking the new device…</p>
+                        <p class="text-center text-sm text-neutral-500 dark:text-neutral-400" role="status" data-testid="device-approval-checking">Checking the new device…</p>
                     {/if}
-                    <p role="status" class="text-sm text-gray-600 dark:text-gray-400" data-testid="device-approval-replaced">
+                    <p role="status" class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="device-approval-replaced">
                         {replaced ? "The device withdrew its earlier request and asked again with this new code." : ""}
                     </p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                    <p class="text-sm text-neutral-500 dark:text-neutral-400">
                         A different code - or a request you are not expecting - means someone else is
                         trying to get in: reject it.
                     </p>
@@ -273,7 +273,7 @@
                         onclick={approve}
                         disabled={busy || !current?.sas}
                         data-testid="device-approval-approve"
-                        class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40"
+                        class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
                     >{busy ? "Approving" : "Approve"}</button>
                 {/if}
             {:else}
@@ -281,7 +281,7 @@
                     type="button"
                     onclick={close}
                     data-testid="device-approval-close"
-                    class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                    class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                 >Close</button>
             {/if}
         {/snippet}

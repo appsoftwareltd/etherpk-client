@@ -325,55 +325,55 @@
     // the wait cursor rather than the not-allowed one.
     const secondaryButton = "gk-button aria-disabled:cursor-progress";
     const primaryButton = "gk-button gk-button--primary aria-disabled:cursor-progress";
-    const link = "text-sm text-gray-700 underline underline-offset-2 hover:text-gray-950 dark:text-gray-300 dark:hover:text-gray-100";
+    const link = "text-sm text-neutral-700 underline underline-offset-2 hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-neutral-100";
 </script>
 
 <div class="space-y-5" data-testid="extensions-tab">
-    <p class="text-sm text-gray-600 dark:text-gray-400">
+    <p class="text-sm text-neutral-600 dark:text-neutral-400">
         Extensions add views, commands and menu rows to EtherPK. Some come with EtherPK{#if directory}, and you can install others from the Extension Directory below{/if}. Switching one off applies to every graph on
         <strong>this device</strong>.
     </p>
 
     <ul class="space-y-4" bind:this={rowList}>
         {#each rows as row (row.id)}
-            <li class="border-t border-gray-100 pt-4 first:border-t-0 first:pt-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 dark:border-gray-800" tabindex="-1" data-testid="extension-row" data-extension={row.id}>
-                <label class="flex items-start gap-2 text-sm text-gray-950 dark:text-gray-100">
+            <li class="border-t border-neutral-100 pt-4 first:border-t-0 first:pt-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:border-neutral-800" tabindex="-1" data-testid="extension-row" data-extension={row.id}>
+                <label class="flex items-start gap-2 text-sm text-neutral-950 dark:text-neutral-100">
                     <input
                         type="checkbox"
                         checked={row.on}
                         disabled={switching.includes(row.id)}
                         onchange={(e) => toggle(row.id, (e.currentTarget as HTMLInputElement).checked)}
                         data-testid="extension-switch"
-                        class="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-gray-700"
+                        class="mt-0.5 h-4 w-4 rounded border-neutral-300 dark:border-neutral-700"
                     />
                     <span>
                         <span class="font-medium">{row.name}</span>
-                        <span class="text-gray-500 dark:text-gray-400">{row.version}, by {row.publisher}</span>
+                        <span class="text-neutral-500 dark:text-neutral-400">{row.version}, by {row.publisher}</span>
                     </span>
                 </label>
                 {#if row.description}
-                    <p class="mt-1.5 text-sm text-gray-600 dark:text-gray-400">{row.description}</p>
+                    <p class="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">{row.description}</p>
                 {/if}
                 <p
-                    class="mt-1 text-sm {row.status.state === 'failed' ? 'text-(--gk-text-warning)' : 'text-gray-500 dark:text-gray-400'}"
+                    class="mt-1 text-sm {row.status.state === 'failed' ? 'text-(--gk-text-warning)' : 'text-neutral-500 dark:text-neutral-400'}"
                     role={row.status.state === "failed" ? "alert" : undefined}
                     data-testid="extension-status"
                 >
                     {describe(row.status)}
                 </p>
                 {#if row.fromDirectory}
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400" data-testid="extension-origin">
+                    <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400" data-testid="extension-origin">
                         From the Extension Directory, where each release is reviewed before it is listed.
                         {#if row.listed && isHttpsAddress(row.listed.repository)}<a class={link} href={row.listed.repository} target="_blank" rel="noopener noreferrer">Source</a>{/if}
                     </p>
                     {#if row.report.updatedAt !== undefined}
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400" data-testid="extension-updated">Updated to {row.version} on {formatDate(row.report.updatedAt)}.</p>
+                        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400" data-testid="extension-updated">Updated to {row.version} on {formatDate(row.report.updatedAt)}.</p>
                     {/if}
                     {#if row.report.staged}
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400" data-testid="extension-staged">Version {row.report.staged} runs from the next time EtherPK starts.</p>
+                        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400" data-testid="extension-staged">Version {row.report.staged} runs from the next time EtherPK starts.</p>
                     {/if}
                     {#if row.report.waiting}
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400" data-testid="extension-waiting">
+                        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400" data-testid="extension-waiting">
                             Version {row.report.waiting.version} needs EtherPK {row.report.waiting.needs} or later. This is {directory?.clientVersion}.
                         </p>
                     {/if}
@@ -386,15 +386,15 @@
                 {/if}
                 {#if row.settings.length > 0 || row.hasSection}
                     <details class="mt-2" data-testid="extension-settings">
-                        <summary class="cursor-pointer text-sm font-medium text-gray-950 dark:text-gray-100">Settings</summary>
-                        <div class="mt-3 space-y-4 border-l-2 border-gray-100 pl-3 dark:border-gray-800">
+                        <summary class="cursor-pointer text-sm font-medium text-neutral-950 dark:text-neutral-100">Settings</summary>
+                        <div class="mt-3 space-y-4 border-l-2 border-neutral-100 pl-3 dark:border-neutral-800">
                             {#each row.settings as setting (setting.id)}
                                 <ExtensionSettingField extensionId={row.id} {setting} {settings} />
                             {/each}
                             {#if row.hasSection}
                                 <ExtensionSettingsSections tab="extension" {host} extensionId={row.id} />
                             {/if}
-                            <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="extension-settings-sync" data-state={syncState}>{syncNote(syncState)}</p>
+                            <p class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="extension-settings-sync" data-state={syncState}>{syncNote(syncState)}</p>
                         </div>
                     </details>
                 {/if}
@@ -403,12 +403,12 @@
     </ul>
 
     {#if host.catalogue.broken.length > 0}
-        <div class="border-t border-gray-100 pt-4 dark:border-gray-800" data-testid="extensions-broken">
-            <h3 class="text-sm font-medium text-gray-950 dark:text-gray-100">Extensions that could not be read</h3>
+        <div class="border-t border-neutral-100 pt-4 dark:border-neutral-800" data-testid="extensions-broken">
+            <h3 class="text-sm font-medium text-neutral-950 dark:text-neutral-100">Extensions that could not be read</h3>
             <ul class="mt-2 space-y-2">
                 {#each host.catalogue.broken as broken (broken.where)}
-                    <li class="text-sm text-gray-600 dark:text-gray-400">
-                        <span class="font-medium text-gray-950 dark:text-gray-100">{broken.where}</span>: {broken.errors.join(" ")}
+                    <li class="text-sm text-neutral-600 dark:text-neutral-400">
+                        <span class="font-medium text-neutral-950 dark:text-neutral-100">{broken.where}</span>: {broken.errors.join(" ")}
                     </li>
                 {/each}
             </ul>
@@ -416,16 +416,16 @@
     {/if}
 
     {#if directory}
-        <section class="border-t border-gray-100 pt-5 dark:border-gray-800" aria-labelledby="{uid}-directory" data-testid="extension-directory">
+        <section class="border-t border-neutral-100 pt-5 dark:border-neutral-800" aria-labelledby="{uid}-directory" data-testid="extension-directory">
             <div class="flex flex-wrap items-center justify-between gap-2">
-                <h3 id="{uid}-directory" class="text-sm font-medium text-gray-950 focus:outline-none dark:text-gray-100" tabindex="-1" bind:this={directoryHeading}>Extension Directory</h3>
+                <h3 id="{uid}-directory" class="text-sm font-medium text-neutral-950 focus:outline-none dark:text-neutral-100" tabindex="-1" bind:this={directoryHeading}>Extension Directory</h3>
                 {#if directoryState?.state === "ok"}
                     <button type="button" class={secondaryButton} aria-disabled={refreshing} aria-busy={refreshing} onclick={refresh} data-testid="extension-directory-refresh">
                         {refreshing ? "Refreshing…" : "Refresh"}
                     </button>
                 {/if}
             </div>
-            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400" data-testid="extension-directory-note">
+            <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400" data-testid="extension-directory-note">
                 Extensions from other publishers. All are reviewed before being accepted to the directory. Sync will install the extensions on all of your devices, and they update themselves.
             </p>
 
@@ -433,9 +433,9 @@
                 <ul class="mt-3 space-y-3" data-testid="extension-pending">
                     {#each pending as item (item.id)}
                         {@const note = pendingNote(item.report)}
-                        <li class="rounded-lg border border-gray-200 p-3 dark:border-gray-800" data-testid="pending-row" data-extension={item.id}>
-                            <p class="text-sm text-gray-950 dark:text-gray-100"><span class="font-medium">{item.name}</span>, installed from your account</p>
-                            <p class="mt-1 text-sm {item.report.failure ? 'text-(--gk-text-warning)' : 'text-gray-500 dark:text-gray-400'}" role={item.report.failure ? "alert" : undefined} data-testid="pending-note">
+                        <li class="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800" data-testid="pending-row" data-extension={item.id}>
+                            <p class="text-sm text-neutral-950 dark:text-neutral-100"><span class="font-medium">{item.name}</span>, installed from your account</p>
+                            <p class="mt-1 text-sm {item.report.failure ? 'text-(--gk-text-warning)' : 'text-neutral-500 dark:text-neutral-400'}" role={item.report.failure ? "alert" : undefined} data-testid="pending-note">
                                 {note ?? "Installing on this device…"}
                             </p>
                             <div class="mt-2 flex flex-wrap items-center gap-2">
@@ -451,10 +451,10 @@
 
             {#if directoryState === null}
                 {#if directorySlow}
-                    <p class="mt-3 text-sm text-gray-500 dark:text-gray-400" role="status" data-testid="extension-directory-loading">Loading the Extension Directory…</p>
+                    <p class="mt-3 text-sm text-neutral-500 dark:text-neutral-400" role="status" data-testid="extension-directory-loading">Loading the Extension Directory…</p>
                 {/if}
             {:else if directoryState.state === "off"}
-                <p class="mt-3 text-sm text-gray-500 dark:text-gray-400" data-testid="extension-directory-off">This EtherPK has no Extension Directory, so there are no other extensions to install.</p>
+                <p class="mt-3 text-sm text-neutral-500 dark:text-neutral-400" data-testid="extension-directory-off">This EtherPK has no Extension Directory, so there are no other extensions to install.</p>
             {:else if directoryState.state === "unavailable"}
                 <div class="mt-3 space-y-2" role="alert" data-testid="extension-directory-unavailable">
                     <p class="text-sm text-(--gk-text-warning)">The Extension Directory couldn't be read: {directoryState.error}</p>
@@ -463,7 +463,7 @@
                     </button>
                 </div>
             {:else if available.length === 0}
-                <p class="mt-3 text-sm text-gray-500 dark:text-gray-400" data-testid="extension-directory-empty">
+                <p class="mt-3 text-sm text-neutral-500 dark:text-neutral-400" data-testid="extension-directory-empty">
                     {#if listing && listing.extensions.length > 0}<strong class="font-semibold">All available extensions installed</strong>{:else}No extensions are listed yet.{/if}
                 </p>
             {:else}
@@ -471,22 +471,22 @@
                     {#each available as item (item.extension.id)}
                         {@const extension = item.extension}
                         {@const release = item.release}
-                        <li class="rounded-lg border border-gray-200 p-3 dark:border-gray-800" data-testid="directory-row" data-extension={extension.id}>
-                            <p class="text-sm text-gray-950 dark:text-gray-100">
+                        <li class="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800" data-testid="directory-row" data-extension={extension.id}>
+                            <p class="text-sm text-neutral-950 dark:text-neutral-100">
                                 <span class="font-medium">{extension.displayName}</span>
-                                <span class="text-gray-500 dark:text-gray-400">{release?.version ?? extension.releases[0].version}, by {extension.publisher}</span>
+                                <span class="text-neutral-500 dark:text-neutral-400">{release?.version ?? extension.releases[0].version}, by {extension.publisher}</span>
                             </p>
                             {#if extension.description}
-                                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{extension.description}</p>
+                                <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{extension.description}</p>
                             {/if}
-                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                                 {#if isHttpsAddress(extension.repository)}<a class={link} href={extension.repository} target="_blank" rel="noopener noreferrer">Source</a>,{/if}
                                 {extension.license} licence
                             </p>
                             {#if !release}
-                                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400" data-testid="directory-needs">Needs EtherPK {lowestNeeded(extension)} or later.</p>
+                                <p class="mt-2 text-sm text-neutral-500 dark:text-neutral-400" data-testid="directory-needs">Needs EtherPK {lowestNeeded(extension)} or later.</p>
                             {:else if confirming === extension.id}
-                                <div class="mt-3 space-y-2 border-l-2 border-gray-300 pl-3 dark:border-gray-700" role="group" aria-labelledby="{uid}-confirm-{extension.id}" data-testid="directory-confirm">
+                                <div class="mt-3 space-y-2 border-l-2 border-neutral-300 pl-3 dark:border-neutral-700" role="group" aria-labelledby="{uid}-confirm-{extension.id}" data-testid="directory-confirm">
                                     <InstallConsent name={extension.displayName} id="{uid}-confirm-{extension.id}" />
                                     <div class="flex flex-wrap gap-2">
                                         <button

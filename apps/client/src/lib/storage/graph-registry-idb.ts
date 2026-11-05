@@ -165,7 +165,8 @@ interface PermissionableHandle {
 /**
  * Ensure read/write permission on a persisted handle. `requestPermission` must be
  * called from a user gesture, so the caller (the picker / "Grant access" button)
- * guarantees one. Returns whether permission is granted.
+ * guarantees one, and it throws a `SecurityError` without one. A caller that may have none
+ * uses `tryEnsurePermission`. Returns whether permission is granted.
  */
 export async function ensurePermission(
     handle: unknown,
@@ -176,6 +177,24 @@ export async function ensurePermission(
     if ((await h.queryPermission({ mode })) === 'granted') return true
     if (!h.requestPermission) return false
     return (await h.requestPermission({ mode })) === 'granted'
+}
+
+/**
+ * `ensurePermission` for a caller that may have no user gesture behind it, such as an open that a
+ * page load started. The browser answers a request with no gesture by throwing `SecurityError`
+ * rather than by asking, which for this caller means the same as a refusal: not granted, so offer
+ * a button. Any other failure is a fault with the folder and still throws.
+ */
+export async function tryEnsurePermission(
+    handle: unknown,
+    mode: 'read' | 'readwrite' = 'readwrite',
+): Promise<boolean> {
+    try {
+        return await ensurePermission(handle, mode)
+    } catch (error) {
+        if (error instanceof Error && error.name === 'SecurityError') return false
+        throw error
+    }
 }
 
 /**

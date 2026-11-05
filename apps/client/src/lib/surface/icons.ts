@@ -64,6 +64,8 @@ export const ICON_PATHS: Record<string, string> = {
     // The `#` menu: a task's priority, and its waiting, doing and cancelled states.
     flag: '<path d="M4 14V3h7l-1.5 2.5L11 8H4"/>',
     clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.2"/>',
+    /** A label on a string: a Free Tag, a person's own word on a task. */
+    tag: '<path d="M2.5 3.5a1 1 0 0 1 1-1h4.1a1 1 0 0 1 .7.3l5 5a1 1 0 0 1 0 1.4l-4.1 4.1a1 1 0 0 1-1.4 0l-5-5a1 1 0 0 1-.3-.7z"/><circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none"/>',
 
     // A PDF, and the tools in its tab.
     pdf: '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z"/><path d="M9 2v4h4"/><path d="M5.5 12.5v-2.5h1a.75.75 0 0 1 0 1.5h-1M8.5 12.5V10h.5a1.25 1.25 0 0 1 0 2.5zM11.5 12.5V10h-.01"/>',

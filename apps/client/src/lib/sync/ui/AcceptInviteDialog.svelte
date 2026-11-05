@@ -55,7 +55,7 @@
 <Modal {open} title="Accept invite" onclose={close} onsubmit={confirm}>
     {#snippet body()}
         {#if check.kind === "unsigned"}
-            <p data-testid="accept-invite-unsigned" class="text-sm text-gray-600 dark:text-gray-400">
+            <p data-testid="accept-invite-unsigned" class="text-sm text-neutral-600 dark:text-neutral-400">
                 This invite was sent by an older version of EtherPK, so it cannot be checked. Ask {inviter} to send
                 it again.
             </p>
@@ -65,8 +65,8 @@
                 cannot be accepted. Ask {inviter} to send it again.
             </p>
         {:else}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
-                <span class="font-medium text-gray-900 dark:text-gray-200">{inviter}</span> invited you to {graph}.
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
+                <span class="font-medium text-neutral-900 dark:text-neutral-200">{inviter}</span> invited you to {graph}.
                 {#if fingerprintState === "unchecked"}
                     Before you accept, check that it really comes from them: compare the security fingerprint below
                     with the one {inviter} sees in Sync settings, as Your security fingerprint, in person or over a
@@ -82,13 +82,13 @@
             <button
                 type="button"
                 onclick={close}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300"
                 >Cancel</button
             >
             <button
                 type="submit"
                 data-testid="accept-invite-confirm"
-                class="rounded-lg bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+                class="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
                 >{fingerprintState === "verified"
                     ? "Accept"
                     : fingerprintState === "changed"
@@ -100,7 +100,7 @@
                 type="button"
                 onclick={close}
                 data-testid="accept-invite-close"
-                class="rounded-lg bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+                class="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
                 >Close</button
             >
         {/if}

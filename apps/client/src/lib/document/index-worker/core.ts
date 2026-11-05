@@ -36,6 +36,7 @@ import {
     ingestIndexRebuildChunk,
     isUsableIndex,
     propertyKeys,
+    usedFreeTags,
     propertyValues,
     searchText,
     searchTextCount,
@@ -58,6 +59,22 @@ import {
     sweepEmbeddings,
 } from '../semantic/embedding-db'
 import type { IndexDelta, IndexRequest, IndexResponse } from './protocol'
+
+type ListRead = Extract<IndexRequest, { type: 'property-keys' | 'free-tags' | 'templates' | 'property-values' }>
+
+/** The reads that list rows from the open index, and list nothing while none is open. */
+function answerListRead(db: SqlDb | undefined, request: ListRead): IndexResponse {
+    switch (request.type) {
+        case 'property-keys':
+            return { type: 'property-keys', id: request.id, keys: db ? propertyKeys(db) : [] }
+        case 'free-tags':
+            return { type: 'free-tags', id: request.id, tags: db ? usedFreeTags(db) : [] }
+        case 'templates':
+            return { type: 'templates', id: request.id, templates: db ? templatePages(db) : [] }
+        case 'property-values':
+            return { type: 'property-values', id: request.id, values: db ? propertyValues(db, request.key) : [] }
+    }
+}
 
 /**
  * How a host supplies a database for a graph. Injected so tests need no OPFS.
@@ -467,13 +484,10 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
                 }
 
                 case 'property-keys':
-                    return [{ type: 'property-keys', id: request.id, keys: db ? propertyKeys(db) : [] }]
-
+                case 'free-tags':
                 case 'templates':
-                    return [{ type: 'templates', id: request.id, templates: db ? templatePages(db) : [] }]
-
                 case 'property-values':
-                    return [{ type: 'property-values', id: request.id, values: db ? propertyValues(db, request.key) : [] }]
+                    return [answerListRead(db, request)]
 
                 case 'property-match':
                     return [{ type: 'property-match', id: request.id, documents: db ? documentsMatchingProperties(db, request.filters) : [] }]

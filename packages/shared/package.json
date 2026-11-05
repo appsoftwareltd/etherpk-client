@@ -216,6 +216,10 @@
         "./text-floor": {
             "types": "./src/testing/text-floor.ts",
             "default": "./src/testing/text-floor.ts"
+        },
+        "./no-tint": {
+            "types": "./src/testing/no-tint.ts",
+            "default": "./src/testing/no-tint.ts"
         }
     },
     "scripts": {

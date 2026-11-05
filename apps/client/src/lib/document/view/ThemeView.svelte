@@ -417,25 +417,25 @@
         previewSession?.close();
     });
 
-    const buttonClass = "rounded-md border border-gray-300 dark:border-gray-700 px-2.5 py-1 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50";
-    const primaryClass = "rounded-md bg-gray-900 dark:bg-gray-100 px-2.5 py-1 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50";
+    const buttonClass = "rounded-md border border-neutral-300 dark:border-neutral-700 px-2.5 py-1 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50";
+    const primaryClass = "rounded-md bg-neutral-900 dark:bg-neutral-100 px-2.5 py-1 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50";
 </script>
 
 <svelte:window onmessage={onPreviewMessage} />
 
-<div class="flex h-full min-h-0 flex-col bg-white dark:bg-gray-950" data-testid="theme-view">
+<div class="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-950" data-testid="theme-view">
     <p class="sr-only" role="status" aria-live="polite">{announcement}</p>
     {#if missing}
-        <div class="p-4 text-sm text-gray-600 dark:text-gray-400" data-testid="theme-view-missing">
+        <div class="p-4 text-sm text-neutral-600 dark:text-neutral-400" data-testid="theme-view-missing">
             This graph has no theme called <code>{view.target}</code>. It may have been deleted, or by another member. Open Settings → Publish to see the graph's themes.
         </div>
     {:else if theme}
-        <header class="flex flex-wrap items-center gap-2 border-b border-gray-200 dark:border-gray-800 px-3 py-2">
-            <label class="flex items-center gap-2 text-sm text-gray-950 dark:text-gray-100">
-                <span class="text-gray-500 dark:text-gray-400">Theme</span>
-                <input class="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-2 py-1 text-sm" bind:value={themeName} onchange={() => void rename()} data-testid="theme-view-name" />
+        <header class="flex flex-wrap items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 px-3 py-2">
+            <label class="flex items-center gap-2 text-sm text-neutral-950 dark:text-neutral-100">
+                <span class="text-neutral-500 dark:text-neutral-400">Theme</span>
+                <input class="rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-2 py-1 text-sm" bind:value={themeName} onchange={() => void rename()} data-testid="theme-view-name" />
             </label>
-            <span class="text-sm text-gray-500 dark:text-gray-400"><code>{theme.id}</code>{#if theme.origin} · from {theme.origin}{/if}{#if manifest && manifest.errors.length > 0} · <span class="text-red-700 dark:text-red-300">theme.json: {manifest.errors[0]}</span>{/if}</span>
+            <span class="text-sm text-neutral-500 dark:text-neutral-400"><code>{theme.id}</code>{#if theme.origin} · from {theme.origin}{/if}{#if manifest && manifest.errors.length > 0} · <span class="text-red-700 dark:text-red-300">theme.json: {manifest.errors[0]}</span>{/if}</span>
             <span class="flex-1"></span>
             <button type="button" class={previewOpen ? primaryClass : buttonClass} onclick={togglePreview} aria-pressed={previewOpen} data-testid="theme-view-preview-toggle">Preview</button>
             <button type="button" class={buttonClass} onclick={exportZip} data-testid="theme-view-export">Export zip</button>
@@ -447,18 +447,18 @@
             {/if}
         </header>
         <div class="flex min-h-0 flex-1">
-            <nav class="w-56 shrink-0 overflow-y-auto border-r border-gray-200 dark:border-gray-800 py-2 text-sm" aria-label="Theme files">
+            <nav class="w-56 shrink-0 overflow-y-auto border-r border-neutral-200 dark:border-neutral-800 py-2 text-sm" aria-label="Theme files">
                 <ul>
                     {#each files as path (path)}
                         <li>
                             <button
                                 type="button"
-                                class="flex w-full items-center gap-1 px-3 py-1 text-left hover:bg-gray-100 dark:hover:bg-gray-800 {selected === path ? 'bg-gray-100 dark:bg-gray-800 font-medium' : ''}"
+                                class="flex w-full items-center gap-1 px-3 py-1 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800 {selected === path ? 'bg-neutral-100 dark:bg-neutral-800 font-medium' : ''}"
                                 aria-current={selected === path ? "true" : undefined}
                                 onclick={() => void select(path)}
                                 data-testid="theme-file-{path}"
                             >
-                                <span class="truncate text-gray-950 dark:text-gray-100">{path}</span>
+                                <span class="truncate text-neutral-950 dark:text-neutral-100">{path}</span>
                                 {#if dirty.has(path)}<span class="text-amber-600" title="Unsaved changes">●</span>{/if}
                                 {#if changedElsewhere.has(path)}<span class="text-red-600" title="Changed elsewhere">!</span>{/if}
                             </button>
@@ -475,7 +475,7 @@
                             }}
                         >
                             <label class="sr-only" for="theme-new-file">New file path</label>
-                            <input id="theme-new-file" class="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-2 py-1 text-sm" bind:value={newPath} placeholder="partials/banner.html" data-testid="theme-new-file" />
+                            <input id="theme-new-file" class="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-2 py-1 text-sm" bind:value={newPath} placeholder="partials/banner.html" data-testid="theme-new-file" />
                             <div class="flex gap-1">
                                 <button type="submit" class={primaryClass} data-testid="theme-new-file-add">Add</button>
                                 <button type="button" class={buttonClass} onclick={() => (addingFile = false)}>Cancel</button>
@@ -487,14 +487,14 @@
                 </div>
             </nav>
             <section class="flex min-w-0 flex-1 flex-col" aria-label="File editor">
-                <div class="flex flex-wrap items-center gap-2 border-b border-gray-200 dark:border-gray-800 px-3 py-1.5 text-sm">
-                    <span class="font-medium text-gray-950 dark:text-gray-100" data-testid="theme-view-selected">{selected ?? "No file selected"}</span>
+                <div class="flex flex-wrap items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm">
+                    <span class="font-medium text-neutral-950 dark:text-neutral-100" data-testid="theme-view-selected">{selected ?? "No file selected"}</span>
                     {#if selected !== null && changedElsewhere.has(selected)}
                         <span class="text-red-700 dark:text-red-300" data-testid="theme-view-conflict">Changed elsewhere since you started editing. Save keeps yours - Revert takes theirs.</span>
                     {:else if selectedDirty}
                         <span class="text-amber-700 dark:text-amber-300" data-testid="theme-view-unsaved">Unsaved changes</span>
                     {:else if selected !== null}
-                        <span class="text-gray-500 dark:text-gray-400" data-testid="theme-view-saved">Saved</span>
+                        <span class="text-neutral-500 dark:text-neutral-400" data-testid="theme-view-saved">Saved</span>
                     {/if}
                     <span class="flex-1"></span>
                     <button type="button" class={primaryClass} onclick={() => void save()} disabled={!selectedDirty || saving} data-testid="theme-view-save">{saving ? "Saving…" : "Save"}</button>
@@ -508,20 +508,20 @@
                 <div class="min-h-0 flex-1 overflow-hidden" bind:this={host} data-testid="theme-view-editor"></div>
             </section>
             {#if previewOpen}
-                <section class="flex w-1/2 min-w-0 shrink-0 flex-col border-l border-gray-200 dark:border-gray-800" aria-label="Preview" data-testid="theme-view-preview">
-                    <div class="flex flex-wrap items-center gap-2 border-b border-gray-200 dark:border-gray-800 px-3 py-1.5 text-sm">
-                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                <section class="flex w-1/2 min-w-0 shrink-0 flex-col border-l border-neutral-200 dark:border-neutral-800" aria-label="Preview" data-testid="theme-view-preview">
+                    <div class="flex flex-wrap items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm">
+                        <label class="flex items-center gap-1 text-neutral-600 dark:text-neutral-400">
                             <span>Content</span>
-                            <select class="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-2 py-1 text-sm text-gray-950 dark:text-gray-100" bind:value={previewChoice} onchange={() => void updatePreview()} disabled={previewBusy} data-testid="theme-view-preview-content">
+                            <select class="rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-2 py-1 text-sm text-neutral-950 dark:text-neutral-100" bind:value={previewChoice} onchange={() => void updatePreview()} disabled={previewBusy} data-testid="theme-view-preview-content">
                                 {#each previewChoices ?? [] as p (p.id)}
                                     <option value={p.id}>{p.name}</option>
                                 {/each}
                                 <option value="sample">Sample content</option>
                             </select>
                         </label>
-                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                        <label class="flex items-center gap-1 text-neutral-600 dark:text-neutral-400">
                             <span>Page</span>
-                            <select class="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-2 py-1 text-sm text-gray-950 dark:text-gray-100" bind:value={previewPage} disabled={previewPageList.length === 0} data-testid="theme-view-preview-page">
+                            <select class="rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-2 py-1 text-sm text-neutral-950 dark:text-neutral-100" bind:value={previewPage} disabled={previewPageList.length === 0} data-testid="theme-view-preview-page">
                                 {#each previewPageList as page (page)}
                                     <option value={page}>{page}</option>
                                 {/each}
@@ -540,7 +540,7 @@
                             <a class={`inline-block ${buttonClass}`} href={previewUrl} target="_blank" rel="noopener noreferrer" data-testid="theme-view-preview-open">Open in new tab</a>
                         {/if}
                     </div>
-                    <p class="px-3 py-1 text-sm text-gray-500 dark:text-gray-400">
+                    <p class="px-3 py-1 text-sm text-neutral-500 dark:text-neutral-400">
                         Shows your unsaved edits.
                         {#if previewChoices && previewChoices.length === 0}No publication uses this theme yet, so this is sample content.{/if}
                         {#if previewBundle && !previewSession}Scripts (search, a theme's own) do not run in this preview, and it cannot open in a tab: the browser has no service worker to serve it.{/if}
@@ -559,13 +559,13 @@
                                  origin and the app's inherited CSP keep anything in it from the app. -->
                             <iframe title="Theme preview" class="h-full w-full border-0" sandbox="allow-scripts" {@attach (node) => setSandboxedSrcdoc(node, previewSrcdoc)} data-testid="theme-view-preview-frame" data-preview-fallback="true"></iframe>
                         {:else if previewBusy}
-                            <p class="p-4 text-sm text-gray-500 dark:text-gray-400">Rendering…</p>
+                            <p class="p-4 text-sm text-neutral-500 dark:text-neutral-400">Rendering…</p>
                         {/if}
                     </div>
                 </section>
             {/if}
         </div>
     {:else}
-        <p class="p-4 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <p class="p-4 text-sm text-neutral-500 dark:text-neutral-400">Loading…</p>
     {/if}
 </div>

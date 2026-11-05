@@ -322,7 +322,7 @@ const theme = EditorView.baseTheme({
     '.cm-line.gk-quote-line': {
         position: 'relative',
         isolation: 'isolate',
-        color: 'var(--gk-text-muted, #6b7280)',
+        color: 'var(--gk-text-muted, #737373)',
         paddingRight: '0.8em',
     },
     '.cm-line.gk-quote-line::after': {

@@ -165,21 +165,21 @@
 <Modal open {title} {busy} {busyReason} {onclose} onsubmit={submit} testId="device-passcode-dialog">
     {#snippet body()}
         {#if forgetting}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 A passcode cannot be recovered. Remove the Encryption Keys it protects from this device, then unlock
                 again with your Recovery Code or from another device that is unlocked. Nothing on your
                 Sync Servers changes.
             </p>
             {#if customHosts.length > 0}
-                <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="device-passcode-forget-tokens">
+                <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="device-passcode-forget-tokens">
                     The access {customHosts.length === 1 ? "token" : "tokens"} for
-                    <span class="font-medium text-gray-950 dark:text-gray-100">{customHosts.join(", ")}</span>
+                    <span class="font-medium text-neutral-950 dark:text-neutral-100">{customHosts.join(", ")}</span>
                     {customHosts.length === 1 ? "is" : "are"} removed too. Connect to
                     {customHosts.length === 1 ? "that server" : "those servers"} again with a new token.
                 </p>
             {/if}
         {:else}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 {#if intro}
                     {intro}
                 {:else if mode === "unlock"}
@@ -200,7 +200,7 @@
 
             {#if asksCurrent}
                 <div>
-                    <label for="{uid}-current" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                    <label for="{uid}-current" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                         >{mode === "change" ? "Current passcode" : "Passcode"}</label
                     >
                     <input
@@ -213,9 +213,9 @@
                         data-testid="device-passcode-current"
                         aria-invalid={currentError ? "true" : undefined}
                         aria-describedby={currentError ? `${uid}-current-error` : undefined}
-                        class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:outline-none focus:ring-1 {currentError
+                        class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {currentError
                             ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                            : 'border-gray-300 dark:border-gray-700 focus:border-gray-950 dark:focus:border-gray-400 focus:ring-gray-950 dark:focus:ring-gray-400'}"
+                            : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
                     />
                     {#if currentError}
                         <p id="{uid}-current-error" role="alert" class="mt-1.5 text-sm text-red-600" data-testid="device-passcode-current-error">
@@ -227,7 +227,7 @@
 
             {#if asksNew}
                 <div>
-                    <label for="{uid}-next" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                    <label for="{uid}-next" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                         >{mode === "change" ? "New passcode" : "Passcode"}</label
                     >
                     <input
@@ -239,9 +239,9 @@
                         data-testid="device-passcode-new"
                         aria-invalid={nextError ? "true" : undefined}
                         aria-describedby="{uid}-advice{nextError ? ` ${uid}-next-error` : ''}"
-                        class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:outline-none focus:ring-1 {nextError
+                        class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {nextError
                             ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                            : 'border-gray-300 dark:border-gray-700 focus:border-gray-950 dark:focus:border-gray-400 focus:ring-gray-950 dark:focus:ring-gray-400'}"
+                            : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
                     />
                     {#if nextError}
                         <p id="{uid}-next-error" role="alert" class="mt-1.5 text-sm text-red-600" data-testid="device-passcode-new-error">
@@ -249,12 +249,12 @@
                         </p>
                     {/if}
                     <!-- Advice, not an error: any length from 4 is taken, and this says what a short one stops. -->
-                    <p id="{uid}-advice" class="mt-1.5 text-sm text-gray-600 dark:text-gray-400" data-testid="device-passcode-advice">
+                    <p id="{uid}-advice" class="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400" data-testid="device-passcode-advice">
                         {passcodeAdvice(next)}
                     </p>
                 </div>
                 <div>
-                    <label for="{uid}-again" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                    <label for="{uid}-again" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                         >{mode === "change" ? "New passcode again" : "Passcode again"}</label
                     >
                     <input
@@ -266,9 +266,9 @@
                         data-testid="device-passcode-again"
                         aria-invalid={againError ? "true" : undefined}
                         aria-describedby={againError ? `${uid}-again-error` : undefined}
-                        class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:outline-none focus:ring-1 {againError
+                        class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {againError
                             ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                            : 'border-gray-300 dark:border-gray-700 focus:border-gray-950 dark:focus:border-gray-400 focus:ring-gray-950 dark:focus:ring-gray-400'}"
+                            : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
                     />
                     {#if againError}
                         <p id="{uid}-again-error" role="alert" class="mt-1.5 text-sm text-red-600" data-testid="device-passcode-again-error">
@@ -277,7 +277,7 @@
                     {/if}
                 </div>
                 {#if mode === "set"}
-                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                    <p class="text-sm text-neutral-600 dark:text-neutral-400">
                         It protects Encryption Keys and access tokens, not the documents already stored on this
                         device. If you forget it,
                         unlock again with your Recovery Code or from another device.
@@ -290,7 +290,7 @@
                     type="button"
                     data-testid="device-passcode-forgot"
                     onclick={() => void showForgetStep(true)}
-                    class="text-sm font-medium text-gray-950 underline underline-offset-2 hover:no-underline dark:text-gray-100"
+                    class="text-sm font-medium text-neutral-950 underline underline-offset-2 hover:no-underline dark:text-neutral-100"
                     >Forgot your passcode?</button
                 >
             {/if}
@@ -308,7 +308,7 @@
                 bind:this={backButton}
                 onclick={() => void showForgetStep(false)}
                 data-testid="device-passcode-forget-back"
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                 >Back</button
             >
             <button
@@ -322,14 +322,14 @@
                 type="button"
                 onclick={onclose}
                 data-testid="device-passcode-dismiss"
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                 >{dismissLabel}</button
             >
             <button
                 type="submit"
                 disabled={busy}
                 data-testid="device-passcode-submit"
-                class="min-w-28 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40"
+                class="min-w-28 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
                 >{busy ? busyReason : submitLabel}</button
             >
         {/if}

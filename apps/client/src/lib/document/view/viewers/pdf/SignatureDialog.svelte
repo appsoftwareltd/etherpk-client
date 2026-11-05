@@ -81,7 +81,7 @@
         ctx.lineWidth = (pressure === null ? INK_WIDTH_PX : pressureWidth(INK_WIDTH_PX, pressure)) * scale;
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
-        ctx.strokeStyle = "#111827";
+        ctx.strokeStyle = "#171717";
         return ctx;
     }
 
@@ -156,7 +156,7 @@
         picture.width = Math.ceil(ctx.measureText(typed).width) + 24;
         picture.height = Math.ceil(size * 1.5);
         ctx.font = font;
-        ctx.fillStyle = "#111827";
+        ctx.fillStyle = "#171717";
         ctx.textBaseline = "middle";
         ctx.fillText(typed, 12, picture.height / 2);
         return toBlob(picture);
@@ -222,7 +222,7 @@
         {#if remembered}
             <div class="flex items-center gap-3 rounded-lg border border-(--gk-surface-2) p-2">
                 <img src={remembered.url} alt="Your remembered signature" class="h-12 max-w-40 object-contain" />
-                <button type="button" class="rounded-lg border border-gray-300 px-2.5 py-1 text-sm dark:border-gray-700" onclick={() => place(remembered!.blob)} data-testid="pdf-signature-use-remembered">Use this</button>
+                <button type="button" class="rounded-lg border border-neutral-300 px-2.5 py-1 text-sm dark:border-neutral-700" onclick={() => place(remembered!.blob)} data-testid="pdf-signature-use-remembered">Use this</button>
                 <button type="button" class="rounded-lg px-2.5 py-1 text-sm text-(--gk-text-default) hover:bg-(--gk-surface-1)" onclick={forget} data-testid="pdf-signature-forget">Forget it</button>
             </div>
         {/if}
@@ -235,7 +235,7 @@
             <canvas
                 bind:this={canvas}
                 {@attach fitPad}
-                class="h-36 w-full touch-none rounded-lg border border-gray-300 dark:border-gray-700"
+                class="h-36 w-full touch-none rounded-lg border border-neutral-300 dark:border-neutral-700"
                 style:background-color="#ffffff"
                 aria-label="Draw your signature here"
                 onpointerdown={padDown}
@@ -248,7 +248,7 @@
         {:else if mode === "type"}
             <label class="flex flex-col gap-1 text-sm font-medium text-(--gk-text-default)">
                 Your name
-                <input type="text" autocomplete="off" class="rounded-lg border border-gray-300 bg-(--gk-surface-0) px-2 py-1.5 text-sm font-normal dark:border-gray-700" bind:value={typed} data-testid="pdf-signature-typed" />
+                <input type="text" autocomplete="off" class="rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-2 py-1.5 text-sm font-normal dark:border-neutral-700" bind:value={typed} data-testid="pdf-signature-typed" />
             </label>
         {:else}
             <div class="flex flex-wrap items-center gap-3">
@@ -268,7 +268,7 @@
     {/snippet}
     {#snippet footer()}
         <div class="flex justify-end gap-2">
-            <button type="button" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium dark:border-gray-700" onclick={onclose}>Cancel</button>
+            <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium dark:border-neutral-700" onclick={onclose}>Cancel</button>
             <button type="button" class="rounded-lg bg-(--gk-accent) px-3 py-1.5 text-sm font-medium text-(--gk-surface-0) hover:bg-(--gk-accent-hover)" onclick={submit} data-testid="pdf-signature-place">Place on the page</button>
         </div>
     {/snippet}

@@ -42,9 +42,9 @@ const DARK_CLUSTERS = [
 /** Build the colours from a token reader, so they can be tested without a stylesheet. */
 export function mapColours(read: (token: string) => string, theme: { dark: boolean; font: string }): MapColours {
     const token = (name: string, fallback: string) => read(name).trim() || fallback
-    const background = token('--gk-surface-0', theme.dark ? '#18181b' : '#ffffff')
-    const text = token('--gk-text-default', theme.dark ? '#d4d4d8' : '#374151')
-    const subtle = token('--gk-text-subtle', theme.dark ? '#8e8e97' : '#5f6672')
+    const background = token('--gk-surface-0', theme.dark ? '#171717' : '#ffffff')
+    const text = token('--gk-text-default', theme.dark ? '#d4d4d4' : '#404040')
+    const subtle = token('--gk-text-subtle', theme.dark ? '#a3a3a3' : '#525252')
     const accent = token('--gk-accent', theme.dark ? '#5ab3ff' : '#0a66c2')
     return {
         background,

@@ -130,7 +130,7 @@
             {#if replace?.notice}
                 <p class="rounded-md bg-(--gk-warning-surface) px-3 py-2 text-sm text-(--gk-text-warning)" role="status" data-testid="link-rename-notice">{replace.notice}</p>
             {/if}
-            <p id="{uid}-intro" class="text-sm text-gray-600 dark:text-gray-400" data-testid="link-rename-intro">
+            <p id="{uid}-intro" class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="link-rename-intro">
                 {#if replace}
                     {replace.replaced === 1 ? "This replace changes 1 match" : `This replace changes ${replace.replaced} matches`}, and the name in
                     {several ? `${rows.length} wikilinks` : "a wikilink"}. Nothing has changed yet.
@@ -164,11 +164,11 @@
 
             {#if hint}
                 <!-- Rule 7: Rename is disabled now, and the reason is in persistent text. -->
-                <p id={hintId} class="text-sm text-gray-600 dark:text-gray-400" data-testid="link-rename-nothing-ticked">{hint}</p>
+                <p id={hintId} class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="link-rename-nothing-ticked">{hint}</p>
             {/if}
 
             <!-- The cascade rule (ADR 0038 §2): a scoped concept's name contains its scope's. -->
-            <p class="text-sm text-gray-500 dark:text-gray-400">
+            <p class="text-sm text-neutral-500 dark:text-neutral-400">
                 Links that use a renamed name as a scope are updated with it - a scoped concept is named by its scope.
             </p>
         </div>
@@ -180,7 +180,7 @@
             onclick={onclose}
             disabled={busy}
             data-testid="link-rename-keep"
-            class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 disabled:opacity-40"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 disabled:opacity-40"
         >{started ? "Close" : replace ? "Cancel" : several ? "Keep links as typed" : "Just this link"}</button>
         {#if replace && !started}
             <button
@@ -188,7 +188,7 @@
                 onclick={replace.onoutside}
                 disabled={busy}
                 data-testid="link-rename-outside"
-                class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40"
+                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
             >Replace outside wikilinks only</button>
         {/if}
         <button
@@ -197,7 +197,7 @@
             disabled={!canConfirm}
             aria-describedby={hint ? hintId : undefined}
             data-testid="link-rename-confirm"
-            class="min-w-28 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40"
+            class="min-w-28 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
         >{busy ? (replace && !started ? "Replacing…" : "Renaming…") : failed ? "Retry" : replace && !started ? (toRun > 0 ? `Replace and rename ${several ? toRun : ""}`.trim() : "Replace") : several ? `Rename ${toRun}` : "Rename"}</button>
     {/snippet}
 </Dialog>

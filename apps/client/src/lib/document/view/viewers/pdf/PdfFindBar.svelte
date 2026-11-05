@@ -52,7 +52,7 @@
         {@attach focusOnOpen}
         type="search"
         placeholder="Find in this PDF"
-        class="min-w-40 flex-1 rounded-lg border border-gray-300 bg-(--gk-surface-0) px-2 py-1 text-sm text-(--gk-text-default) dark:border-gray-700"
+        class="min-w-40 flex-1 rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-2 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700"
         value={reader.findQuery}
         oninput={onInput}
         onkeydown={onKeydown}

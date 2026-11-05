@@ -171,11 +171,11 @@
     {#snippet body()}
         <div>
             {#if fromTitle}
-                <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="rename-from-frontmatter">
+                <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="rename-from-frontmatter">
                     You changed this page's title in its frontmatter. Cancel puts "{concept}" back.
                 </p>
             {:else}
-                <label for="rename-name" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">New name</label>
+                <label for="rename-name" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">New name</label>
                 <input
                     id="rename-name"
                     data-testid="rename-input"
@@ -185,9 +185,9 @@
                     oninput={schedulePreview}
                     aria-invalid={error || refusal ? "true" : undefined}
                     aria-describedby={error || refusal ? errorId : unchanged ? hintId : undefined}
-                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:outline-none focus:ring-1 {error || refusal
+                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {error || refusal
                         ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                        : 'border-gray-300 dark:border-gray-700 focus:border-gray-950 dark:focus:border-gray-400 focus:ring-gray-950 dark:focus:ring-gray-400'}"
+                        : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
                 />
             {/if}
             {#if error || refusal}
@@ -195,7 +195,7 @@
             {:else if unchanged && !fromTitle}
                 <!-- Rule 7: Rename is disabled here, and a native disabled button is not
                      focusable, so the reason cannot live on its tooltip. -->
-                <p id={hintId} class="mt-1.5 text-sm text-gray-500 dark:text-gray-400" data-testid="rename-unchanged-hint">
+                <p id={hintId} class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400" data-testid="rename-unchanged-hint">
                     Enter a name different from the current one.
                 </p>
             {/if}
@@ -221,7 +221,7 @@
         />
 
         {#if scopeRows.length > 0 && !unchanged}
-            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="rename-scope-intro">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="rename-scope-intro">
                 {#if scopeRows.length === 1}
                     The new name changes "{scopeRows[0].before}", which other documents use. Rename it everywhere, or rename just this page?
                 {:else}
@@ -254,20 +254,20 @@
         </div>
 
         <!-- The cascade rule (ADR 0038 §2): a scoped concept's name contains its scope's. -->
-        <p class="text-sm text-gray-500 dark:text-gray-400">
+        <p class="text-sm text-neutral-500 dark:text-neutral-400">
             Links that use a renamed name as a scope are updated with it, because a scoped concept is named by its scope.
         </p>
     {/snippet}
 
     {#snippet footer()}
-        <button type="button" onclick={close} disabled={busy} data-testid="rename-cancel" class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 disabled:opacity-40">{started ? "Close" : "Cancel"}</button>
+        <button type="button" onclick={close} disabled={busy} data-testid="rename-cancel" class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 disabled:opacity-40">{started ? "Close" : "Cancel"}</button>
         {#if scopeRows.length > 0 && !started && !unchanged}
             <button
                 type="button"
                 onclick={() => confirm(true)}
                 disabled={blocked}
                 data-testid="rename-just-this-page"
-                class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40"
+                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
             >Rename just this page</button>
         {/if}
         <button
@@ -276,7 +276,7 @@
             disabled={blocked}
             aria-describedby={unchanged && !error && !fromTitle ? hintId : undefined}
             data-testid="rename-confirm"
-            class="min-w-28 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40"
+            class="min-w-28 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
         >{busy ? "Renaming…" : failed ? "Retry" : "Rename"}</button>
     {/snippet}
 </Modal>

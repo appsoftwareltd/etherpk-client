@@ -194,7 +194,7 @@
         padding: 0 0.5em;
         text-align: center;
         line-height: 1.4;
-        color: var(--gk-text-muted, #6b7280);
+        color: var(--gk-text-muted, #737373);
     }
     .spinner {
         width: 1em;

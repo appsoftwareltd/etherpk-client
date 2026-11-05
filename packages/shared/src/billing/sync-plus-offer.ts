@@ -13,8 +13,8 @@ export const SYNC_PLUS_OFFER_TEXT =
 export const SYNC_PLUS_PRICING_LABEL = 'Sync+ Pricing'
 
 export const SYNC_PLUS_OFFER_PANEL_CLASS =
-    'flex min-h-11 flex-col gap-3 rounded-lg bg-gray-50 px-4 py-3 text-sm leading-5 text-gray-950 ring-1 ring-gray-950/10 sm:flex-row sm:items-center sm:justify-between dark:bg-white/5 dark:text-gray-100 dark:ring-white/10'
+    'flex min-h-11 flex-col gap-3 rounded-lg bg-neutral-50 px-4 py-3 text-sm leading-5 text-neutral-950 ring-1 ring-neutral-950/10 sm:flex-row sm:items-center sm:justify-between dark:bg-white/5 dark:text-neutral-100 dark:ring-white/10'
 
 /** The primary button Corporate and the Sync Server use, and the Client uses for this offer too. */
 export const SYNC_PLUS_OFFER_BUTTON_CLASS =
-    'inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg bg-gray-950 px-3 text-sm font-semibold text-white hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-100'
+    'inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg bg-neutral-950 px-3 text-sm font-semibold text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100'

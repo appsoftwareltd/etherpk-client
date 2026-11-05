@@ -53,7 +53,7 @@
 <Modal {open} title="Verify {email}" {busy} busyReason="Saving…" onclose={close} onsubmit={confirm}>
     {#snippet body()}
         {#if !changed}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 Compare the security fingerprint below with the one {email} sees in Sync settings, as Your security
                 fingerprint, in person or over a call you trust. Once it matches, EtherPK remembers it and warns you
                 if their key ever changes.
@@ -69,14 +69,14 @@
         <button
             type="button"
             onclick={close}
-            class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300"
             >Cancel</button
         >
         <button
             type="submit"
             disabled={busy}
             data-testid="verify-member-confirm"
-            class="min-w-52 rounded-lg bg-gray-900 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+            class="min-w-52 rounded-lg bg-neutral-900 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
             >{busy ? "Saving…" : changed ? "It matches, trust the new key" : "Fingerprint matches"}</button
         >
     {/snippet}

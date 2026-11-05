@@ -1492,6 +1492,14 @@ describe('remote graph index', () => {
         }
     })
 
+    it('answers the Free Tags the graph uses', async () => {
+        const s = fakeSource([doc('Alpha', '- [ ] Water the beans #garden'), doc('Beta', '- [ ] Rake the leaves #garden #compost')])
+        const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1' })
+        await index.refresh()
+        await expect(index.freeTags()).resolves.toEqual(['garden', 'compost'])
+        index.dispose()
+    })
+
     it('serves conceptExists and allConcepts synchronously from the pushed snapshot', async () => {
         const s = fakeSource([doc('Alpha', '- links [[Nowhere]]')])
         const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1' })

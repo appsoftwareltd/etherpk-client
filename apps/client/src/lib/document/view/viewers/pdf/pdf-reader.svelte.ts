@@ -30,7 +30,7 @@ export type ReaderStatus = 'opening' | 'password' | 'ready' | 'error'
 const NOTE_FONT_SIZE = 11
 const UNDO_DEPTH = 100
 const PLACE_WRITE_DELAY_MS = 1500
-const DARK_PAGES = { background: '#16181d', foreground: '#e5e7eb' }
+const DARK_PAGES = { background: '#171717', foreground: '#e5e5e5' }
 /** How close together two taps must land, in time and on screen, to be a double-tap. */
 const DOUBLE_TAP_MS = 320
 const DOUBLE_TAP_PX = 32

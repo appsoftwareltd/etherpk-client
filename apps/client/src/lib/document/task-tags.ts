@@ -20,6 +20,9 @@
  * kanban [[Lane]]s. ADR 0032 is explicit that those should parse this grammar rather than
  * invent a parallel one.
  *
+ * A Task Tag is read in any case (ADR 0032, amended 2026-11-05), so `#p1` is `#P1`, and every rewrite
+ * of the run writes it in upper case ({@link serialiseTags}).
+ *
  * Pure and DOM-free.
  */
 
@@ -62,7 +65,6 @@ const EMPTY: Omit<TaskTags, 'text'> = {
 }
 
 /**
- * Tags are **case-sensitive** (ADR 0032), so `#p1` and `#d` are prose, not metadata.
  * Dates are shape-matched, not calendar-validated: `#D-2026-13-45` is still a date-shaped
  * tag. Shape is what makes string ordering equal date ordering, and a wrong date is the
  * user's to see and fix, not ours to silently drop.
@@ -98,8 +100,14 @@ type StateKind = (typeof STATE_TAGS)[number][0]
 
 const STATE_BY_TOKEN = new Map<string, StateKind>(STATE_TAGS.map(([kind, token]) => [token, kind]))
 
-/** Read one token as a tag, or null if it is not one (which ends the run). */
-function readTag(token: string): { kind: TagKind; value: string } | null {
+/** `token` as a Task Tag is written: its ASCII letters in upper case. Not `toUpperCase`, which also turns `ſ` into `S`. */
+function inTagCase(token: string): string {
+    return token.replace(/[a-z]+/g, (letters) => letters.toUpperCase())
+}
+
+/** Read one token as a tag, in any case, or null if it is not one (which ends the run). */
+function readTag(written: string): { kind: TagKind; value: string } | null {
+    const token = inTagCase(written)
     const state = STATE_BY_TOKEN.get(token)
     if (state) return { kind: state, value: '' }
     if (token === '#P1' || token === '#P2' || token === '#P3') {
@@ -181,14 +189,19 @@ export function parseTaskTags(label: string): TaskTags {
 const FREE_TAG_WORD = /^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/
 
 /**
- * Anything a [[Task Tag]] is or could be, in any case: `#p1` and `#P4` are not Task Tags, but a
+ * Anything a [[Task Tag]] is or could be, in any case: `#P4` and `#d-2026` are not Task Tags, but a
  * person who wrote them meant one, so neither is a Free Tag either.
  */
 const TASK_TAG_SHAPED = /^(?:P\d+|W|D|T|C|A|[DCS]-[\d-]*)$/i
 
+/** Whether `word` (without its `#`) is a [[Task Tag]] or shaped like one, in any case. */
+export function isTaskTagShaped(word: string): boolean {
+    return TASK_TAG_SHAPED.test(word)
+}
+
 /** Whether `word` (without its `#`) can be a [[Free Tag]]: what the Task Editor checks a new tag by. */
 export function isFreeTagWord(word: string): boolean {
-    return FREE_TAG_WORD.test(word) && /[A-Za-z]/.test(word) && !TASK_TAG_SHAPED.test(word)
+    return FREE_TAG_WORD.test(word) && /[A-Za-z]/.test(word) && !isTaskTagShaped(word)
 }
 
 /** True when a whitespace-separated token is exactly one Free Tag. */
@@ -540,7 +553,9 @@ function strayTagsIn(label: string, skip: readonly LineSpan[]): { from: number; 
 /**
  * A task line with its stray [[Task Tag]]s moved into the leading run, or null when the line is not
  * a task or has none. A person who types `#P1` at the end of a task means it as metadata, but the
- * grammar reads only the leading run (ADR 0032), so the tag would sit there as prose.
+ * grammar reads only the leading run (ADR 0032), so the tag would sit there as prose. A tag already
+ * in the run keeps its case: this runs whenever a caret leaves the task, and two devices offline that
+ * each changed `#p1` to `#P1` would merge to `#PP1`, which is a Free Tag.
  *
  * Each stray word is taken out with the whitespace before it, and its tag set in the order written
  * ({@link withStrayTag}): a later `#P2` replaces a leading `#P1`, a date replaces the date of its

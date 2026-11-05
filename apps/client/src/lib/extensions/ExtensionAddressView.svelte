@@ -123,29 +123,29 @@
 </script>
 
 <div class="mx-auto max-w-xl space-y-3 p-6" data-testid="extension-address" data-extension={extensionId}>
-    <h2 class="text-base font-medium text-gray-950 dark:text-gray-100">This page belongs to {name}, which isn't installed on this device.</h2>
+    <h2 class="text-base font-medium text-neutral-950 dark:text-neutral-100">This page belongs to {name}, which isn't installed on this device.</h2>
 
     {#if arriving}
-        <p class="text-sm text-gray-600 dark:text-gray-400" role="status" data-testid="extension-address-arriving">
+        <p class="text-sm text-neutral-600 dark:text-neutral-400" role="status" data-testid="extension-address-arriving">
             You installed {name} on another device, so it is being installed here. The page opens once it is.
         </p>
     {:else if directoryState === null}
-        <p class="text-sm text-gray-500 dark:text-gray-400">Reading the Extension Directory…</p>
+        <p class="text-sm text-neutral-500 dark:text-neutral-400">Reading the Extension Directory…</p>
     {:else if directoryState.state === "unavailable"}
         <div class="space-y-2" role="alert">
             <p class="text-sm text-(--gk-text-warning)">The Extension Directory couldn't be read: {directoryState.error}</p>
             <button type="button" class={secondaryButton} aria-disabled={loading} aria-busy={loading} onclick={load} data-testid="extension-address-retry">{loading ? "Trying again…" : "Try again"}</button>
         </div>
     {:else if directoryState.state === "off" || !listed}
-        <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="extension-address-unlisted">The Extension Directory doesn't list {name}, so it can't be installed here.</p>
+        <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="extension-address-unlisted">The Extension Directory doesn't list {name}, so it can't be installed here.</p>
     {:else if !release}
-        <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="extension-address-needs">{name} needs a newer EtherPK than this one, {directory.clientVersion}.</p>
+        <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="extension-address-needs">{name} needs a newer EtherPK than this one, {directory.clientVersion}.</p>
     {:else}
         {#if listed.description}
-            <p class="text-sm text-gray-600 dark:text-gray-400">{listed.description}</p>
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">{listed.description}</p>
         {/if}
         {#if confirming}
-            <div class="space-y-2 border-l-2 border-gray-300 pl-3 dark:border-gray-700" role="group" aria-labelledby="extension-address-confirm-text" data-testid="extension-address-confirm">
+            <div class="space-y-2 border-l-2 border-neutral-300 pl-3 dark:border-neutral-700" role="group" aria-labelledby="extension-address-confirm-text" data-testid="extension-address-confirm">
                 <InstallConsent {name} id="extension-address-confirm-text" />
                 <div class="flex flex-wrap gap-2">
                     <button type="button" class={primaryButton} aria-disabled={installing} aria-busy={installing} onclick={install} onkeydown={cancelOnEscape} {@attach focusOnOpen} data-testid="extension-address-install-confirm">

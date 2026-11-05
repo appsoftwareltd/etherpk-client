@@ -79,16 +79,16 @@
         };
     });
 
-    const containerClass = $derived(displayedResolvedTheme === "dark" ? "border-white/15 bg-gray-950/85 shadow-gray-950/40" : "border-gray-200 bg-white/85");
+    const containerClass = $derived(displayedResolvedTheme === "dark" ? "border-white/15 bg-neutral-950/85 shadow-neutral-950/40" : "border-neutral-200 bg-white/85");
 
     function buttonClass(option: ThemePreference) {
         const isActive = displayedPreference === option;
 
         if (isActive) {
-            return displayedResolvedTheme === "dark" ? "bg-white/12 text-white ring-1 ring-white/20 shadow-sm" : "bg-gray-950 text-white shadow-sm";
+            return displayedResolvedTheme === "dark" ? "bg-white/12 text-white ring-1 ring-white/20 shadow-sm" : "bg-neutral-950 text-white shadow-sm";
         }
 
-        return displayedResolvedTheme === "dark" ? "text-gray-400 hover:bg-white/10 hover:text-white" : "text-gray-500 hover:bg-gray-100 hover:text-gray-950";
+        return displayedResolvedTheme === "dark" ? "text-neutral-400 hover:bg-white/10 hover:text-white" : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950";
     }
 </script>
 

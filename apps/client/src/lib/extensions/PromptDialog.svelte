@@ -53,8 +53,8 @@
 <Modal {open} title={options.title} onclose={cancel} onsubmit={answer} testId="extension-prompt">
     {#snippet body()}
         <div>
-            <p class="mb-3 text-sm text-gray-500 dark:text-gray-400" data-testid="extension-prompt-from">Asked by {from}, an extension.</p>
-            <label for="{uid}-field" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">{options.label}</label>
+            <p class="mb-3 text-sm text-neutral-500 dark:text-neutral-400" data-testid="extension-prompt-from">Asked by {from}, an extension.</p>
+            <label for="{uid}-field" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">{options.label}</label>
             <input
                 id="{uid}-field"
                 data-testid="extension-prompt-input"
@@ -64,7 +64,7 @@
                 spellcheck="false"
                 aria-invalid={error !== undefined}
                 aria-describedby={error !== undefined ? `${uid}-error` : undefined}
-                class="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950 focus:border-gray-950 focus:ring-1 focus:ring-gray-950 focus:outline-none dark:border-gray-700 dark:bg-white/10 dark:text-gray-100 dark:focus:border-gray-400 dark:focus:ring-gray-400"
+                class="block w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-950 focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 focus:outline-none dark:border-neutral-700 dark:bg-white/10 dark:text-neutral-100 dark:focus:border-neutral-400 dark:focus:ring-neutral-400"
             />
             {#if error !== undefined}
                 <p id="{uid}-error" class="mt-1.5 text-sm text-red-600 dark:text-red-400" data-testid="extension-prompt-error">{error}</p>
@@ -76,12 +76,12 @@
         <button
             type="button"
             onclick={cancel}
-            class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">Cancel</button
+            class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300">Cancel</button
         >
         <button
             type="submit"
             data-testid="extension-prompt-submit"
-            class="rounded-lg bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+            class="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
             >{options.submitLabel ?? "OK"}</button
         >
     {/snippet}

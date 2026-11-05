@@ -208,7 +208,7 @@
         }
     }
     .quoted-fence__note {
-        color: var(--gk-text-muted, #6b7280);
+        color: var(--gk-text-muted, #737373);
     }
     /* The editor's placeholder (interactive-fence.ts, `.gk-extension-fence-placeholder`): a quiet
        line in a dashed box. */

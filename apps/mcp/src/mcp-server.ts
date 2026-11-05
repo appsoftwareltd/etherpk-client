@@ -415,7 +415,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
             title: 'Read an asset',
             description: 'Write an asset\'s bytes to a file on this machine and return the path, so you can open or view it. Pass the reference as a document shows it ("../assets/<name>") or the name alone. Available only where a document you can read references the asset (or you uploaded it this session) - otherwise error "asset_not_found". The file is written under the graph\'s downloads directory, named after the asset, and never over an existing file.',
             inputSchema: {
-                ref: z.string().min(1),
+                reference: z.string().min(1).describe('The asset as a document or read_task shows it ("../assets/<name>"), or its name alone.'),
                 out_dir: z.string().min(1).optional().describe('A folder under the graph\'s downloads directory, relative to it - the downloads directory itself by default. A folder outside it is refused.'),
             },
         },

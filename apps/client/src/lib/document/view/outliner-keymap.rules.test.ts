@@ -19,7 +19,7 @@ import { undoDepth } from '@codemirror/commands'
 import { type EditorState, type Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, type WidgetType } from '@codemirror/view'
 
-import { createContributionRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
+import { createContributionRegistry, registerCommandMenuItem, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
 import { editAsTextSpec, followFenceRegistrations, interactiveFenceAugmentation } from './augmentations/interactive-fence'
@@ -37,6 +37,9 @@ import { imageWidthChange } from './augmentations/image-resize'
 import { markdownTableAugmentation } from './augmentations/markdown-table'
 import { guideThreadsFor } from './augmentations/outline-guides'
 import { outlineBaseIn } from './augmentations/outline-base'
+import { slashCompletion } from './augmentations/slash-complete'
+import { refreshOpenPopovers } from './augmentations/popover-menu'
+import { learnedFreeTags, taskTagCompletion } from './augmentations/task-tag-complete'
 import { wikilinkCompletion } from './augmentations/wikilink-complete'
 import { refreshWikilinks, wikilinkAugmentation } from './augmentations/wikilink'
 import { displayNameForRef } from '../../storage/fs/asset-store'
@@ -1451,6 +1454,174 @@ describe('the line menu sets a task’s status and priority, as a Kanban card’
         const editor = editorFixture('- [ ] new line|\n- [ ] a')
         expect(taskChangeSpec(editor.state, 1, '- [ ] a', { status: 'done' })).toBeNull()
     })
+
+    it('leaves the # helper shut, wherever the write leaves the caret', () => {
+        const editor = editorFixture('- [ ] #P1| water', { extensions: [taskTagCompletion()] })
+        editor.dispatch(editor.state.update(taskChangeSpec(editor.state, 1, '- [ ] #P1 water', { priority: 2 })!))
+        expect(editor.fixture()).toBe('- [ ] #P2| water')
+        expect(editor.state.facet(showTooltip).filter(Boolean)).toEqual([])
+    })
+})
+
+// A row of the `#` helper takes the typed `#query` off the line and writes the tag into the run, so
+// it can only be offered where that query is the whole of the word the caret is in: from inside a
+// tag, a row would leave the rest of it behind as a word of its own (`#P|2` would become `#P1 2`).
+describe('the # helper opens at the end of what is typed, never inside a tag or a hash word (EtherPK)', () => {
+    const rows: { rule: string; before: string; open: boolean }[] = [
+        { rule: 'at the end of a tag', before: '- [ ] #P2| water', open: true },
+        { rule: 'on a # typed in front of a word', before: '- [ ] #|water', open: true },
+        { rule: 'not inside a tag', before: '- [ ] #P|2 water', open: false },
+        { rule: 'not inside a tag in lower case', before: '- [ ] #p|2 water', open: false },
+        { rule: 'not on the # of a tag', before: '- [ ] #|P2 water', open: false },
+        { rule: 'not inside a dated tag', before: '- [ ] #D-2026|-09-15 water', open: false },
+        { rule: 'not inside a Free Tag', before: '- [ ] #wat|er the beans', open: false },
+    ]
+    for (const row of rows) {
+        it(row.rule, () => {
+            const editor = editorFixture(row.before, { extensions: [taskTagCompletion()] })
+            expect(editor.state.facet(showTooltip).filter(Boolean)).toHaveLength(row.open ? 1 : 0)
+        })
+    }
+})
+
+// Obsidian offers the tags a vault uses as a `#` word is typed. Here they follow the Task Tag rows,
+// and only once a letter is typed, so a bare `#` is the same list it always was. Nothing in these
+// fixtures but `zinnia` holds a `z`, so whether the menu opens says whether a Free Tag row is there.
+describe('the # helper offers the graph\'s Free Tags once a letter is typed (Obsidian)', () => {
+    type Editor = ReturnType<typeof editorFixture>
+
+    const landFreeTags = (editor: Editor, used: string[]) =>
+        editor.dispatch(editor.state.update({ effects: [learnedFreeTags.of(used), refreshOpenPopovers.of(null)] }))
+
+    /** A key as the live keymap takes it: the popover's binding comes first, then the stack's. */
+    function pressThroughMenu(editor: Editor, name: string): void {
+        const view = {
+            get state() {
+                return editor.state
+            },
+            dispatch(spec: TransactionSpec | Transaction) {
+                editor.dispatch('startState' in spec ? spec : editor.state.update(spec))
+            },
+        }
+        for (const binding of editor.state.facet(keymap).flat()) {
+            if (binding.key === name && binding.run?.(view as never)) return
+        }
+        editor.key(name)
+    }
+
+    const rows: { rule: string; before: string; used: string[]; open: boolean }[] = [
+        { rule: 'a letter a used tag holds', before: '- [ ] water #z|', used: ['zinnia'], open: true },
+        { rule: 'not a letter no used tag holds', before: '- [ ] water #z|', used: ['paint'], open: false },
+        { rule: 'not on a plain bullet', before: '- water #z|', used: ['zinnia'], open: false },
+        { rule: 'not in code', before: '- [ ] water `#z|`', used: ['zinnia'], open: false },
+        { rule: 'not for a tag the task already has', before: '- [ ] #zinnia water #z|', used: ['zinnia'], open: false },
+        { rule: 'not for the whole of a used tag, where Enter means a new line', before: '- [ ] water #zinnia|', used: ['zinnia'], open: false },
+        { rule: 'a longer tag than the word typed', before: '- [ ] water #zinnia|', used: ['zinnia', 'zinnia-seeds'], open: true },
+    ]
+    for (const row of rows) {
+        it(row.rule, () => {
+            const editor = editorFixture(row.before, { extensions: [taskTagCompletion()] })
+            landFreeTags(editor, row.used)
+            expect(editor.state.facet(showTooltip).filter(Boolean)).toHaveLength(row.open ? 1 : 0)
+        })
+    }
+
+    // A pick writes in place, because a Free Tag means nothing to the tag run. A whole tag already
+    // typed has no row and leaves nothing highlighted: an open menu takes Enter and Tab otherwise, and
+    // a tag often ends a line, so `#call` would become Cancelled and `#zinnia` `#zinnia-seeds`.
+    const keyRows: { rule: string; before: string; used: string[]; keys: string[]; after: string; open?: boolean }[] = [
+        { rule: 'a pick replaces what is typed where it stands', before: '- [ ] water #zi|', used: ['zinnia'], keys: ['Enter'], after: '- [ ] water #zinnia|', open: false },
+        { rule: 'a pick among the words leaves them where they are', before: '- [ ] #zi| water', used: ['zinnia'], keys: ['Enter'], after: '- [ ] #zinnia| water', open: false },
+        { rule: 'a pick writes the spelling the graph uses', before: '- [ ] water #ZI|', used: ['Zinnia'], keys: ['Enter'], after: '- [ ] water #Zinnia|' },
+        { rule: 'the Enter after a pick makes a new line', before: '- [ ] water #zi|', used: ['zinnia'], keys: ['Enter', 'Enter'], after: '- [ ] water #zinnia\n- [ ] |' },
+        { rule: 'one undo takes a pick back', before: '- [ ] water #zi|', used: ['zinnia'], keys: ['Enter', 'Mod-z'], after: '- [ ] water #zi|' },
+        { rule: 'Enter on a whole tag makes a new line, past a longer tag', before: '- [ ] water #zinnia|', used: ['zinnia', 'zinnia-seeds'], keys: ['Enter'], after: '- [ ] water #zinnia\n- [ ] |' },
+        { rule: 'Enter on a whole tag makes a new line, past a Task Tag its letters reach', before: '- [ ] water #call|', used: ['call'], keys: ['Enter'], after: '- [ ] water #call\n- [ ] |' },
+        { rule: 'Tab on a whole tag indents', before: '- [ ] sow\n- [ ] water #zinnia|', used: ['zinnia', 'zinnia-seeds'], keys: ['Tab'], after: '- [ ] sow\n  - [ ] water #zinnia|' },
+        { rule: 'the arrow keys still reach the rows from a whole tag', before: '- [ ] water #zinnia|', used: ['zinnia', 'zinnia-seeds'], keys: ['ArrowDown', 'Enter'], after: '- [ ] water #zinnia-seeds|' },
+    ]
+    for (const row of keyRows) {
+        it(row.rule, () => {
+            const editor = editorFixture(row.before, { extensions: [taskTagCompletion()] })
+            landFreeTags(editor, row.used)
+            for (const key of row.keys) pressThroughMenu(editor, key)
+            expect(editor.fixture()).toBe(row.after)
+            if (row.open !== undefined) expect(editor.state.facet(showTooltip).filter(Boolean)).toHaveLength(row.open ? 1 : 0)
+        })
+    }
+
+    // The index answers when it can, so an answer can land after the menu was shut on purpose.
+    const shutRows: { rule: string; before: string; shut: (editor: ReturnType<typeof editorFixture>) => void }[] = [
+        { rule: 'an answer landing after Escape leaves the menu shut', before: '- [ ] water #t|', shut: (editor) => pressThroughMenu(editor, 'Escape') },
+        { rule: 'an answer landing after a pick leaves the menu shut', before: '- [ ] water #zi|', shut: (editor) => pressThroughMenu(editor, 'Enter') },
+        {
+            rule: 'an answer landing after a line menu write leaves the menu shut',
+            before: '- [ ] #P1| water',
+            shut: (editor) => editor.dispatch(editor.state.update(taskChangeSpec(editor.state, 1, '- [ ] #P1 water', { priority: 2 })!)),
+        },
+    ]
+    for (const row of shutRows) {
+        it(row.rule, () => {
+            const used = ['zinnia', 'zinnia-seeds', 'trellis', 'p2-seeds']
+            const editor = editorFixture(row.before, { extensions: [taskTagCompletion()] })
+            landFreeTags(editor, used)
+            row.shut(editor)
+            expect(editor.state.facet(showTooltip).filter(Boolean)).toEqual([])
+            landFreeTags(editor, used)
+            expect(editor.state.facet(showTooltip).filter(Boolean)).toEqual([])
+        })
+    }
+})
+
+// The Command Menu is asked for, by typing `/` or pressing the slash button. A caret that only arrives
+// behind a `/` has not asked, and an open menu takes Enter, so a new line there would run a row.
+describe('the Command Menu opens on a typed /, never on the caret arriving behind one (VS Code)', () => {
+    beforeEach(() => {
+        const registry = createContributionRegistry()
+        registerCommandMenuItem(registry, { id: 'garden.agent', title: 'Agent', command: 'garden.agent' })
+        setActiveContributionRegistry(registry)
+    })
+    afterEach(() => setActiveContributionRegistry(null))
+
+    type Editor = ReturnType<typeof editorFixture>
+    const rows: { rule: string; before: string; act: (editor: Editor) => void; open: boolean }[] = [
+        { rule: 'a typed / opens it', before: '- |', act: (e) => e.type('/'), open: true },
+        { rule: 'it stays open as the query is typed', before: '- |', act: (e) => [...'/ag'].forEach((key) => e.type(key)), open: true },
+        { rule: 'it stays open as the caret moves within the query', before: '- |', act: (e) => { [...'/ag'].forEach((key) => e.type(key)); e.select(4) }, open: true },
+        { rule: 'it comes back when a key that matched nothing is deleted', before: '- |', act: (e) => { [...'/agx'].forEach((key) => e.type(key)); e.key('Backspace') }, open: true },
+        { rule: 'a document opened with the caret behind a / stays shut', before: '- /|', act: () => {}, open: false },
+        { rule: 'a caret placed behind a / stays shut', before: '- / water\n- a|', act: (e) => e.select(3), open: false },
+        { rule: 'a caret placed behind a slash word stays shut', before: '- /ag\n- a|', act: (e) => e.select(5), open: false },
+        { rule: 'Backspace onto a / stays shut', before: '- /a|', act: (e) => e.key('Backspace'), open: false },
+        { rule: 'Backspace onto a slash word stays shut', before: '- /ag |', act: (e) => e.key('Backspace'), open: false },
+        { rule: 'a key typed in a slash word already there stays shut', before: '- /a|', act: (e) => e.type('g'), open: false },
+        { rule: 'a pasted / stays shut', before: '- |', act: (e) => e.paste('/'), open: false },
+        { rule: 'an undo that brings a / back stays shut', before: '- /|', act: (e) => { e.key('Backspace'); e.key('Mod-z') }, open: false },
+        { rule: 'a change from elsewhere stays shut', before: '- /|\n- a', act: (e) => e.dispatch(e.state.update({ changes: { from: 7, insert: 'b' } })), open: false },
+        { rule: 'a caret that leaves the query and comes back stays shut', before: '- |', act: (e) => { [...'/ag'].forEach((key) => e.type(key)); e.select(0); e.select(5) }, open: false },
+        { rule: 'an open menu closes when the caret reaches another slash word', before: '- /ag\n- |', act: (e) => { e.type('/'); e.select(5) }, open: false },
+        { rule: 'it stays open through a change on a line above', before: '- a\n- |', act: (e) => { [...'/ag'].forEach((key) => e.type(key)); e.dispatch(e.state.update({ changes: { from: 0, insert: 'b' } })) }, open: true },
+        { rule: 'it stays open through an indent put in front of the /', before: '|', act: (e) => { [...'/ag'].forEach((key) => e.type(key)); e.dispatch(e.state.update({ changes: { from: 0, insert: '  ' } })) }, open: true },
+        { rule: 'a letter put in front of the / by someone else closes it', before: '|', act: (e) => { [...'/ag'].forEach((key) => e.type(key)); e.dispatch(e.state.update({ changes: { from: 0, insert: 'x' } })) }, open: false },
+    ]
+    for (const row of rows) {
+        it(row.rule, () => {
+            const editor = editorFixture(row.before, { extensions: [slashCompletion()] })
+            row.act(editor)
+            expect(editor.state.facet(showTooltip).filter(Boolean)).toHaveLength(row.open ? 1 : 0)
+        })
+    }
+
+    it('a / typed in front of a drawn fence opens it, where the fence keeps its own line', () => {
+        const registry = createContributionRegistry()
+        registerCommandMenuItem(registry, { id: 'garden.agent', title: 'Agent', command: 'garden.agent' })
+        registerInteractiveFence(registry, 'garden.plan', { height: () => 400, mount: () => ({ update: () => {}, destroy: () => {} }) })
+        setActiveContributionRegistry(registry)
+        const editor = editorFixture('|```garden.plan\n{"id":"k1"}\n```', { extensions: [interactiveFenceAugmentation(), slashCompletion()] })
+        editor.type('/')
+        expect(editor.fixture()).toBe('/|\n```garden.plan\n{"id":"k1"}\n```')
+        expect(editor.state.facet(showTooltip).filter(Boolean)).toHaveLength(1)
+    })
 })
 
 // Tidy on leave also moves a Task Tag written later in a task into its leading run, applied as the
@@ -1502,6 +1673,9 @@ describe('a Task Tag written later in a task moves into its run as the caret lea
         { rule: 'a tag the run already carries stays set, the repeat removed', precedent: 'EtherPK', before: '- [ ] #P1 water the beans #P1|\n- b', leave: 'down', after: '- [ ] #P1 water the beans\n- b|' },
         { rule: 'a plain bullet is not a task: its tag stays', precedent: 'EtherPK', before: '- water the beans #P1|\n- b', leave: 'down', after: '- water the beans #P1\n- b|' },
         { rule: 'a caret that stays on the task changes nothing', precedent: 'EtherPK', before: '- [ ] water the beans #P1|\n- b', leave: 'within', after: '- [ ] |water the beans #P1\n- b' },
+        { rule: 'a stray tag in lower case moves, written in upper case', precedent: 'EtherPK', before: '- [ ] water the beans #p1|\n- b', leave: 'down', after: '- [ ] #P1 water the beans\n- b|' },
+        { rule: 'a stray state tag in lower case sets its status', precedent: 'EtherPK', before: '- [ ] water the beans #c|\n- b', leave: 'down', after: '- [x] #C water the beans\n- b|' },
+        { rule: 'a tag in the run keeps the case it is written in', precedent: 'EtherPK', before: '- [ ] #p1 #d-2026-09-15 water|\n- b', leave: 'down', after: '- [ ] #p1 #d-2026-09-15 water\n- b|' },
     ]
     for (const row of rows) {
         it(`${row.leave}: ${row.rule} (${row.precedent})`, () => {

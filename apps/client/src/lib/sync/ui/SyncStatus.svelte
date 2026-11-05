@@ -148,7 +148,7 @@
         background: var(--gk-surface-2, rgba(127, 127, 127, 0.12));
     }
     .status:focus-visible {
-        outline: 2px solid var(--gk-focus, #6366f1);
+        outline: 2px solid var(--gk-accent);
         outline-offset: -2px;
     }
     .icon {
@@ -163,7 +163,7 @@
         width: 0.5rem;
         height: 0.5rem;
         border-radius: 9999px;
-        background: var(--sync-dot, #9ca3af);
+        background: var(--sync-dot, #a3a3a3);
     }
     .status[data-state="synced"] {
         --sync-dot: var(--gk-sync-ok, #16a34a);
@@ -176,7 +176,7 @@
         --sync-dot: var(--gk-sync-busy, #d97706);
     }
     .status[data-state="offline"] {
-        --sync-dot: var(--gk-sync-idle, #6b7280);
+        --sync-dot: var(--gk-sync-idle, #737373);
     }
     .status[data-state="refused"],
     .status[data-state="ended"] {

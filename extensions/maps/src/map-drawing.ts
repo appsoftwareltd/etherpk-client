@@ -39,7 +39,7 @@ export function fitName(name: string, width: number, measure: (text: string) => 
  * wider, paler casing, so a route reads over any basemap.
  */
 export function routeLayers(source: string, dark: boolean): LayerSpecification[] {
-    const casing = dark ? '#0b0d10' : '#ffffff'
+    const casing = dark ? '#0a0a0a' : '#ffffff'
     const colour = dark ? '#7cc4ff' : '#1d5fd1'
     const selectedColour = dark ? '#ffd166' : '#c2410c'
     const round = { 'line-cap': 'round' as const, 'line-join': 'round' as const }
@@ -60,6 +60,6 @@ export function blankStyle(dark: boolean): StyleSpecification {
     return {
         version: 8,
         sources: {},
-        layers: [{ id: 'background', type: 'background', paint: { 'background-color': dark ? '#1f2329' : '#e8ecef' } }],
+        layers: [{ id: 'background', type: 'background', paint: { 'background-color': dark ? '#262626' : '#e5e5e5' } }],
     }
 }

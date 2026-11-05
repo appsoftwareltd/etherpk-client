@@ -284,12 +284,12 @@
             min-height: 2.75rem;
         }
     }
-    /* Pinned: the accent, and a tint that stays without hover, so the state is legible at rest.
+    /* Pinned: the accent, and a grey wash that stays without hover, so the state is legible at rest.
        Declared after the hover rule and repeated with it, so the state wins under the pointer too. */
     .pin--on,
     .pin--on:hover {
         color: var(--gk-accent, #2563eb);
-        background: color-mix(in srgb, var(--gk-accent, #2563eb) 14%, transparent);
+        background: color-mix(in srgb, var(--gk-text-default) 14%, transparent);
     }
     .pin:focus-visible {
         outline: 2px solid var(--gk-accent, #2563eb);

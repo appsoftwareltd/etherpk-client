@@ -59,54 +59,54 @@
     const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
     const button =
-        "rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40";
+        "rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40";
     const primary =
-        "rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40";
+        "rounded-lg bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40";
 </script>
 
 <section bind:this={root} class="space-y-3" aria-labelledby="{uid}-heading" data-testid="duplicate-names-section">
     <h3
         id="{uid}-heading"
-        class="text-sm font-medium text-gray-500 dark:text-gray-400 focus:outline-none"
+        class="text-sm font-medium text-neutral-500 dark:text-neutral-400 focus:outline-none"
         tabindex="-1"
         data-duplicate-names-heading
         data-autofocus={revealOnOpen ? "" : undefined}
     >
         Duplicate names
     </h3>
-    <p class="text-sm text-gray-600 dark:text-gray-300">
+    <p class="text-sm text-neutral-600 dark:text-neutral-300">
         When two devices each create a document for the same name before they sync, the graph keeps both. The name opens
         only one of them. Merge them to keep all the text in one document.
     </p>
     <p class="sr-only" aria-live="polite">{announcement}</p>
 
     {#if session.rows.length === 0}
-        <p class="text-sm text-gray-600 dark:text-gray-300" data-testid="duplicate-names-empty">
+        <p class="text-sm text-neutral-600 dark:text-neutral-300" data-testid="duplicate-names-empty">
             Every name in this graph opens one document.
         </p>
     {:else}
         <ul class="space-y-3">
             {#each session.rows as row (row.key)}
                 <li
-                    class="space-y-3 rounded-lg border border-gray-200 dark:border-gray-800 p-3"
+                    class="space-y-3 rounded-lg border border-neutral-200 dark:border-neutral-800 p-3"
                     data-duplicate-name={row.concept}
                     data-state={row.state}
                     data-testid="duplicate-name"
                 >
                     <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                        <h4 class="break-words text-sm font-medium text-gray-950 dark:text-gray-100" data-testid="duplicate-name-concept">
+                        <h4 class="break-words text-sm font-medium text-neutral-950 dark:text-neutral-100" data-testid="duplicate-name-concept">
                             {row.concept}
                         </h4>
-                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                        <p class="text-sm text-neutral-500 dark:text-neutral-400">
                             {plural(row.documents.length, "document", "documents")}
                         </p>
                     </div>
 
                     {#if row.state === "reading"}
-                        <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="duplicate-name-reading">Reading the documents…</p>
+                        <p class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="duplicate-name-reading">Reading the documents…</p>
                     {:else if row.state === "unreadable"}
                         <div class="flex flex-wrap items-center gap-2">
-                            <p class="text-sm text-gray-600 dark:text-gray-300">
+                            <p class="text-sm text-neutral-600 dark:text-neutral-300">
                                 These documents could not be read. Check your connection, then try again.
                             </p>
                             <button type="button" onclick={() => session.retry(row.key)} class={button} data-testid="duplicate-name-retry"
@@ -117,16 +117,16 @@
                         <ol class="space-y-2" aria-label="Documents named {row.concept}, in the order they are joined">
                             {#each row.documents as document, index (document.docId)}
                                 <li
-                                    class="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 rounded-md bg-gray-50 dark:bg-white/5 px-3 py-2"
+                                    class="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 rounded-md bg-neutral-50 dark:bg-white/5 px-3 py-2"
                                     data-testid="duplicate-document"
                                     data-doc-id={document.docId}
                                 >
                                     <div class="min-w-0 flex-1">
-                                        <p class="text-sm text-gray-950 dark:text-gray-100">
+                                        <p class="text-sm text-neutral-950 dark:text-neutral-100">
                                             {#if index === 0}<span class="font-medium">Kept: </span>{/if}{plural(document.lines, "line", "lines")}{#if document.isProtected}
-                                                <span class="text-gray-600 dark:text-gray-300"> · protected</span>{/if}
+                                                <span class="text-neutral-600 dark:text-neutral-300"> · protected</span>{/if}
                                         </p>
-                                        <p class="truncate text-sm text-gray-600 dark:text-gray-300" data-testid="duplicate-document-first-line">
+                                        <p class="truncate text-sm text-neutral-600 dark:text-neutral-300" data-testid="duplicate-document-first-line">
                                             {document.isProtected ? "Protected text" : document.firstLine || "(empty)"}
                                         </p>
                                     </div>
@@ -144,7 +144,7 @@
                         </ol>
 
                         {#if row.hasProtected}
-                            <p class="text-sm text-gray-600 dark:text-gray-300" data-testid="duplicate-name-protected">
+                            <p class="text-sm text-neutral-600 dark:text-neutral-300" data-testid="duplicate-name-protected">
                                 One of these pages is protected. Remove its protection, then merge.
                             </p>
                         {/if}
@@ -175,7 +175,7 @@
                         {#if row.previewing && !row.hasProtected}
                             <pre
                                 id="{uid}-preview-{row.key}"
-                                class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-black/20 p-3 font-mono text-sm text-gray-800 dark:text-gray-200"
+                                class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-black/20 p-3 font-mono text-sm text-neutral-800 dark:text-neutral-200"
                                 data-testid="duplicate-name-preview">{row.merged}</pre>
                         {/if}
 
@@ -205,7 +205,7 @@
                     {/if}
 
                     {#if row.message}
-                        <p class="text-sm text-gray-700 dark:text-gray-200" role="status" data-testid="duplicate-name-message">{row.message}</p>
+                        <p class="text-sm text-neutral-700 dark:text-neutral-200" role="status" data-testid="duplicate-name-message">{row.message}</p>
                     {/if}
                 </li>
             {/each}

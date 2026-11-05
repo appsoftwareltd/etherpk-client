@@ -99,6 +99,8 @@ export interface RemoteGraphIndex {
      * carry, the values one key has, and every document passing a set of filters.
      */
     propertyKeys(): Promise<PropertyKeyInfo[]>
+    /** Every [[Free Tag]] on a task in the graph, most used first: what the `#` helper offers. */
+    freeTags(): Promise<string[]>
     propertyValues(key: string): Promise<PropertyValueInfo[]>
     propertyMatch(filters: readonly PropertyFilter[]): Promise<PropertyMatch[]>
     /** The graph's [[Template]]s by name (ADR 0144). A round trip, made when a picker opens. */
@@ -1183,6 +1185,10 @@ export function createRemoteGraphIndex(
         async propertyKeys() {
             const response = await request<Extract<IndexResponse, { type: 'property-keys' }>>((id) => ({ type: 'property-keys', id }))
             return response.keys
+        },
+        async freeTags() {
+            const response = await request<Extract<IndexResponse, { type: 'free-tags' }>>((id) => ({ type: 'free-tags', id }))
+            return response.tags
         },
         async templates() {
             const response = await request<Extract<IndexResponse, { type: 'templates' }>>((id) => ({ type: 'templates', id }))

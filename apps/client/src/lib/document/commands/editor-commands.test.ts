@@ -9,6 +9,7 @@ import { DEFAULT_FONT_SIZE, getEditorFontSize, setEditorFontSize } from '../edit
 import { closeAssetPicker, getAssetPickerState } from '../view/asset-picker'
 import { openDateCalendar } from '../view/augmentations/date-calendar'
 import { rankCommandMenu } from '../view/augmentations/slash-complete-core'
+import { commandMenuOpen, slashCompletion } from '../view/augmentations/slash-complete'
 import { setActiveProtectionStatus } from '../protection/active-protection'
 import { isProtectedDocumentFacet } from '../view/augmentations/protected-fence'
 import { tableSizePicker, tableSizePickerState } from '../view/augmentations/table-size-picker'
@@ -20,6 +21,8 @@ import {
     createContributionRegistry,
     listCommandBarItems,
     listCommandMenuItems,
+    registerCommandMenuItem,
+    setActiveContributionRegistry,
 } from '../../surface'
 import { getNotices, resetNotices } from '#lib/activity/notices.js'
 import { clientIconNames } from '../../surface/icons'
@@ -598,6 +601,18 @@ describe('registerEditorCommands — the slash button', () => {
 
     it('reads the character before the caret, not after it', async () => {
         expect((await runCommand('- Garden |shed', 'editor.openCommandMenu')).ed.fixture()).toBe('- Garden /|shed')
+    })
+
+    it('opens the Command Menu, as a typed slash does', async () => {
+        const items = createContributionRegistry()
+        registerCommandMenuItem(items, { id: 'garden.agent', title: 'Agent', command: 'garden.agent' })
+        setActiveContributionRegistry(items)
+        try {
+            const { ed } = await runCommand('- Garden|', 'editor.openCommandMenu', undefined, [slashCompletion()])
+            expect(commandMenuOpen(ed.state)).toBe(true)
+        } finally {
+            setActiveContributionRegistry(null)
+        }
     })
 })
 

@@ -193,7 +193,7 @@
         color: var(--gk-mirror-stopped, #dc2626);
     }
     .mirror[data-state='waiting'] {
-        color: var(--gk-mirror-idle, #9ca3af);
+        color: var(--gk-mirror-idle, #a3a3a3);
     }
     .mirror .dot.spin {
         animation: mirror-pulse 1.4s ease-in-out infinite;

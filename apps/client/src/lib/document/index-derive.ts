@@ -78,13 +78,18 @@ export function taskTitleKey(label: string): string {
     return taskDisplay(label).text.toLowerCase()
 }
 
+/** The [[Free Tag]]s on a task's line, once each, in the spelling first written. */
+export function taskFreeTags(label: string): string[] {
+    return freeTagsIn(parseTaskTags(label).text)
+}
+
 /**
  * A task's tags as a [[Task Text Filter]] matches them: every [[Task Tag]] in its leading run and
  * every [[Free Tag]] on its line, lower-cased, each with a space either side. No tag holds a space,
  * so {@link taskTagNeedle} finds a tag whole, and `#bug` is not found in `#bugfix`.
  */
 export function taskTagsKey(label: string): string {
-    const tags = [...taskTagTokens(label).map((token) => token.slice(1)), ...freeTagsIn(parseTaskTags(label).text)]
+    const tags = [...taskTagTokens(label).map((token) => token.slice(1)), ...taskFreeTags(label)]
     return tags.length === 0 ? '' : ` ${tags.join(' ').toLowerCase()} `
 }
 

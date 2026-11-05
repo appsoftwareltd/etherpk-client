@@ -81,6 +81,15 @@ describe('deriveDoc', () => {
         expect(deriveDoc('- [ ] Fix the gate').tasks[0].freeTag).toBeNull()
     })
 
+    it('reads a Task Tag in any case into its column', () => {
+        expect(deriveDoc('- [ ] #p2 #w #d-2026-09-15 #s-2026-09-10 Fix the gate').tasks[0]).toMatchObject({
+            priority: 2,
+            waiting: true,
+            due: '2026-09-15',
+            scheduled: '2026-09-10',
+        })
+    })
+
     it('chains both outliner-block AND heading ancestors (user test case)', () => {
         const md = [
             '# [[Header 1]]',

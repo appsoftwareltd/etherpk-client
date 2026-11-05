@@ -136,10 +136,10 @@
                 data-activity-state={activity.state}
                 data-activity-dismissal={activity.dismissal}
                 role={activity.state === "failed" ? "alert" : undefined}
-                class="pointer-events-auto w-full max-w-sm rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-(--gk-surface-0) p-3 shadow-lg"
+                class="pointer-events-auto w-full max-w-sm rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-(--gk-surface-0) p-3 shadow-lg"
             >
                 <div class="flex items-start gap-2">
-                    <p class="min-w-0 flex-1 text-sm font-medium text-gray-950 dark:text-gray-100" data-testid="activity-title">
+                    <p class="min-w-0 flex-1 text-sm font-medium text-neutral-950 dark:text-neutral-100" data-testid="activity-title">
                         {activity.title}
                     </p>
                     {#if activity.state !== "running"}
@@ -147,21 +147,21 @@
                             onclick={() => dismissActivity(activity.id)}
                             data-testid="activity-dismiss"
                             aria-label="Dismiss"
-                            class="shrink-0 rounded-lg p-1 text-gray-500 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10"
+                            class="shrink-0 rounded-lg p-1 text-neutral-500 dark:text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-white/10"
                         >
                             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
                                 <path d="M6 18 18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
                         </button>
                     {:else if activity.phases.length > 1}
-                        <span class="shrink-0 text-sm text-gray-500 dark:text-gray-400" data-testid="activity-step">
+                        <span class="shrink-0 text-sm text-neutral-500 dark:text-neutral-400" data-testid="activity-step">
                             Step {activity.phase + 1} of {activity.phases.length}
                         </span>
                     {/if}
                 </div>
 
                 {#if activity.state === "running"}
-                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-400" aria-hidden="true" data-testid="activity-progress">
+                    <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400" aria-hidden="true" data-testid="activity-progress">
                         {activity.cancelling ? "Cancelling…" : (activity.note ?? progressLine(activity))}
                     </p>
                     <!--
@@ -169,10 +169,10 @@
                         phase gets an indeterminate sweep rather than a bar sitting at zero,
                         which reads as "stuck" rather than "working".
                     -->
-                    <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+                    <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-white/10">
                         {#if activity.total > 0}
                             <div
-                                class="h-full rounded-full bg-gray-900 dark:bg-gray-100 transition-[width] duration-200"
+                                class="h-full rounded-full bg-neutral-900 dark:bg-neutral-100 transition-[width] duration-200"
                                 style:width="{percent(activity)}%"
                                 data-testid="activity-bar"
                                 role="progressbar"
@@ -182,12 +182,12 @@
                                 aria-label={phase?.label}
                             ></div>
                         {:else}
-                            <div class="activity-sweep h-full w-1/3 rounded-full bg-gray-900 dark:bg-gray-100"></div>
+                            <div class="activity-sweep h-full w-1/3 rounded-full bg-neutral-900 dark:bg-neutral-100"></div>
                         {/if}
                     </div>
                 {:else if activity.detail}
                     <p
-                        class="mt-1 text-sm {activity.state === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'}"
+                        class="mt-1 text-sm {activity.state === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-neutral-600 dark:text-neutral-400'}"
                         data-testid="activity-detail"
                     >
                         {activity.detail}
@@ -197,12 +197,12 @@
                 {#if activity.state === "running" && activity.cancellable && !activity.cancelling}
                     <div class="mt-2 flex items-center justify-end gap-2">
                         {#if confirming === activity.id}
-                            <span class="mr-auto text-sm text-gray-600 dark:text-gray-400" data-testid="activity-cancel-prompt">
+                            <span class="mr-auto text-sm text-neutral-600 dark:text-neutral-400" data-testid="activity-cancel-prompt">
                                 Discard this import? Nothing will be kept.
                             </span>
                             <button
                                 onclick={() => (confirming = null)}
-                                class="rounded-lg px-2 py-1 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                                class="rounded-lg px-2 py-1 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
                             >Keep going</button>
                             <button
                                 onclick={() => requestCancel(activity)}
@@ -213,7 +213,7 @@
                             <button
                                 onclick={() => requestCancel(activity)}
                                 data-testid="activity-cancel"
-                                class="rounded-lg px-2 py-1 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                                class="rounded-lg px-2 py-1 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
                             >Cancel</button>
                         {/if}
                     </div>
@@ -223,7 +223,7 @@
                             onclick={() => void runAction(activity)}
                             disabled={running.has(activity.id)}
                             data-testid="activity-action"
-                            class="rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50"
+                            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-3 py-1 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50"
                         >{activity.action.label}</button>
                     </div>
                 {/if}
@@ -238,34 +238,34 @@
             data-notice-tone={notice.tone}
             data-notice-dismissal={notice.dismissal}
             role={notice.tone === "error" ? "alert" : undefined}
-            class="pointer-events-auto w-full max-w-sm rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-(--gk-surface-0) p-3 shadow-lg"
+            class="pointer-events-auto w-full max-w-sm rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-(--gk-surface-0) p-3 shadow-lg"
         >
             <div class="flex items-start gap-2">
                 <div class="min-w-0 flex-1">
                     {#if notice.title}
-                        <p class="text-sm font-medium text-gray-950 dark:text-gray-100">{notice.title}</p>
+                        <p class="text-sm font-medium text-neutral-950 dark:text-neutral-100">{notice.title}</p>
                     {/if}
                     <p
-                        class="text-sm {notice.title ? 'mt-1' : ''} {notice.tone === 'error' ? 'text-red-600 dark:text-red-400' : notice.title ? 'text-gray-600 dark:text-gray-400' : 'text-gray-950 dark:text-gray-100'}"
+                        class="text-sm {notice.title ? 'mt-1' : ''} {notice.tone === 'error' ? 'text-red-600 dark:text-red-400' : notice.title ? 'text-neutral-600 dark:text-neutral-400' : 'text-neutral-950 dark:text-neutral-100'}"
                     >
                         {notice.text}
                     </p>
                     {#if notice.items?.length}
-                        <ul class="mt-1 list-disc space-y-0.5 pl-5 text-sm text-gray-600 dark:text-gray-400">
+                        <ul class="mt-1 list-disc space-y-0.5 pl-5 text-sm text-neutral-600 dark:text-neutral-400">
                             {#each notice.items as item (item)}
                                 <li>{item}</li>
                             {/each}
                         </ul>
                     {/if}
                     {#if notice.footnote}
-                        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{notice.footnote}</p>
+                        <p class="mt-2 text-sm text-neutral-600 dark:text-neutral-400">{notice.footnote}</p>
                     {/if}
                 </div>
                 <button
                     onclick={() => closeNotice(notice.id)}
                     data-testid="notice-dismiss"
                     aria-label="Dismiss"
-                    class="shrink-0 rounded-lg p-1 text-gray-500 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10"
+                    class="shrink-0 rounded-lg p-1 text-neutral-500 dark:text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-white/10"
                 >
                     <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
                         <path d="M6 18 18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
@@ -280,8 +280,8 @@
                             disabled={action.disabled || runningActions.has(`${notice.id}:${action.label}`)}
                             data-testid={action.id}
                             class={action.primary
-                                ? "rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50"
-                                : "rounded-lg px-2 py-1 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-50"}
+                                ? "rounded-lg bg-neutral-900 dark:bg-neutral-100 px-3 py-1 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50"
+                                : "rounded-lg px-2 py-1 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-50"}
                         >{action.label}</button>
                     {/each}
                 </div>

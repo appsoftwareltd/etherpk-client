@@ -163,7 +163,7 @@
                      label alone, which an anchored text match reads. The icon is in-repo constant
                      markup from the icon table, never user content. -->
                 <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                {#if withIcons}<span class="grid size-4 shrink-0 place-items-center text-gray-500 dark:text-gray-400" aria-hidden="true" data-icon={row.icon}>{#if row.icon}{@html iconSvg(row.icon)}{/if}</span>{/if}<span>{row.label}</span>
+                {#if withIcons}<span class="grid size-4 shrink-0 place-items-center text-neutral-500 dark:text-neutral-400" aria-hidden="true" data-icon={row.icon}>{#if row.icon}{@html iconSvg(row.icon)}{/if}</span>{/if}<span>{row.label}</span>
             </button>
         {/each}
     </div>

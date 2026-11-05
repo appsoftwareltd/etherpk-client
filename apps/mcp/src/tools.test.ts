@@ -876,16 +876,16 @@ describe('assets', () => {
         const { png, txt } = await files()
 
         const image = await uploadAsset(g, { path: png })
-        expect(image.ref).toMatch(/^\.\.\/assets\/diagram-one\..+\.png$/)
+        expect(image.reference).toMatch(/^\.\.\/assets\/diagram-one\..+\.png$/)
         expect(image).toMatchObject({ name: 'diagram-one.png', type: 'image/png', bytes: PNG.byteLength, reused: false })
-        expect(image.markdown).toBe(`![diagram-one](${image.ref})`)
+        expect(image.markdown).toBe(`![diagram-one](${image.reference})`)
 
         const again = await uploadAsset(g, { path: png, name: 'Same Bytes.png' })
         expect(again.reused).toBe(true)
-        expect(again.ref).toBe(image.ref)
+        expect(again.reference).toBe(image.reference)
 
         const text = await uploadAsset(g, { path: txt })
-        expect(text.markdown).toBe(`[notes](${text.ref})`)
+        expect(text.markdown).toBe(`[notes](${text.reference})`)
         expect(text.type).toBe('text/plain')
 
         await rejectsWith(uploadAsset(g, { path: join(tmpdir(), 'no-such-file.png') }), 'invalid_argument')
@@ -908,9 +908,9 @@ describe('assets', () => {
         const { dir, png } = await files()
         const image = await uploadAsset(g, { path: png })
 
-        await rejectsWith(readAsset(g, { ref: image.ref, out_dir: join(dir, 'elsewhere') }), 'invalid_argument')
-        await rejectsWith(readAsset(g, { ref: image.ref, out_dir: '../elsewhere' }), 'invalid_argument')
-        const read = await readAsset(g, { ref: image.ref, out_dir: 'nested/out' })
+        await rejectsWith(readAsset(g, { reference: image.reference, out_dir: join(dir, 'elsewhere') }), 'invalid_argument')
+        await rejectsWith(readAsset(g, { reference: image.reference, out_dir: '../elsewhere' }), 'invalid_argument')
+        const read = await readAsset(g, { reference: image.reference, out_dir: 'nested/out' })
         expect(read.path.startsWith(join(g.assets!.downloadsDir, 'nested', 'out'))).toBe(true)
         // What was read back out can go back in: the downloads directory is the graph's own.
         expect((await uploadAsset(g, { path: read.path })).reused).toBe(true)
@@ -922,7 +922,7 @@ describe('assets', () => {
         const image = await uploadAsset(g, { path: png })
 
         // Uploaded this session: readable back before any document names it.
-        const early = await readAsset(g, { ref: image.ref, out_dir: 'out' })
+        const early = await readAsset(g, { reference: image.reference, out_dir: 'out' })
         expect(early.documents).toEqual([])
         expect(await readFile(early.path)).toEqual(PNG)
 
@@ -930,15 +930,15 @@ describe('assets', () => {
         await seed(g, 'Post', `- see ${image.markdown}`)
         await indexed(g, async () => (await listAssets(g)).total === 1)
         const listed = await listAssets(g)
-        expect(listed.assets).toEqual([expect.objectContaining({ ref: image.ref, name: 'diagram-one.png', type: 'image/png', documents: ['Post'] })])
+        expect(listed.assets).toEqual([expect.objectContaining({ reference: image.reference, name: 'diagram-one.png', type: 'image/png', documents: ['Post'] })])
         // Size is reported where the backend can say cheaply (a folder's listing, the server's enumeration).
         if (listed.assets[0]!.bytes !== undefined) expect(listed.assets[0]!.bytes).toBe(PNG.byteLength)
-        expect((await listAssets(g, { concept: 'Post' })).assets.map((a) => a.ref)).toEqual([image.ref])
-        const read = await readAsset(g, { ref: image.ref, out_dir: 'out' })
+        expect((await listAssets(g, { concept: 'Post' })).assets.map((a) => a.reference)).toEqual([image.reference])
+        const read = await readAsset(g, { reference: image.reference, out_dir: 'out' })
         expect(read.documents).toEqual([{ concept: 'Post', kind: 'page' }])
         expect(read.path).toBe(early.path) // same bytes, same file
         // The name alone is enough.
-        expect((await readAsset(g, { ref: image.ref.split('/').pop()!, out_dir: 'out' })).path).toBe(early.path)
+        expect((await readAsset(g, { reference: image.reference.split('/').pop()!, out_dir: 'out' })).path).toBe(early.path)
     })
 
     it('does not serve or list an asset nothing readable references', async () => {
@@ -949,9 +949,9 @@ describe('assets', () => {
         await indexed(g, async () => (await backlinks(g, 'Post')) !== undefined)
 
         expect((await listAssets(g)).assets).toEqual([])
-        const refused = await rejectsWith(readAsset(g, { ref: saved.ref }), 'asset_not_found')
+        const refused = await rejectsWith(readAsset(g, { reference: saved.ref }), 'asset_not_found')
         expect(refused.message).toContain('No document you can read references')
-        await rejectsWith(readAsset(g, { ref: 'https://example.com/x.png' }), 'invalid_argument')
+        await rejectsWith(readAsset(g, { reference: 'https://example.com/x.png' }), 'invalid_argument')
         await rejectsWith(listAssets(g, { concept: 'Nope' }), 'not_found')
     })
 

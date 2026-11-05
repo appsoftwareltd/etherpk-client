@@ -429,6 +429,7 @@
         forgetMirrorFolder,
         getOpfsRoot,
         hasPermission,
+        tryEnsurePermission,
         isOnDisk,
         pickGraphDirectory,
         readMirrorFolder,
@@ -665,6 +666,7 @@
         type KeyringSource,
         type ProtectionRecord,
     } from "#lib/crypto/index.js";
+    import { describeFolderOpenFailure } from "./folder-open-copy";
     import {
         diagnoseMissingGraph,
         type MissingGraphDeps,
@@ -741,6 +743,17 @@
         | "error"
         | "access-lost";
     let phase = $state<Phase>("loading");
+    /** The folder the open stopped at for want of permission, for Grant access to ask about. */
+    let folderAwaitingGrant: FileSystemDirectoryHandle | null = null;
+    /** Grant access has asked, and the browser has not answered yet. */
+    let granting = $state(false);
+    /** Why Grant access did not get the folder, in user copy. */
+    let grantError = $state<string | null>(null);
+    /**
+     * This open is reading a folder rather than syncing, so a failure is not a sync server's. False
+     * until the registry has said which kind of graph this is.
+     */
+    let openingFolder = false;
     /**
      * How the needs-unlock phase asks: for this device's passcode when the keys or the access token
      * this graph needs are sealed by it (ADR 0129), else for the account's Recovery Code or approval.
@@ -3443,12 +3456,17 @@
             phase = "missing";
             return null;
         }
-        const granted = await attempt.wait(ensurePermission(record.handle));
+        // A page load or a restored tab has no user gesture, so the browser refuses to ask and the
+        // Grant access screen supplies one. An open that follows a click in the app can often still
+        // ask from here, which saves that person a second click.
+        const handle = record.handle as FileSystemDirectoryHandle;
+        const granted = await attempt.wait(tryEnsurePermission(handle));
         if (!granted) {
+            folderAwaitingGrant = handle;
             phase = "needs-permission";
             return null;
         }
-        return record.handle as FileSystemDirectoryHandle;
+        return handle;
     }
 
     async function waitForSize(el: HTMLElement, attempt: GraphOpenAttempt) {
@@ -3902,6 +3920,7 @@
         const openStarted = performance.now();
         const hidden = await revealHiddenRecord(attempt);
         const useServer = await resolveServerParams(attempt);
+        openingFolder = !useServer;
         if (dev && page.url.searchParams.get("openDelay") === "store") {
             await attempt.wait(
                 new Promise((resolve) => setTimeout(resolve, 2_000)),
@@ -5627,15 +5646,12 @@
                 phase = "needs-unlock";
             } else {
                 phase = "error";
-                openFailedUnreachable = isServerUnreachable(err);
-                // The raw error is for the console; the notice says what to do next. A
-                // NotFoundError from the File System Access API means the stored handle no
-                // longer resolves because the folder moved, was renamed, or was deleted.
+                openFailedUnreachable = !openingFolder && isServerUnreachable(err);
+                // The raw error is for the console; the notice says what to do next.
                 console.warn("[workspace] could not open the graph", err);
-                message =
-                    (err as DOMException).name === "NotFoundError"
-                        ? "Could not open the graph. Its folder could not be found on disk: it may have been moved, renamed, or deleted. Forget the graph on the Graphs page (your files are untouched) and use Open folder to pick it again."
-                        : describeSyncFailure(err, "open the graph");
+                message = openingFolder
+                    ? describeFolderOpenFailure(err)
+                    : describeSyncFailure(err, "open the graph");
             }
         }
     }
@@ -5760,7 +5776,31 @@
         }
     }
 
+    /**
+     * The Grant access button. It asks first, inside the click: the open has registry reads and
+     * more to await before it reaches the folder, and the browser asks only while the click is
+     * recent. An answer other than yes stays on this screen and says so; the open runs after a yes.
+     */
     async function grantAccess() {
+        const folder = folderAwaitingGrant;
+        if (!folder || granting) return;
+        granting = true;
+        grantError = null;
+        let granted = false;
+        try {
+            granted = await tryEnsurePermission(folder);
+            if (!granted) {
+                grantError =
+                    "EtherPK still does not have access to this folder, so the graph stays closed. Select Grant access to try again. If the browser does not ask, close every EtherPK tab and open the graph again.";
+            }
+        } catch (err) {
+            console.warn("[workspace] could not ask for the graph's folder", err);
+            grantError = describeFolderOpenFailure(err);
+        } finally {
+            granting = false;
+        }
+        if (!granted) return;
+        folderAwaitingGrant = null;
         phase = "loading";
         await runBuild();
     }
@@ -7718,6 +7758,8 @@
     {missing}
     {settingUp}
     {setupError}
+    {granting}
+    {grantError}
     {shareWaiting}
     {shareLanded}
     accessLost={accessLostNotice}
@@ -8190,7 +8232,7 @@
         busyReason="Saving your choice…"
     >
         {#snippet body()}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 "{conflict?.target}" changed on disk while you have unsaved edits. Keep your version, or take the version from disk?
             </p>
             {#if conflictError}
@@ -8201,13 +8243,13 @@
             <button
                 type="button"
                 data-testid="conflict-keep-mine"
-                class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
                 onclick={() => resolve("keep-mine")}>Keep mine</button
             >
             <button
                 type="button"
                 data-testid="conflict-take-disk"
-                class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
                 onclick={() => resolve("take-disk")}>Take disk</button
             >
         {/snippet}

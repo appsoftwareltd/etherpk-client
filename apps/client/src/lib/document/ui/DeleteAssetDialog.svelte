@@ -73,12 +73,12 @@
 
 <Dialog open={true} title="Delete this file?" testId="delete-asset-dialog" onclose={() => onchoose("cancel")}>
     {#snippet body()}
-        <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="delete-asset-name">
-            <span class="font-medium text-gray-900 dark:text-gray-100">{prompt.name}</span>
+        <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="delete-asset-name">
+            <span class="font-medium text-neutral-900 dark:text-neutral-100">{prompt.name}</span>
         </p>
 
         {#if plan.deleteBytes}
-            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="delete-asset-message">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="delete-asset-message">
                 {#if !uncheckedWarning}This is the only place it is used.{/if} Deleting removes it from this document
                 and deletes the file itself. This cannot be undone.
             </p>
@@ -91,7 +91,7 @@
                 </p>
             {/if}
         {:else}
-            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="delete-asset-message">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="delete-asset-message">
                 {reason}
             </p>
 
@@ -104,7 +104,7 @@
                                 class="text-left text-[var(--gk-accent,#007ACC)] underline underline-offset-2 hover:opacity-80"
                                 onclick={() => onopendocument(document.concept)}
                             >{document.concept}</button
-                            >{#if document.references > 1}<span class="text-gray-500 dark:text-gray-400">
+                            >{#if document.references > 1}<span class="text-neutral-500 dark:text-neutral-400">
                                     &nbsp;({document.references} times)</span
                                 >{/if}
                         </li>
@@ -117,13 +117,13 @@
     {#snippet footer()}
         <button
             type="button"
-            class="rounded-lg px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10"
+            class="rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/10"
             onclick={() => onchoose("cancel")}>Cancel</button
         >
         <button
             type="button"
             data-testid="delete-asset-unlink"
-            class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+            class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
             onclick={() => onchoose("unlink")}>Remove from this document</button
         >
         {#if plan.deleteBytes}

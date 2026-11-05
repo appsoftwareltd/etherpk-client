@@ -49,16 +49,16 @@
     );
 </script>
 
-<footer data-testid="marketing-footer" class="mt-16 border-t border-gray-950/5 py-8 dark:border-white/10">
-    <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 text-sm text-gray-500 sm:flex-row sm:px-6 dark:text-gray-400">
+<footer data-testid="marketing-footer" class="mt-16 border-t border-neutral-950/5 py-8 dark:border-white/10">
+    <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 text-sm text-neutral-500 sm:flex-row sm:px-6 dark:text-neutral-400">
         <span>© {new Date().getFullYear()} {copyrightHolder}. All rights reserved.</span>
         <nav class="flex flex-wrap justify-center gap-x-5 gap-y-2" aria-label="Footer">
             {#each entries as entry (entry.label)}
-                <a href={entry.href} class="text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">{entry.label}</a>
+                <a href={entry.href} class="text-neutral-500 transition-colors hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-white">{entry.label}</a>
             {/each}
         </nav>
     </div>
     {#if operatorNotice}
-        <p class="mx-auto mt-4 max-w-7xl px-4 text-center text-sm text-gray-500 sm:px-6 dark:text-gray-400" data-testid="operator-notice">{operatorNotice}</p>
+        <p class="mx-auto mt-4 max-w-7xl px-4 text-center text-sm text-neutral-500 sm:px-6 dark:text-neutral-400" data-testid="operator-notice">{operatorNotice}</p>
     {/if}
 </footer>

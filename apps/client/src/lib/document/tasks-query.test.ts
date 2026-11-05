@@ -13,6 +13,7 @@ import {
     type TaskQuery,
     tasksMatching,
     tasksMatchingCount,
+    usedFreeTags,
 } from './index-db'
 import { wrapOo1Db } from './index-db-sqlite'
 import { parseTaskLine, taskStatus } from './task-tags'
@@ -563,5 +564,47 @@ describe('a Task Text Filter (textFilter)', () => {
         ingestOne(db, page('Shed', ['- [ ] Mend the roof', '  - [ ] Buy the nails #urgent'].join('\n')))
         expect(matching('#urgent')).toEqual(['Buy the nails #urgent'])
         expect(matching('#urgent', { asBoard: true })).toEqual([])
+    })
+})
+
+// What the `#` helper offers: every Free Tag on a task in the graph, whatever the task's status.
+describe('the Free Tags a graph uses', () => {
+    it('lists each once, most used first, then A–Z, in its most used spelling', () => {
+        ingest(db, [
+            page('Shed', ['- [ ] Oil the hinge #paint', '- [ ] Paint the door #Bug', '- [x] Fix the gate #bug #paint'].join('\n')),
+            page('Garden', ['- [ ] Water the beans #bug', '- [ ] Dig the bed #compost'].join('\n')),
+        ])
+        expect(usedFreeTags(db)).toEqual(['bug', 'paint', 'compost'])
+    })
+
+    it('counts a tag once per task, however often the task writes it', () => {
+        ingest(db, [page('Shed', ['- [ ] Oil the hinge #Bug #bug #bug', '- [ ] Paint the door #bug'].join('\n'))])
+        expect(usedFreeTags(db)).toEqual(['bug'])
+    })
+
+    it('leaves out Task Tags, a hash word in code or a link, and a hash word off a task line', () => {
+        ingest(db, [
+            page(
+                'Shed',
+                [
+                    '- [ ] #P1 #W #D-2026-09-02 Oil the hinge',
+                    '- [ ] Paint the `#door` with [#brush](https://example.com)',
+                    '- a plain bullet #shelf',
+                    '#heading words',
+                ].join('\n'),
+            ),
+        ])
+        expect(usedFreeTags(db)).toEqual([])
+    })
+
+    it('reads past the Task Tags to a Free Tag in the run, as the grammar does', () => {
+        ingest(db, [page('Shed', '- [ ] #bug #P1 Oil the hinge')])
+        expect(usedFreeTags(db)).toEqual(['bug'])
+    })
+
+    it('forgets a tag once no task writes it', () => {
+        ingest(db, [page('Shed', '- [ ] Oil the hinge #bug')])
+        ingestOne(db, page('Shed', '- [ ] Oil the hinge'))
+        expect(usedFreeTags(db)).toEqual([])
     })
 })

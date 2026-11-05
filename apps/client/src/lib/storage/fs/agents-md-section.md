@@ -198,7 +198,8 @@ since a browser page cannot open a local file - nothing checks that the file exi
 - state: `#W` (waiting), `#D` (doing), `#T` (test), `#C` (cancelled), `#A` (archived)
 - dates: `#D-YYYY-MM-DD` (due), `#S-YYYY-MM-DD` (scheduled), `#C-YYYY-MM-DD` (completed)
 
-A bare letter is a state, a dated letter is a date. `#W`, `#D` and `#T` go on an unticked task
+Write them in upper case; EtherPK reads them in any case, so `#p1` is `#P1`. A bare letter is a
+state, a dated letter is a date. `#W`, `#D` and `#T` go on an unticked task
 and `#C` and `#A` on a ticked one; a state the checkbox contradicts means nothing. An archived task
 (`- [x] #A`) is finished and kept off Kanban boards. A **free tag** is the user's own label, such as
 `#bug` or `#needs-review`: letters, digits and single hyphens with at least one letter, anywhere

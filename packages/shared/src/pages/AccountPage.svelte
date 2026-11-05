@@ -774,24 +774,24 @@
 
 <div class="lg:max-w-4xl">
     <div class="mb-8">
-        <h1 class="text-2xl font-semibold tracking-tight text-gray-950">Account</h1>
-        <p class="mt-1 text-sm text-gray-500">Manage your profile and security settings.</p>
+        <h1 class="text-2xl font-semibold tracking-tight text-neutral-950">Account</h1>
+        <p class="mt-1 text-sm text-neutral-500">Manage your profile and security settings.</p>
     </div>
 
     <!-- Profile card -->
-    <div class="rounded-xl border border-gray-950/8 bg-white shadow-sm divide-y divide-gray-950/5">
+    <div class="rounded-xl border border-neutral-950/8 bg-white shadow-sm divide-y divide-neutral-950/5">
         <div class="px-6 py-5">
-            <h2 class="text-sm font-semibold text-gray-950">Profile</h2>
+            <h2 class="text-sm font-semibold text-neutral-950">Profile</h2>
         </div>
 
         <div class="px-6 py-5 flex items-center gap-4">
             <!-- Avatar -->
-            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gray-950 text-sm font-semibold text-white">
+            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-neutral-950 text-sm font-semibold text-white">
                 {initials}
             </div>
             <div class="min-w-0">
-                <p class="text-sm font-medium text-gray-950 truncate">{data.user.name}</p>
-                <p class="text-sm text-gray-500 truncate">{data.user.email}</p>
+                <p class="text-sm font-medium text-neutral-950 truncate">{data.user.name}</p>
+                <p class="text-sm text-neutral-500 truncate">{data.user.email}</p>
             </div>
             {#if mailEnabled}
             <div class="ml-auto">
@@ -812,10 +812,10 @@
         {#if mailEnabled && !data.user.emailVerified}
             <div class="px-6 py-5 space-y-3">
                 <div>
-                    <p class="text-sm font-medium text-gray-950">Verify your email address</p>
+                    <p class="text-sm font-medium text-neutral-950">Verify your email address</p>
                     <!-- The send time is recorded as an email goes and removed if the send fails, so
                          without one nothing has been sent, and the page must not say otherwise. -->
-                    <p class="mt-0.5 text-sm text-gray-500">
+                    <p class="mt-0.5 text-sm text-neutral-500">
                         {lastSentAt ? "We sent you a verification link. Didn't receive it? Resend below." : "No verification email has been sent to this address yet. Send one below."}
                     </p>
                 </div>
@@ -831,15 +831,15 @@
                 {/if}
 
                 <div class="flex flex-wrap items-center gap-3">
-                    <button type="button" onclick={resendVerification} disabled={verificationLoading || resendCoolingDown} aria-describedby={resendCoolingDown || lastSentLabel ? resendHintId : undefined} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button type="button" onclick={resendVerification} disabled={verificationLoading || resendCoolingDown} aria-describedby={resendCoolingDown || lastSentLabel ? resendHintId : undefined} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         {verificationLoading ? "Sending…" : "Resend verification email"}
                     </button>
                     {#if resendCoolingDown}
-                        <span id={resendHintId} class="text-sm text-gray-500" data-testid="verification-resend-wait">
+                        <span id={resendHintId} class="text-sm text-neutral-500" data-testid="verification-resend-wait">
                             {lastSentLabel ?? "Sent just now"}. You can send another in {resendWaitSeconds} s.
                         </span>
                     {:else if lastSentLabel}
-                        <span id={resendHintId} class="text-sm text-gray-500">{lastSentLabel}</span>
+                        <span id={resendHintId} class="text-sm text-neutral-500">{lastSentLabel}</span>
                     {/if}
                 </div>
             </div>
@@ -847,15 +847,15 @@
     </div>
 
     <!-- Email change -->
-    <div class="mt-4 rounded-xl border border-gray-950/8 bg-white shadow-sm divide-y divide-gray-950/5">
+    <div class="mt-4 rounded-xl border border-neutral-950/8 bg-white shadow-sm divide-y divide-neutral-950/5">
         <div class="px-6 py-5">
-            <h2 class="text-sm font-semibold text-gray-950">Email</h2>
+            <h2 class="text-sm font-semibold text-neutral-950">Email</h2>
         </div>
 
         <div class="px-6 py-5 space-y-4">
             <div>
-                <p class="text-sm font-medium text-gray-950">Change email address</p>
-                <p class="text-sm text-gray-500 mt-0.5" data-testid="email-change-help">
+                <p class="text-sm font-medium text-neutral-950">Change email address</p>
+                <p class="text-sm text-neutral-500 mt-0.5" data-testid="email-change-help">
                     {#if !mailEnabled}
                         This server does not send email, so it cannot confirm a new address. Your address stays {data.user.email}.
                     {:else if data.user.emailVerified}
@@ -877,7 +877,7 @@
             {#if mailEnabled}
             <form onsubmit={handleChangeEmail} novalidate class="space-y-3">
                 <div>
-                    <label for="new-email" class="block text-sm font-medium text-gray-700 mb-1">New email address</label>
+                    <label for="new-email" class="block text-sm font-medium text-neutral-700 mb-1">New email address</label>
                     <input id="new-email" type="email" bind:value={newEmail} autocomplete="email" placeholder="new@example.com" aria-invalid={!!emailFieldError} aria-describedby={emailFieldError ? "new-email-error" : undefined} class={textFieldClass(!!emailFieldError)} />
                     {#if emailFieldError}
                         <p id="new-email-error" class="mt-1 text-sm text-red-600">{emailFieldError}</p>
@@ -886,7 +886,7 @@
 
                 {#if hasPassword}
                     <div>
-                        <label for="email-password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                        <label for="email-password" class="block text-sm font-medium text-neutral-700 mb-1">Password</label>
                         <input
                             id="email-password"
                             type="password"
@@ -905,7 +905,7 @@
                     </div>
                 {/if}
 
-                <button type="submit" disabled={emailLoading} class="rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                <button type="submit" disabled={emailLoading} class="rounded-lg bg-neutral-950 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     {emailLoading ? "Sending…" : "Change email"}
                 </button>
             </form>
@@ -916,13 +916,13 @@
     <!-- Connected accounts: only when there is a provider to connect or a link to show, or while it
          confirms a disconnect that removed the last one listed. -->
     {#if offeredProviders.length > 0 || accountSuccess}
-    <div data-testid="connected-accounts" class="mt-4 rounded-xl border border-gray-950/8 bg-white shadow-sm divide-y divide-gray-950/5">
+    <div data-testid="connected-accounts" class="mt-4 rounded-xl border border-neutral-950/8 bg-white shadow-sm divide-y divide-neutral-950/5">
         <div class="px-6 py-5">
-            <h2 class="text-sm font-semibold text-gray-950">Connected accounts</h2>
+            <h2 class="text-sm font-semibold text-neutral-950">Connected accounts</h2>
         </div>
 
         <div class="px-6 py-5 space-y-4">
-            <p class="text-sm text-gray-500">Link your social accounts for faster sign-in.</p>
+            <p class="text-sm text-neutral-500">Link your social accounts for faster sign-in.</p>
 
             {#if verifyBeforeLinking}
                 <p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-600/20">Verify your email address before linking a social account.</p>
@@ -938,10 +938,10 @@
 
             <div class="space-y-3">
                 {#each offeredProviders as provider (provider.id)}
-                    <div class="flex items-center justify-between gap-4 rounded-lg border border-gray-950/8 px-4 py-3">
+                    <div class="flex items-center justify-between gap-4 rounded-lg border border-neutral-950/8 px-4 py-3">
                         <div class="flex items-center gap-3">
                             {#if provider.id === "github"}
-                                <svg class="h-5 w-5 text-gray-700" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <svg class="h-5 w-5 text-neutral-700" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                                     <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0 0 22 12.017C22 6.484 17.522 2 12 2Z" />
                                 </svg>
                             {:else}
@@ -953,25 +953,25 @@
                                 </svg>
                             {/if}
                             <div>
-                                <p class="text-sm font-medium text-gray-950">{provider.label}</p>
+                                <p class="text-sm font-medium text-neutral-950">{provider.label}</p>
                                 {#if isLinked(provider.id)}
-                                    <p class="text-sm text-gray-500">{getDisplayName(provider.id) ? `Connected as ${getDisplayName(provider.id)}` : "Connected"}</p>
+                                    <p class="text-sm text-neutral-500">{getDisplayName(provider.id) ? `Connected as ${getDisplayName(provider.id)}` : "Connected"}</p>
                                 {:else}
-                                    <p class="text-sm text-gray-500 dark:text-gray-400">Not connected</p>
+                                    <p class="text-sm text-neutral-500 dark:text-neutral-400">Not connected</p>
                                 {/if}
                             </div>
                         </div>
                         <div>
                             {#if isLinked(provider.id) && !canUnlink(provider.id)}
                                 <!-- Said in text, not a tooltip on a control that cannot be used. -->
-                                <span class="text-sm text-gray-500">Your only sign-in method</span>
+                                <span class="text-sm text-neutral-500">Your only sign-in method</span>
                             {:else if isLinked(provider.id)}
                                 <button type="button" onclick={() => unlinkProvider(provider.id)} disabled={unlinkLoading === provider.id} aria-label="Disconnect {provider.label}" class="text-sm text-red-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline">
                                     {unlinkLoading === provider.id ? "Disconnecting…" : "Disconnect"}
                                 </button>
                             {:else}
                                 <!-- Unverified, the notice above the list says why this is unavailable. -->
-                                <button type="button" onclick={() => linkProvider(provider.id)} disabled={linkLoading === provider.id || verifyBeforeLinking} aria-label="Connect {provider.label}" class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                <button type="button" onclick={() => linkProvider(provider.id)} disabled={linkLoading === provider.id || verifyBeforeLinking} aria-label="Connect {provider.label}" class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                                     {linkLoading === provider.id ? "Connecting…" : "Connect"}
                                 </button>
                             {/if}
@@ -984,17 +984,17 @@
     {/if}
 
     <!-- Security -->
-    <div class="mt-4 rounded-xl border border-gray-950/8 bg-white shadow-sm divide-y divide-gray-950/5">
+    <div class="mt-4 rounded-xl border border-neutral-950/8 bg-white shadow-sm divide-y divide-neutral-950/5">
         <div class="px-6 py-5">
-            <h2 class="text-sm font-semibold text-gray-950">Security</h2>
+            <h2 class="text-sm font-semibold text-neutral-950">Security</h2>
         </div>
 
         <!-- Two-factor authentication -->
         <div class="px-6 py-5 space-y-4">
             <div class="flex items-start justify-between gap-4">
                 <div>
-                    <p class="text-sm font-medium text-gray-950">Two-factor authentication</p>
-                    <p class="text-sm text-gray-500 mt-0.5">Add an extra layer of security with an authenticator app.</p>
+                    <p class="text-sm font-medium text-neutral-950">Two-factor authentication</p>
+                    <p class="text-sm text-neutral-500 mt-0.5">Add an extra layer of security with an authenticator app.</p>
                 </div>
                 <div class="flex items-center gap-3 shrink-0">
                     {#if mfaEnabled}
@@ -1007,7 +1007,7 @@
                             <button type="button" bind:this={disableButton} onclick={startMfaDisable} class="text-sm text-red-600 hover:underline">Disable</button>
                         {/if}
                     {:else if mfaStep === "idle"}
-                        <button type="button" bind:this={enableButton} onclick={startMfaEnable} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors">Enable</button>
+                        <button type="button" bind:this={enableButton} onclick={startMfaEnable} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors">Enable</button>
                     {/if}
                 </div>
             </div>
@@ -1022,29 +1022,29 @@
 
             <!-- Confirm password to start enable flow -->
             {#if mfaStep === "confirm-password"}
-                <form onsubmit={getMfaUri} novalidate class="rounded-lg border border-gray-950/8 bg-gray-50 p-4 space-y-3">
-                    <label for="account-mfa-enable-password" class="block text-sm font-medium text-gray-700">Enter your current password to continue</label>
+                <form onsubmit={getMfaUri} novalidate class="rounded-lg border border-neutral-950/8 bg-neutral-50 p-4 space-y-3">
+                    <label for="account-mfa-enable-password" class="block text-sm font-medium text-neutral-700">Enter your current password to continue</label>
                     {#if mfaError}
                         {@render errorBanner(mfaError)}
                     {/if}
                     {@render mfaPasswordField("account-mfa-enable-password")}
                     <div class="flex gap-2">
-                        <button type="submit" disabled={mfaLoading} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={mfaLoading} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {mfaLoading ? "Loading…" : "Continue"}
                         </button>
-                        <button type="button" onclick={cancelMfa} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelMfa} class="rounded-lg border border-neutral-950/15 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors">Cancel</button>
                     </div>
                 </form>
             {/if}
 
             <!-- Scan QR code -->
             {#if mfaStep === "scan"}
-                <form onsubmit={verifyMfaCode} novalidate class="rounded-lg border border-gray-950/8 bg-gray-50 p-4 space-y-4">
+                <form onsubmit={verifyMfaCode} novalidate class="rounded-lg border border-neutral-950/8 bg-neutral-50 p-4 space-y-4">
                     <div>
                         <!-- Focus starts on the instructions, so a screen reader reads the secret and
                              the backup codes before it reaches the code field. -->
-                        <p tabindex="-1" {@attach focusOnMount} class="text-sm font-medium text-gray-950 outline-none">1. Scan this QR code with your authenticator app</p>
-                        <p class="text-sm text-gray-500 mt-0.5">Use Google Authenticator, Authy, or any TOTP-compatible app.</p>
+                        <p tabindex="-1" {@attach focusOnMount} class="text-sm font-medium text-neutral-950 outline-none">1. Scan this QR code with your authenticator app</p>
+                        <p class="text-sm text-neutral-500 mt-0.5">Use Google Authenticator, Authy, or any TOTP-compatible app.</p>
                     </div>
                     {#if mfaQrDataUrl}
                         <div class="flex justify-center">
@@ -1052,8 +1052,8 @@
                         </div>
                     {/if}
                     <div>
-                        <p class="text-sm font-medium text-gray-700">Can't scan? Enter this secret manually:</p>
-                        <code class="mt-1 block rounded bg-white border border-gray-200 px-3 py-2 text-sm font-mono text-gray-950 select-all break-all">{mfaSecret}</code>
+                        <p class="text-sm font-medium text-neutral-700">Can't scan? Enter this secret manually:</p>
+                        <code class="mt-1 block rounded bg-white border border-neutral-200 px-3 py-2 text-sm font-mono text-neutral-950 select-all break-all">{mfaSecret}</code>
                     </div>
                     {#if mfaBackupCodes.length > 0}
                         <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
@@ -1076,13 +1076,13 @@
                             <p class="text-sm text-amber-700">Store these somewhere safe. If you lose your authenticator app, choose Use a backup code when you sign in and enter one of these. Each code works once.</p>
                             <div class="grid grid-cols-2 gap-1 mt-2" data-testid="mfa-backup-codes">
                                 {#each mfaBackupCodes as code (code)}
-                                    <code class="rounded bg-white border border-amber-200 px-2 py-1 text-sm font-mono text-gray-950 select-all">{code}</code>
+                                    <code class="rounded bg-white border border-amber-200 px-2 py-1 text-sm font-mono text-neutral-950 select-all">{code}</code>
                                 {/each}
                             </div>
                         </div>
                     {/if}
                     <div>
-                        <label for="account-mfa-code" class="block text-sm font-medium text-gray-700 mb-1.5">2. Enter the 6-digit code from your app</label>
+                        <label for="account-mfa-code" class="block text-sm font-medium text-neutral-700 mb-1.5">2. Enter the 6-digit code from your app</label>
                         {#if mfaError}
                             <div class="mb-2">
                                 {@render errorBanner(mfaError)}
@@ -1109,10 +1109,10 @@
                         {/if}
                     </div>
                     <div class="flex gap-2">
-                        <button type="submit" disabled={mfaLoading} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={mfaLoading} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {mfaLoading ? "Verifying…" : "Verify & Enable"}
                         </button>
-                        <button type="button" onclick={cancelMfa} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelMfa} class="rounded-lg border border-neutral-950/15 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors">Cancel</button>
                     </div>
                 </form>
             {/if}
@@ -1129,7 +1129,7 @@
                         <button type="submit" disabled={mfaLoading} class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {mfaLoading ? "Disabling…" : "Disable 2FA"}
                         </button>
-                        <button type="button" onclick={cancelMfa} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelMfa} class="rounded-lg border border-neutral-950/15 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors">Cancel</button>
                     </div>
                 </form>
             {/if}
@@ -1139,11 +1139,11 @@
         <div class="px-6 py-5 space-y-4">
             <div class="flex items-start justify-between gap-4">
                 <div>
-                    <p class="text-sm font-medium text-gray-950">Passkeys</p>
-                    <p class="text-sm text-gray-500 mt-0.5">Sign in with your fingerprint, face, or screen lock instead of a password.</p>
+                    <p class="text-sm font-medium text-neutral-950">Passkeys</p>
+                    <p class="text-sm text-neutral-500 mt-0.5">Sign in with your fingerprint, face, or screen lock instead of a password.</p>
                 </div>
                 {#if passkeySupported && passkeyStep === "idle"}
-                    <button type="button" bind:this={addPasskeyButton} onclick={startAddPasskey} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors shrink-0">Add a passkey</button>
+                    <button type="button" bind:this={addPasskeyButton} onclick={startAddPasskey} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors shrink-0">Add a passkey</button>
                 {/if}
             </div>
 
@@ -1156,14 +1156,14 @@
             {/if}
 
             {#if !passkeySupported}
-                <p class="text-sm text-gray-500 dark:text-gray-400">Your browser doesn't support passkeys (WebAuthn).</p>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">Your browser doesn't support passkeys (WebAuthn).</p>
             {/if}
 
             <!-- Add passkey: name prompt -->
             {#if passkeyStep === "add-name"}
-                <form onsubmit={addPasskey} novalidate class="rounded-lg border border-gray-950/8 bg-gray-50 p-4 space-y-3">
-                    <label for="account-passkey-name" class="block text-sm font-medium text-gray-700">Name your passkey</label>
-                    <p id="account-passkey-name-hint" class="text-sm text-gray-500">Give it a recognisable name so you can identify it later.</p>
+                <form onsubmit={addPasskey} novalidate class="rounded-lg border border-neutral-950/8 bg-neutral-50 p-4 space-y-3">
+                    <label for="account-passkey-name" class="block text-sm font-medium text-neutral-700">Name your passkey</label>
+                    <p id="account-passkey-name-hint" class="text-sm text-neutral-500">Give it a recognisable name so you can identify it later.</p>
                     {#if passkeyError}
                         {@render errorBanner(passkeyError)}
                     {/if}
@@ -1185,18 +1185,18 @@
                         <p id="account-passkey-name-error" class="text-sm text-red-600">{passkeyFieldError}</p>
                     {/if}
                     <div class="flex gap-2">
-                        <button type="submit" disabled={passkeyLoading} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={passkeyLoading} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {passkeyLoading ? "Waiting for browser…" : "Continue"}
                         </button>
-                        <button type="button" onclick={cancelPasskey} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelPasskey} class="rounded-lg border border-neutral-950/15 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors">Cancel</button>
                     </div>
                 </form>
             {/if}
 
             <!-- Rename passkey -->
             {#if passkeyStep === "rename"}
-                <form onsubmit={renamePasskey} novalidate class="rounded-lg border border-gray-950/8 bg-gray-50 p-4 space-y-3">
-                    <label for="account-passkey-rename" class="block text-sm font-medium text-gray-700">Rename passkey</label>
+                <form onsubmit={renamePasskey} novalidate class="rounded-lg border border-neutral-950/8 bg-neutral-50 p-4 space-y-3">
+                    <label for="account-passkey-rename" class="block text-sm font-medium text-neutral-700">Rename passkey</label>
                     {#if passkeyError}
                         {@render errorBanner(passkeyError)}
                     {/if}
@@ -1218,10 +1218,10 @@
                         <p id="account-passkey-rename-error" class="text-sm text-red-600">{passkeyFieldError}</p>
                     {/if}
                     <div class="flex gap-2">
-                        <button type="submit" disabled={passkeyRenameLoading} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={passkeyRenameLoading} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {passkeyRenameLoading ? "Saving…" : "Save"}
                         </button>
-                        <button type="button" onclick={cancelPasskey} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelPasskey} class="rounded-lg border border-neutral-950/15 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors">Cancel</button>
                     </div>
                 </form>
             {/if}
@@ -1230,17 +1230,17 @@
             {#if passkeys.length > 0}
                 <div class="space-y-2">
                     {#each passkeys as pk (pk.id)}
-                        <div class="flex items-center justify-between gap-3 rounded-lg border border-gray-950/8 px-4 py-3">
+                        <div class="flex items-center justify-between gap-3 rounded-lg border border-neutral-950/8 px-4 py-3">
                             <div class="flex items-center gap-3 min-w-0">
-                                <svg class="h-5 w-5 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                                <svg class="h-5 w-5 text-neutral-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M7.864 4.243A7.5 7.5 0 0 1 19.5 10.5c0 2.92-.556 5.709-1.568 8.268M5.742 6.364A7.465 7.465 0 0 0 4.5 10.5a7.464 7.464 0 0 1-1.15 3.993m1.989 3.559A11.209 11.209 0 0 0 8.25 10.5a3.75 3.75 0 1 1 7.5 0c0 .527-.021 1.049-.064 1.565M12 10.5a14.94 14.94 0 0 1-3.6 9.75m6.633-4.596a18.666 18.666 0 0 1-2.485 5.33" />
                                 </svg>
                                 <div class="min-w-0">
-                                    <p class="text-sm font-medium text-gray-950 truncate">{pk.name || "Unnamed passkey"}</p>
-                                    <div class="flex items-center gap-2 text-sm text-gray-500">
+                                    <p class="text-sm font-medium text-neutral-950 truncate">{pk.name || "Unnamed passkey"}</p>
+                                    <div class="flex items-center gap-2 text-sm text-neutral-500">
                                         <span>Added {formatDate(pk.createdAt)}</span>
                                         {#if pk.backedUp}
-                                            <span class="inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-sm text-blue-600 ring-1 ring-blue-600/20">
+                                            <span class="inline-flex items-center gap-0.5 rounded-full bg-neutral-100 px-1.5 py-0.5 text-sm text-neutral-700 ring-1 ring-neutral-500/20">
                                                 <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                                     <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z" />
                                                 </svg>
@@ -1251,29 +1251,29 @@
                                 </div>
                             </div>
                             <div class="flex items-center gap-2 shrink-0">
-                                <button type="button" bind:this={renameButtons[pk.id]} onclick={() => startRenamePasskey(pk.id, pk.name ?? "")} class="text-sm text-gray-500 hover:text-gray-950 hover:underline">Rename</button>
+                                <button type="button" bind:this={renameButtons[pk.id]} onclick={() => startRenamePasskey(pk.id, pk.name ?? "")} class="text-sm text-neutral-500 hover:text-neutral-950 hover:underline">Rename</button>
                                 {#if canDeletePasskey()}
                                     <button type="button" onclick={() => deletePasskey(pk.id)} disabled={passkeyDeleteLoading === pk.id} class="text-sm text-red-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed">
                                         {passkeyDeleteLoading === pk.id ? "Removing…" : "Remove"}
                                     </button>
                                 {:else}
                                     <!-- Said in text, not a tooltip on a control that cannot be used. -->
-                                    <span class="text-sm text-gray-500">Your only sign-in method</span>
+                                    <span class="text-sm text-neutral-500">Your only sign-in method</span>
                                 {/if}
                             </div>
                         </div>
                     {/each}
                 </div>
             {:else if passkeySupported && passkeyStep === "idle"}
-                <p class="text-sm text-gray-500 dark:text-gray-400">No passkeys registered. Add one to sign in without a password.</p>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">No passkeys registered. Add one to sign in without a password.</p>
             {/if}
         </div>
 
         <!-- Password change / set -->
         <div class="px-6 py-5 space-y-4">
             <div>
-                <p class="text-sm font-medium text-gray-950">{hasPassword ? "Change password" : "Set a password"}</p>
-                <p class="text-sm text-gray-500 mt-0.5">
+                <p class="text-sm font-medium text-neutral-950">{hasPassword ? "Change password" : "Set a password"}</p>
+                <p class="text-sm text-neutral-500 mt-0.5">
                     {#if hasPassword}
                         Update your account password.
                     {:else}
@@ -1296,7 +1296,7 @@
             {#if hasPassword}
                 <form onsubmit={handleChangePassword} novalidate class="space-y-3">
                     <div>
-                        <label for="pw-current" class="block text-sm font-medium text-gray-700 mb-1">Current password</label>
+                        <label for="pw-current" class="block text-sm font-medium text-neutral-700 mb-1">Current password</label>
                         <input id="pw-current" type="password" bind:value={pwCurrent} autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" aria-invalid={!!pwFieldErrors.current} aria-describedby={pwFieldErrors.current ? "pw-current-error" : undefined} class={textFieldClass(!!pwFieldErrors.current)} />
                         {#if pwFieldErrors.current}
                             <p id="pw-current-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.current}</p>
@@ -1304,51 +1304,51 @@
                     </div>
 
                     <div>
-                        <label for="pw-new" class="block text-sm font-medium text-gray-700 mb-1">New password</label>
+                        <label for="pw-new" class="block text-sm font-medium text-neutral-700 mb-1">New password</label>
                         <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error pw-new-help" : "pw-new-help"} class={textFieldClass(!!pwFieldErrors.new)} />
                         {#if pwFieldErrors.new}
                             <p id="pw-new-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.new}</p>
                         {/if}
-                        <p id="pw-new-help" class="mt-1 text-sm text-gray-500">{PASSWORD_HELP}</p>
+                        <p id="pw-new-help" class="mt-1 text-sm text-neutral-500">{PASSWORD_HELP}</p>
                     </div>
 
                     <div>
-                        <label for="pw-confirm" class="block text-sm font-medium text-gray-700 mb-1">Confirm new password</label>
+                        <label for="pw-confirm" class="block text-sm font-medium text-neutral-700 mb-1">Confirm new password</label>
                         <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" placeholder="Repeat new password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class={textFieldClass(!!pwFieldErrors.confirm)} />
                         {#if pwFieldErrors.confirm}
                             <p id="pw-confirm-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.confirm}</p>
                         {/if}
                     </div>
 
-                    <label class="flex items-center gap-2 text-sm text-gray-700">
-                        <input type="checkbox" bind:checked={signOutOthers} class="h-4 w-4 rounded border-gray-300" />
+                    <label class="flex items-center gap-2 text-sm text-neutral-700">
+                        <input type="checkbox" bind:checked={signOutOthers} class="h-4 w-4 rounded border-neutral-300" />
                         Sign out of other devices
                     </label>
 
-                    <button type="submit" disabled={pwLoading} class="rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button type="submit" disabled={pwLoading} class="rounded-lg bg-neutral-950 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         {pwLoading ? "Saving…" : "Update password"}
                     </button>
                 </form>
             {:else}
                 <form onsubmit={handleSetPassword} novalidate class="space-y-3">
                     <div>
-                        <label for="pw-new" class="block text-sm font-medium text-gray-700 mb-1">New password</label>
+                        <label for="pw-new" class="block text-sm font-medium text-neutral-700 mb-1">New password</label>
                         <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error pw-new-help" : "pw-new-help"} class={textFieldClass(!!pwFieldErrors.new)} />
                         {#if pwFieldErrors.new}
                             <p id="pw-new-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.new}</p>
                         {/if}
-                        <p id="pw-new-help" class="mt-1 text-sm text-gray-500">{PASSWORD_HELP}</p>
+                        <p id="pw-new-help" class="mt-1 text-sm text-neutral-500">{PASSWORD_HELP}</p>
                     </div>
 
                     <div>
-                        <label for="pw-confirm" class="block text-sm font-medium text-gray-700 mb-1">Confirm password</label>
+                        <label for="pw-confirm" class="block text-sm font-medium text-neutral-700 mb-1">Confirm password</label>
                         <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" placeholder="Repeat password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class={textFieldClass(!!pwFieldErrors.confirm)} />
                         {#if pwFieldErrors.confirm}
                             <p id="pw-confirm-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.confirm}</p>
                         {/if}
                     </div>
 
-                    <button type="submit" disabled={pwLoading} class="rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button type="submit" disabled={pwLoading} class="rounded-lg bg-neutral-950 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         {pwLoading ? "Saving…" : "Set password"}
                     </button>
                 </form>
@@ -1359,11 +1359,11 @@
         <div class="px-6 py-5 space-y-4" data-testid="account-sessions">
             <div class="flex items-start justify-between gap-4">
                 <div>
-                    <p class="text-sm font-medium text-gray-950">Sessions</p>
-                    <p class="text-sm text-gray-500 mt-0.5">Where your account is signed in. Signing a session out ends it at once.</p>
+                    <p class="text-sm font-medium text-neutral-950">Sessions</p>
+                    <p class="text-sm text-neutral-500 mt-0.5">Where your account is signed in. Signing a session out ends it at once.</p>
                 </div>
                 {#if sessions.length > 1}
-                    <button type="button" onclick={signOutOtherSessions} disabled={sessionsBusy !== null} class="shrink-0 rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button type="button" onclick={signOutOtherSessions} disabled={sessionsBusy !== null} class="shrink-0 rounded-lg border border-neutral-950/15 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         {sessionsBusy === "others" ? "Signing out…" : "Sign out of other sessions"}
                     </button>
                 {/if}
@@ -1378,15 +1378,15 @@
 
             <ul class="space-y-2">
                 {#each sessions as session (session.id)}
-                    <li class="flex items-center justify-between gap-3 rounded-lg border border-gray-950/8 px-4 py-3">
+                    <li class="flex items-center justify-between gap-3 rounded-lg border border-neutral-950/8 px-4 py-3">
                         <div class="min-w-0">
-                            <p class="flex items-center gap-2 text-sm font-medium text-gray-950">
+                            <p class="flex items-center gap-2 text-sm font-medium text-neutral-950">
                                 {describeDevice(session.userAgent)}
                                 {#if session.current}
-                                    <span class="rounded-full bg-gray-100 px-2 py-0.5 text-sm font-medium text-gray-700">This device</span>
+                                    <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-sm font-medium text-neutral-700">This device</span>
                                 {/if}
                             </p>
-                            <p class="text-sm text-gray-500">
+                            <p class="text-sm text-neutral-500">
                                 Signed in {formatDate(session.createdAt)}{session.ipAddress ? ` from ${session.ipAddress}` : ""}
                             </p>
                         </div>

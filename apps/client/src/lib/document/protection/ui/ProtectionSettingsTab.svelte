@@ -113,11 +113,11 @@
          "nothing here" would teach people the feature does not exist — and this is a calmer place
          to meet the no-recovery warning than mid-flow when you were trying to hide one line. -->
     <div class="space-y-3" data-testid="protection-tab-empty">
-        <p class="text-sm text-gray-600 dark:text-gray-400">
+        <p class="text-sm text-neutral-600 dark:text-neutral-400">
             Protected documents are scrambled on disk. Their contents can only be read after you
             enter a passphrase, and they are never reachable by search.
         </p>
-        <p class="text-sm text-gray-600 dark:text-gray-400">
+        <p class="text-sm text-neutral-600 dark:text-neutral-400">
             This graph has no protection passphrase yet. Setting one up takes a moment - but choose
             it carefully, because <strong>a forgotten passphrase cannot be recovered</strong>, by us
             or by your Recovery Code.
@@ -126,13 +126,13 @@
             type="button"
             onclick={onsetup}
             data-testid="protection-setup"
-            class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
         >Set up protection…</button>
     </div>
 {:else}
     <div class="space-y-4">
         <div>
-            <label for="protection-grace" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">
+            <label for="protection-grace" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">
                 Lock after I switch away
             </label>
             <select
@@ -140,20 +140,20 @@
                 bind:value={maskGraceMs}
                 onchange={persist}
                 data-testid="protection-grace-select"
-                class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
+                class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
             >
                 {#each GRACE_CHOICES as choice (choice.ms)}
                     <option value={choice.ms}>{choice.label}</option>
                 {/each}
             </select>
-            <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+            <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                 Contents leave the screen the instant you switch away either way. This is how long
                 before the key itself is discarded, so coming back needs your passphrase again.
             </p>
         </div>
 
         <div>
-            <label for="protection-idle" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">
+            <label for="protection-idle" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">
                 Lock after this long with no activity
             </label>
             <select
@@ -161,13 +161,13 @@
                 bind:value={idleLockMs}
                 onchange={persist}
                 data-testid="protection-idle-select"
-                class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
+                class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
             >
                 {#each IDLE_CHOICES as choice (choice.ms)}
                     <option value={choice.ms}>{choice.label}</option>
                 {/each}
             </select>
-            <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+            <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                 Both apply to <strong>this device only</strong>, and save as you change them. A
                 desktop at home and a laptop on a train deserve different answers.
             </p>
@@ -177,36 +177,36 @@
              user saying they are leaving, and a row of padlocked tabs still names what they had
              open. Only a Lock Now closes anything - the timers above never touch the Layout. -->
         <div>
-            <label class="flex items-start gap-2 text-sm text-gray-950 dark:text-gray-100">
+            <label class="flex items-start gap-2 text-sm text-neutral-950 dark:text-neutral-100">
                 <input
                     type="checkbox"
                     bind:checked={closeOnLockNow}
                     onchange={persist}
                     data-testid="protection-close-on-lock"
-                    class="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-gray-700"
+                    class="mt-0.5 h-4 w-4 rounded border-neutral-300 dark:border-neutral-700"
                 />
                 <span>Close protected documents when I lock now</span>
             </label>
-            <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+            <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                 Only when you lock deliberately - from the sidebar, a document's padlock or the
                 command. Timeouts never close anything, so it can't take your tabs away mid-work.
             </p>
         </div>
 
-        <div class="border-t border-gray-100 dark:border-gray-800 pt-4">
-            <h3 class="text-sm font-medium text-gray-950 dark:text-gray-100">This device</h3>
+        <div class="border-t border-neutral-100 dark:border-neutral-800 pt-4">
+            <h3 class="text-sm font-medium text-neutral-950 dark:text-neutral-100">This device</h3>
             {#if hasPasskey}
-                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400" data-testid="protection-passkey-bound">
+                <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400" data-testid="protection-passkey-bound">
                     A passkey is bound to this device, so you can unlock with your fingerprint, face
                     or device PIN instead of typing your passphrase.
                 </p>
             {:else if !canBindPasskey}
-                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
                     This browser does not support passkeys, so unlocking here always needs the
                     passphrase.
                 </p>
             {:else}
-                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
                     Bind a passkey and this device can unlock with your fingerprint, face or device
                     PIN instead of the passphrase.
                 </p>
@@ -215,10 +215,10 @@
                     onclick={() => void bindPasskey()}
                     disabled={passkeyBusy || !isUnlocked}
                     data-testid="protection-bind-passkey"
-                    class="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40"
+                    class="mt-2 rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
                 >{passkeyBusy ? "Waiting…" : "Bind a passkey to this device"}</button>
                 {#if !isUnlocked}
-                    <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+                    <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                         Unlock this graph first - binding a passkey needs the key itself.
                     </p>
                 {/if}
@@ -231,8 +231,8 @@
             {/if}
         </div>
 
-        <div class="border-t border-gray-100 dark:border-gray-800 pt-4">
-            <h3 class="text-sm font-medium text-gray-950 dark:text-gray-100">Passphrase</h3>
+        <div class="border-t border-neutral-100 dark:border-neutral-800 pt-4">
+            <h3 class="text-sm font-medium text-neutral-950 dark:text-neutral-100">Passphrase</h3>
             {#if changeDone}
                 <p role="status" class="mt-1 text-sm text-green-700 dark:text-green-500" data-testid="protection-change-done">
                     Your passphrase has been changed.
@@ -246,7 +246,7 @@
                         aria-label="Current passphrase"
                         autocomplete="current-password"
                         data-testid="protection-change-current"
-                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
+                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
                     />
                     <input
                         type="password"
@@ -255,7 +255,7 @@
                         aria-label="New passphrase"
                         autocomplete="new-password"
                         data-testid="protection-change-next"
-                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
+                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
                     />
                     <input
                         type="password"
@@ -264,7 +264,7 @@
                         aria-label="Confirm new passphrase"
                         autocomplete="new-password"
                         data-testid="protection-change-confirm"
-                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
+                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
                     />
                     {#if changeError}
                         <p role="alert" class="text-sm text-red-600" data-testid="protection-change-error">{changeError}</p>
@@ -275,17 +275,17 @@
                             onclick={() => void changePassphrase()}
                             disabled={changeBusy}
                             data-testid="protection-change-submit"
-                            class="rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-40"
+                            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-white dark:text-neutral-900 disabled:opacity-40"
                         >{changeBusy ? "Changing…" : "Change passphrase"}</button>
                         <button
                             type="button"
                             onclick={() => (changing = false)}
-                            class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400"
+                            class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400"
                         >Cancel</button>
                     </div>
                 </div>
             {:else}
-                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
                     Changing it re-wraps the same key, so no note is re-encrypted and nothing becomes
                     unreadable.
                 </p>
@@ -293,7 +293,7 @@
                     type="button"
                     onclick={() => (changing = true)}
                     data-testid="protection-change-open"
-                    class="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-white/5"
+                    class="mt-2 rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5"
                 >Change passphrase…</button>
             {/if}
         </div>

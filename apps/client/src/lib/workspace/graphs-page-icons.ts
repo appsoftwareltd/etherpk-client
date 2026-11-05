@@ -34,4 +34,4 @@ export const RESET_ICON =
 
 /** The Open button every row leads with: filled, compact, touch-sized on a coarse pointer. */
 export const OPEN_BUTTON =
-    'inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 pointer-coarse:min-h-11 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200'
+    'inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 pointer-coarse:min-h-11 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200'

@@ -125,7 +125,7 @@
         }
     }
 
-    const field = "rounded-lg border border-gray-300 bg-(--gk-surface-0) px-2 py-1.5 text-sm font-normal text-(--gk-text-default) dark:border-gray-700";
+    const field = "rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-2 py-1.5 text-sm font-normal text-(--gk-text-default) dark:border-neutral-700";
 </script>
 
 <Dialog {open} title="Save an additional copy" {onclose} {busy} busyReason="Making the copy…" testId="pdf-save-dialog" onsubmit={submit}>
@@ -217,7 +217,7 @@
     {/snippet}
     {#snippet footer()}
         <div class="flex justify-end gap-2">
-            <button type="button" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-(--gk-text-default) dark:border-gray-700" onclick={onclose}>Cancel</button>
+            <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-(--gk-text-default) dark:border-neutral-700" onclick={onclose}>Cancel</button>
             <button type="submit" class="rounded-lg bg-(--gk-accent) px-3 py-1.5 text-sm font-medium text-(--gk-surface-0) hover:bg-(--gk-accent-hover)" data-testid="pdf-save-submit">{busy ? "Saving…" : "Save"}</button>
         </div>
     {/snippet}

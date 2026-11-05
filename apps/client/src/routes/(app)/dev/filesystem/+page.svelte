@@ -454,11 +454,11 @@
         font-variant-numeric: tabular-nums;
     }
     .badge--idle {
-        background: var(--gk-surface-2, #e5e7eb);
-        color: var(--gk-text-muted, #6b7280);
+        background: var(--gk-surface-2, #e5e5e5);
+        color: var(--gk-text-muted, #737373);
     }
     .badge--run {
-        background: #dbeafe;
+        background: #e5e5e5;
         color: #1e40af;
     }
     .badge--ok {
@@ -542,7 +542,7 @@
         border-radius: 4px;
     }
     .tag--j {
-        background: #e0e7ff;
+        background: #e5e5e5;
         color: #3730a3;
     }
     .tag--p {

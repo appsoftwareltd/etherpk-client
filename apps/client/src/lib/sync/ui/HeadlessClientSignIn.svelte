@@ -91,7 +91,7 @@
     }
 
     const command = $derived(setupCode.phase === "ready" ? loginCommand(serverBaseUrl, headlessClient, setupCode.code) : null);
-    const link = "underline decoration-gray-400 underline-offset-2 hover:decoration-gray-950 dark:hover:decoration-gray-100";
+    const link = "underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-950 dark:hover:decoration-neutral-100";
 </script>
 
 {#if createSetupCode === null}
@@ -111,24 +111,24 @@
 {#if command}
     <div class="flex items-start gap-2">
         <pre
-            class="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
+            class="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-neutral-900/10 dark:border-neutral-100/15 bg-neutral-50 dark:bg-white/5 p-3 font-mono text-sm"
             data-testid="agents-login-command">{command}</pre>
         <button
             type="button"
             bind:this={loginCopyButton}
             onclick={() => copy(command)}
-            class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
+            class="shrink-0 rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
             data-testid="agents-copy-login">{copied ? "Copied" : "Copy"}</button
         >
     </div>
 {/if}
 {#if copyError}<p role="status" class="text-sm text-red-700 dark:text-red-400">{copyError}</p>{/if}
 {#if setupCode.phase === "ready"}
-    <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="agents-setup-code-expiry">
+    <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-setup-code-expiry">
         Works once and expires at {new Date(setupCode.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Keep it secret until then.
     </p>
 {:else if setupCode.phase === "expired"}
-    <p role="status" class="text-sm text-gray-600 dark:text-gray-400" data-testid="agents-setup-code-expired">
+    <p role="status" class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-setup-code-expired">
         That Agent Setup Code has expired. Create a new one when you're ready to run the command.
     </p>
 {:else if setupCode.phase === "failed"}
@@ -139,7 +139,7 @@
         type="button"
         onclick={makeSetupCode}
         disabled={setupCode.phase === "making"}
-        class="rounded-lg bg-gray-950 dark:bg-white px-4 py-2 text-sm font-medium text-white dark:text-gray-950 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-60"
+        class="rounded-lg bg-neutral-950 dark:bg-white px-4 py-2 text-sm font-medium text-white dark:text-neutral-950 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-60"
         data-testid="agents-make-setup-code"
     >
         {setupCode.phase === "making"

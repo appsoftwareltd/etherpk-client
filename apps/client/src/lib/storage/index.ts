@@ -89,6 +89,7 @@ export {
     createIdbGraphStoragePort,
     ensurePermission,
     hasPermission,
+    tryEnsurePermission,
 } from './graph-registry-idb'
 export {
     forgetMirrorFolder,

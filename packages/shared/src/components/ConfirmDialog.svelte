@@ -65,12 +65,12 @@
 
 <Dialog {open} {title} testId="confirm-dialog" onclose={handleCancel} onsubmit={handleConfirm}>
     {#snippet body()}
-        <p class="text-sm text-gray-600 dark:text-gray-400">{message}</p>
+        <p class="text-sm text-neutral-600 dark:text-neutral-400">{message}</p>
 
         {#if variant === "type-to-confirm"}
             <div>
-                <label for={inputId} class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Type <span class="font-semibold text-gray-700 dark:text-gray-300">{confirmValue}</span> to confirm
+                <label for={inputId} class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">
+                    Type <span class="font-semibold text-neutral-700 dark:text-neutral-300">{confirmValue}</span> to confirm
                 </label>
                 <input
                     id={inputId}
@@ -78,12 +78,12 @@
                     bind:value={typedValue}
                     autocomplete="off"
                     aria-describedby={canConfirm ? undefined : hintId}
-                    class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                    class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                 />
                 <!-- Rule 7: the confirm button is disabled and therefore not focusable, so its
                      condition has to be readable from the field it depends on. -->
                 {#if !canConfirm}
-                    <p id={hintId} class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+                    <p id={hintId} class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                         {confirmLabel} stays unavailable until this matches exactly.
                     </p>
                 {/if}
@@ -93,7 +93,7 @@
 
     {#snippet footer()}
         {#if !hideCancel}
-            <button type="button" data-testid="confirm-cancel" onclick={handleCancel} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+            <button type="button" data-testid="confirm-cancel" onclick={handleCancel} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors">
                 {cancelLabel}
             </button>
         {/if}
@@ -103,7 +103,7 @@
             disabled={!canConfirm}
             class="rounded-lg px-4 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed {destructive
                 ? 'bg-red-600 text-white hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700'
-                : 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200'}"
+                : 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200'}"
         >
             {confirmLabel}
         </button>

@@ -5,6 +5,40 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Task tags in any case.** `#p1` means the same as `#P1`, and so do `#w`, `#c`, `#d-2026-11-05` and the
+  other task tags, in the editor, the Tasks View, Kanban boards and published pages. Lower-case tags already
+  at the start of a task count the next time you open the graph. A word like `#c` or `#w` later in a task is
+  now a tag too: it moves to the start when the cursor leaves the line, and `#c` or `#a` ticks the task. Put
+  backticks around one you mean as text.
+- **Free tags in the `#` menu.** Type `#` and a letter on a task line and the menu lists the free tags your
+  graph already uses, after the task tags. If what you typed is already one of them, **Enter** starts a new
+  line and leaves the tag as you typed it.
+- **Neutral greys.** The interface's greys are neutral in both themes, without the blue or purple tint they
+  had. Text selection in the editor and in a PDF, an unfilled PDF form field, Excalidraw's controls and a
+  Mermaid diagram that sets no theme of its own are grey too. A Find match in a PDF uses the editor's Find
+  colours. Links and everything else in the link blue stay as they were.
+- **Fixes.**
+  - A local graph opened from its address or a restored tab shows **Grant access** when the browser needs a
+    click before it will ask for the folder. It used to fail with a message about the sync server. If you
+    refuse, the screen says so and offers **Back to graphs**.
+  - Any other failure to open a local graph describes the folder, not the sync server.
+  - The `#` menu no longer opens with the cursor inside a task tag, where choosing a row split the tag
+    (`#P1 2`), or after you set a status or priority from a task's right-click menu.
+  - The `/` menu opens only when you type `/` or press the slash button. It no longer opens when the cursor
+    lands behind a `/` already in the text, where **Enter** would run a row. After **Escape** it stays closed
+    until you type another `/`.
+
+### Headless Client
+
+- `tasks`, `read_task` and `set_task` read a task tag in any case, so `#p1` means the same as `#P1`.
+- **Fixes.**
+  - `read_asset` takes `reference`, the word the task tools use, in place of `ref`. `upload_asset`,
+    `read_asset` and `list_assets` answer with `reference` too.
+
 ## 0.19.4 - 2026-11-05
 
 ### Client

@@ -670,7 +670,7 @@
         <label class="sr-only" for="pdf-page-input">Page</label>
         <input
             id="pdf-page-input"
-            class="w-12 rounded-md border border-gray-300 bg-(--gk-surface-0) px-1 py-0.5 text-center text-sm text-(--gk-text-default) dark:border-gray-700"
+            class="w-12 rounded-md border border-neutral-300 bg-(--gk-surface-0) px-1 py-0.5 text-center text-sm text-(--gk-text-default) dark:border-neutral-700"
             inputmode="numeric"
             value={pageInput === "" ? reader.page : pageInput}
             oninput={(event) => (pageInput = event.currentTarget.value)}
@@ -807,9 +807,9 @@
             <form class="flex flex-wrap items-center gap-2 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2" onsubmit={submitRename} data-testid="pdf-rename-form">
                 <label class="text-sm font-medium text-(--gk-text-default)" for="pdf-rename-input">Name</label>
                 <!-- svelte-ignore a11y_autofocus -->
-                <input id="pdf-rename-input" autofocus class="min-w-40 flex-1 rounded-lg border border-gray-300 bg-(--gk-surface-0) px-2 py-1 text-sm text-(--gk-text-default) dark:border-gray-700" bind:value={renameValue} aria-invalid={renameError !== ""} onkeydown={(event) => event.key === "Escape" && (renameOpen = false)} data-testid="pdf-rename-input" />
+                <input id="pdf-rename-input" autofocus class="min-w-40 flex-1 rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-2 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" bind:value={renameValue} aria-invalid={renameError !== ""} onkeydown={(event) => event.key === "Escape" && (renameOpen = false)} data-testid="pdf-rename-input" />
                 <button type="submit" class="rounded-lg bg-(--gk-accent) px-3 py-1 text-sm font-medium text-(--gk-surface-0)" data-testid="pdf-rename-submit">Rename</button>
-                <button type="button" class="rounded-lg border border-gray-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-gray-700" onclick={() => (renameOpen = false)}>Cancel</button>
+                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => (renameOpen = false)}>Cancel</button>
                 {#if renameError}<p class="w-full text-sm text-red-700 dark:text-red-400" role="alert" data-testid="pdf-rename-error">{renameError}</p>{/if}
             </form>
         {/if}
@@ -819,7 +819,7 @@
                     Delete {displayName}, permanently{reader.annotations.length > 0 ? `, with your ${reader.annotations.length} annotation${reader.annotations.length === 1 ? "" : "s"}` : ""}? This cannot be undone.
                 </p>
                 <button type="button" class="rounded-lg bg-red-700 px-3 py-1 text-sm font-medium text-white disabled:opacity-60" disabled={deleteBusy} onclick={confirmDelete} data-testid="pdf-delete-submit">Delete</button>
-                <button type="button" class="rounded-lg border border-gray-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-gray-700" onclick={() => (deleteOpen = false)}>Cancel</button>
+                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => (deleteOpen = false)}>Cancel</button>
                 {#if deleteMessage}<p class="w-full text-sm text-red-700 dark:text-red-400" data-testid="pdf-delete-message">{deleteMessage}</p>{/if}
             </div>
         {/if}
@@ -830,7 +830,7 @@
                     Include annotations
                 </label>
                 <button type="button" class="rounded-lg bg-(--gk-accent) px-3 py-1 text-sm font-medium text-(--gk-surface-0)" onclick={print} data-testid="pdf-print-submit">Print</button>
-                <button type="button" class="rounded-lg border border-gray-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-gray-700" onclick={() => (printOptionsOpen = false)}>Cancel</button>
+                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => (printOptionsOpen = false)}>Cancel</button>
             </div>
         {/if}
         {#if reader.printing}
@@ -851,7 +851,7 @@
             <div class="flex flex-wrap items-center gap-2 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2" role="alert" data-testid="pdf-close-guard">
                 <p class="min-w-40 flex-1 text-sm text-(--gk-text-default)">Your signature is not saved anywhere. Save a copy, or discard it.</p>
                 <button type="button" class="rounded-lg bg-(--gk-accent) px-3 py-1 text-sm font-medium text-(--gk-surface-0)" onclick={() => { closeGuardOpen = false; openSave(); }}>Save a copy</button>
-                <button type="button" class="rounded-lg border border-gray-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-gray-700" onclick={() => { closeGuardOpen = false; reader.discardSignatures(); }} data-testid="pdf-close-guard-discard">Discard</button>
+                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => { closeGuardOpen = false; reader.discardSignatures(); }} data-testid="pdf-close-guard-discard">Discard</button>
             </div>
         {/if}
         {#if reader.findOpen}
@@ -949,13 +949,13 @@
                         >
                             <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                             {@html iconSvg(reader.toolOptionsOpen ? "pdf-page-next" : "pdf-page-previous")}
-                            <span class="size-5 rounded-full border border-gray-400" style:background-color={reader.toolColour} data-testid="pdf-tool-options-colour"></span>
+                            <span class="size-5 rounded-full border border-neutral-400" style:background-color={reader.toolColour} data-testid="pdf-tool-options-colour"></span>
                         </button>
                         <div id="pdf-tool-options-list" class="etherpk-pdf-colours flex flex-wrap items-center justify-center gap-1 rounded-2xl border border-(--gk-surface-2) bg-(--gk-surface-0) p-1 shadow">
                         <div class="flex flex-wrap items-center justify-center gap-1" role="group" aria-label="Colour" data-testid="pdf-colours">
                             {#each ANNOTATION_COLOURS as { colour, label } (colour)}
                                 {@const on = reader.toolColour === colour}
-                                <button type="button" class={["size-6 rounded-full border pointer-coarse:size-8", on ? "border-(--gk-text-strong) ring-2 ring-(--gk-text-strong)" : "border-gray-400"]} style:background-color={colour} aria-label={label} title={label} aria-pressed={on} onclick={() => reader.pickColour(colour)}></button>
+                                <button type="button" class={["size-6 rounded-full border pointer-coarse:size-8", on ? "border-(--gk-text-strong) ring-2 ring-(--gk-text-strong)" : "border-neutral-400"]} style:background-color={colour} aria-label={label} title={label} aria-pressed={on} onclick={() => reader.pickColour(colour)}></button>
                             {/each}
                             <label class={["etherpk-pdf-custom-colour relative size-6 cursor-pointer rounded-full pointer-coarse:size-8", usingCustom && "ring-2 ring-(--gk-text-strong)"]} title={usingCustom ? `Custom colour, ${colourName(reader.toolColour)}` : "Custom colour"}>
                                 <span class="absolute inset-1 rounded-full border border-(--gk-surface-0)" style:background-color={usingCustom ? reader.toolColour : reader.customColour}></span>
@@ -991,7 +991,7 @@
         {#if inBar}{@render moreMenuBlock()}{/if}
     {/if}
     {#if toast}
-        <div class="etherpk-pdf-toast flex items-center gap-3 rounded-lg bg-gray-900 px-3 py-2 text-sm text-white shadow-lg" role="status" data-testid="pdf-toast">
+        <div class="etherpk-pdf-toast flex items-center gap-3 rounded-lg bg-neutral-900 px-3 py-2 text-sm text-white shadow-lg" role="status" data-testid="pdf-toast">
             <span>{toast}</span>
             {#if toastAction}
                 <button type="button" class="font-medium underline" onclick={toastAction.run} data-testid="pdf-toast-action">{toastAction.label}</button>
@@ -1415,6 +1415,19 @@
     }
     .etherpk-pdf-scroller :global(.annotationLayer .buttonWidgetAnnotation:is(.checkBox, .radioButton) input:not(:focus)) {
         background-image: var(--annotation-unfocused-field-background);
+    }
+    /* pdf.js marks a selection in blue, a Find match in violet and an unfilled form field in blue.
+       The interface's own grey and Find's own colours draw them here instead. */
+    .etherpk-pdf-scroller :global(.canvasWrapper .selection) {
+        background: rgb(115 115 115 / 0.35);
+    }
+    .etherpk-pdf-scroller :global(.textLayer .highlight) {
+        --highlight-bg-color: var(--gk-find-match);
+        --highlight-selected-bg-color: var(--gk-find-current);
+    }
+    .etherpk-pdf-scroller :global(.annotationLayer) {
+        --annotation-unfocused-field-background: url("data:image/svg+xml;charset=UTF-8,<svg width='1px' height='1px' xmlns='http://www.w3.org/2000/svg'><rect width='100%' height='100%' style='fill:rgba(115, 115, 115, 0.16);'/></svg>");
+        --input-focus-border-color: var(--gk-field-focus);
     }
     .etherpk-pdf-scroller :global(.etherpk-pdf-overlay) {
         position: absolute;

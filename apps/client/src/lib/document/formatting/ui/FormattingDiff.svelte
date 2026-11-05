@@ -30,8 +30,8 @@
 
 <div {id} class="space-y-2" data-testid="formatting-diff">
     {#each hunks as hunk (hunk.first)}
-        <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
-            <p class="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/5 px-3 py-1 text-sm text-gray-600 dark:text-gray-300">
+        <div class="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
+            <p class="border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/5 px-3 py-1 text-sm text-neutral-600 dark:text-neutral-300">
                 Lines {hunk.first + 1} to {hunk.last + 1}
             </p>
             <table class="w-max min-w-full border-collapse font-mono text-sm [tab-size:4]">
@@ -45,7 +45,7 @@
                                   ? "bg-green-50 dark:bg-green-950/40"
                                   : ""}
                         >
-                            <td class="w-px select-none whitespace-nowrap px-2 text-right align-top text-gray-600 dark:text-gray-400">{row.line === null ? "" : row.line + 1}</td>
+                            <td class="w-px select-none whitespace-nowrap px-2 text-right align-top text-neutral-600 dark:text-neutral-400">{row.line === null ? "" : row.line + 1}</td>
                             <td
                                 class="w-px select-none px-1 align-top {row.kind === 'removed'
                                     ? 'text-red-700 dark:text-red-300'
@@ -53,7 +53,7 @@
                                 ><span aria-hidden="true">{SIGN[row.kind]}</span><span class="sr-only">{SPOKEN_KIND[row.kind]}</span></td
                             >
                             <!-- One line: the cell keeps its whitespace, so a newline here would draw. -->
-                            <td class="whitespace-pre px-2 align-top text-gray-950 dark:text-gray-100" data-testid="formatting-diff-text">{#each row.segments as segment (segment.at)}{#if segment.invisible}<span class="text-gray-600 dark:text-gray-400" aria-hidden="true">{INVISIBLE_GLYPHS[segment.invisible]}</span><span class="sr-only">{SPOKEN[segment.invisible]}</span>{:else}{segment.text}{/if}{/each}</td>
+                            <td class="whitespace-pre px-2 align-top text-neutral-950 dark:text-neutral-100" data-testid="formatting-diff-text">{#each row.segments as segment (segment.at)}{#if segment.invisible}<span class="text-neutral-600 dark:text-neutral-400" aria-hidden="true">{INVISIBLE_GLYPHS[segment.invisible]}</span><span class="sr-only">{SPOKEN[segment.invisible]}</span>{:else}{segment.text}{/if}{/each}</td>
                         </tr>
                     {/each}
                 </tbody>
@@ -61,7 +61,7 @@
         </div>
     {/each}
     <!-- For sighted readers: each row already names its stand-ins to a screen reader. -->
-    <p class="text-sm text-gray-500 dark:text-gray-400" aria-hidden="true">
+    <p class="text-sm text-neutral-500 dark:text-neutral-400" aria-hidden="true">
         In the changed lines, {INVISIBLE_GLYPHS.tab} is a tab, {INVISIBLE_GLYPHS.space} is a space in the indentation,
         {INVISIBLE_GLYPHS["special-space"]} is a no-break or other special space, and {INVISIBLE_GLYPHS["carriage-return"]}
         is a carriage return.

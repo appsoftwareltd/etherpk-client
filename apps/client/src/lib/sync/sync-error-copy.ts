@@ -104,7 +104,7 @@ export function isStorageConnectionFault(error: unknown): boolean {
     )
 }
 
-function describeStorageFault(error: unknown): string | null {
+export function describeStorageFault(error: unknown): string | null {
     if (!(error instanceof Error)) return null
     if (error.name === 'QuotaExceededError') {
         return 'This browser has run out of storage for your notes. Free up space on the device, or forget a graph you no longer need here, then try again.'

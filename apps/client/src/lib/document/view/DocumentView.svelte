@@ -55,7 +55,7 @@
     import { createDocumentEditor, type DocumentEditor } from './cm-document'
     import type { ShownRangeOf } from './shown-range'
     import { caretBesideFence } from './augmentations/interactive-fence'
-    import { commandMenuOpen } from './augmentations/slash-complete'
+    import { commandBeingTyped, commandMenuOpen, resumeCommand } from './augmentations/slash-complete'
     import { frontmatterIdentityTick } from './augmentations/frontmatter'
     import { carrySpellCheck, spellCheckChanged } from './augmentations/spell-check'
     import { analysisFor } from './analysis/editor-analysis'
@@ -577,7 +577,7 @@
     // empty page in front of someone while the real content exists is simply wrong.
     let supersededNotice = $state(false)
     /** Carried across a promotion remount so the caret survives the frontmatter prefix. */
-    let pendingCaret: number | undefined
+    let pendingCaret: { head: number; typingCommand: boolean } | undefined
     let detachReveal: (() => void) | undefined
     /**
      * The line a [[Search]] result, a card or a reference asked this editor to show, held for a
@@ -720,6 +720,20 @@
         return !index.conceptExists(view.target)
     }
 
+    /** Put the person back where they were typing, in the editor a promotion has just rebuilt. */
+    function carryOnTyping(view: EditorView, { head, typingCommand }: NonNullable<typeof pendingCaret>): void {
+        // A promotion rebuilt this editor, so the element the user was mid-keystroke in no
+        // longer exists. Without this they lose focus after the character that created the
+        // page and have to click back in — a Draft must feel like any other document. Only
+        // while the focus went with the old editor: someone who moved on before the page was
+        // written (opened Search with the next key, say) keeps the focus where they put it.
+        if (focusIsFree()) focusEditor()
+        // Same reason as a reveal: the caret is where the user was typing, so it is
+        // scrolled INTO view rather than the document being yanked to the top.
+        revealEditorPosition(view, head)
+        if (typingCommand) view.dispatch(resumeCommand())
+    }
+
     /**
      * First keystroke in a Draft: create the page, seeded with the buffer, then rebind this
      * View to the real document. CodeMirror keeps accepting input throughout - its own state
@@ -740,7 +754,8 @@
             const caret = editor
                 ? editor.view.state.selection.main.head
                 : promotingDraft.getText().length
-            pendingCaret = promoted.bodyOffset + caret
+            // Read from the state, not the text: a menu closed with Escape stays closed.
+            pendingCaret = { head: promoted.bodyOffset + caret, typingCommand: !!editor && commandBeingTyped(editor.view.state) }
             remount(promoted.bodyOffset)
         } catch (error) {
             mountError =
@@ -1470,17 +1485,9 @@
         if (reveal) {
             holdReveal(reveal)
         } else if (pendingCaret !== undefined) {
-            const head = pendingCaret
+            const promotedCaret = pendingCaret
             pendingCaret = undefined
-            // A promotion rebuilt this editor, so the element the user was mid-keystroke in no
-            // longer exists. Without this they lose focus after the character that created the
-            // page and have to click back in — a Draft must feel like any other document. Only
-            // while the focus went with the old editor: someone who moved on before the page was
-            // written (opened Search with the next key, say) keeps the focus where they put it.
-            if (focusIsFree()) focusEditor()
-            // Same reason as a reveal: the caret is where the user was typing, so it is
-            // scrolled INTO view rather than the document being yanked to the top.
-            revealEditorPosition(editor.view, head)
+            carryOnTyping(editor.view, promotedCaret)
         } else {
             const remembered = readingPositions?.get(positionKey)
             if (remembered) applyEditorPosition(editor.view, remembered)

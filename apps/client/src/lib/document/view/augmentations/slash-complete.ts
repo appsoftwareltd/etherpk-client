@@ -5,12 +5,13 @@
  * context, gates by editor context (suppressed in code/frontmatter/inside `[[`), and ranks
  * the applicable `CommandMenuItem`s from the active Contribution registry; `accept` deletes
  * the typed `/query` and runs the row's Command through the active Command registry. The
- * Date Picker row's Command opens the sibling calendar (date-calendar.ts).
+ * Date Picker row's Command opens the sibling calendar (date-calendar.ts). It opens only on a typed
+ * `/` (`typesSlash`), never on a caret that arrives behind one.
  *
  * The pure trigger/ranking logic is in `slash-complete-core.ts`; this is the CM binding.
  */
 
-import { type EditorState, type Extension, Facet } from '@codemirror/state'
+import { type EditorState, type Extension, Facet, StateEffect, type Transaction, type TransactionSpec } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 
 import {
@@ -31,20 +32,36 @@ import { editorDocument } from '../editor-document'
 import { showsPartOfDocument } from '../shown-range'
 import { isProtectedDocumentFacet } from './protected-document'
 import { tableAtCaret, tableInsertable } from '../table-context'
-import { type PopoverBase, type PopoverRow, popoverMenu } from './popover-menu'
+import { type PopoverBase, type PopoverRow, popoverMenu, refreshPopovers } from './popover-menu'
 import { iconSvg } from '#lib/surface/icons.js'
 
 import { openWikilinkContext } from './wikilink-complete-core'
 import { openSlashContext, rankCommandMenu } from './slash-complete-core'
 
-const commandMenuOpenProbe = Facet.define<(state: EditorState) => boolean>()
+const commandMenuProbe = Facet.define<(state: EditorState) => MenuState | null>()
 
 /**
  * Whether the Command Menu is open in this editor: the `/` command being typed is not text yet, so
  * a [[Draft]] holds it until the menu closes (draft.ts, ADR 0145 amended 2026-10-16).
  */
 export function commandMenuOpen(state: EditorState): boolean {
-    return state.facet(commandMenuOpenProbe).some((open) => open(state))
+    return state.facet(commandMenuProbe).some((menu) => (menu(state)?.items.length ?? 0) > 0)
+}
+
+/** Whether a command is being typed in this editor: the menu is open, or its query matches no row for now. */
+export function commandBeingTyped(state: EditorState): boolean {
+    return state.facet(commandMenuProbe).some((menu) => menu(state) !== null)
+}
+
+const resumedCommand = StateEffect.define<null>()
+
+/**
+ * Pick up a command being typed in an editor that was rebuilt under the person typing it, as a Draft's
+ * promotion rebuilds one (DocumentView.svelte). A new state starts with the menu closed, so the caret
+ * placed there has not asked for it. Dispatched with the caret already behind the query.
+ */
+export function resumeCommand(): TransactionSpec {
+    return { effects: [resumedCommand.of(null), refreshPopovers.of(null)] }
 }
 
 /** A row as the menu shows it: its help text worked out for this caret. */
@@ -52,6 +69,25 @@ type MenuRow = Omit<CommandMenuItem, 'detail'> & { detail?: string }
 
 interface MenuState extends PopoverBase {
     items: MenuRow[]
+}
+
+/**
+ * Whether `tr` is a person typing a `/` at the caret, which is how the menu is asked for: a key, an
+ * IME, or the Command Bar's slash button, which dispatches as typing (editor-commands.ts). A caret
+ * move, a paste, an undo, a Backspace onto an old `/` and a peer's edit all leave one behind the
+ * caret without asking, and an open menu takes Enter, so opening on those would run a row in place
+ * of the new line.
+ */
+function typesSlash(tr: Transaction): boolean {
+    if (!tr.isUserEvent('input.type')) return false
+    const head = tr.newSelection.main.head
+    let typed = false
+    // The caret may sit inside what was inserted: a key typed in front of a drawn fence also puts a
+    // line break after itself (interactive-fence.ts).
+    tr.changes.iterChanges((_fromA, _toA, fromB, toB) => {
+        if (fromB < head && head <= toB && tr.newDoc.sliceString(head - 1, head) === '/') typed = true
+    })
+    return typed
 }
 
 export function slashCompletion(): Extension {
@@ -93,8 +129,9 @@ export function slashCompletion(): Extension {
             },
         }
         const applicable = listCommandMenuItems(registry, context)
+        // No row may match for now: the menu stays open showing nothing, so deleting the key that
+        // matched nothing brings the rows back without typing the `/` again.
         const items = rankCommandMenu(applicable, ctx.query).map((item) => ({ ...item, detail: commandMenuDetail(item, context) }))
-        if (items.length === 0) return null
         return { anchor, items, selected: 0 }
     }
 
@@ -127,6 +164,7 @@ export function slashCompletion(): Extension {
         compute,
         rows,
         accept,
-        isOpen: commandMenuOpenProbe,
+        opensOn: (tr) => typesSlash(tr) || tr.effects.some((effect) => effect.is(resumedCommand)),
+        openMenu: commandMenuProbe,
     })
 }

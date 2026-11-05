@@ -372,7 +372,7 @@
     }
     @media (hover: hover) {
         .ref:hover {
-            background: color-mix(in srgb, var(--gk-accent, #2563eb) 10%, var(--gk-surface-2));
+            background: color-mix(in srgb, var(--gk-text-default) 10%, var(--gk-surface-2));
         }
     }
     .ref:focus-visible {
@@ -419,7 +419,7 @@
         width: 0.36em;
         height: 0.36em;
         border-radius: 50%;
-        background: var(--gk-text-subtle, #9ca3af);
+        background: var(--gk-text-subtle, #a3a3a3);
         transform: translate(-50%, -50%);
     }
     @supports (width: round(1px, 1px)) {
@@ -446,7 +446,7 @@
         top: calc(0.85em - 0.5px + 8px);
         bottom: 0.25em;
         width: var(--thread-width, 2px);
-        background: var(--gk-border-strong, rgba(3, 7, 18, 0.16));
+        background: var(--gk-border-strong, rgba(10, 10, 10, 0.16));
         pointer-events: none;
     }
     /* A task's checkbox, value for value as task-checkbox.ts draws it: at the content column, the
@@ -462,7 +462,7 @@
         box-sizing: border-box;
         width: 0.82em;
         height: 0.82em;
-        border: 1.5px solid var(--gk-text-subtle, #9ca3af);
+        border: 1.5px solid var(--gk-text-subtle, #a3a3a3);
         border-radius: 3px;
     }
     .ref__checkbox--done {

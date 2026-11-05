@@ -410,7 +410,7 @@
 >
     {#snippet body()}
         {#if !prepared}
-            <p class="text-sm text-gray-600 dark:text-gray-300">
+            <p class="text-sm text-neutral-600 dark:text-neutral-300">
                 Bring an existing EtherPK graph, Logseq graph, Obsidian vault
                 export or AS Notes workspace in as a new knowledge graph, from a
                 folder or from a zip of one. The source is only read - your
@@ -447,7 +447,7 @@
                     data-autofocus
                     disabled={busy}
                     onclick={() => sourceInput?.click()}
-                    class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
                     >Choose folder…</button
                 >
                 <button
@@ -456,13 +456,13 @@
                     data-testid="import-choose-zip"
                     disabled={busy}
                     onclick={() => zipInput?.click()}
-                    class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
                     >Choose a zip…</button
                 >
             </div>
         {:else}
             <p
-                class="text-sm text-gray-600 dark:text-gray-300"
+                class="text-sm text-neutral-600 dark:text-neutral-300"
                 data-testid="import-summary"
             >
                 <span class="font-medium"
@@ -475,7 +475,7 @@
             <div>
                 <label
                     for="import-format"
-                    class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                    class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                     >Source format (detected)</label
                 >
                 <select
@@ -484,7 +484,7 @@
                     disabled={busy}
                     aria-describedby={encryptedNotes > 0 ? "import-encrypted-notes" : undefined}
                     bind:value={format}
-                    class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                    class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                 >
                     {#each FORMAT_LABELS as [value, label] (value)}
                         <option {value}>{label}</option>
@@ -494,7 +494,7 @@
                     <p
                         id="import-encrypted-notes"
                         data-testid="import-encrypted-notes"
-                        class="mt-1.5 text-sm text-gray-600 dark:text-gray-300"
+                        class="mt-1.5 text-sm text-neutral-600 dark:text-neutral-300"
                     >
                         {encryptedNotes === 1
                             ? "1 encrypted note"
@@ -508,7 +508,7 @@
             <div>
                 <label
                     for="import-name"
-                    class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                    class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                     >Graph name</label
                 >
                 <input
@@ -521,17 +521,17 @@
                     aria-describedby={nameInvalid ? "import-error" : undefined}
                     disabled={busy}
                     autocomplete="off"
-                    class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                    class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                 />
             </div>
             <fieldset>
                 <legend
-                    class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                    class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                     >Where to store the new graph</legend
                 >
                 <div class="space-y-2">
                     <label
-                        class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200"
+                        class="flex items-start gap-2 text-sm text-neutral-700 dark:text-neutral-200"
                     >
                         <input
                             type="radio"
@@ -544,14 +544,14 @@
                         <!-- An unavailable choice recedes by colour, never opacity; its reason keeps full
                              contrast, as the synced choice below does. -->
                         <span
-                            ><span class="font-medium {folderAvailable ? '' : 'text-gray-500 dark:text-gray-400'}">Local folder</span> -
+                            ><span class="font-medium {folderAvailable ? '' : 'text-neutral-500 dark:text-neutral-400'}">Local folder</span> -
                             plain markdown files in a new, empty folder you
                             choose.{#if !folderAvailable}
-                                <span class="block text-gray-600 dark:text-gray-300">Needs Chrome or Edge on a desktop, or Chrome on Android.</span>{/if}</span
+                                <span class="block text-neutral-600 dark:text-neutral-300">Needs Chrome or Edge on a desktop, or Chrome on Android.</span>{/if}</span
                         >
                     </label>
                     <label
-                        class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200"
+                        class="flex items-start gap-2 text-sm text-neutral-700 dark:text-neutral-200"
                     >
                         <input
                             type="radio"
@@ -563,7 +563,7 @@
                             class="mt-0.5"
                         />
                         <span
-                            ><span class="font-medium {syncTarget ? '' : 'text-gray-500 dark:text-gray-400'}"
+                            ><span class="font-medium {syncTarget ? '' : 'text-neutral-500 dark:text-neutral-400'}"
                                 >Synced graph</span
                             > - end-to-end encrypted on {syncTargets.length > 1
                                 ? "the Sync Server you choose"
@@ -572,7 +572,7 @@
                                   : "your sync server"},
                             available on all your devices.{#if !syncTarget}
                                 <!-- Full contrast: the reason is what the reader needs from this line. -->
-                                <span id="import-dest-synced-reason" data-testid="import-dest-synced-reason" class="block text-gray-600 dark:text-gray-300">{syncBlockedReason}</span>{/if}</span
+                                <span id="import-dest-synced-reason" data-testid="import-dest-synced-reason" class="block text-neutral-600 dark:text-neutral-300">{syncBlockedReason}</span>{/if}</span
                         >
                     </label>
                     {#if destination === "synced" && syncTarget && syncTargets.length > 1}
@@ -581,7 +581,7 @@
                         <div class="pl-6">
                             <label
                                 for="import-sync-server"
-                                class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                                class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                                 >Sync Server</label
                             >
                             <select
@@ -590,7 +590,7 @@
                                 disabled={busy}
                                 value={syncTarget.origin}
                                 onchange={(event) => (pickedOrigin = event.currentTarget.value)}
-                                class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                                class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
                             >
                                 {#each syncTargets as target (target.origin)}
                                     {@const reason = target.deps ? target.unavailableReason : (target.unavailableReason ?? "Not signed in")}
@@ -607,10 +607,10 @@
                 <div data-testid="import-protection">
                     <label
                         for="import-protection-passphrase"
-                        class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                        class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
                         >Protection passphrase (optional)</label
                     >
-                    <p id="import-protection-help" class="mb-1.5 text-sm text-gray-600 dark:text-gray-300">
+                    <p id="import-protection-help" class="mb-1.5 text-sm text-neutral-600 dark:text-neutral-300">
                         This graph has protected documents. Enter its passphrase to bring
                         the images and files inside them across too. Without it the
                         documents still arrive, but images inside them will not display.
@@ -628,13 +628,13 @@
                             : "import-protection-help"}
                         disabled={busy}
                         autocomplete="current-password"
-                        class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:outline-none focus:ring-1 {passphraseInvalid
+                        class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {passphraseInvalid
                             ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                            : 'border-gray-300 dark:border-gray-700 focus:border-gray-950 dark:focus:border-gray-400 focus:ring-gray-950 dark:focus:ring-gray-400'}"
+                            : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
                     />
                 </div>
             {/if}
-            <p class="text-sm text-gray-500 dark:text-gray-400">
+            <p class="text-sm text-neutral-500 dark:text-neutral-400">
                 Anything that can't convert losslessly is listed on an Import
                 Report page inside the new graph - nothing is silently dropped.
             </p>
@@ -669,7 +669,7 @@
             type="button"
             onclick={close}
             disabled={busy}
-            class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 disabled:opacity-40"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 disabled:opacity-40"
             >Cancel</button
         >
         {#if prepared}
@@ -680,7 +680,7 @@
                     (destination === "synced" && !syncTarget) ||
                     (destination === "folder" && !folderAvailable)}
                 data-testid="import-run"
-                class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40"
+                class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
                 >{busy ? "Starting…" : "Import"}</button
             >
         {/if}

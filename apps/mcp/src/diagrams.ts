@@ -147,7 +147,7 @@ export async function openDiagramRenderer(env: NodeJS.ProcessEnv): Promise<Diagr
                 await p.addScriptTag({ path: require.resolve('mermaid/dist/mermaid.min.js') })
                 await p.evaluate(() => {
                     const m = (window as unknown as { mermaid: { initialize(config: unknown): void } }).mermaid
-                    m.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'default' })
+                    m.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'neutral' })
                 })
                 return p
             })()

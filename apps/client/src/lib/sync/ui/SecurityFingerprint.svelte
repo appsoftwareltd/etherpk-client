@@ -32,7 +32,7 @@
         </p>
     </div>
 {:else if state === "verified"}
-    <p data-testid="fingerprint-verified" class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+    <p data-testid="fingerprint-verified" class="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
         <span
             class="rounded-full bg-emerald-50 px-2 py-0.5 text-sm font-medium text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-200"
             >Verified</span
@@ -42,6 +42,6 @@
 {/if}
 <code
     data-testid="security-fingerprint"
-    class="block break-all rounded-lg bg-gray-100 px-4 py-3 text-center font-mono text-sm tracking-wide text-gray-950 dark:bg-white/5 dark:text-gray-100"
+    class="block break-all rounded-lg bg-neutral-100 px-4 py-3 text-center font-mono text-sm tracking-wide text-neutral-950 dark:bg-white/5 dark:text-neutral-100"
     >{fingerprint}</code
 >

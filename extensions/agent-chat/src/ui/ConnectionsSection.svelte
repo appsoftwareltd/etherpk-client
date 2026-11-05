@@ -175,7 +175,7 @@
 
 <section class="space-y-4" aria-labelledby={`${fieldId}-heading`} data-testid="agent-chat-settings">
     <div class="space-y-2">
-        <h3 id={`${fieldId}-heading`} class="flex items-center gap-2 text-base font-semibold text-gray-950 dark:text-gray-100"><RobotIcon class="size-5 text-gray-600 dark:text-gray-400" />Agent Chat</h3>
+        <h3 id={`${fieldId}-heading`} class="flex items-center gap-2 text-base font-semibold text-neutral-950 dark:text-neutral-100"><RobotIcon class="size-5 text-neutral-600 dark:text-neutral-400" />Agent Chat</h3>
         <p class={help}>
             Use to chat with a language model (local or via remote provider) about your notes from inside EtherPK, by typing <kbd class="font-mono">/Agent</kbd> in a document or clicking the
             Agent button. It can only read and respond, and only sees the context you choose in each chat session. Chats stay on the device you had them on, and nothing goes into a document
@@ -188,19 +188,19 @@
         </p>
     </div>
 
-    {#if notice}<p class="text-sm text-gray-950 dark:text-gray-100" role="status" data-testid="agent-chat-settings-notice">{notice}</p>{/if}
+    {#if notice}<p class="text-sm text-neutral-950 dark:text-neutral-100" role="status" data-testid="agent-chat-settings-notice">{notice}</p>{/if}
 
     {#if settings.connections.length > 0}
-        <ul class="divide-y divide-gray-200 dark:divide-gray-800 rounded-lg border border-gray-200 dark:border-gray-800" data-testid="agent-chat-connections">
+        <ul class="divide-y divide-neutral-200 dark:divide-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-800" data-testid="agent-chat-connections">
             {#each settings.connections as connection (connection.id)}
                 {@const isDefault = (settings.defaultConnection ?? settings.connections[0]?.id) === connection.id}
                 <li class="flex flex-wrap items-center gap-2 px-3 py-2" data-testid="agent-chat-connection">
                     <div class="min-w-0 flex-1">
-                        <p class="text-sm font-medium text-gray-950 dark:text-gray-100">{connection.name}{isDefault && settings.connections.length > 1 ? " (primary)" : ""}</p>
+                        <p class="text-sm font-medium text-neutral-950 dark:text-neutral-100">{connection.name}{isDefault && settings.connections.length > 1 ? " (primary)" : ""}</p>
                         <p class={help}>{PROVIDERS[connection.provider].label}, starts on {connection.defaultModel}</p>
                     </div>
                     {#if removing === connection.id}
-                        <span class="text-sm text-gray-950 dark:text-gray-100">Remove {connection.name}? Chats that used it keep their answers.</span>
+                        <span class="text-sm text-neutral-950 dark:text-neutral-100">Remove {connection.name}? Chats that used it keep their answers.</span>
                         <button type="button" class={danger} onclick={() => remove(connection.id)} data-testid="agent-chat-connection-remove-confirm">Remove</button>
                         <button type="button" class={button} onclick={() => (removing = null)}>Cancel</button>
                     {:else}
@@ -214,7 +214,7 @@
     {/if}
 
     {#if form && info}
-        <div class="space-y-3 rounded-lg border border-gray-200 dark:border-gray-800 p-3" role="group" aria-label={editing ? "Edit the model connection" : "Add a model connection"} data-testid="agent-chat-connection-form" {@attach onEscape(() => (form = null))}>
+        <div class="space-y-3 rounded-lg border border-neutral-200 dark:border-neutral-800 p-3" role="group" aria-label={editing ? "Edit the model connection" : "Add a model connection"} data-testid="agent-chat-connection-form" {@attach onEscape(() => (form = null))}>
             <div class="space-y-1">
                 <span class={label} id={`${fieldId}-provider`}>Provider</span>
                 <Listbox options={providerOptions} value={form.provider} onChange={chooseProvider} labelledBy={`${fieldId}-provider`} disabled={editing} testid="agent-chat-provider" />

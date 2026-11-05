@@ -67,7 +67,7 @@ const theme = EditorView.baseTheme({
         width: 'calc(var(--editor-font-size, 1rem) * 0.36)',
         height: 'calc(var(--editor-font-size, 1rem) * 0.36)',
         borderRadius: '50%',
-        background: 'var(--gk-text-subtle, #9ca3af)',
+        background: 'var(--gk-text-subtle, #a3a3a3)',
         transform: 'translate(-50%, -50%)',
         pointerEvents: 'none',
     },

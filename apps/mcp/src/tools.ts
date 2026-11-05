@@ -322,7 +322,7 @@ export interface UploadAssetArgs {
 
 export interface ReadAssetArgs {
     /** The reference as it appears in a document (`../assets/<name>`), or the name alone. */
-    ref: string
+    reference: string
     /** A folder under the graph's downloads directory to write the file to; the downloads directory itself by default. */
     out_dir?: string
 }
@@ -1238,7 +1238,7 @@ export async function uploadAsset(graph: HeadlessGraph, args: UploadAssetArgs) {
     const identity = assets.identify(saved.ref)
     if (identity) assets.uploaded.add(identity)
     return {
-        ref: saved.ref,
+        reference: saved.ref,
         name: displayNameOf(saved.ref),
         type,
         bytes: file.bytes.byteLength,
@@ -1255,12 +1255,12 @@ export async function uploadAsset(graph: HeadlessGraph, args: UploadAssetArgs) {
  */
 export async function readAsset(graph: HeadlessGraph, args: ReadAssetArgs) {
     const assets = requireAssets(graph)
-    if (!args.ref || args.ref.trim() === '') throw new ToolError('invalid_argument', 'ref must be an asset reference or name.')
+    if (!args.reference || args.reference.trim() === '') throw new ToolError('invalid_argument', 'reference must be an asset reference or name.')
     await graph.store.refresh()
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(args.ref.trim())) throw new ToolError('invalid_argument', `"${args.ref}" is a url, not an asset of this graph.`)
-    const ref = normaliseRef(args.ref)
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(args.reference.trim())) throw new ToolError('invalid_argument', `"${args.reference}" is a url, not an asset of this graph.`)
+    const ref = normaliseRef(args.reference)
     const identity = assets.identify(ref)
-    if (!identity) throw new ToolError('invalid_argument', `"${args.ref}" is not an asset reference of this graph.`)
+    if (!identity) throw new ToolError('invalid_argument', `"${args.reference}" is not an asset reference of this graph.`)
     const documents = await reachable(graph, identity)
     if (!documents) throw new ToolError('asset_not_found', `No document you can read references "${displayNameOf(ref)}", so it is not available here.`)
     const asset = await assets.store.readBytes(ref)
@@ -1274,7 +1274,7 @@ export async function readAsset(graph: HeadlessGraph, args: ReadAssetArgs) {
     }
     // The stored name is a collaborator's to set; writeDownload reduces it to one plain file name.
     const path = await writeDownload(directory, asset.name || displayNameOf(ref), asset.bytes)
-    return { path, name: asset.name || displayNameOf(ref), type: asset.type, bytes: asset.bytes.byteLength, ref, documents }
+    return { path, name: asset.name || displayNameOf(ref), type: asset.type, bytes: asset.bytes.byteLength, reference: ref, documents }
 }
 
 /**
@@ -1315,7 +1315,7 @@ export async function listAssets(graph: HeadlessGraph, args: ListAssetsArgs = {}
     }
     const list = [...found.entries()]
         .map(([id, entry]) => ({
-            ref: entry.ref,
+            reference: entry.ref,
             name: entry.name,
             type: entry.type,
             ...(sizes?.has(id) ? { bytes: sizes.get(id) } : {}),

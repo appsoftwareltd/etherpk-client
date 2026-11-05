@@ -293,7 +293,7 @@ sw.addEventListener('message', (event) => {
 
 function expired(): Response {
     return new Response(
-        '<!DOCTYPE html><html><body style="font-family:system-ui;padding:2rem;color:#374151"><p>This preview has expired (the browser restarted its background worker). Press <strong>Update preview</strong> to render it again.</p></body></html>',
+        '<!DOCTYPE html><html><body style="font-family:system-ui;padding:2rem;color:#404040"><p>This preview has expired (the browser restarted its background worker). Press <strong>Update preview</strong> to render it again.</p></body></html>',
         { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
     )
 }

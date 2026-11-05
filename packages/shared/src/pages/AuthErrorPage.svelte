@@ -29,11 +29,11 @@
         </div>
     </div>
 
-    <h1 class="text-lg font-semibold text-gray-950 text-center">Sign-in failed</h1>
-    <p class="mt-2 text-sm text-gray-500 text-center">{data.message}</p>
+    <h1 class="text-lg font-semibold text-neutral-950 text-center">Sign-in failed</h1>
+    <p class="mt-2 text-sm text-neutral-500 text-center">{data.message}</p>
 
     <div class="mt-6 flex flex-col gap-2">
-        <a href={signInUrl} class="flex w-full items-center justify-center rounded-lg bg-gray-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors"> Back to sign in </a>
-        <a href={homeHref} class="flex w-full items-center justify-center rounded-lg border border-gray-950/15 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"> Go to home </a>
+        <a href={signInUrl} class="flex w-full items-center justify-center rounded-lg bg-neutral-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors"> Back to sign in </a>
+        <a href={homeHref} class="flex w-full items-center justify-center rounded-lg border border-neutral-950/15 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 transition-colors"> Go to home </a>
     </div>
 </ErrorCard>

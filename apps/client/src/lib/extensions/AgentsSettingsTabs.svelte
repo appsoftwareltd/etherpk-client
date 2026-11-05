@@ -90,8 +90,8 @@
                 class={[
                     "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors pointer-coarse:min-h-11",
                     active === tab.id
-                        ? "bg-gray-100 text-gray-950 dark:bg-white/10 dark:text-gray-100"
-                        : "text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-gray-100",
+                        ? "bg-neutral-100 text-neutral-950 dark:bg-white/10 dark:text-neutral-100"
+                        : "text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-neutral-100",
                 ]}>{tab.label}</button
             >
         {/each}

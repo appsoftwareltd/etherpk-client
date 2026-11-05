@@ -160,8 +160,8 @@
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
             class="flex min-h-40 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors {dragOver
-                ? 'border-(--gk-accent,#007ACC) bg-(--gk-accent,#007ACC)/5'
-                : 'border-gray-300 dark:border-gray-700'}"
+                ? 'border-(--gk-accent,#007ACC) bg-neutral-500/10'
+                : 'border-neutral-300 dark:border-neutral-700'}"
             data-testid="asset-dropzone"
             ondragover={(e) => {
                 e.preventDefault();
@@ -172,7 +172,7 @@
         >
             {#if uploading}
                 <p
-                    class="text-sm text-gray-600 dark:text-gray-400"
+                    class="text-sm text-neutral-600 dark:text-neutral-400"
                     role="status"
                     data-testid="asset-uploading"
                 >
@@ -180,7 +180,7 @@
                 </p>
             {:else}
                 <p
-                    class="text-sm text-gray-600 dark:text-gray-400"
+                    class="text-sm text-neutral-600 dark:text-neutral-400"
                     data-testid="asset-upload-help"
                 >
                     Drag and drop files here, paste from your clipboard, or
@@ -190,7 +190,7 @@
                         type="button"
                         onclick={() => fileInput?.click()}
                         data-autofocus
-                        class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"
+                        class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors"
                     >
                         Browse files
                     </button>
@@ -199,13 +199,13 @@
                             type="button"
                             onclick={pasteFromClipboard}
                             data-testid="asset-paste-button"
-                            class="rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                            class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5 transition-colors"
                         >
                             Paste from clipboard
                         </button>
                     {/if}
                 </div>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">
                     Ctrl+V (⌘V on a Mac) pastes any copied image or file. The
                     Paste button reads images from your clipboard, which is the
                     way to paste on a phone or tablet.
@@ -229,20 +229,20 @@
              words and the sentence is its description (the pattern in ProtectionSettingsTab). -->
         <div>
             <label
-                class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300"
+                class="flex items-start gap-2 text-sm text-neutral-700 dark:text-neutral-300"
             >
                 <input
                     type="checkbox"
                     bind:checked={optimizeImages}
                     data-testid="asset-optimize-images"
                     aria-describedby="asset-optimize-images-help"
-                    class="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-gray-600"
+                    class="mt-0.5 h-4 w-4 rounded border-neutral-300 dark:border-neutral-600"
                 />
                 <span>Optimise images</span>
             </label>
             <p
                 id="asset-optimize-images-help"
-                class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
             >
                 Untick to keep the originals for this upload.
             </p>
