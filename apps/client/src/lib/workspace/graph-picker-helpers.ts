@@ -164,9 +164,9 @@ export function unlabelledGraphsToRead(
 }
 
 /**
- * Produce an IndexedDB-safe record after a rename. Svelte deep-proxies the plain server handle,
- * so rebuild it. A browser-owned filesystem handle is an opaque class instance and must retain
- * its original identity.
+ * Produce an IndexedDB-safe record after a rename. Svelte deep-proxies the plain server handle and
+ * account scope, so rebuild them. A browser-owned filesystem handle is an opaque class instance and
+ * must retain its original identity.
  */
 export function persistableGraphRecord(record: GraphRecord, name: string): GraphRecord {
     const handle =
@@ -179,8 +179,11 @@ export function persistableGraphRecord(record: GraphRecord, name: string): Graph
         backend: record.backend,
         createdAt: record.createdAt,
         handle,
-        ...(record.serverScope ? { serverScope: record.serverScope } : {}),
+        ...(record.serverScope
+            ? { serverScope: { serverOrigin: record.serverScope.serverOrigin, principalId: record.serverScope.principalId } }
+            : {}),
         ...(record.membershipActive === undefined ? {} : { membershipActive: record.membershipActive }),
+        ...(record.toolbarColor ? { toolbarColor: record.toolbarColor } : {}),
     }
 }
 

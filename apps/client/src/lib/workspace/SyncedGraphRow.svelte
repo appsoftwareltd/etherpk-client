@@ -8,8 +8,15 @@
      * The row renders what it is given and reports clicks; the Graphs page owns every action. A row
      * the server has not listed (offline, or the list failed) has no role and offers only what this
      * device can do on its own.
+     *
+     * A card of its own: a band with the graph's name and main controls, in its toolbar colour when
+     * this device knows one (graph-card.ts), over a neutral panel with everything else. A notice in
+     * amber or red stays on the panel, since neither can be promised to read on a colour a person chose.
      */
     import { formatBytes } from '@appsoftwareltd/etherpk-shared'
+    import { inkFor } from '#lib/contrast-ink.js'
+    import GraphGrip, { type GraphGripProps } from './GraphGrip.svelte'
+    import { BADGE_ON_COLOUR, GRAPH_CARD, ICON_ON_COLOUR, OPEN_ON_COLOUR } from './graph-card'
     import type { SyncedMember } from './graph-picker-helpers'
     import { OPEN_BUTTON, OPEN_ICON } from './graphs-page-icons'
 
@@ -18,6 +25,8 @@
         name,
         role,
         onDevice,
+        accent = null,
+        grip = null,
         readOnly = false,
         importInterrupted = false,
         storage = null,
@@ -51,6 +60,10 @@
         role: string | null
         /** A copy of the graph is registered in this browser. */
         onDevice: boolean
+        /** Its toolbar colour, when this device knows one. */
+        accent?: string | null
+        /** Its handle in a list that can be put in order; null where there is nothing to order. */
+        grip?: GraphGripProps | null
         /** An owned graph the owner's plan does not let anyone write to. */
         readOnly?: boolean
         importInterrupted?: boolean
@@ -96,6 +109,7 @@
     } = $props()
 
     const owner = $derived(role === 'owner')
+    const ink = $derived(accent ? inkFor(accent) : null)
 
     // Removing a Player asks first, in place, beside the Player: what it does cannot be undone, and
     // the sentence says what it means for what they already have.
@@ -143,32 +157,79 @@
 </script>
 
 {#snippet badges()}
-    <span class="truncate text-sm font-medium text-neutral-950 dark:text-white">{name}</span>
+    <span data-testid="graph-card-name" class="truncate text-sm font-medium {accent ? '' : 'text-neutral-950 dark:text-white'}">{name}</span>
     {#if role}
         <span
             data-testid="synced-role"
-            class="rounded-full px-2 py-0.5 text-sm {owner
-                ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-                : 'bg-neutral-100 text-neutral-600 dark:bg-white/10 dark:text-neutral-400'}">{owner ? 'Owner' : 'Player'}</span
-        >
-    {/if}
-    {#if importInterrupted}
-        <span
-            data-testid="synced-import-interrupted"
-            class="rounded-full bg-amber-50 px-2 py-0.5 text-sm text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"
-            >Import interrupted</span
-        >
-    {/if}
-    {#if readOnly}
-        <span
-            data-testid="synced-read-only"
-            class="rounded-full bg-amber-50 px-2 py-0.5 text-sm text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"
-            >Read-only</span
+            class={accent
+                ? BADGE_ON_COLOUR
+                : `rounded-full px-2 py-0.5 text-sm ${owner ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900' : 'bg-neutral-100 text-neutral-600 dark:bg-white/10 dark:text-neutral-400'}`}>{owner ? 'Owner' : 'Player'}</span
         >
     {/if}
 {/snippet}
 
-<li data-testid="synced-graph" data-graph-id={graphId} data-on-device={onDevice} class="space-y-2 px-4 py-3">
+<div data-testid="synced-graph" data-graph-id={graphId} data-on-device={onDevice} class={GRAPH_CARD}>
+    <div
+        data-testid="graph-band"
+        class="flex flex-wrap items-center gap-2 px-4 py-3"
+        style:background-color={accent}
+        style:color={ink}
+        style:--graph-colour={accent}
+        style:--graph-ink={ink}
+    >
+        {#if grip}<GraphGrip {grip} coloured={accent !== null} />{/if}
+        {#if onDevice}
+            <!-- The basis keeps room for the name: on a narrow screen the controls drop to a line of
+                 their own rather than squeezing it away. -->
+            <div class="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
+                <span class="flex min-w-0 flex-wrap items-center gap-2">{@render badges()}</span>
+                <span
+                    class="truncate text-sm {accent ? '' : 'text-neutral-500 dark:text-neutral-400'}"
+                    data-testid="graphs-cache-hint"
+                    title="A synced graph's copy is stored in the browser, not in a folder">On this device</span
+                >
+            </div>
+            <div class="ml-auto flex items-center gap-2">
+            <button data-testid="graphs-open" aria-label={`Open ${name}`} onclick={onopen} class={accent ? OPEN_ON_COLOUR : OPEN_BUTTON}>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d={OPEN_ICON} />
+                </svg>
+                Open
+            </button>
+            <button
+                data-testid="graphs-rename"
+                title="Rename (changes the graph name for all members)"
+                aria-label="Rename graph"
+                onclick={onrename}
+                class={accent ? ICON_ON_COLOUR : ICON_BUTTON}
+            >
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
+                </svg>
+            </button>
+            <button
+                data-testid="graphs-synced-settings"
+                title="Graph settings (shared by all members)"
+                aria-label="Graph settings"
+                onclick={onsettings}
+                class={accent ? ICON_ON_COLOUR : ICON_BUTTON}
+            >
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281Z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                </svg>
+            </button>
+            </div>
+        {:else}
+            <div class="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
+                <span class="flex min-w-0 flex-wrap items-center gap-2">{@render badges()}</span>
+                <span class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="synced-not-local">Not on this device</span>
+            </div>
+            <button data-testid="graphs-add-device" onclick={onadd} class="ml-auto {TEXT_BUTTON}">Add to this device</button>
+        {/if}
+    </div>
+
+    <div class="space-y-2 px-4 pb-3 {accent ? 'pt-3' : ''}">
     {#if message}
         <p
             data-testid="synced-graph-status"
@@ -188,53 +249,24 @@
         </div>
     {/if}
 
-    <div class="flex items-center gap-2">
-        {#if onDevice}
-            <div class="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span class="flex min-w-0 flex-wrap items-center gap-2">{@render badges()}</span>
+    {#if importInterrupted || readOnly}
+        <p class="flex flex-wrap gap-2">
+            {#if importInterrupted}
                 <span
-                    class="truncate text-sm text-neutral-500 dark:text-neutral-400"
-                    data-testid="graphs-cache-hint"
-                    title="A synced graph's copy is stored in the browser, not in a folder">On this device</span
+                    data-testid="synced-import-interrupted"
+                    class="rounded-full bg-amber-50 px-2 py-0.5 text-sm text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"
+                    >Import interrupted</span
                 >
-            </div>
-            <button data-testid="graphs-open" aria-label={`Open ${name}`} onclick={onopen} class={OPEN_BUTTON}>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" d={OPEN_ICON} />
-                </svg>
-                Open
-            </button>
-            <button
-                data-testid="graphs-rename"
-                title="Rename (changes the graph name for all members)"
-                aria-label="Rename graph"
-                onclick={onrename}
-                class={ICON_BUTTON}
-            >
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
-                </svg>
-            </button>
-            <button
-                data-testid="graphs-synced-settings"
-                title="Graph settings (shared by all members)"
-                aria-label="Graph settings"
-                onclick={onsettings}
-                class={ICON_BUTTON}
-            >
-                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281Z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                </svg>
-            </button>
-        {:else}
-            <div class="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span class="flex min-w-0 flex-wrap items-center gap-2">{@render badges()}</span>
-                <span class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="synced-not-local">Not on this device</span>
-            </div>
-            <button data-testid="graphs-add-device" onclick={onadd} class={TEXT_BUTTON}>Add to this device</button>
-        {/if}
-    </div>
+            {/if}
+            {#if readOnly}
+                <span
+                    data-testid="synced-read-only"
+                    class="rounded-full bg-amber-50 px-2 py-0.5 text-sm text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"
+                    >Read-only</span
+                >
+            {/if}
+        </p>
+    {/if}
 
     {#if nameNote}
         <!-- The row could not be labelled yet. Say why and what changes it; the line must never
@@ -394,4 +426,5 @@
             {/if}
         </div>
     {/if}
-</li>
+    </div>
+</div>

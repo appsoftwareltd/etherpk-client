@@ -116,7 +116,22 @@ export function describeStorageFault(error: unknown): string | null {
 }
 
 /**
- * A sentence explaining a failed sync call, prefixed by what the user was doing.
+ * A failed request: fetch rejects rather than resolving with a status, in words that differ by
+ * browser, and an abandoned request is an AbortError or a TimeoutError.
+ */
+function isUnreachable(error: unknown): boolean {
+    if (!(error instanceof Error)) return false
+    return error.name === 'AbortError' || error.name === 'TimeoutError' || /failed to fetch|networkerror|load failed/i.test(error.message)
+}
+
+/** The console keeps what the sentence leaves out, for whoever is working out what went wrong. */
+function logDetail(action: string, error: unknown): void {
+    console.error(`Could not ${action}:`, error)
+}
+
+/**
+ * A sentence explaining a failed sync call, prefixed by what the user was doing. It is written for
+ * the person using the app, so an error's own text stays out of it and goes to the console.
  *
  * `action` reads as the start of the sentence, e.g. `describeSyncFailure(error, 'delete the
  * graph')` produces "Could not delete the graph. ...". Keep it a bare verb phrase.
@@ -149,7 +164,8 @@ export function describeSyncFailure(error: unknown, action: string): string {
             return `${opening} The sync server failed while handling it. Nothing was changed - try again in a moment.`
         }
         // A code or message the map does not know: still say what to do next.
-        return `${opening} The sync server said: ${error.message}. Try again, and check your connection if it persists.`
+        logDetail(action, error)
+        return `${opening} The sync server refused it. Try again, and check your connection if it persists.`
     }
 
     // The Client's own /auth/token, not the sync server. A 503 there means Corporate was briefly
@@ -223,9 +239,10 @@ export function describeSyncFailure(error: unknown, action: string): string {
     const storage = describeStorageFault(error)
     if (storage) return `${opening} ${storage}`
 
-    // Almost always a network failure: fetch rejects rather than resolving with a status.
-    const detail = error instanceof Error && error.message ? ` (${error.message})` : ''
-    return `${opening} The sync server could not be reached${detail}. Check your connection, then try again.`
+    logDetail(action, error)
+    return isUnreachable(error)
+        ? `${opening} The sync server could not be reached. Check your connection, then try again.`
+        : `${opening} Check your connection, then try again. If it keeps happening, reload the page.`
 }
 
 /** True when retrying the same request could plausibly succeed. */

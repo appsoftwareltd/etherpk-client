@@ -136,6 +136,13 @@ export {
 
 // Device-local "resume here" pointer + the pure root (`/`) resolver decision.
 export { clearLastGraphId, getLastGraphId, setLastGraphId } from './last-graph'
+export {
+    type GraphGroup,
+    type GraphOrderStore,
+    applyGraphOrder,
+    createGraphOrderStore,
+    groupGraphs,
+} from './graph-order'
 export { type GraphTarget, resolveGraphTarget, rootDestination } from './graph-routing'
 
 // External-change reconciliation glue (focus + poll).

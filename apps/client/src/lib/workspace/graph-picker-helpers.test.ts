@@ -38,6 +38,43 @@ describe('graph picker helpers', () => {
         expect(persisted.handle).not.toBe(record.handle)
     })
 
+    it('makes a record IndexedDB can store from one held in reactive state', () => {
+        // `$state` proxies plain objects all the way down, and a structured clone refuses a proxy.
+        const reactive = <T extends object>(value: T): T =>
+            new Proxy(value, {
+                get(target, key) {
+                    const held = Reflect.get(target, key)
+                    return typeof held === 'object' && held !== null ? reactive(held) : held
+                },
+            })
+        const record = reactive<GraphRecord>({
+            id: 'graph-a',
+            name: 'Old name',
+            backend: 'server',
+            createdAt: 42,
+            handle: { rootDocId: 'root-a' },
+            serverScope: { serverOrigin: 'https://sync.example', principalId: 'someone' },
+        })
+
+        expect(structuredClone(persistableGraphRecord(record, 'New name')).serverScope).toEqual({
+            serverOrigin: 'https://sync.example',
+            principalId: 'someone',
+        })
+    })
+
+    it('keeps the cached toolbar colour, so a rename does not take the colour off the card', () => {
+        const record: GraphRecord = {
+            id: 'graph-a',
+            name: 'Old name',
+            backend: 'filesystem',
+            createdAt: 42,
+            handle: null,
+            toolbarColor: '#7dd3fc',
+        }
+
+        expect(persistableGraphRecord(record, 'New name').toolbarColor).toBe('#7dd3fc')
+    })
+
     it('retains the browser-owned filesystem handle', () => {
         const handle = { name: 'notes' } as FileSystemDirectoryHandle
         const record: GraphRecord = {

@@ -38,6 +38,7 @@
         stashPendingShare,
     } from "#lib/document/share-target.js";
     import { createIdbGraphRegistry, getLastGraphId, type GraphRecord } from "#lib/storage/index.js";
+    import { graphGroups } from "#lib/workspace/graph-order-state.js";
 
     import type { PageData } from "./$types";
 
@@ -181,14 +182,15 @@
             try {
                 const listed = await createIdbGraphRegistry().listGraphs();
                 if (cancelled) return;
-                graphs = orderShareTargets(listed, { lastGraphId: getLastGraphId(), isDemo: isDemoGraph });
+                graphs = orderShareTargets(graphGroups(listed).flatMap((group) => group.graphs), { lastGraphId: getLastGraphId(), isDemo: isDemoGraph });
                 selectedId = graphs[0]?.id ?? null;
                 if (selected) warm(selected);
             } catch (err) {
                 if (cancelled) return;
                 // Read failed is not "none": the copy must not send someone to make a new graph
                 // when theirs are all still there.
-                registryError = `Your graphs could not be read from this browser's storage. Nothing has been deleted. (${(err as Error).message})`;
+                console.error("Could not read the graph list:", err);
+                registryError = "Your graphs could not be read from this browser's storage. Nothing has been deleted.";
             }
         })();
         return () => {
@@ -282,7 +284,8 @@
                 if (mine !== attempt) return;
                 landing = null;
                 text = typed;
-                addError = `Could not add the note: ${err instanceof Error ? err.message : String(err)}. Try again.`;
+                console.error("Could not add the shared note:", err);
+                addError = "Could not add the note. Try again.";
             })
             .finally(() => clearTimeout(notice));
     }

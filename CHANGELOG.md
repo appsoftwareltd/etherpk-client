@@ -21,6 +21,15 @@ starts at 0.9.3.
   had. Text selection in the editor and in a PDF, an unfilled PDF form field, Excalidraw's controls and a
   Mermaid diagram that sets no theme of its own are grey too. A Find match in a PDF uses the editor's Find
   colours. Links and everything else in the link blue stay as they were.
+- **Put your graphs in order.** On the Graphs page, drag a graph by the grip on its card, or press the up
+  and down arrow keys on the grip. Each Sync Server's group and your local graphs keep their own order,
+  and the Graphs menu and the share sheet follow it. A synced group's order follows your account to your
+  other devices. Local order stays in the browser.
+- **The Graphs page and the Graphs menu are laid out differently.** Synced graphs come above local graphs
+  on both. Each graph on the Graphs page is a separate card, and a coloured graph's card takes its toolbar
+  colour. The Graphs menu lists synced and local graphs under separate labels.
+- **Error messages about syncing are in plain words.** They say what failed and what to try next. The
+  underlying error goes to the browser console.
 - **Fixes.**
   - A local graph opened from its address or a restored tab shows **Grant access** when the browser needs a
     click before it will ask for the folder. It used to fail with a message about the sync server. If you
@@ -31,6 +40,7 @@ starts at 0.9.3.
   - The `/` menu opens only when you type `/` or press the slash button. It no longer opens when the cursor
     lands behind a `/` already in the text, where **Enter** would run a row. After **Escape** it stays closed
     until you type another `/`.
+  - Saving a synced graph's settings from the Graphs page no longer reports an error after saving them.
 
 ### Headless Client
 

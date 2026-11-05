@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ManagedTokenError } from '#lib/auth/managed-token.js'
 import { EnvelopeError, KeyringConflictError, RecoveryCodeError } from '#lib/crypto/index.js'
 import { NoVaultError } from './recovery-unlock'
@@ -19,6 +19,36 @@ const CLOSING_CONNECTION = new DOMException(
 )
 
 describe('describeSyncFailure', () => {
+    describe('technical detail', () => {
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+        beforeEach(() => logged.mockClear())
+        afterAll(() => logged.mockRestore())
+
+        it.each([
+            ['a failed request', new TypeError('Failed to fetch')],
+            ['a browser storage refusal', new DOMException("Failed to execute 'put' on 'IDBObjectStore'", 'DataCloneError')],
+            ['an error nothing recognises', new Error('kaboom at line 12')],
+            ['a server message the Client has no words for', new SyncApiError('kaboom at line 12', 418)],
+        ])('stays off the screen and goes to the console for %s', (_name, error) => {
+            const message = describeSyncFailure(error, 'save the graph settings')
+
+            expect(message).toMatch(/^Could not save the graph settings\. /)
+            expect(message).not.toMatch(/kaboom|IDBObjectStore|Failed to fetch/)
+            expect(logged).toHaveBeenCalledWith('Could not save the graph settings:', error)
+        })
+
+        it('does not blame the sync server for a failure on this device', () => {
+            const refused = new DOMException("Failed to execute 'put' on 'IDBObjectStore'", 'DataCloneError')
+            expect(describeSyncFailure(refused, 'save the graph settings')).not.toContain('sync server')
+        })
+
+        it('still names the sync server when a request could not reach it, in each browser', () => {
+            for (const text of ['Failed to fetch', 'NetworkError when attempting to fetch resource.', 'Load failed']) {
+                expect(describeSyncFailure(new TypeError(text), 'open the graph')).toContain('The sync server could not be reached.')
+            }
+        })
+    })
+
     it('names the inviter and what to ask them for when an invite cannot be accepted (ADR 0126)', () => {
         const unsigned = describeSyncFailure(new InviteNotAcceptedError('unsigned', 'owner@example.com'), 'accept the invite')
         const unverifiable = describeSyncFailure(new InviteNotAcceptedError('unverifiable', null), 'accept the invite')
@@ -156,10 +186,11 @@ describe('describeSyncFailure', () => {
         expect(message).toContain('Nothing was changed')
     })
 
-    it('falls back to the server message but still gives a next step', () => {
+    it('still gives a next step for a refusal it has no words for', () => {
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
         const message = describeSyncFailure(new SyncApiError('Teapot', 418), 'do the thing')
-        expect(message).toContain('Teapot')
-        expect(message).toContain('Try again')
+        expect(message).toBe('Could not do the thing. The sync server refused it. Try again, and check your connection if it persists.')
+        logged.mockRestore()
     })
 
     it('says a busy sign-in service is busy, and does not blame the connection', () => {
@@ -178,7 +209,6 @@ describe('describeSyncFailure', () => {
     it('reads a non-SyncApiError as a connection failure', () => {
         const message = describeSyncFailure(new TypeError('Failed to fetch'), 'reach the server')
         expect(message).toContain('could not be reached')
-        expect(message).toContain('Failed to fetch')
         expect(message).toContain('Check your connection')
     })
 

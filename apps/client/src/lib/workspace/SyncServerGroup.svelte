@@ -50,7 +50,10 @@
         formatBytes,
     } from "@appsoftwareltd/etherpk-shared";
     import SyncPlusOffer from "@appsoftwareltd/etherpk-shared/sync-plus-offer";
+    import { applyGraphOrder } from "#lib/storage/index.js";
+    import GraphOrderList from "./GraphOrderList.svelte";
     import SyncedGraphRow from "./SyncedGraphRow.svelte";
+    import { graphOrderOf, saveGraphOrder } from "./graph-order-state";
     import { keyCopyNotice } from "./graph-picker-helpers";
     import {
         CUSTOM_SERVER_ICON,
@@ -114,6 +117,7 @@
      * joined to this device's copy; while it is not (offline, or the list failed) they are the
      * copies this device holds for this server. None before the first account check answers, which
      * may yet say the account changed, and none while signed out, when the copies are hidden.
+     * In the group's Graph Order, wherever each came from.
      */
     const rows = $derived.by(() => {
         if (
@@ -121,18 +125,18 @@
             (!server.checked && !server.listed)
         )
             return [];
-        if (server.listed) {
-            return server.graphs.map((view) => ({
-                id: view.id,
-                view: view as SyncedGraphView | null,
-                record: records.find((record) => record.id === view.id) ?? null,
-            }));
-        }
-        return records.map((record) => ({
-            id: record.id,
-            view: null as SyncedGraphView | null,
-            record,
-        }));
+        const unordered = server.listed
+            ? server.graphs.map((view) => ({
+                  id: view.id,
+                  view: view as SyncedGraphView | null,
+                  record: records.find((record) => record.id === view.id) ?? null,
+              }))
+            : records.map((record) => ({
+                  id: record.id,
+                  view: null as SyncedGraphView | null,
+                  record: record as GraphRecord | null,
+              }));
+        return applyGraphOrder(unordered, graphOrderOf(server.origin), (row) => row.id);
     });
 
     /** Who is signed in here, or why nobody is, beside the kind of server. */
@@ -496,11 +500,14 @@
     {/if}
 
     {#if rows.length > 0}
-        <ul
-            data-testid="synced-graphs-list"
-            class="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white dark:divide-white/10 dark:border-white/10 dark:bg-white/5"
+        <GraphOrderList
+            testid="synced-graphs-list"
+            items={rows}
+            idOf={(row) => row.id}
+            nameOf={(row) => row.record?.name ?? row.view?.name ?? row.id}
+            onreorder={(ids) => saveGraphOrder(server.origin, ids)}
         >
-            {#each rows as row (row.id)}
+            {#snippet card(row, grip)}
                 {@const view = row.view}
                 {@const record = row.record}
                 <SyncedGraphRow
@@ -508,6 +515,8 @@
                     name={record?.name ?? view?.name ?? row.id}
                     role={view?.role ?? null}
                     onDevice={record !== null}
+                    accent={record?.toolbarColor ?? null}
+                    {grip}
                     readOnly={view?.role === "owner" &&
                         !server.ownedGraphsWritable}
                     importInterrupted={interruptedGraphIds.has(row.id)}
@@ -541,8 +550,8 @@
                     onrotate={() => view && actions.rotateKey(view)}
                     onverifyowner={() => view && actions.verifyOwner(view)}
                 />
-            {/each}
-        </ul>
+            {/snippet}
+        </GraphOrderList>
     {:else if (!server.checked || server.authState === "checking" || server.loading) && !server.error}
         <!-- First load only: later refreshes keep the rows in place while data renews. -->
         <p
@@ -570,6 +579,15 @@
             </svg>
             Loading synced graphs…
         </p>
+        <!-- Room for the graphs this device holds here: this group sits above Local Graphs, which
+             should not jump down under the pointer when it fills in. A guess at the height, as a
+             graph's members can make its card taller. -->
+        {#each records as record (record.id)}
+            <div
+                class="h-36 rounded-xl border border-neutral-200 bg-white motion-safe:animate-pulse dark:border-white/10 dark:bg-white/5"
+                aria-hidden="true"
+            ></div>
+        {/each}
     {:else if server.listed}
         <p
             class="text-sm text-neutral-500 dark:text-neutral-400"

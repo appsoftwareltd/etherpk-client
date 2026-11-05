@@ -37,6 +37,7 @@
         STORAGE_RECOVERY_INTRO,
         acknowledgeStorageRecoveries,
         createIdbGraphRegistry,
+        applyGraphOrder,
         createIdbGraphStoragePort,
         createWebFsDirectoryAdapter,
         describeDeviceStorage,
@@ -49,6 +50,7 @@
         sanitizeGraphSettings,
         storageRecoveryItems,
         subscribeStorageRecoveries,
+        withCachedToolbarColor,
         writeGraphSettings,
     } from "#lib/storage/index.js";
     import {
@@ -174,7 +176,10 @@
     } from "#lib/import/import-marker.js";
     import { clearManagedAccessToken, freshManagedBearerToken } from "#lib/auth/managed-token.js";
     import { showNotice } from "#lib/activity/notices.js";
+    import type { GraphGripProps } from "#lib/workspace/GraphGrip.svelte";
+    import GraphOrderList from "#lib/workspace/GraphOrderList.svelte";
     import GraphPickerRow from "#lib/workspace/GraphPickerRow.svelte";
+    import { graphOrderOf, saveGraphOrder } from "#lib/workspace/graph-order-state.js";
     import InstallOffer from "#lib/install/InstallOffer.svelte";
     import SyncServerGroup, {
         type SyncServerGroupActions,
@@ -599,7 +604,11 @@
 
     /** Local folder graphs, apart from the demo: they belong to no Sync Server. */
     const localGraphs = $derived(
-        ordinaryGraphs.filter((graph) => graph.backend !== "server"),
+        applyGraphOrder(
+            ordinaryGraphs.filter((graph) => graph.backend !== "server"),
+            graphOrderOf(null),
+            (graph) => graph.id,
+        ),
     );
 
     /** This device's records of the graphs on `server`. */
@@ -861,8 +870,9 @@
             // page said "No graphs yet" to someone whose graphs were all still there (2026-09-09).
             registryUnreadable = true;
             graphsListed = true;
+            console.error("Could not read the graph list:", err);
             setStatus(
-                `Your graphs could not be read from this browser's storage, so none are listed. Nothing has been deleted. (${(err as Error).message})`,
+                `Your graphs could not be read from this browser's storage, so none are listed. Nothing has been deleted.`,
                 "error",
             );
             return false;
@@ -1833,8 +1843,9 @@
                 );
                 return;
             }
+            console.error("Could not open a folder:", err);
             setStatus(
-                `Could not open a folder: ${(err as Error).message}`,
+                "Could not open that folder. Try again, or choose a different one.",
                 "error",
             );
         }
@@ -1971,7 +1982,7 @@
                     then: (err) => {
                         if (err)
                             return setStatus(
-                                `Saved your code, but could not finish setup: ${err.message}`,
+                                `Saved your code. ${describeSyncFailure(err, "finish setup")}`,
                                 "error",
                             );
                         void queueHistoryWrite(() => goto(`/g/${graph.id}`));
@@ -2043,7 +2054,7 @@
                 then: (err) => {
                     if (err)
                         setStatus(
-                            `Saved your code, but could not finish setup: ${err.message}`,
+                            `Saved your code. ${describeSyncFailure(err, "finish setup")}`,
                             "error",
                         );
                 },
@@ -2139,8 +2150,9 @@
             };
             return true;
         } catch (err) {
+            console.error(`Could not check the copy of ${name}:`, err);
             setStatus(
-                `Could not check this browser's copy of "${name}" for changes the server has not received, so nothing was changed: ${(err as Error).message}. Try again.`,
+                `Could not check this browser's copy of "${name}" for changes the server has not received, so nothing was changed. Try again.`,
                 "error",
             );
             return false;
@@ -2224,8 +2236,9 @@
                 grew: false,
             };
         } catch (err) {
+            console.error("Could not check this browser's synced graphs:", err);
             setStatus(
-                `Could not check this browser's synced graphs for changes the server has not received, so nothing was removed: ${(err as Error).message}. Try again.`,
+                `Could not check this browser's synced graphs for changes the server has not received, so nothing was removed. Try again.`,
                 "error",
             );
         } finally {
@@ -2481,11 +2494,15 @@
         if (!ctx) return;
         try {
             await writeGraphSettings(ctx.adapter, result.settings);
-            const name = result.name.trim();
-            if (name && name !== ctx.record.name)
-                await registry.insertGraph(
-                    persistableGraphRecord(ctx.record, name),
-                );
+            const record = persistableGraphRecord(
+                ctx.record,
+                result.name.trim() || ctx.record.name,
+            );
+            // The card shows the colour, so the registry's copy of it has to change with the save.
+            await registry.insertGraph(
+                withCachedToolbarColor(record, result.settings.toolbarColor) ??
+                    record,
+            );
             await refresh();
         } catch (err) {
             setRowStatus(
@@ -2534,7 +2551,7 @@
             } catch (err) {
                 setRowStatus(
                     graph.id,
-                    `Could not open graph settings: ${(err as Error).message}`,
+                    describeSyncFailure(err, "open graph settings"),
                     "error",
                 );
             }
@@ -2553,8 +2570,10 @@
                 result.name,
                 result.settings as Record<string, unknown>,
             );
+            const record = persistableGraphRecord(ctx.record, result.name);
             await registry.insertGraph(
-                persistableGraphRecord(ctx.record, result.name),
+                withCachedToolbarColor(record, result.settings.toolbarColor) ??
+                    record,
             );
             await refresh();
             setRowStatus(ctx.record.id, `Saved settings for "${result.name}".`);
@@ -2878,8 +2897,9 @@
                 };
             }
         } catch (err) {
+            console.error("Could not check this browser's copy of the graph:", err);
             setStatus(
-                `Could not check this browser's copy of the graph, so nothing was accepted or deleted: ${(err as Error).message}. Try again.`,
+                `Could not check this browser's copy of the graph, so nothing was accepted or deleted. Try again.`,
                 "error",
             );
         } finally {
@@ -3701,7 +3721,7 @@
 <svelte:document onvisibilitychange={onVisible} />
 
 {#snippet loadingSkeleton(label: string)}
-    <!-- Mirrors the list it stands in for: a heading line, then a card of rows. The server renders
+    <!-- Mirrors the list it stands in for: a heading line, then a card per graph. The server renders
          it too, since it has no stored connections to read, so nothing that is not so ever shows
          first (a "Sign in" panel flashed for signed-in people, 2026-09-29). -->
     <div data-testid="graphs-loading" class="space-y-3" role="status">
@@ -3710,12 +3730,9 @@
             class="h-7 w-40 rounded-md bg-neutral-200 motion-safe:animate-pulse dark:bg-white/10"
             aria-hidden="true"
         ></div>
-        <div
-            class="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white dark:divide-white/10 dark:border-white/10 dark:bg-white/5"
-            aria-hidden="true"
-        >
+        <div class="space-y-3" aria-hidden="true">
             {#each [0, 1, 2] as row (row)}
-                <div class="flex items-center gap-3 px-4 py-3">
+                <div class="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 dark:border-white/10 dark:bg-white/5">
                     <div class="flex-1 space-y-2">
                         <div
                             class="h-4 w-48 max-w-full rounded bg-neutral-200 motion-safe:animate-pulse dark:bg-white/10"
@@ -4086,9 +4103,10 @@
                 </div>
             {/if}
 
-            {#snippet pickerRow(graph: GraphRecord)}
+            {#snippet pickerRow(graph: GraphRecord, grip: GraphGripProps | null)}
                 <GraphPickerRow
                     {graph}
+                    {grip}
                     message={rowMessage[graph.id] ?? null}
                     onopen={() => void openGraph(graph)}
                     onrename={() => renameGraph(graph)}
@@ -4154,8 +4172,33 @@
                     </div>
                 {/if}
 
+                <!-- A group per Sync Server (ADR 0111), so which server a graph lives on never needs
+                     asking. On a first visit a server with nothing to say leaves it to the card. -->
+                {#each orderedServers as server, index (server.origin)}
+                    {@const records = recordsFor(server)}
+                    {#if serverGroupVisible( { firstRun, rows: server.graphs.length + records.length, invites: server.invites.length, failed: server.error !== null, authState: server.authState, kind: server.connection.kind, planLine: server.showsPlanLine }, )}
+                        <SyncServerGroup
+                            {server}
+                            planNoticeId={`graphs-plan-notice-${index}`}
+                            {records}
+                            {interruptedGraphIds}
+                            {rowMessage}
+                            {discardChecking}
+                            {withdrawingInvite}
+                            {removingMember}
+                            {checkingInvite}
+                            {decliningInvite}
+                            {corporateBillingUrl}
+                            {corporatePricingUrl}
+                            showPending={showPlanPending.current}
+                            actions={groupActions(server)}
+                        />
+                    {/if}
+                {/each}
+
                 <!-- Folders on this computer, and the demo: they belong to no Sync Server, and the
-                     demo shows beside the first-run card too. -->
+                     demo shows beside the first-run card too. Below the servers' groups, which can
+                     hold something waiting on the person: an invite, or a sign-in. -->
                 {#if localGraphs.length > 0 || demoGraph || registryUnreadable}
                     <section
                         data-testid="graphs-on-device"
@@ -4201,49 +4244,25 @@
                                 browser's storage. Nothing has been deleted.
                             </p>
                         {:else if localGraphs.length > 0}
-                            <ul
-                                data-testid="graphs-list"
-                                class="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white dark:divide-white/10 dark:border-white/10 dark:bg-white/5"
+                            <GraphOrderList
+                                testid="graphs-list"
+                                items={localGraphs}
+                                idOf={(graph) => graph.id}
+                                nameOf={(graph) => graph.name}
+                                onreorder={(ids) => saveGraphOrder(null, ids)}
                             >
-                                {#each localGraphs as graph (graph.id)}
-                                    {@render pickerRow(graph)}
-                                {/each}
-                            </ul>
+                                {#snippet card(graph, grip)}
+                                    {@render pickerRow(graph, grip)}
+                                {/snippet}
+                            </GraphOrderList>
                         {/if}
                         {#if demoGraph}
-                            <ul
-                                data-testid="graphs-demo-list"
-                                class="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-white/10 dark:bg-white/5"
-                            >
-                                {@render pickerRow(demoGraph)}
+                            <ul data-testid="graphs-demo-list">
+                                <li>{@render pickerRow(demoGraph, null)}</li>
                             </ul>
                         {/if}
                     </section>
                 {/if}
-
-                <!-- A group per Sync Server (ADR 0111), so which server a graph lives on never needs
-                     asking. On a first visit a server with nothing to say leaves it to the card. -->
-                {#each orderedServers as server, index (server.origin)}
-                    {@const records = recordsFor(server)}
-                    {#if serverGroupVisible( { firstRun, rows: server.graphs.length + records.length, invites: server.invites.length, failed: server.error !== null, authState: server.authState, kind: server.connection.kind, planLine: server.showsPlanLine }, )}
-                        <SyncServerGroup
-                            {server}
-                            planNoticeId={`graphs-plan-notice-${index}`}
-                            {records}
-                            {interruptedGraphIds}
-                            {rowMessage}
-                            {discardChecking}
-                            {withdrawingInvite}
-                            {removingMember}
-                            {checkingInvite}
-                            {decliningInvite}
-                            {corporateBillingUrl}
-                            {corporatePricingUrl}
-                            showPending={showPlanPending.current}
-                            actions={groupActions(server)}
-                        />
-                    {/if}
-                {/each}
 
                 {#if !firstRun && servers.length === 0}
                     <!-- A returning browser with no Sync Server: the way to one, where its graphs would be. -->
