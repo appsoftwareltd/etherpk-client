@@ -2476,6 +2476,26 @@ export function tasksMatchingCount(db: SqlDb, query: TaskQuery): number {
     return rows[0]?.n ?? 0
 }
 
+/** Where one task is and what it says: what looking for a [[Task Reference]]'s task compares. */
+export interface TaskLabel {
+    document: string
+    /** 0-based body line. */
+    line: number
+    label: string
+}
+
+/**
+ * Every task in the live generation, in no order. A separate read from {@link tasksMatching},
+ * which sorts every task for each page and loads what surrounds it: finding a Task Reference
+ * elsewhere in a graph compares every task's words and uses none of that.
+ */
+export function taskLabels(db: SqlDb): TaskLabel[] {
+    return db.all<TaskLabel>(
+        'SELECT p.concept AS document, t.line AS line, t.text AS label FROM tasks t JOIN pages p ON p.id = t.page_id WHERE p.generation = ?',
+        [activeIndexGeneration(db)],
+    )
+}
+
 /** `YYYY-MM-DD` shifted by whole days, so the caller never leaves string space. */
 function addDays(day: string, days: number): string {
     const [year, month, date] = day.split('-').map(Number)

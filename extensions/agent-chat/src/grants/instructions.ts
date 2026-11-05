@@ -18,7 +18,7 @@ export interface InstructionsInput {
     formatGuide: string
     /** Whether the model has the tools that search and read the graph. */
     canSearchGraph: boolean
-    /** The person's Agent Instruction, for every model in every chat; empty for none. */
+    /** The person's Chat Instruction, for every model in every chat; empty for none. */
     agentInstruction?: string
 }
 

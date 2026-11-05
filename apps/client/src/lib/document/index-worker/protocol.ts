@@ -20,6 +20,7 @@ import type {
     PropertyValueInfo,
     SearchDocumentGroup,
     TaskHit,
+    TaskLabel,
     TaskQuery,
     TemplateEntry,
 } from '../index-db'
@@ -89,6 +90,8 @@ export type IndexRequest =
      * so there is nothing slow to keep out of the rows' way.
      */
     | { type: 'tasks'; id: number; query: TaskQuery; offset: number; limit: number }
+    /** Every task by document, line and text, for finding a [[Task Reference]] elsewhere in the graph. */
+    | { type: 'task-labels'; id: number }
     /**
      * Which documents reference an [[Asset]] — the gate in front of a permanent delete
      * (ADR 0054). `needles` are the forms the reference can be written in: the asset's
@@ -188,6 +191,7 @@ export type IndexResponse =
     | { type: 'property-match'; id: number; documents: PropertyMatch[] }
     | { type: 'templates'; id: number; templates: TemplateEntry[] }
     | { type: 'tasks'; id: number; hits: TaskHit[]; hasMore: boolean; total: number }
+    | { type: 'task-labels'; id: number; tasks: TaskLabel[] }
     | { type: 'asset-usage'; id: number; usage: AssetUsage }
     | { type: 'link-graph'; id: number; graph: LinkGraph }
     | { type: 'map-items'; id: number; result: MapItemsResult }

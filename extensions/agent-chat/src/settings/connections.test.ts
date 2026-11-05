@@ -36,7 +36,7 @@ describe("the person's Agent Chat settings (ADR 0147)", () => {
         expect(settings.defaultConnection).toBe('c2')
     })
 
-    it('keeps one Agent Instruction for every chat and model, as written, cut at its limit', () => {
+    it('keeps one Chat Instruction for every chat and model, as written, cut at its limit', () => {
         expect(readSettings(storageWith({ connections: [], instruction: 'Answer in British English.' })).instruction).toBe('Answer in British English.')
         expect(readSettings(storageWith({ connections: [], instruction: 42 })).instruction).toBe('')
         expect(readSettings(storageWith({ connections: [], instruction: 'x'.repeat(INSTRUCTION_LIMIT + 10) })).instruction).toHaveLength(INSTRUCTION_LIMIT)

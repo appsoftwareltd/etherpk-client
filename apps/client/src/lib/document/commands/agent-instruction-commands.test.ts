@@ -12,38 +12,43 @@ import { isProtectedDocumentFacet } from '../view/augmentations/protected-docume
 import { editorDocument } from '../view/editor-document'
 import { parseTaskReference, taskFingerprint } from '../task-reference'
 import { parseLaneReference } from '../lane-reference'
+import type { AgentReach } from '../agent-instruction'
 import {
-    copyLaneReference,
-    copyTaskReference,
+    copyLaneInstruction,
+    copyTaskInstruction,
     menuTargetTask,
-    registerTaskReferenceCommands,
+    registerAgentInstructionCommands,
     TASK_COPY_LANE_REFERENCE,
     TASK_COPY_REFERENCE,
-    type TaskReferenceCommandDeps,
-} from './task-reference-commands'
+    type AgentInstructionCommandDeps,
+} from './agent-instruction-commands'
 
-// Copy task reference (ADR 0114): a task's words and address on the clipboard, for a person to
-// hand to an agent, said in a notice because the clipboard shows nothing of its own.
+// Copy agent instruction (ADR 0114, ADR 0178): a task's words and reference on the clipboard, for
+// a person to hand to an agent, said in a notice because the clipboard shows nothing of its own.
 
-function deps(options: { refuse?: boolean } = {}) {
+function deps(options: { refuse?: boolean; reach?: AgentReach } = {}) {
     const copied: string[] = []
     const notices: Array<[string, string]> = []
-    const value: TaskReferenceCommandDeps = {
+    const reachedFor: Array<string | null> = []
+    const value: AgentInstructionCommandDeps = {
         graphId: () => 'g-1',
-        graphName: () => 'Work',
+        reach: async (document) => {
+            reachedFor.push(document)
+            return options.reach ?? { kind: 'synced', graphName: 'Work', agentsUrl: 'https://app.example.com/g/g-1?settings=agents' }
+        },
         writeClipboard: async (text) => {
             if (options.refuse) throw new Error('Clipboard access was denied')
             copied.push(text)
         },
         notify: (text, tone) => void notices.push([tone, text]),
     }
-    return { value, copied, notices }
+    return { value, copied, notices, reachedFor }
 }
 
-describe('copying a task reference', () => {
+describe('copying the instruction for a task', () => {
     it('puts where the task is from, its words and its reference on the clipboard, and says what it copied', async () => {
         const { value, copied, notices } = deps()
-        expect(await copyTaskReference({ document: 'Acme', line: 3, label: '#P1 Send the quote' }, value)).toBe(true)
+        expect(await copyTaskInstruction({ document: 'Acme', line: 3, label: '#P1 Send the quote' }, value)).toBe(true)
         const lines = copied[0].split('\n')
         expect(lines.slice(0, 3)).toEqual([
             'EtherPK task from the graph "Work" (g-1)',
@@ -51,38 +56,65 @@ describe('copying a task reference', () => {
             `Reference: etherpk:/g/g-1/d/Acme#task=3-${await taskFingerprint('Send the quote')}`,
         ])
         expect(parseTaskReference(copied[0])).toMatchObject({ graphId: 'g-1', document: 'Acme', line: 3 })
-        expect(notices).toEqual([['info', 'Copied a reference to "Send the quote". Paste it to an agent connected to this graph.']])
+        expect(notices).toEqual([['info', 'Copied an agent instruction for "Send the quote". Paste it to your agent.']])
     })
 
     it('says why when the clipboard refuses', async () => {
         const { value, notices } = deps({ refuse: true })
-        expect(await copyTaskReference({ document: 'Acme', line: 3, label: 'Send the quote' }, value)).toBe(false)
-        expect(notices).toEqual([['error', 'Could not copy the task reference: Clipboard access was denied']])
+        expect(await copyTaskInstruction({ document: 'Acme', line: 3, label: 'Send the quote' }, value)).toBe(false)
+        expect(notices).toEqual([['error', 'Could not copy the agent instruction: Clipboard access was denied']])
+    })
+
+    it('asks how to reach the graph for the document the task is in', async () => {
+        const { value, reachedFor } = deps()
+        await copyTaskInstruction({ document: 'Acme', line: 3, label: 'Send the quote' }, value)
+        expect(reachedFor).toEqual(['Acme'])
+    })
+
+    it('writes the variant for a local graph', async () => {
+        const reach: AgentReach = { kind: 'folder', folderName: 'notes', folderPath: '/path/to/notes', file: { subdir: 'pages', fileName: 'Acme.md' } }
+        const { value, copied, notices } = deps({ reach })
+        await copyTaskInstruction({ document: 'Acme', line: 3, label: 'Send the quote' }, value)
+        expect(copied[0].split('\n')[2]).toBe('File: /path/to/notes/pages/Acme.md')
+        expect(notices).toEqual([['info', 'Copied an agent instruction for "Send the quote". Paste it to your agent.']])
+    })
+
+    it('copies and warns on a graph an agent cannot reach', async () => {
+        const { value, copied, notices } = deps({ reach: { kind: 'browser', graphName: 'Demo', agentsUrl: 'https://app.example.com/g/g-1?settings=agents' } })
+        expect(await copyTaskInstruction({ document: 'Acme', line: 3, label: 'Send the quote' }, value)).toBe(true)
+        expect(copied[0]).toContain('kept inside this browser')
+        expect(notices).toEqual([['info', 'Copied, but an agent cannot reach this graph because it is kept in this browser.']])
+    })
+
+    it('copies nothing with no graph open', async () => {
+        const { value, copied } = deps()
+        expect(await copyTaskInstruction({ document: 'Acme', line: 3, label: 'Send the quote' }, { ...value, graphId: () => null })).toBe(false)
+        expect(copied).toEqual([])
     })
 
     it('copies the same text for a task named in the Command, as a Kanban card names its own', async () => {
         const commands = createCommandRegistry()
         const { value, copied } = deps()
-        registerTaskReferenceCommands(commands, createContributionRegistry(), value)
+        registerAgentInstructionCommands(commands, createContributionRegistry(), value)
         await commands.execute(TASK_COPY_REFERENCE, { document: 'Acme', line: 0, label: 'Send the quote' })
         expect(copied.map((text) => text.split('\n')[0])).toEqual(['EtherPK task from the graph "Work" (g-1)'])
     })
 
     it('is a Command Menu row only while the caret is on a task line', () => {
         const contributions = createContributionRegistry()
-        registerTaskReferenceCommands(createCommandRegistry(), contributions, deps().value)
+        registerAgentInstructionCommands(createCommandRegistry(), contributions, deps().value)
         const context = { inTable: false, tableInsertable: true, bodyWritable: true }
-        expect(listCommandMenuItems(contributions, { ...context, taskOnLine: true }).map((item) => item.title)).toContain('Copy task reference')
-        expect(listCommandMenuItems(contributions, context).map((item) => item.title)).not.toContain('Copy task reference')
+        expect(listCommandMenuItems(contributions, { ...context, taskOnLine: true }).map((item) => item.title)).toContain('Copy agent instruction')
+        expect(listCommandMenuItems(contributions, context).map((item) => item.title)).not.toContain('Copy agent instruction')
     })
 })
 
-// Copy lane reference: a Kanban board's lane named for an agent, to work through every task in it.
-// The board names the lane in the Command; the graph, the clipboard and the notice are the Client's.
-describe('copying a lane reference', () => {
+// The same Command family for a Kanban board's lane, named for an agent to work through every task
+// in it. The board names the lane in the Command; the graph, the clipboard and the notice are the Client's.
+describe('copying the instruction for a lane', () => {
     it('puts the graph, the board, the lane and its reference on the clipboard, and says what it copied', async () => {
         const { value, copied, notices } = deps()
-        expect(await copyLaneReference({ concept: 'Garden', status: 'doing', label: 'Doing', count: 2 }, value)).toBe(true)
+        expect(await copyLaneInstruction({ concept: 'Garden', status: 'doing', label: 'Doing', count: 2 }, value)).toBe(true)
         expect(copied[0].split('\n').slice(0, 4)).toEqual([
             'EtherPK Kanban lane from the graph "Work" (g-1)',
             'Board: Garden',
@@ -90,25 +122,32 @@ describe('copying a lane reference', () => {
             'Reference: etherpk:/g/g-1/k/Garden#lane=doing',
         ])
         expect(parseLaneReference(copied[0])).toEqual({ graphId: 'g-1', concept: 'Garden', status: 'doing' })
-        expect(notices).toEqual([['info', 'Copied a reference to the Doing lane of Garden. Paste it to an agent connected to this graph.']])
+        expect(notices).toEqual([['info', 'Copied an agent instruction for the Doing lane of Garden. Paste it to your agent.']])
     })
 
     it('names the Graph Kanban as the board when the lane is on it', async () => {
         const { value, notices } = deps()
-        await copyLaneReference({ concept: null, status: 'open', label: 'Open', count: 0 }, value)
-        expect(notices).toEqual([['info', 'Copied a reference to the Open lane of the Graph Kanban. Paste it to an agent connected to this graph.']])
+        await copyLaneInstruction({ concept: null, status: 'open', label: 'Open', count: 0 }, value)
+        expect(notices).toEqual([['info', 'Copied an agent instruction for the Open lane of the Graph Kanban. Paste it to your agent.']])
     })
 
     it('says why when the clipboard refuses', async () => {
         const { value, notices } = deps({ refuse: true })
-        expect(await copyLaneReference({ concept: 'Garden', status: 'doing', label: 'Doing', count: 2 }, value)).toBe(false)
-        expect(notices).toEqual([['error', 'Could not copy the lane reference: Clipboard access was denied']])
+        expect(await copyLaneInstruction({ concept: 'Garden', status: 'doing', label: 'Doing', count: 2 }, value)).toBe(false)
+        expect(notices).toEqual([['error', 'Could not copy the agent instruction: Clipboard access was denied']])
+    })
+
+    it('asks how to reach the graph with no document in mind, and warns on one an agent cannot reach', async () => {
+        const { value, notices, reachedFor } = deps({ reach: { kind: 'browser', graphName: 'Demo', agentsUrl: 'https://app.example.com/g/g-1?settings=agents' } })
+        await copyLaneInstruction({ concept: 'Garden', status: 'doing', label: 'Doing', count: 2 }, value)
+        expect(reachedFor).toEqual([null])
+        expect(notices).toEqual([['info', 'Copied, but an agent cannot reach this graph because it is kept in this browser.']])
     })
 
     it('copies the lane a Kanban board names in the Command, and nothing for anything else', async () => {
         const commands = createCommandRegistry()
         const { value, copied } = deps()
-        registerTaskReferenceCommands(commands, createContributionRegistry(), value)
+        registerAgentInstructionCommands(commands, createContributionRegistry(), value)
         await commands.execute(TASK_COPY_LANE_REFERENCE, { concept: 'Garden', status: 'test', label: 'Test', count: 1 })
         await commands.execute(TASK_COPY_LANE_REFERENCE, { concept: 'Garden', status: 'later', label: 'Later', count: 1 })
         await commands.execute(TASK_COPY_LANE_REFERENCE, undefined)
@@ -128,7 +167,7 @@ function setUp() {
     const commands = createCommandRegistry()
     const contributions = createContributionRegistry()
     const copied = deps()
-    registerTaskReferenceCommands(commands, contributions, copied.value)
+    registerAgentInstructionCommands(commands, contributions, copied.value)
     const rows = (target: object) => listContextMenuItems(contributions, target as never).map((row) => row.label)
     return { commands, rows, copied: copied.copied }
 }
@@ -138,12 +177,12 @@ afterEach(() => {
     resetBookmarks()
 })
 
-describe('Copy task reference on a menu', () => {
+describe('Copy agent instruction on a menu', () => {
     it("is a row of the line menu on a task's line, counting lines from the body as the index does", async () => {
         editorOver('Garden', '---\ntitle: Garden\n---\n- [ ] #P1 water the beans\n- weed')
         const { commands, rows, copied } = setUp()
         const taskLine = { kind: 'line', concept: 'Garden', panelId: 'left', line: 4 }
-        expect(rows(taskLine)).toEqual(['Copy task reference'])
+        expect(rows(taskLine)).toEqual(['Copy agent instruction'])
         expect(rows({ ...taskLine, line: 5 })).toEqual([])
         expect(rows({ ...taskLine, line: 2 })).toEqual([])
 
@@ -155,7 +194,7 @@ describe('Copy task reference on a menu', () => {
     it('follows a wikilink on a task line, after the link\'s own rows', () => {
         editorOver('Garden', '- [ ] water the [[Beans]]')
         const { rows } = setUp()
-        expect(rows({ kind: 'wikilink', concept: 'Beans', line: { concept: 'Garden', panelId: 'left', line: 1 } })).toEqual(['Copy task reference'])
+        expect(rows({ kind: 'wikilink', concept: 'Beans', line: { concept: 'Garden', panelId: 'left', line: 1 } })).toEqual(['Copy agent instruction'])
     })
 
     it('is not offered in a task-shaped line of fenced code, nor in a Protected Document', () => {
@@ -169,7 +208,7 @@ describe('Copy task reference on a menu', () => {
     it("is the row of a Tasks View row's menu, copying the task the row shows", async () => {
         const { commands, rows, copied } = setUp()
         const task = { kind: 'task', document: 'Garden', line: 2, label: '#W water the beans', done: false }
-        expect(rows(task)).toEqual(['Copy task reference'])
+        expect(rows(task)).toEqual(['Copy agent instruction'])
         await commands.execute(TASK_COPY_REFERENCE, task)
         expect(copied[0].split('\n')[1]).toBe('Task: water the beans')
     })

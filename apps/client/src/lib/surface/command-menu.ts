@@ -29,7 +29,7 @@ export interface CommandMenuContext {
     bodyWritable: boolean
     /** The caret's line holds a [[File Link]] (gates Copy file path; `/` only opens at a word boundary, so "inside" would be unreachable). Absent reads as false. */
     fileLinkOnLine?: boolean
-    /** The caret's line is a [[Task]] outside a [[Protected Document]] (gates Copy task reference). Absent reads as false. */
+    /** The caret's line is a [[Task]] outside a [[Protected Document]] (gates Copy agent instruction). Absent reads as false. */
     taskOnLine?: boolean
     /** The document is a [[Protected Document]], locked or not (hides `/map`: no map is drawn in one, ADR 0118). Absent reads as false. */
     protectedDocument?: boolean

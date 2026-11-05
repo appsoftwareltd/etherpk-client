@@ -30,7 +30,7 @@
     import { assetRefOf } from "./pdf-asset-ref";
     import PdfFindBar from "./PdfFindBar.svelte";
     import PdfPasswordPrompt from "./PdfPasswordPrompt.svelte";
-    import { PdfReader } from "./pdf-reader.svelte";
+    import { EDGE_TAP_SHARE, isTouchFirst, PdfReader } from "./pdf-reader.svelte";
     import { saveCopy } from "./pdf-save";
     import PdfSaveDialog, { type LinkPlace, type SaveRequest } from "./PdfSaveDialog.svelte";
     import PdfSidePanel from "./PdfSidePanel.svelte";
@@ -85,7 +85,12 @@
     // it when the tab is pointed at another file.
     $effect(() => {
         void reader.open(url);
-        return () => void reader.destroy();
+        return () => {
+            const layout = workspaceService("layout");
+            const view = { kind: "asset", target } as const;
+            reader.releaseSavedSignatures(() => layout?.isOpen(view) ?? false);
+            void reader.destroy();
+        };
     });
 
     $effect(() => {
@@ -163,20 +168,14 @@
         else if (element.matches(":popover-open")) element.hidePopover();
     });
 
-    // A signature nobody saved exists only here, so closing the tab asks first and a page unload warns.
+    // A signature nobody saved is in no file, so closing the tab asks first.
     $effect(() => {
         const layout = workspaceService("layout");
         if (!reader.hasUnsavedSignature || !layout) return;
-        const stop = layout.guardClose({ kind: "asset", target }, () => {
+        return layout.guardClose({ kind: "asset", target }, () => {
             closeGuardOpen = true;
             return false;
         });
-        const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-        window.addEventListener("beforeunload", warn);
-        return () => {
-            stop();
-            window.removeEventListener("beforeunload", warn);
-        };
     });
 
     function refreshLinks() {
@@ -426,7 +425,6 @@
     function onSignaturePlaced(blob: Blob, aspect: number) {
         signatureOpen = false;
         reader.placeSignature(URL.createObjectURL(blob), aspect);
-        reader.noteSignaturePlaced();
     }
 
     async function toggleFavourite() {
@@ -481,6 +479,7 @@
             const answer = await service.deleteAsset(target, reader.hash);
             if (answer.deleted) {
                 deleteOpen = false;
+                reader.discardSignatures();
                 return;
             }
             deleteMessage = answer.reason === "linked" ? `It cannot be deleted while it is linked. Remove the links in ${answer.documents.join(", ")} first.` : answer.message;
@@ -530,6 +529,9 @@
         { tool: "note", label: "Typed note", icon: "pdf-note" },
         { tool: "eraser", label: "Eraser", icon: "pdf-eraser" },
     ];
+
+    /** For a mouse. A finger already moves the page, so a touch screen and the phone's bar leave it out. */
+    const shownTools = $derived<typeof toolButtons>(inBar || isTouchFirst() ? toolButtons : [{ tool: "hand", label: "Hand", icon: "pdf-hand" }, ...toolButtons]);
 
     /** Whether the buttons that turn the page float over this PDF. */
     const turningPages = $derived(reader.preferences.pageByPage && reader.pageCount > 1);
@@ -656,7 +658,7 @@
     <button type="button" class={`${button} max-sm:hidden`} aria-label="Zoom in" title="Zoom in" onclick={() => reader.zoomIn()} data-testid="pdf-zoom-in">{@render icon("zoom-in")}</button>
     <button type="button" class={`${button} max-sm:hidden`} aria-label="Fit the width" title="Fit the width" onclick={() => reader.fitWidth()} data-testid="pdf-fit-width">{@render icon("fit")}</button>
     {#if !inBar}<span class="etherpk-pdf-divider"></span>{/if}
-    {#each toolButtons as entry (entry.tool)}
+    {#each shownTools as entry (entry.tool)}
         <button type="button" class={button} aria-label={entry.label} title={blockedHere(entry.tool) ? NEEDS_TEXT[entry.tool] : entry.label} aria-pressed={reader.tool === entry.tool} disabled={blockedHere(entry.tool)} onclick={() => reader.setTool(entry.tool)} data-testid={`pdf-tool-${entry.tool}`} {@attach scrollIntoBar(entry.tool)}>{@render icon(entry.icon)}</button>
     {/each}
     <button type="button" class={button} aria-label="Undo" title="Undo" disabled={!reader.canUndo} onclick={() => reader.undo()} data-testid="pdf-undo">{@render icon("undo")}</button>
@@ -835,6 +837,19 @@
                         ></textarea>
                     {/if}
                 </div>
+                {#key reader.turnFlash}
+                    {#if reader.turnFlash}
+                        <!-- The side that turned the page, so a person sees how far a side reaches. It takes no touches. -->
+                        <div
+                            class="etherpk-pdf-turn-flash"
+                            data-side={reader.turnFlash.side}
+                            style:width="{EDGE_TAP_SHARE * 100}%"
+                            aria-hidden="true"
+                            data-testid="pdf-turn-flash"
+                            onanimationend={() => (reader.turnFlash = null)}
+                        ></div>
+                    {/if}
+                {/key}
                 {#if reader.pageCount > 1 && !reader.immersive && (reader.preferences.pageByPage || inBar)}
                     <!-- Over the page, in the style of a document's floating buttons. A person can turn
                          the page without finding a key, a swipe or the edge of the screen. On a touch
@@ -1262,6 +1277,38 @@
             transition: none;
         }
     }
+    /* Mid grey, because what is under it is a white page or a dark one whatever the theme. Under the
+       page buttons. Taken away when the animation ends, which still runs with reduced motion, only
+       without the fade. */
+    .etherpk-pdf-turn-flash {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        z-index: 9;
+        background: rgb(128 128 128 / 0.3);
+        pointer-events: none;
+        animation: etherpk-pdf-turn-flash 200ms ease-out both;
+    }
+    .etherpk-pdf-turn-flash[data-side="previous"] {
+        left: 0;
+    }
+    .etherpk-pdf-turn-flash[data-side="next"] {
+        right: 0;
+    }
+    @keyframes etherpk-pdf-turn-flash {
+        0%,
+        35% {
+            opacity: 1;
+        }
+        100% {
+            opacity: 0;
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .etherpk-pdf-turn-flash {
+            animation-timing-function: step-end;
+        }
+    }
     .etherpk-pdf-page-chip {
         position: absolute;
         bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
@@ -1295,6 +1342,17 @@
     }
     /* A finger that draws: the browser must not take the same move for a scroll. Two fingers still
        zoom and move the page, through the reader's own handling (`pdf-pinch.ts`). */
+    .etherpk-pdf-scroller[data-tool="hand"] {
+        cursor: grab;
+        user-select: none;
+    }
+    /* The drag sets this itself (`pdf-hand-pan.ts`). */
+    :global(.etherpk-pdf-scroller[data-tool="hand"][data-panning]) {
+        cursor: grabbing;
+    }
+    .etherpk-pdf-scroller[data-tool="hand"] :global(.textLayer) {
+        pointer-events: none;
+    }
     .etherpk-pdf-scroller[data-finger-draws]:is([data-tool="pen"], [data-tool="highlighter"], [data-tool="eraser"]) :global(.etherpk-pdf-overlay) {
         touch-action: none;
     }

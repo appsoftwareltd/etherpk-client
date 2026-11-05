@@ -1,6 +1,6 @@
 /**
  * The [[Task]] on the caret's line, as a [[Task Reference]] names it (ADR 0114): its document, its
- * line in the body (as the index counts lines) and its label. What **Copy task reference** copies
+ * line in the body (as the index counts lines) and its label. What **Copy agent instruction** copies
  * from the editor, and what the Command Menu asks to decide whether to offer that row.
  */
 import type { EditorState } from '@codemirror/state'
@@ -31,7 +31,7 @@ export function caretTask(state: EditorState): CaretTask | null {
 
 /**
  * The task on line `number` (1-based, as the editor counts lines), on the same terms as
- * {@link caretTask}: what the line menu's **Copy task reference** copies from a right-click.
+ * {@link caretTask}: what the line menu's **Copy agent instruction** copies from a right-click.
  */
 export function taskOnLine(state: EditorState, number: number): CaretTask | null {
     return state.facet(isProtectedDocumentFacet)() ? null : bodyTaskOnLine(state, number)

@@ -17,7 +17,7 @@
     import { queueHistoryWrite } from "#lib/navigation/history-writes.js";
     import { page } from "$app/state";
     import * as env from "$app/env/public";
-    import ExtensionSettingsSections from "#lib/extensions/ExtensionSettingsSections.svelte";
+    import AgentsSettingsTabs from "#lib/extensions/AgentsSettingsTabs.svelte";
     import { iconSvg } from "#lib/surface/icons.js";
     import { RELEASE_VERSION } from "#lib/release.js";
     import { managedSyncOrigin } from "#lib/sync/sync-deployment.js";
@@ -233,7 +233,7 @@
      * from the address (`afterNavigate` below).
      */
     let activeTab = $state<GraphsPageTab>(tabIn(page.url));
-    /** The Agents tab's Sync Server, by host, for signing an agent's computer in; the first when null. */
+    /** The Agents tab's Sync Server, by host, for signing an agent's device in; the first when null. */
     let agentsServerHost = $state<string | null>(null);
     /** The Sync tab's sub-tab as the address names it (`&server=`): a server's host, or `add`. */
     let requestedSyncPanel = $state<string | null>(
@@ -4699,55 +4699,59 @@
             aria-labelledby="graphs-tab-agents"
             class="space-y-8"
         >
-            <ExtensionSettingsSections tab="agents" />
-            <section class="space-y-4 border-t border-gray-200 pt-6 dark:border-white/10" data-testid="graphs-agents-headless">
-                <div class="space-y-1">
-                    <h3 class="flex items-center gap-2 text-base font-semibold text-gray-950 dark:text-gray-100">
-                        <span class="text-gray-600 dark:text-gray-400">
-                            <!-- eslint-disable-next-line svelte/no-at-html-tags -- the Client's own icon markup (icons.ts) -->
-                            {@html iconSvg("headless-client", { size: 20 })}
-                        </span>Headless Client
-                    </h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">
-                        Let an AI agent such as Claude Code read and edit your notes over MCP. A folder graph needs no setup: point the agent at the folder. For a synced
-                        graph, sign in the agent's computer once (below), then add the graph's MCP command from that graph's Settings &gt; Agents.
-                    </p>
-                </div>
-                {#if !listReady}
-                    {@render loadingSkeleton("Loading your Sync Servers…")}
-                {:else if servers.length === 0}
-                    <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="graphs-agents-no-server">
-                        Signing in needs a Sync Server. Add one in the Sync tab to reach your synced graphs from an agent.
-                    </p>
-                {:else}
-                    {@const server = servers.find((candidate) => candidate.host === agentsServerHost) ?? servers[0]}
-                    {#if servers.length > 1}
-                        <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                            Sync Server
-                            <select
-                                class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
-                                value={server.host}
-                                onchange={(event) => (agentsServerHost = event.currentTarget.value)}
-                                data-testid="graphs-agents-server"
-                            >
-                                {#each servers as candidate (candidate.host)}<option value={candidate.host}>{candidate.host}</option>{/each}
-                            </select>
-                        </label>
-                    {/if}
-                    <div class="space-y-2 text-sm text-gray-950 dark:text-gray-100">
-                        {#key server.host}
-                            <HeadlessClientSignIn
-                                serverBaseUrl={server.connection.serverBaseUrl}
-                                headlessClient={headlessClientPackage(managedSyncOrigin(env) ? null : RELEASE_VERSION)}
-                                createSetupCode={server.connection.kind === "managed" ? () => server.api.createAgentSetupCode() : null}
-                            />
-                        {/key}
-                    </div>
-                {/if}
-                <div class="space-y-1 border-t border-gray-200 pt-4 dark:border-white/10 text-gray-950 dark:text-gray-100">
-                    <AgentCommandRow {...AGENT_SKILL_ROW} />
-                </div>
-            </section>
+            <AgentsSettingsTabs>
+                {#snippet mcp()}
+                    <section class="space-y-4" data-testid="graphs-agents-headless">
+                        <div class="space-y-1">
+                            <h3 class="flex items-center gap-2 text-base font-semibold text-gray-950 dark:text-gray-100">
+                                <span class="text-gray-600 dark:text-gray-400">
+                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- the Client's own icon markup (icons.ts) -->
+                                    {@html iconSvg("headless-client", { size: 20 })}
+                                </span>MCP Server
+                            </h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">
+                                Use to allow an AI agent on your device, such as Claude Code, Codex or VS Code, to read and modify your notes. The agent connects to the MCP server that the EtherPK
+                                Headless Client runs. A folder graph needs no setup: point the agent at the folder. For a synced graph, sign in the agent's device once
+                                (below), then add the graph's MCP command from that graph's Settings &gt; Agents.
+                            </p>
+                        </div>
+                        {#if !listReady}
+                            {@render loadingSkeleton("Loading your Sync Servers…")}
+                        {:else if servers.length === 0}
+                            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="graphs-agents-no-server">
+                                Signing in needs a Sync Server. Add one in the Sync tab to reach your synced graphs from an agent.
+                            </p>
+                        {:else}
+                            {@const server = servers.find((candidate) => candidate.host === agentsServerHost) ?? servers[0]}
+                            {#if servers.length > 1}
+                                <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                                    Sync Server
+                                    <select
+                                        class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
+                                        value={server.host}
+                                        onchange={(event) => (agentsServerHost = event.currentTarget.value)}
+                                        data-testid="graphs-agents-server"
+                                    >
+                                        {#each servers as candidate (candidate.host)}<option value={candidate.host}>{candidate.host}</option>{/each}
+                                    </select>
+                                </label>
+                            {/if}
+                            <div class="space-y-2 text-sm text-gray-950 dark:text-gray-100">
+                                {#key server.host}
+                                    <HeadlessClientSignIn
+                                        serverBaseUrl={server.connection.serverBaseUrl}
+                                        headlessClient={headlessClientPackage(managedSyncOrigin(env) ? null : RELEASE_VERSION)}
+                                        createSetupCode={server.connection.kind === "managed" ? () => server.api.createAgentSetupCode() : null}
+                                    />
+                                {/key}
+                            </div>
+                        {/if}
+                        <div class="space-y-1 border-t border-gray-200 pt-4 dark:border-white/10 text-gray-950 dark:text-gray-100">
+                            <AgentCommandRow {...AGENT_SKILL_ROW} />
+                        </div>
+                    </section>
+                {/snippet}
+            </AgentsSettingsTabs>
         </div>
     {:else}
         <div

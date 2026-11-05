@@ -1,9 +1,11 @@
 <script lang="ts">
     /**
      * Ask where this graph's folder is on this device, the one thing the browser cannot tell
-     * us (folder-path.ts). Raised by "Copy full file path" the first time it is used on a
-     * device, and the path is remembered so it is asked once; Graph Settings → General shows
-     * the same field for correcting it.
+     * us (folder-path.ts). Raised by "Copy full file path" and "Copy agent instruction" the first
+     * time either is used on a device, and the path is remembered so it is asked once; Graph
+     * Settings → General shows the same field for correcting it. An agent instruction works
+     * without the path, so it passes `skippable`: closing the dialog then copies anyway, and the
+     * button that does so says so.
      *
      * The folder's leaf name IS known (the picked handle's name), so the dialog says it, and
      * flags a typed path whose last segment is something else. A flag, not a refusal: the
@@ -15,6 +17,7 @@
     let {
         folderName,
         initial = "",
+        skippable = false,
         onsave,
         onclose,
     }: {
@@ -22,6 +25,8 @@
         folderName: string;
         /** A remembered path to correct, if any. */
         initial?: string;
+        /** The copy goes ahead whichever way the dialog closes. */
+        skippable?: boolean;
         /** Called with the trimmed path; the caller remembers it and carries on. */
         onsave: (path: string) => void;
         onclose: () => void;
@@ -69,6 +74,11 @@
             <strong class="font-medium text-gray-900 dark:text-gray-100">{folderName}</strong>
             folder - it is remembered on this device.
         </p>
+        {#if skippable}
+            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="folder-path-skip-note">
+                With it, an agent can open the file from anywhere. Without it, the agent gets the file's place inside the folder.
+            </p>
+        {/if}
         <div>
             <label
                 for="graph-folder-path"
@@ -102,7 +112,7 @@
     {/snippet}
 
     {#snippet footer()}
-        <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+        <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300" data-testid="folder-path-dismiss">{skippable ? "Skip and copy" : "Cancel"}</button>
         <button
             type="submit"
             data-testid="folder-path-save"

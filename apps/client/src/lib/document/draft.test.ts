@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
     canCreateDocuments,
     createDraftDocument,
+    createEmptyDocument,
     promoteDraft,
     whenDocumentText,
     type DocumentCreatingStore,
@@ -488,5 +489,36 @@ describe('a Draft seeded with its starting text', () => {
         draft.applyChange({ from: 2, to: 9, insert: 'Evening' })
 
         expect((await promoteDraft(store, draft)).text).toBe(`${template}\n- Evening\n  - [ ] water the beans`)
+    })
+})
+
+describe('createEmptyDocument', () => {
+    it('creates a page for a name and returns the text it holds (filesystem-shaped)', async () => {
+        const store = filesystemLikeStore(2)
+        await expect(createEmptyDocument(store, 'Garden')).resolves.toBe('---\ntitle: Garden\n---\n')
+        expect(store.files.get('Garden')).toBe('---\ntitle: Garden\n---\n')
+    })
+
+    it('creates a journal entry for a day, never a page named after it', async () => {
+        const store = serverLikeStore()
+        const pages = vi.spyOn(store, 'createPage')
+        await expect(createEmptyDocument(store, '2026-03-14')).resolves.toBe('')
+        expect(store.docs.has('2026-03-14')).toBe(true)
+        expect(pages).not.toHaveBeenCalled()
+    })
+
+    it('takes a document that came into existence meanwhile as it is', async () => {
+        // A second tab, or a keystroke in the Draft, got there first: nothing is overwritten.
+        const store = serverLikeStore()
+        await store.createPage('Garden', '- water the beans')
+        await expect(createEmptyDocument(store, 'Garden')).resolves.toBe('- water the beans')
+    })
+
+    it('passes on a refusal when there is still no document', async () => {
+        const store = serverLikeStore()
+        store.createPage = async () => {
+            throw new Error('The name is not allowed.')
+        }
+        await expect(createEmptyDocument(store, 'Garden')).rejects.toThrow('The name is not allowed.')
     })
 })

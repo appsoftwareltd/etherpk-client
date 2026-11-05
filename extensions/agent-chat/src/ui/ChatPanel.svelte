@@ -524,7 +524,7 @@
             {#if chat.exchanges.length === 0}
                 <div class="ac-empty" data-testid="agent-chat-empty">
                     {#if chats.settings.connections.length === 0}
-                        <p>To chat, add a model connection: your own key for Anthropic, OpenAI, Gemini or OpenRouter, or a model running on this computer.</p>
+                        <p>To chat, add a model connection: your own key for Anthropic, OpenAI, Gemini or OpenRouter, or a model running on this device.</p>
                         <button type="button" class="gk-button gk-button--primary" onclick={openSettings} data-testid="agent-chat-add-connection">Add a model connection</button>
                     {:else}
                         <!-- The robot says what this is; its words are for a screen reader. -->

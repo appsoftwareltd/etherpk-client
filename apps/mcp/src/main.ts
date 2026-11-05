@@ -127,7 +127,7 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       List the synced graphs each logged-in account can reach, by name and id.
   ${CMD} serve --graph <id or name> [--sync-server <url>] [--no-semantic]
       Serve one synced graph to an agent over stdio. For Claude Code:
-        claude mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server <url> --graph <id>
+        claude mcp add --scope user etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server <url> --graph <id>
       Once "semantic setup" has run on this computer, serve also keeps a search-by-meaning
       store of the graph current (the agent's search tool gains mode: semantic) - pass
       --no-semantic to leave it off for this registration.
@@ -560,7 +560,7 @@ async function listGraphs(login: ServerCredentials, several: boolean): Promise<v
     }
     console.log('')
     console.log(`Serve one to an agent with:  ${CMD} serve${serverFlag} --graph <id>`)
-    console.log(`For Claude Code:             claude mcp add etherpk -- ${CMD} serve${serverFlag} --graph <id>`)
+    console.log(`For Claude Code:             claude mcp add --scope user etherpk -- ${CMD} serve${serverFlag} --graph <id>`)
 }
 
 async function semanticCommand(what: string | undefined): Promise<void> {

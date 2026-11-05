@@ -21,6 +21,7 @@ import type {
     PropertyValueInfo,
     SearchDocumentGroup,
     TaskHit,
+    TaskLabel,
     TaskQuery,
     TemplateEntry,
 } from '../index-db'
@@ -126,6 +127,8 @@ export interface RemoteGraphIndex {
      * keystroke: the Name Filter's typeahead reads the synchronous `allConcepts` snapshot.
      */
     tasks(query: TaskQuery, offset: number, limit: number): Promise<TaskPageResult>
+    /** Every task by document, line and text, unordered: where else a [[Task Reference]]'s task might be. */
+    taskLabels(): Promise<TaskLabel[]>
     /**
      * [[Semantic Search]]'s store and scan, as round trips (ADR 0076). The index holds vectors
      * and answers nearest-passage queries; it knows no model, so the caller embeds. A
@@ -1202,6 +1205,10 @@ export function createRemoteGraphIndex(
                 limit,
             }))
             return { hits: response.hits, hasMore: response.hasMore, total: response.total }
+        },
+        async taskLabels() {
+            const response = await request<Extract<IndexResponse, { type: 'task-labels' }>>((id) => ({ type: 'task-labels', id }))
+            return response.tasks
         },
         semantic: {
             async status(model) {

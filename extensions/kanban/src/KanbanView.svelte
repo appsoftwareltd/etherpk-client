@@ -26,7 +26,7 @@
     import { bulletLabel, parseTaskTextFilter } from "#lib/document/index-derive.js";
     import { findIndexedTask, isTaskLine, type TaskChanges, type TaskWrite, type TaskWriteOutcome, undoTaskWrite, writeTaskChanges } from "#lib/document/task-write.js";
     import type { DocumentStore } from "#lib/document/types.js";
-    import { TASK_COPY_LANE_REFERENCE, TASK_COPY_REFERENCE } from "#lib/document/commands/task-reference-commands.js";
+    import { TASK_COPY_LANE_REFERENCE, TASK_COPY_REFERENCE } from "#lib/document/commands/agent-instruction-commands.js";
     import DocumentView from "#lib/document/view/DocumentView.svelte";
     import type { ViewRef, ViewVisibility } from "#lib/layout/index.js";
     import { DESKTOP_MEDIA_QUERY } from "#lib/layout/breakpoint.js";
@@ -590,8 +590,8 @@
     }
 
     /**
-     * Copy a [[Lane Reference]] to one of the board's lanes, through the shared Command, which knows
-     * the graph, the clipboard and how to say so. The count is every task the lane holds, as its
+     * Copy an [[Agent Instruction]] for one of the board's lanes, through the shared Command, which
+     * knows the graph, the clipboard and how to say so. The count is every task the lane holds, as its
      * header shows, not only the cards loaded.
      */
     function copyLaneReference(status: TaskStatus): void {
@@ -1466,8 +1466,7 @@
     {#if agentHintShown && desktop.current}
         <p class="mx-3 mt-3 mb-0 flex items-center gap-2 text-sm text-(--gk-text-muted)" data-testid="kanban-agent-hint">
             <span class="min-w-0 flex-1">
-                An AI agent on your computer can work on these tasks through the EtherPK MCP server. Copy a card's reference to hand it
-                one.
+                An AI agent on your device can work on these tasks. Copy a card's agent instruction to hand it one.
                 <a
                     class="gk-link"
                     href="https://docs.etherpk.com/using-ai-agents-with-your-notes"
@@ -1544,7 +1543,7 @@
                     aria-labelledby="{uid}-{lane.status}"
                 >
                     <!-- py-1 around EtherPK's 32px icon button keeps the header the height it was. -->
-                    <!-- A right-click on the header, or Shift+F10 on its button, offers Copy lane reference and Move all to lane. -->
+                    <!-- A right-click on the header, or Shift+F10 on its button, offers Copy agent instruction and Move all to lane. -->
                     <header
                         class={["flex items-center justify-between gap-2 border-b border-(--gk-border-soft) py-1 pr-1.5", desktop.current ? "pl-3" : "pl-1.5"]}
                         data-testid="kanban-lane-header"
@@ -1808,15 +1807,15 @@
                                                 </button>
                                                 <!-- A sibling of the card, not inside it: a button cannot hold another. Out
                                                      of the Tab order, which moves card to card with the arrow keys; from the
-                                                     keyboard, the card's menu (Shift+F10) has Copy task reference. -->
+                                                     keyboard, the card's menu (Shift+F10) has Copy agent instruction. -->
                                                 {#if !carried && desktop.current}
                                                     <button
                                                         type="button"
                                                         tabindex={-1}
                                                         onclick={() => copyReference(card)}
                                                         class="absolute right-1.5 bottom-1.5 inline-flex size-7 items-center justify-center rounded-md text-(--gk-text-subtle) hover:bg-(--gk-control-hover) hover:text-(--gk-text-default) focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
-                                                        aria-label="Copy task reference"
-                                                        title="Copy task reference, to hand this task to an agent"
+                                                        aria-label="Copy agent instruction"
+                                                        title="Copy agent instruction, to hand this task to an agent"
                                                         data-testid="kanban-card-copy-reference"
                                                     >
                                                         <!-- In-repo constant markup from the icon table, never user content. -->
@@ -1824,7 +1823,7 @@
                                                         {@html iconSvg("task-reference")}
                                                     </button>
                                                 {:else if !desktop.current}
-                                                    <!-- The Phone Layout's way to the card's menu, which holds Copy task reference:
+                                                    <!-- The Phone Layout's way to the card's menu, which holds Copy agent instruction:
                                                          a long press raises it too, but nothing on screen says so. -->
                                                     <button
                                                         type="button"

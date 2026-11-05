@@ -20,6 +20,13 @@ describe('PDF device memory', () => {
         expect(createPdfDeviceMemory(storage).preferences().darkPages).toBe(true)
     })
 
+    it('says nothing about a finger drawing until a person changes it, then keeps it', () => {
+        const storage = fakeStorage()
+        expect(createPdfDeviceMemory(storage).preferences().fingerDraws).toBeUndefined()
+        createPdfDeviceMemory(storage).setPreferences({ fingerDraws: false })
+        expect(createPdfDeviceMemory(storage).preferences().fingerDraws).toBe(false)
+    })
+
     it('keeps zoom, crop and place per graph and per PDF', () => {
         const storage = fakeStorage()
         const memory = createPdfDeviceMemory(storage)

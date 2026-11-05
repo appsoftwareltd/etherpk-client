@@ -96,7 +96,7 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
 
     const actions: ChatActions = {
         openDocument: (name) => context.layout.openDocument(name),
-        openSettings: () => void context.commands.execute(AGENTS_SETTINGS_COMMAND).catch(() => context.notify('Open Settings, then Agents, to add a model connection.')),
+        openSettings: () => void context.commands.execute(AGENTS_SETTINGS_COMMAND, { extension: 'agent-chat' }).catch(() => context.notify('Open Settings, then Agents, to add a model connection.')),
         openInView(chatId) {
             chats.selected = chatId
             context.layout.reveal(CHATS_VIEW)

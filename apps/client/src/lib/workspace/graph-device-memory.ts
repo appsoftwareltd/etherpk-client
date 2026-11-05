@@ -29,7 +29,7 @@ import {
     getLastGraphId,
     type GraphRecord,
 } from '#lib/storage/index.js'
-import { FOLDER_PATH_KEY_PREFIX } from '#lib/storage/fs/folder-path.js'
+import { FOLDER_PATH_KEY_PREFIX, FOLDER_PATH_SKIPPED_KEY_PREFIX } from '#lib/storage/fs/folder-path.js'
 import { deleteGraphCache } from '#lib/sync/local-cache.js'
 import { deleteAssetCopies } from '#lib/storage/synced/asset-copies.js'
 import { deleteGraphRecords } from '#lib/extensions/graph-records.js'
@@ -49,6 +49,7 @@ export function graphDeviceMemoryKeys(graphId: string): string[] {
         `${SPELLING_LANGUAGES_KEY_PREFIX}${graphId}`,
         localProtectionKey(graphId),
         `${FOLDER_PATH_KEY_PREFIX}${graphId}`,
+        `${FOLDER_PATH_SKIPPED_KEY_PREFIX}${graphId}`,
         imageFootprintsKey(graphId),
     ]
 }

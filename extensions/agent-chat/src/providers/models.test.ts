@@ -91,7 +91,7 @@ describe('asking a provider for its models', () => {
 })
 
 describe('the addresses a connection may name', () => {
-    it('takes a model on this computer at a loopback address only', () => {
+    it('takes a model on this device at a loopback address only', () => {
         expect(addressProblem('local', 'http://localhost:11434/v1')).toBeNull()
         expect(addressProblem('local', 'http://127.0.0.1:1234/v1')).toBeNull()
         // The content policy cannot name an IPv6 address, so the page cannot reach [::1].

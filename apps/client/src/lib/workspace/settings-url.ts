@@ -15,6 +15,14 @@ import { SETTINGS_TABS, type SettingsTab } from './device-memory'
 
 export const SETTINGS_PARAM = 'settings'
 
+/**
+ * The address of a graph's Agents tab, for an [[Agent Instruction]] to send a person to. Bare of any
+ * other param: the dev flags that share the query string can carry a sync token.
+ */
+export function agentsSettingsUrl(origin: string, graphId: string): string {
+    return `${origin}/g/${encodeURIComponent(graphId)}${withSettingsTab('', 'agents')}`
+}
+
 /** The tab an address names, or null when it names none - or names something that is not a tab. */
 export function settingsTabFromUrl(url: { readonly searchParams: Pick<URLSearchParams, 'get'> }): SettingsTab | null {
     const raw = url.searchParams.get(SETTINGS_PARAM)

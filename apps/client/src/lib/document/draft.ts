@@ -182,6 +182,32 @@ export function whenDocumentText(
     })
 }
 
+/**
+ * Bring a concept's document into existence with no text, and return the text it then holds.
+ *
+ * For a command that keeps a [[Draft]] without anything typed into it, such as Add frontmatter or
+ * Protect: the concept decides the kind, as in `promoteDraft`, so a day becomes its [[Journal
+ * Entry]] and any other name a [[Page]]. A Filesystem Backend's page holds its `title` block. A
+ * document that came into existence meanwhile (a keystroke in the Draft, a second tab) is taken as
+ * it is, so nothing is overwritten.
+ */
+export async function createEmptyDocument(store: DocumentCreatingStore, concept: string): Promise<string> {
+    try {
+        if (isJournalConcept(concept)) await store.createJournal(concept, '')
+        else await store.createPage(concept, '')
+    } catch (error) {
+        // Already exists, or the store refused the name: `open` decides which.
+        let doc: EditorDocument
+        try {
+            doc = store.open(concept)
+        } catch {
+            throw error
+        }
+        return whenDocumentText(store, doc, concept)
+    }
+    return whenDocumentText(store, store.open(concept), concept)
+}
+
 export interface PromotedDraft {
     /** The concept that now has a page — the Draft's, or the one it adopted. */
     concept: string

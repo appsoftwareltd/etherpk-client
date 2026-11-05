@@ -1,6 +1,6 @@
 /**
  * The person's Agent Chat settings: their [[Model Connection]]s, whether new chats search the web,
- * and their Agent Instruction, sent to every model in every chat (ADR 0147). Kept as one record with the person (`personStorage`), so they follow the person to
+ * and their Chat Instruction, sent to every model in every chat (ADR 0147). Kept as one record with the person (`personStorage`), so they follow the person to
  * their devices through the account's Settings Vault and never belong to a graph: members of a
  * shared graph never see another member's connections or keys, and an agent the person signs in
  * with the Headless Client never gets the Settings Vault (ADR 0148).
@@ -46,7 +46,7 @@ export interface AgentChatSettings {
     instruction: string
 }
 
-/** The most an Agent Instruction may hold, so it never crowds out the notes it is sent with. */
+/** The most a Chat Instruction may hold, so it never crowds out the notes it is sent with. */
 export const INSTRUCTION_LIMIT = 4000
 
 export const EMPTY_SETTINGS: AgentChatSettings = { connections: [], defaultConnection: null, webSearchByDefault: false, instruction: '' }
@@ -84,7 +84,7 @@ export function readSettings(storage: Pick<ExtensionPersonStorage, 'get'>): Agen
     }
 }
 
-/** The settings with the Agent Instruction as written, cut at its limit. */
+/** The settings with the Chat Instruction as written, cut at its limit. */
 export function withInstruction(settings: AgentChatSettings, instruction: string): AgentChatSettings {
     return { ...settings, instruction: instruction.slice(0, INSTRUCTION_LIMIT) }
 }

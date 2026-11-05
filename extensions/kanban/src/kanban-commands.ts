@@ -81,7 +81,7 @@ export type KanbanCardTarget = {
     fromKeyboard?: true
 }
 
-/** A lane's header or folded strip on a board, the thing its menu (Copy lane reference, Move all to lane) is raised on, acting through that board. */
+/** A lane's header or folded strip on a board, the thing its menu (Copy agent instruction, Move all to lane) is raised on, acting through that board. */
 export type KanbanLaneTarget = {
     kind: 'kanban.lane'
     /** The board's own id, as it registered itself. */
@@ -257,7 +257,7 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
     })
     contextMenu.register({ id: KANBAN_CARD_OPEN, label: OPEN_IN_TASK_EDITOR, command: KANBAN_CARD_OPEN, order: 1, when: isCardTarget })
     // The same on any task the Client raises a menu on, first, ahead of the Client's own task rows
-    // (Copy task reference from 85).
+    // (Copy agent instruction from 85).
     commands.register(KANBAN_OPEN_IN_TASK_EDITOR, (arg) => {
         const task = contextMenu.taskOf(arg as MenuTarget)
         if (task) deps.openTaskEditor({ kind: 'edit', document: task.document, line: task.line, text: task.label })
@@ -279,7 +279,7 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         const found = reach(arg)
         found?.actions.copyReference(found.target.card)
     })
-    contextMenu.register({ id: KANBAN_CARD_COPY_REFERENCE, label: 'Copy task reference', command: KANBAN_CARD_COPY_REFERENCE, order: 4, when: isCardTarget })
+    contextMenu.register({ id: KANBAN_CARD_COPY_REFERENCE, label: 'Copy agent instruction', command: KANBAN_CARD_COPY_REFERENCE, order: 4, when: isCardTarget })
 
     // One row per lane, leaving out the card's own, then Archive, which takes the card off the
     // board (ADR 0167). The first row shown heads the group and carries its separator.
@@ -302,7 +302,7 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         })
     }
 
-    // Copy lane reference: the lane named for an agent to work through, copied by the board that
+    // Copy agent instruction: the lane named for an agent to work through, copied by the board that
     // raised the menu, which knows its concept. Offered on an empty lane too: an agent can be asked
     // to watch a lane, or to fill it, and the reference stays good as tasks come and go.
     commands.register(KANBAN_LANE_COPY_REFERENCE, (arg) => {
@@ -311,9 +311,9 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
     })
     contextMenu.register({
         id: KANBAN_LANE_COPY_REFERENCE,
-        label: 'Copy lane reference',
+        label: 'Copy agent instruction',
         command: KANBAN_LANE_COPY_REFERENCE,
-        // The icon of the Client's Copy task reference row, so the two read as one family.
+        // The icon of the same row on a task, so the two read as one family.
         icon: 'task-reference',
         order: 1,
         when: isLaneTarget,
@@ -342,7 +342,7 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         label: 'Move all to lane…',
         command: KANBAN_LANE_MOVE_ALL,
         order: 2,
-        // Apart from Copy lane reference above it: this one writes.
+        // Apart from Copy agent instruction above it: this one writes.
         separatorBefore: true,
         when: (target) => isLaneTarget(target) && target.count > 0,
     })

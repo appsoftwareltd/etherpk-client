@@ -47,13 +47,32 @@ function isSection(value: unknown): value is SettingsSection {
     return typeof section?.id === 'string' && (section.tab === 'agents' || section.tab === 'extension') && typeof section.mount === 'function'
 }
 
+/** What an extension's module exports as its settings sections, if it is switched on and running. */
+function exportedSections(entry: Catalogue['extensions'][number], deps: Pick<SettingsSectionDeps, 'switches' | 'loadedModule'>): unknown {
+    if (!deps.switches.isOn(entry.id)) return []
+    const module = entry.source === 'compiled-in' ? entry.module : (deps.loadedModule?.(entry.id) ?? null)
+    return module?.settingsSections ?? []
+}
+
+/** The switched-on extensions with a section in `tab`, each once, in the catalogue's order. */
+export function extensionsWithSections(
+    tab: SettingsSectionTab,
+    deps: Pick<SettingsSectionDeps, 'catalogue' | 'switches' | 'loadedModule'>,
+): { id: string; displayName: string }[] {
+    return deps.catalogue.extensions
+        .filter((entry) => {
+            const exported = exportedSections(entry, deps)
+            return Array.isArray(exported) && exported.some((section) => isSection(section) && section.tab === tab)
+        })
+        .map((entry) => ({ id: entry.id, displayName: entry.package.manifest.displayName }))
+}
+
 /** The sections the switched-on extensions add to `tab`, in the catalogue's order. */
 export function settingsSectionsFor(tab: SettingsSectionTab, deps: SettingsSectionDeps): ExtensionSettingsSection[] {
     const out: ExtensionSettingsSection[] = []
     for (const entry of deps.catalogue.extensions) {
-        if ((deps.extensionId !== undefined && entry.id !== deps.extensionId) || !deps.switches.isOn(entry.id)) continue
-        const module = entry.source === 'compiled-in' ? entry.module : (deps.loadedModule?.(entry.id) ?? null)
-        const exported: unknown = module?.settingsSections ?? []
+        if (deps.extensionId !== undefined && entry.id !== deps.extensionId) continue
+        const exported = exportedSections(entry, deps)
         if (!Array.isArray(exported)) continue
         for (const section of exported) {
             if (!isSection(section)) {

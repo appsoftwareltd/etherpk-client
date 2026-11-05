@@ -48,7 +48,7 @@ export interface RunTurnInput {
     prepareImage(image: Blob): Promise<Blob>
     /** Today as `YYYY-MM-DD`, at the moment of sending. */
     today: string
-    /** The person's Agent Instruction, sent with every question; empty for none. */
+    /** The person's Chat Instruction, sent with every question; empty for none. */
     agentInstruction?: string
     /** Told when the answer grows, a tool chip changes or the answer ends, so the chat is kept. */
     changed(): void

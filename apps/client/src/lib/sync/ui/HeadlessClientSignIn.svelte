@@ -1,6 +1,6 @@
 <script lang="ts">
     /**
-     * Signing in the agent's computer, the one its Headless Client runs on, to one Sync Server,
+     * Signing in the agent's device, the one its Headless Client runs on, to one Sync Server,
      * once (ADR 0072, ADR 0132): an Agent Setup Code, and the `login` command that carries it. Shown
      * in a graph's Agents tab, as its first step, and on the Graphs page's Agents tab, where no
      * graph is open (ADR 0147): signing in belongs to the account, not to one graph. A browser
@@ -27,7 +27,7 @@
         headlessClient: string;
         /** Ask the server for an Agent Setup Code over the managed connection; null on a custom server (ADR 0132). */
         createSetupCode: (() => Promise<{ code: string; expiresAt: string }>) | null;
-        /** The first of numbered steps: "1. Sign in the agent's computer". */
+        /** The first of numbered steps: "1. Sign in the agent's device". */
         numbered?: boolean;
     } = $props();
 
@@ -45,7 +45,7 @@
     let copyError = $state<string | null>(null);
     onDestroy(() => clearTimeout(setupCodeTimer));
 
-    const heading = $derived(numbered ? "1. Sign in the agent's computer" : "Sign in the agent's computer");
+    const heading = $derived(numbered ? "1. Sign in the agent's device" : "Sign in the agent's device");
 
     async function makeSetupCode() {
         const create = createSetupCode;
@@ -96,14 +96,14 @@
 
 {#if createSetupCode === null}
     <p>
-        <span class="font-medium">{heading}</span>, once per computer. Create an Agent Setup Code on
+        <span class="font-medium">{heading}</span>, once per device. Create an Agent Setup Code on
         <a href={tokensPageUrl(serverBaseUrl)} target="_blank" rel="noreferrer" class={link} data-testid="agents-setup-on-portal">the Sync Server's Access tokens page</a
-        >, under <strong>Set up an agent</strong>, and run the command it shows on the agent's computer. The Headless Client trades the code for an Agent Token limited to the
+        >, under <strong>Set up an agent</strong>, and run the command it shows on the agent's device. The Headless Client trades the code for an Agent Token limited to the
         routes an agent needs, then asks for Device Approval: confirm the matching code in EtherPK on any device where your Encryption Keys are unlocked.
     </p>
 {:else}
     <p>
-        <span class="font-medium">{heading}</span>, once per computer. Create an Agent Setup Code and run the command on the agent's computer. The Headless Client trades the code
+        <span class="font-medium">{heading}</span>, once per device. Create an Agent Setup Code and run the command on the agent's device. The Headless Client trades the code
         for an Agent Token limited to the routes an agent needs, then asks for Device Approval: confirm the matching code in EtherPK on any device where your Encryption Keys are
         unlocked.
     </p>
@@ -111,7 +111,7 @@
 {#if command}
     <div class="flex items-start gap-2">
         <pre
-            class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
+            class="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
             data-testid="agents-login-command">{command}</pre>
         <button
             type="button"

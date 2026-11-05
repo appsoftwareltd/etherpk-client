@@ -42,7 +42,7 @@ export interface GraphServices {
     /** Show a notice in the Client's rail, with one button when `options.action` names one. */
     notify(text: string, options?: NoticeOptions): void
     /**
-     * The task a Context Menu target stands on (`menuTargetTask` in `task-reference-commands.ts`), or
+     * The task a Context Menu target stands on (`menuTargetTask` in `agent-instruction-commands.ts`), or
      * null: what `context.contextMenu.taskOf` answers.
      */
     menuTask(target: unknown): MenuTask | null

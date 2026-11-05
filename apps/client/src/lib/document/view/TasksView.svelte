@@ -462,7 +462,7 @@
     }
 
     /**
-     * What a row's context menu acts on: the task the row shows, which **Copy task reference**
+     * What a row's context menu acts on: the task the row shows, which **Copy agent instruction**
      * copies and the status and priority rows write to. Ticked as the row shows it, a tick still
      * waiting on the index included, so the status rows leave out the one on screen; and a row's
      * write is held as a tick is, so the checkbox shows it before the index does.
@@ -866,7 +866,7 @@
                             {@const tags = parseTaskTags(hit.text)}
                             <!-- The words without the tag run or the Free Tags, which show as pills (ADR 0166). -->
                             {@const shown = taskDisplay(hit.text)}
-                            <!-- A right-click, or a long press, opens the row's menu: Copy task reference.
+                            <!-- A right-click, or a long press, opens the row's menu: Copy agent instruction.
                                  touch-action and user-select keep the long press from a phone's own callout. -->
                             <li
                                 class="touch-manipulation select-none rounded-md py-1 hover:bg-(--gk-surface-2)"

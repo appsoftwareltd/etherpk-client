@@ -1,7 +1,8 @@
 /**
  * Where a Filesystem graph's folder sits on **this device**, as an absolute path - what "Copy
- * full file path" on a document tab joins the file's name onto, so the path can be handed to a
- * tool outside the browser (an AI agent, an editor) that edits the file directly.
+ * full file path" on a document tab and an [[Agent Instruction]] join the file's name onto, so the
+ * path can be handed to a tool outside the browser (an AI agent, an editor) that edits the file
+ * directly.
  *
  * The browser does not know this. The File System Access API hands back a
  * `FileSystemDirectoryHandle` whose only name is the folder's leaf (`notes`, never
@@ -17,6 +18,8 @@
 import type { Subdir } from './directory-adapter'
 
 export const FOLDER_PATH_KEY_PREFIX = 'etherpk-folder-path:'
+/** Set once a person has declined to give the path for an [[Agent Instruction]]. */
+export const FOLDER_PATH_SKIPPED_KEY_PREFIX = 'etherpk-folder-path-skipped:'
 
 /** The remembered absolute path of the graph's folder on this device, or null when none is set. */
 export function readGraphFolderPath(
@@ -46,6 +49,44 @@ export function writeGraphFolderPath(
         else storage?.setItem(key, trimmed)
     } catch {
         /* storage blocked - the caller still has the value for this copy */
+    }
+}
+
+/**
+ * The folder's path for an [[Agent Instruction]]: the remembered one, or `ask` for it once. The
+ * instruction works without it, since an agent can find a file by its place in the folder, so a
+ * person who declines is not asked again on this device. Settings can still set a path later.
+ */
+export async function folderPathOrAskOnce(
+    graphId: string,
+    ask: () => Promise<string | null>,
+    storage: Storage | undefined = globalThis.localStorage,
+): Promise<string | null> {
+    const known = readGraphFolderPath(graphId, storage)
+    if (known) return known
+    if (folderPathSkipped(graphId, storage)) return null
+    const answer = (await ask())?.trim()
+    if (answer) {
+        writeGraphFolderPath(graphId, answer, storage)
+        return answer
+    }
+    rememberFolderPathSkipped(graphId, storage)
+    return null
+}
+
+function folderPathSkipped(graphId: string, storage: Storage | undefined): boolean {
+    try {
+        return Boolean(storage?.getItem(`${FOLDER_PATH_SKIPPED_KEY_PREFIX}${graphId}`))
+    } catch {
+        return false
+    }
+}
+
+function rememberFolderPathSkipped(graphId: string, storage: Storage | undefined): void {
+    try {
+        storage?.setItem(`${FOLDER_PATH_SKIPPED_KEY_PREFIX}${graphId}`, '1')
+    } catch {
+        /* storage blocked - the person is asked again next time, and the copy still goes ahead */
     }
 }
 

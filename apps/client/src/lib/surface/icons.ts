@@ -73,6 +73,7 @@ export const ICON_PATHS: Record<string, string> = {
     /** Corners pointing in: come back from full screen. */
     'pdf-full-screen-exit': '<path d="M6 2.5V6H2.5M10 2.5V6h3.5M6 13.5V10H2.5M10 13.5V10h3.5"/>',
     'pdf-select': '<path d="M5.5 2.5c1.5 0 2.5.6 2.5 2v7c0 1.400-1 2-2.500 2M10.500 2.500c-1.500 0-2.500.6-2.500 2v7c0 1.400 1 2 2.500 2M6 8h4"/>',
+    'pdf-hand': '<path d="M12 7.33V4a1.33 1.33 0 0 0-2.67 0M9.33 6.67V2.67a1.33 1.33 0 0 0-2.67 0v1.33M6.67 7V4a1.33 1.33 0 0 0-2.67 0v5.33M12 5.33a1.33 1.33 0 1 1 2.67 0v4a5.33 5.33 0 0 1-5.33 5.33H8c-1.87 0-3-.57-3.99-1.56l-2.4-2.4a1.33 1.33 0 0 1 1.89-1.88L4.67 10"/>',
     'pdf-page-previous': '<path d="M10 3.5L5.5 8l4.5 4.5"/>',
     'pdf-page-next': '<path d="M6 3.5L10.5 8 6 12.5"/>',
     'pdf-pen': '<path d="M11 2.5l2.5 2.5-8 8L2.5 13.5 3 10.5z"/><path d="M9.5 4l2.5 2.5"/>',

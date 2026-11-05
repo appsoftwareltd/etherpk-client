@@ -176,7 +176,7 @@ describe("the model's turn in an Agent Chat (ADR 0147)", () => {
         expect(run.exchange.tools.map((tool) => tool.status)).toEqual(['done'])
     })
 
-    it("sends the person's Agent Instruction in every exchange's instructions, under any grant", async () => {
+    it("sends the person's Chat Instruction in every exchange's instructions, under any grant", async () => {
         const model = new MockLanguageModelV4({ doStream: says('Ok.') })
         await runTurn(input(model, { agentInstruction: 'Answer in British English.', exchange: exchange({ grant: 'nothing' }) }))
         expect(JSON.stringify(model.doStreamCalls[0].prompt[0])).toContain('Answer in British English.')

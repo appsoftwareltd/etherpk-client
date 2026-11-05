@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { registerTaskReferenceCommands, TASK_COPY_LANE_REFERENCE } from '#lib/document/commands/task-reference-commands.js'
+import { registerAgentInstructionCommands, TASK_COPY_LANE_REFERENCE } from '#lib/document/commands/agent-instruction-commands.js'
 
 import packageJson from '../package.json'
 import { KANBAN_VIEW_KIND, KANBAN_WHOLE_KIND } from './board-model'
@@ -10,13 +10,13 @@ import { kanbanContext } from './testing'
 // Headless Client, which has no manifest, can read it. This keeps that address under the segments
 // this manifest declares, so a reference names the board a person would open.
 
-/** The reference the Client's Copy lane reference writes for a lane of the board over `concept`. */
+/** The reference the Client's Copy agent instruction writes for a lane of the board over `concept`. */
 async function copiedReference(concept: string | null): Promise<string> {
     const { services } = kanbanContext()
     const copied: string[] = []
-    registerTaskReferenceCommands(services.commands, services.contributions, {
+    registerAgentInstructionCommands(services.commands, services.contributions, {
         graphId: () => 'g-1',
-        graphName: () => 'Home',
+        reach: async () => ({ kind: 'synced', graphName: 'Home', agentsUrl: 'https://app.example.com/g/g-1?settings=agents' }),
         writeClipboard: async (text) => void copied.push(text),
         notify: () => {},
     })

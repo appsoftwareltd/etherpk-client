@@ -25,7 +25,7 @@
 
     import { Dialog } from "#lib/components/dialog.js";
     import { todayISO } from "#lib/document/calendar/month-grid-core.js";
-    import { TASK_COPY_REFERENCE } from "#lib/document/commands/task-reference-commands.js";
+    import { TASK_COPY_REFERENCE } from "#lib/document/commands/agent-instruction-commands.js";
     import { bulletLabel } from "#lib/document/index-derive.js";
     import { addTaskToJournal } from "#lib/document/task-placement.js";
     import { assetReferencesIn, newTaskLines, taskLineWithFreeTag, taskLineWithTitle } from "#lib/document/task-structure.js";
@@ -606,7 +606,7 @@
                              labels stay, and the row wraps on a narrow screen rather than dropping them. -->
                         <button type="button" class="gk-button" onclick={copyReference} disabled={!task} data-testid="task-editor-copy-reference">
                             {@render actionIcon("task-reference")}
-                            Copy task reference
+                            Copy agent instruction
                         </button>
                         <button type="button" class="gk-button" onclick={() => void archive()} disabled={!task} data-testid="task-editor-archive">
                             {@render actionIcon("archive")}

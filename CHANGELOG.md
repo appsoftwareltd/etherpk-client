@@ -5,6 +5,37 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.19.2 - 2026-11-05
+
+### Client
+
+- **Copy agent instruction.** **Copy task reference** and **Copy lane reference** are now **Copy agent
+  instruction**, on tasks and on Kanban lanes, and what they copy depends on where the graph is. On a
+  local graph it names the task's file, so an agent can work from it with or without the Headless
+  Client. The first copy asks where the graph's folder is, and you can skip that. On a synced graph it
+  tells an agent with no Headless Client to stop and send you to the graph's **Agents** settings. On a
+  graph kept in the browser, it says an agent cannot reach it, and that tab says what to do instead.
+- **Agents settings.** The **Agents** tab has a sub-tab for each way of working with an agent: **MCP Server**,
+  for an AI agent on your device, and **Agent Chat**, for asking a language model from inside EtherPK. The Claude
+  Code command now reaches a graph from any folder, each graph registers under a name of its own, and VS Code has
+  the `mcp.json` block it reads. The EtherPK skill is marked optional, since only making a new graph folder needs it.
+- **Chat instruction.** The **Agent instruction** setting in Agent Chat is now called **Chat instruction**.
+  What you wrote there stays as it was.
+- **Protect a page before you type in it.** **Protect…** on a page you have opened but not typed
+  into asks whether to create it. **Create and protect** creates the page empty and encrypts it, so
+  what you type into it next is protected from the first keystroke.
+- **Turning a PDF's pages, reading page by page.** A tap at either side of the screen turns the page however far
+  it is zoomed or moved, and the side flashes so you can see how far it reaches. A new page starts at its top,
+  centred across the view, where a zoomed page used to start at its left edge.
+- **Hand tool for PDFs.** With a mouse, **Hand** in the toolbar lets you drag a zoomed page around. A click still
+  opens a link.
+- **A placed signature stays on the page.** It stays when a tablet turns and the layout changes, and on a phone
+  while another document is on screen, until you save a copy and close the tab or discard it.
+- **Fixes.**
+  - On a touch screen, a link or a form field in a PDF answers the first tap after a tap elsewhere on the page.
+  - **Draw with finger** is remembered on the device once you change it, and is on by default on a phone held
+    sideways.
+
 ## 0.19.1 - 2026-11-05
 
 ### Client

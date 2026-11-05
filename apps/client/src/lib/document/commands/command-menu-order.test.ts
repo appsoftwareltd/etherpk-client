@@ -10,7 +10,7 @@ import { registerLinkCommands } from './link-commands'
 import { registerProtectionCommands } from './protection-commands'
 import { registerQuickNotesCommands } from './quick-notes-commands'
 import { registerSpellingCommands } from './spelling-commands'
-import { registerTaskReferenceCommands } from './task-reference-commands'
+import { registerAgentInstructionCommands } from './agent-instruction-commands'
 import { registerTemplateCommands } from './template-commands'
 
 /** Dependencies no registration reads: only the rows' `when` and the Commands call them. */
@@ -23,7 +23,7 @@ function firstPartyRows() {
     registerSpellingCommands(commands, contributions)
     registerEditorCommands(commands, contributions)
     registerLinkCommands(commands, contributions)
-    registerTaskReferenceCommands(commands, contributions, unused)
+    registerAgentInstructionCommands(commands, contributions, unused)
     registerQuickNotesCommands(commands, contributions, unused)
     registerProtectionCommands(commands, contributions, unused)
     registerFrontmatterCommands(commands, contributions, unused)
@@ -40,7 +40,7 @@ function firstPartyRows() {
  * the modules register in the workspace's order (GraphWorkspace.svelte), which is not the menu's.
  * A row whose `when` is false at the caret is left out, and the rest keep this order. An
  * extension's rows fall in among these by their own `order`, and the extension's tests say where
- * (the Kanban Board's `Open Kanban` between Copy file path and Copy task reference, maps' `Map`
+ * (the Kanban Board's `Open Kanban` between Copy file path and Copy agent instruction, maps' `Map`
  * straight after Table).
  */
 describe('the Command Menu order', () => {
@@ -75,7 +75,7 @@ describe('the Command Menu order', () => {
             'Table: Remove columns right',
             'Table: Remove columns left',
             'Copy file path',
-            'Copy task reference',
+            'Copy agent instruction',
             'Toggle bookmark',
             "Move quick notes to today's journal",
             'Add frontmatter',
@@ -115,7 +115,7 @@ describe('the Command Menu order', () => {
             'Table: Remove columns right',
             'Table: Remove columns left',
             'Copy file path',
-            'Copy task reference',
+            'Copy agent instruction',
         ])
     })
 })

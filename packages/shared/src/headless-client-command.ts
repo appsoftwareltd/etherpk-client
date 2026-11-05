@@ -18,7 +18,7 @@ export function headlessClientPackage(version: string | null): string {
 }
 
 /**
- * The one-time sign-in on the agent's computer (ADR 0132), the whole sign-in: `login` trades the
+ * The one-time sign-in on the agent's device (ADR 0132), the whole sign-in: `login` trades the
  * Agent Setup Code for an Agent Token and then asks for Device Approval.
  */
 export function headlessClientLoginCommand(serverBaseUrl: string, headlessClient: string, setupCode: string): string {

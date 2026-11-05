@@ -1107,7 +1107,7 @@ describe('task references', () => {
         expect((await readDocument(g, 'Shed')).text).toContain('- [x] Sharpen the saw')
     })
 
-    it('is read from the text Copy task reference writes, and from the web address an earlier version wrote', async () => {
+    it('is read from the text Copy agent instruction writes, and from the web address an earlier version wrote', async () => {
         const { g, reference } = await withTask('g-ref-forms')
         const copied = ['EtherPK task from the graph "Work" (g)', 'Task: Send the quote', `Reference: ${reference}`, 'This is not a web address.'].join('\n')
         expect(await readTask(g, { reference: copied })).toMatchObject({ line: 2, text: 'Send the quote' })

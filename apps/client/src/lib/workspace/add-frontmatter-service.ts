@@ -11,8 +11,7 @@ import { isolateHistory } from '@codemirror/commands'
 import type { EditorState, TransactionSpec } from '@codemirror/state'
 
 import { type AddableKey, type AddedFrontmatter, withAddedFrontmatter } from '#lib/document/frontmatter/add-frontmatter.js'
-import { isJournalConcept } from '#lib/document/journal-concept.js'
-import { canCreateDocuments } from '#lib/document/draft.js'
+import { canCreateDocuments, createEmptyDocument } from '#lib/document/draft.js'
 import { DocumentNotFoundError } from '#lib/document/types.js'
 import { editorHistory } from '#lib/document/view/editor-history.js'
 import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
@@ -54,8 +53,7 @@ export async function readForAddFrontmatter(store: FrontmatterStore, concept: st
 export async function addFrontmatterThroughStore(store: FrontmatterStore, concept: string, keys: readonly AddableKey[]): Promise<AddedFrontmatter> {
     if (!exists(store, concept)) {
         if (!canCreateDocuments(store)) throw new Error(`“${concept}” has no document yet, and this graph cannot create one here.`)
-        if (isJournalConcept(concept)) await store.createJournal(concept, '')
-        else await store.createPage(concept, '')
+        await createEmptyDocument(store, concept)
     }
     await store.whenReady?.(concept)
     // Edits still inside a Filesystem store's autosave are written first, so the listing the

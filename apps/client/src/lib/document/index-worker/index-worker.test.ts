@@ -391,6 +391,23 @@ describe('index core', () => {
         ])
     })
 
+    it('lists every task by document, line and text, whatever its status', async () => {
+        const { host } = persistentHost()
+        const core = createIndexCore(host)
+        await core.handle({ type: 'open', graphId: 'g1' })
+        await rebuild(core, [doc('Garden', '- note\n- [ ] #P1 water the beans\n- [x] pick the peas'), doc('Kitchen', '- [x] #A sweep the floor')])
+
+        const [response] = await core.handle({ type: 'task-labels', id: 8 })
+
+        expect(response).toMatchObject({ type: 'task-labels', id: 8 })
+        const tasks = (response as Extract<IndexResponse, { type: 'task-labels' }>).tasks
+        expect([...tasks].sort((a, b) => a.label.localeCompare(b.label))).toEqual([
+            { document: 'Kitchen', line: 0, label: '#A sweep the floor' },
+            { document: 'Garden', line: 1, label: '#P1 water the beans' },
+            { document: 'Garden', line: 2, label: 'pick the peas' },
+        ])
+    })
+
     it('emits a small revisioned delta for one changed document', async () => {
         const { host } = persistentHost()
         const core = createIndexCore(host)

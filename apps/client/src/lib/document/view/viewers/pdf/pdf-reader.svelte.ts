@@ -19,6 +19,8 @@ import { loadPdfLibrary, openPdf, pdfHash, type PdfDocument, type PdfLib, type P
 import { pdfL10n } from './pdf-l10n'
 import { listenForPinch, wheelZoomFactor } from './pdf-pinch'
 import { listenForTextDrag } from './pdf-text-drag'
+import { dropSignatures, heldSignatures, holdSignatures, signaturesKey, type HeldSignatures } from './held-signatures.svelte'
+import { listenForHandPan } from './pdf-hand-pan'
 import { frameOf, PdfOverlays, type OverlayHost, type OverlayPage, type PdfTool, type PlacedSignature } from './pdf-overlay'
 import { printPdf } from './pdf-print'
 import { browserKeepScreenOn, type KeepScreenOn } from './wake-lock'
@@ -36,7 +38,8 @@ const DOUBLE_TAP_PX = 32
 /** A touch moved further than this is a scroll, not a tap. */
 const TAP_SLOP_PX = 10
 const SWIPE_PX = 48
-const EDGE_TAP_SHARE = 0.22
+/** How much of the view's width, from each side, turns the page at a tap. */
+export const EDGE_TAP_SHARE = 0.22
 /** How long the floating page count stays once the page in view changes, where it is the only one. */
 const PAGE_COUNT_MS = 5000
 /** Something on the page that answers a tap for itself. */
@@ -69,12 +72,12 @@ export interface FindResult {
     state: 'idle' | 'pending' | 'found' | 'not-found' | 'no-text'
 }
 
-/** A phone: the layout where the reader hides the app's chrome while reading. */
-function isPhoneWidth(): boolean {
-    return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 640px)').matches
+/** A phone, held either way up. */
+function isPhone(): boolean {
+    return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 640px), (max-height: 640px) and (pointer: coarse)').matches
 }
 
-function isTouchFirst(): boolean {
+export function isTouchFirst(): boolean {
     return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
 }
 
@@ -101,7 +104,7 @@ export class PdfReader {
 
     tool = $state<PdfTool>('none')
     /** On a phone a finger is all a person has to draw with. A tablet keeps it for scrolling, for a stylus. */
-    fingerDraws = $state(isPhoneWidth())
+    private readonly fingerDrawsByDefault = isPhone()
     /** The page in view has been read and holds no text to select, as a scan without a text layer does. */
     pageWithoutText = $state(false)
     /** On a phone, whether the tool's colours and thicknesses are out over the page. */
@@ -113,7 +116,6 @@ export class PdfReader {
 
     annotations = $state.raw<PdfAnnotation[]>([])
     bookmarks = $state.raw<PdfBookmark[]>([])
-    signatures = $state.raw<PlacedSignature[]>([])
     stateProblem = $state<string | null>(null)
     canUndo = $state(false)
     canRedo = $state(false)
@@ -125,6 +127,8 @@ export class PdfReader {
     immersive = $state(false)
     /** The floating page count is up. Only where the toolbar is on the Command Bar does it ever go. */
     pageCountShowing = $state(false)
+    /** The side a tap has just turned the page from. A new object for each tap, so each one flashes. */
+    turnFlash = $state.raw<{ side: 'previous' | 'next' } | null>(null)
     printing = $state<{ done: number; total: number } | null>(null)
     printError = $state<string | null>(null)
 
@@ -408,6 +412,7 @@ export class PdfReader {
         if (!this.viewer) return
         const clamped = Math.min(this.pageCount, Math.max(1, Math.round(pageNumber)))
         this.viewer.currentPageNumber = clamped
+        this.alignTurnedPage()
     }
 
     /** Open a page named by a link, such as `#page=12`. Held until the pages exist. */
@@ -416,12 +421,28 @@ export class PdfReader {
         else this.linkedPage = pageNumber
     }
 
-    nextPage(): void {
-        this.viewer?.nextPage()
+    /** False when there is no page to go to. */
+    nextPage(): boolean {
+        const turned = this.viewer?.nextPage() ?? false
+        if (turned) this.alignTurnedPage()
+        return turned
     }
 
-    previousPage(): void {
-        this.viewer?.previousPage()
+    /** False when there is no page to go to. */
+    previousPage(): boolean {
+        const turned = this.viewer?.previousPage() ?? false
+        if (turned) this.alignTurnedPage()
+        return turned
+    }
+
+    /**
+     * Page by page, a page arrives at its top with its middle in the middle of the view. pdf.js would
+     * put a page wider than the view at its top left, which shows the margin and half a line.
+     */
+    private alignTurnedPage(): void {
+        const container = this.container
+        if (!container || !this.preferences.pageByPage) return
+        container.scrollTo({ left: (container.scrollWidth - container.clientWidth) / 2, top: 0 })
     }
 
     private rememberZoom(): void {
@@ -502,6 +523,7 @@ export class PdfReader {
         window.addEventListener('wheel', (event) => event.composedPath().includes(tab) && this.onWheel(event), { passive: false, capture: true, signal })
         // Safari's own page zoom, for the same reason.
         tab.addEventListener('gesturestart', (event) => event.preventDefault(), { signal })
+        listenForHandPan(container, () => this.tool === 'hand', signal)
         container.addEventListener('pointerdown', (event) => this.onTapStart(event), { signal })
         container.addEventListener('pointerup', (event) => this.onTapEnd(event), { signal })
         // The tap that turned the page ends there, or its click lands on whatever the next page has under it.
@@ -513,7 +535,16 @@ export class PdfReader {
             },
             { signal, passive: false },
         )
-        document.addEventListener('selectionchange', () => this.onSelectionChange(), { signal })
+        document.addEventListener(
+            'selectionchange',
+            () => {
+                this.onSelectionChange()
+                // A task of its own, to come after pdf.js's listener for this event, which puts the mark back.
+                setTimeout(() => this.clearIdleSelecting())
+            },
+            { signal },
+        )
+        container.addEventListener('mouseup', () => this.clearIdleSelecting(), { signal })
     }
 
     private onWheel(event: WheelEvent): void {
@@ -543,7 +574,8 @@ export class PdfReader {
         this.onPointerRelease()
         const start = this.tapStart
         this.tapStart = null
-        if (!start || this.tool !== 'none' || (event.pointerType !== 'touch' && event.pointerType !== 'pen')) return
+        // The Hand is for a mouse, so to a touch it is the same as no tool.
+        if (!start || (this.tool !== 'none' && this.tool !== 'hand') || (event.pointerType !== 'touch' && event.pointerType !== 'pen')) return
         const dx = event.clientX - start.x
         const dy = event.clientY - start.y
         const tapped = Math.hypot(dx, dy) <= TAP_SLOP_PX
@@ -554,23 +586,31 @@ export class PdfReader {
     }
 
     /**
-     * A tap in the outer part of the view, at any height, does what the button under it does. At once,
-     * so that quick taps turn quickly: a double-tap zooms only away from these. It is the page's own
-     * tap that a selection, a link or a form field keeps, and a page zoomed past the screen moves instead.
+     * A tap in the outer part of the view does what the button under it does, at any height and however
+     * far the page is zoomed or moved, because the sides are the screen's and not the page's. At once, so
+     * that quick taps turn quickly: a double-tap zooms only away from these. Only what answers a tap for
+     * itself keeps it, as a selection does to clear. The side flashes when the page turns.
      */
     private turnAtEdge(event: PointerEvent): boolean {
-        const container = this.container
-        if (!container || !this.preferences.pageByPage || !this.pageFitsScreen() || this.hasSelection) return false
-        if (event.target instanceof Element && event.target.closest(ANSWERS_A_TAP)) return false
-        const box = container.getBoundingClientRect()
-        const share = (event.clientX - box.left) / box.width
-        if (share >= EDGE_TAP_SHARE && share <= 1 - EDGE_TAP_SHARE) return false
+        const side = this.sideTapped(event)
+        if (!side) return false
         clearTimeout(this.singleTapTimer)
         this.lastTap = null
         this.turnedAtEdge = true
-        if (share < EDGE_TAP_SHARE) this.previousPage()
-        else this.nextPage()
+        const turned = side === 'previous' ? this.previousPage() : this.nextPage()
+        if (turned) this.turnFlash = { side }
         return true
+    }
+
+    /** The side of the view a tap landed in, unless the tap belongs to something else. */
+    private sideTapped(event: PointerEvent): 'previous' | 'next' | null {
+        const container = this.container
+        if (!container || !this.preferences.pageByPage || this.hasSelection) return null
+        if (event.target instanceof Element && event.target.closest(ANSWERS_A_TAP)) return null
+        const box = container.getBoundingClientRect()
+        const share = (event.clientX - box.left) / box.width
+        if (share < EDGE_TAP_SHARE) return 'previous'
+        return share > 1 - EDGE_TAP_SHARE ? 'next' : null
     }
 
     /** A page turn: page by page, not zoomed in past the screen, and not while drawing. */
@@ -672,6 +712,14 @@ export class PdfReader {
     noteOpenedFrom(from: PdfOpenedFrom): void {
         this.openedFrom = from
         if (this.hash) this.memory.updatePdf(this.environment.graphId, this.hash, { openedFrom: from })
+    }
+
+    get fingerDraws(): boolean {
+        return this.preferences.fingerDraws ?? this.fingerDrawsByDefault
+    }
+
+    set fingerDraws(on: boolean) {
+        this.updatePreferences({ fingerDraws: on })
     }
 
     updatePreferences(change: Partial<PdfPreferences>): void {
@@ -913,6 +961,17 @@ export class PdfReader {
         this.hasSelection = inside
     }
 
+    /**
+     * pdf.js marks a text layer as selecting on mousedown and for as long as the selection is in it, a
+     * caret included, and clears the mark on pointerup, the order a mouse sends them. A touch's mouse
+     * events come after its pointerup, so a tap leaves the mark on and a caret behind it. While the mark
+     * is on, the page's links and form fields take no touches, so it goes when nothing is being selected.
+     */
+    private clearIdleSelecting(): void {
+        if (this.tapStart || !window.getSelection()?.isCollapsed) return
+        this.container?.querySelectorAll('.textLayer.selecting').forEach((layer) => layer.classList.remove('selecting'))
+    }
+
     /** The text tool: highlight what is selected, a click or a lifted finger after selecting it. */
     onPointerRelease(): void {
         if (this.tool === 'highlight' && this.hasSelection) this.highlightSelection()
@@ -1132,25 +1191,57 @@ export class PdfReader {
         const height = width / aspect
         const x = (view[0] + view[2] - width) / 2
         const y = (view[1] + view[3] - height) / 2
-        this.signatures = [...this.signatures, { id: newPdfStateId(), page: this.page, x, y, width, height, url }]
+        this.holdSignatures({ list: [...this.signatures, { id: newPdfStateId(), page: this.page, x, y, width, height, url }], saved: false })
         this.overlays.refresh()
     }
 
     private moveSignature(id: string, change: Partial<Pick<PlacedSignature, 'x' | 'y' | 'width' | 'height'>>): void {
-        this.signatures = this.signatures.map((s) => (s.id === id ? { ...s, ...change } : s))
+        this.holdSignatures({ list: this.signatures.map((s) => (s.id === id ? { ...s, ...change } : s)) })
         this.overlays.refresh()
     }
 
     private removeSignature(id: string): void {
-        this.signatures = this.signatures.filter((s) => s.id !== id)
+        this.holdSignatures({ list: this.signatures.filter((s) => s.id !== id) })
         this.overlays.refresh()
     }
 
+    /** Where this PDF's signatures are kept, once its hash is known. */
+    private get signaturesKey(): string | null {
+        return this.hash ? signaturesKey(this.environment.graphId, this.hash) : null
+    }
+
+    private get held(): HeldSignatures | undefined {
+        return this.signaturesKey ? heldSignatures(this.signaturesKey) : undefined
+    }
+
+    get signatures(): PlacedSignature[] {
+        return this.held?.list ?? []
+    }
+
     /** The signatures have been written to a file, so closing the tab no longer loses them. */
-    signaturesSaved = $state(true)
+    get signaturesSaved(): boolean {
+        return this.held?.saved ?? true
+    }
+
+    private holdSignatures(change: Partial<HeldSignatures>): void {
+        if (this.signaturesKey) holdSignatures(this.signaturesKey, { list: this.signatures, saved: this.signaturesSaved, ...change })
+    }
 
     markSignaturesSaved(): void {
-        this.signaturesSaved = true
+        this.holdSignatures({ saved: true })
+    }
+
+    /**
+     * The tab is going. A signature in no file stays, to come back when the PDF opens. One already in a
+     * copy stays through a rebuild and goes with its tab, which a task later is out of the layout
+     * whichever way it closed: a tab's own close button takes it out only after the tab has gone.
+     */
+    releaseSavedSignatures(tabIsOpen: () => boolean): void {
+        const key = this.signaturesKey
+        if (!key) return
+        setTimeout(() => {
+            if (heldSignatures(key)?.saved && !tabIsOpen()) dropSignatures(key)
+        })
     }
 
     /** Whether closing would lose a signature nobody saved. */
@@ -1160,15 +1251,8 @@ export class PdfReader {
 
     /** The person chose not to keep what they placed. */
     discardSignatures(): void {
-        for (const signature of this.signatures) URL.revokeObjectURL(signature.url)
-        this.signatures = []
-        this.signaturesSaved = true
+        if (this.signaturesKey) dropSignatures(this.signaturesKey)
         this.overlays.refresh()
-    }
-
-    /** A signature was just placed. */
-    noteSignaturePlaced(): void {
-        this.signaturesSaved = false
     }
 
     // ---- Print ----

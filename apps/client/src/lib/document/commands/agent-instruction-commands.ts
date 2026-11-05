@@ -1,14 +1,11 @@
 /**
- * **Copy task reference** (ADR 0114): the [[Command]] that puts a [[Task Reference]] on the
- * clipboard, for a person to paste to an agent connected to the graph, and the rows that offer it:
+ * **Copy agent instruction** (ADR 0114, ADR 0178): the [[Command]]s that put an [[Agent Instruction]]
+ * on the clipboard, for a person to paste to an agent, and the rows that offer the one for a task:
  * the [[Command Menu]]'s while the caret is on a task line, the line menu's on a task's line (a
  * right-click on its checkbox or its words), and the menu of a task a list shows, such as a
  * [[Tasks View]] row. A [[Kanban Board]] card copies one through the same Command, naming its task
- * in the argument. The text is the same from everywhere (`formatTaskReference`).
- *
- * **Copy lane reference** is its sibling for a whole lane of a Kanban board (a [[Lane Reference]]):
- * the board names the lane in the argument, and the Client knows the graph, the clipboard and how to
- * say so, as for a card.
+ * in the argument, and a lane through its sibling. The board names the lane in the argument, and the
+ * Client knows the graph, the clipboard and how to say so, as for a card.
  */
 import {
     type CommandRegistry,
@@ -22,42 +19,49 @@ import {
 } from '../../surface'
 import { getActiveEditorView } from '../active-editor'
 import { TASK_STATUSES, type TaskStatus } from '../index-db'
-import { formatLaneReference } from '../lane-reference'
-import { formatTaskReference, taskFingerprint, taskWords } from '../task-reference'
+import { type AgentReach, formatLaneInstruction, formatTaskInstruction } from '../agent-instruction'
+import { taskFingerprint, taskWords } from '../task-reference'
 import { bookmarkEditorFor } from '../view/augmentations/bookmarks'
 import { type CaretTask, caretTask, taskOnLine } from '../view/caret-task'
 
+/** Copy an [[Agent Instruction]] for a task. The id predates the name, and menus and keybindings hold it. */
 export const TASK_COPY_REFERENCE = 'task.copyReference'
-/** Copy a [[Lane Reference]] to the lane `{ concept, status, label, count }` names; a Kanban board runs it. */
+/** Copy an [[Agent Instruction]] for the lane `{ concept, status, label, count }` names; a Kanban board runs it. */
 export const TASK_COPY_LANE_REFERENCE = 'task.copyLaneReference'
 
-export interface TaskReferenceCommandDeps {
+export interface AgentInstructionCommandDeps {
     /** The open graph's id, or null with no graph open. */
     graphId(): string | null
-    /** The open graph's name, which tells an agent with several graphs connected which one to use; null when it has none. */
-    graphName(): string | null
+    /**
+     * How an agent can reach the open graph, and where `document` is in it (null for no one
+     * document). May wait on the person, who is asked once where a local graph's folder is.
+     */
+    reach(document: string | null): Promise<AgentReach>
     writeClipboard(text: string): Promise<void>
     /** Say what happened: the clipboard shows nothing of its own. */
     notify(text: string, tone: 'info' | 'error'): void
 }
 
-/**
- * Copy a reference to `task`, and say so. False when nothing was copied: no graph is open, or the
- * clipboard refused, which the notice then explains.
- */
-export async function copyTaskReference(task: CaretTask, deps: TaskReferenceCommandDeps): Promise<boolean> {
-    const graphId = deps.graphId()
-    if (graphId === null) return false
-    const fingerprint = await taskFingerprint(task.label)
-    const text = formatTaskReference({ graphId, document: task.document, line: task.line, fingerprint }, task.label, { graphName: deps.graphName() })
+/** Put `text` on the clipboard and say so. False when the clipboard refused, which the notice explains. */
+async function copyInstruction(text: string, what: string, reach: AgentReach, deps: AgentInstructionCommandDeps): Promise<boolean> {
     try {
         await deps.writeClipboard(text)
     } catch (error) {
-        deps.notify(`Could not copy the task reference: ${error instanceof Error ? error.message : String(error)}`, 'error')
+        deps.notify(`Could not copy the agent instruction: ${error instanceof Error ? error.message : String(error)}`, 'error')
         return false
     }
-    deps.notify(`Copied a reference to "${taskWords(task.label)}". Paste it to an agent connected to this graph.`, 'info')
+    deps.notify(reach.kind === 'browser' ? 'Copied, but an agent cannot reach this graph because it is kept in this browser.' : `Copied an agent instruction for ${what}. Paste it to your agent.`, 'info')
     return true
+}
+
+/** Copy the instruction for `task`, and say so. False when nothing was copied: no graph is open, or the clipboard refused. */
+export async function copyTaskInstruction(task: CaretTask, deps: AgentInstructionCommandDeps): Promise<boolean> {
+    const graphId = deps.graphId()
+    if (graphId === null) return false
+    const fingerprint = await taskFingerprint(task.label)
+    const reach = await deps.reach(task.document)
+    const text = formatTaskInstruction({ graphId, document: task.document, line: task.line, fingerprint }, task.label, reach)
+    return copyInstruction(text, `"${taskWords(task.label)}"`, reach, deps)
 }
 
 /** A lane of a Kanban board, as the board names it: its concept (null on the Graph Kanban), status, name and task count. */
@@ -68,23 +72,13 @@ export interface LaneToCopy {
     count: number
 }
 
-/**
- * Copy a reference to `lane`, and say so. False when nothing was copied: no graph is open, or the
- * clipboard refused, which the notice then explains.
- */
-export async function copyLaneReference(lane: LaneToCopy, deps: TaskReferenceCommandDeps): Promise<boolean> {
+/** Copy the instruction for `lane`, and say so. False when nothing was copied: no graph is open, or the clipboard refused. */
+export async function copyLaneInstruction(lane: LaneToCopy, deps: AgentInstructionCommandDeps): Promise<boolean> {
     const graphId = deps.graphId()
     if (graphId === null) return false
-    const text = formatLaneReference({ graphId, concept: lane.concept, status: lane.status }, { graphName: deps.graphName(), laneLabel: lane.label, count: lane.count })
-    try {
-        await deps.writeClipboard(text)
-    } catch (error) {
-        deps.notify(`Could not copy the lane reference: ${error instanceof Error ? error.message : String(error)}`, 'error')
-        return false
-    }
-    const board = lane.concept ?? 'the Graph Kanban'
-    deps.notify(`Copied a reference to the ${lane.label} lane of ${board}. Paste it to an agent connected to this graph.`, 'info')
-    return true
+    const reach = await deps.reach(null)
+    const text = formatLaneInstruction({ graphId, concept: lane.concept, status: lane.status }, { laneLabel: lane.label, count: lane.count }, reach)
+    return copyInstruction(text, `the ${lane.label} lane of ${lane.concept ?? 'the Graph Kanban'}`, reach, deps)
 }
 
 /** The lane named in the Command's argument, or null for anything else. */
@@ -137,24 +131,24 @@ function taskFor(arg: unknown): CaretTask | null {
     return view ? caretTask(view.state) : null
 }
 
-export function registerTaskReferenceCommands(commands: CommandRegistry, contributions: ContributionRegistry, deps: TaskReferenceCommandDeps): () => void {
+export function registerAgentInstructionCommands(commands: CommandRegistry, contributions: ContributionRegistry, deps: AgentInstructionCommandDeps): () => void {
     const disposers = [
         commands.register(TASK_COPY_REFERENCE, async (arg) => {
             const task = taskFor(arg)
-            if (task) await copyTaskReference(task, deps)
+            if (task) await copyTaskInstruction(task, deps)
         }),
         commands.register(TASK_COPY_LANE_REFERENCE, async (arg) => {
             const lane = namedLane(arg)
-            if (lane) await copyLaneReference(lane, deps)
+            if (lane) await copyLaneInstruction(lane, deps)
         }),
         registerCommandMenuItem(contributions, {
             id: TASK_COPY_REFERENCE,
-            title: 'Copy task reference',
+            title: 'Copy agent instruction',
             detail: 'To hand this task to an agent',
             icon: 'copy',
             group: 'Tasks',
             order: 150,
-            keywords: ['reference', 'link', 'agent', 'task', 'copy'],
+            keywords: ['instruction', 'reference', 'link', 'agent', 'task', 'copy'],
             // Not gated on `bodyWritable`: copying writes nothing to the page.
             when: (ctx) => ctx.taskOnLine === true,
             // It reads the caret's line, so it is offered in a part of a document too (ADR 0170).
@@ -163,7 +157,7 @@ export function registerTaskReferenceCommands(commands: CommandRegistry, contrib
         }),
         registerContextMenuItem(contributions, {
             id: TASK_COPY_REFERENCE,
-            label: 'Copy task reference',
+            label: 'Copy agent instruction',
             command: TASK_COPY_REFERENCE,
             icon: 'task-reference',
             // On an editor line, ahead of the bookmark rows (90) and Paste (95), after a link's own

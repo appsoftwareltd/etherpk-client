@@ -162,7 +162,7 @@ export function registerTaskStatusCommands(commands: CommandRegistry, contributi
     }
     const disposers: Array<() => void> = []
 
-    // On an editor line these follow Copy task reference (85) and come before the bookmark rows (90).
+    // On an editor line these follow Copy agent instruction (85) and come before the bookmark rows (90).
     const firstOtherStatus = (target: ContextMenuTarget) => STATUS_OPTIONS.find((option) => option.value !== menuTask(target)?.status)?.value
     for (const [index, { value: status, label }] of STATUS_OPTIONS.entries()) {
         const id = taskStatusCommand(status)

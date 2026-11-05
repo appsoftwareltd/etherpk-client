@@ -65,7 +65,6 @@ import { readLocalFile, writeDownload } from './headless-assets'
 import { FolderRefused, folderUnder } from './local-folders'
 import { freeTagsIn, parseTaskLine, type TaskPriority, taskStatus } from '#lib/document/task-tags.js'
 import {
-    everyIndexedTask,
     parseTaskReference,
     type ResolvedTaskReference,
     resolveTaskReference,
@@ -734,7 +733,7 @@ function taskSelection(graph: HeadlessGraph, args: TasksArgs): { concept: string
     if (args.reference !== undefined) {
         const lane = parseLaneReference(args.reference)
         if (!lane) {
-            throw new ToolError('invalid_argument', 'reference is not a lane reference. Pass the text Copy lane reference wrote, or its etherpk:/g/…#lane= address; for one task, use read_task.')
+            throw new ToolError('invalid_argument', 'reference is not a lane reference. Pass the text Copy agent instruction wrote, or its etherpk:/g/…#lane= address; for one task, use read_task.')
         }
         if (args.concept !== undefined || args.statuses !== undefined) {
             throw new ToolError('invalid_argument', 'A lane reference names the concept and status itself: pass reference without concept or statuses.')
@@ -1443,7 +1442,7 @@ function referenceSources(graph: HeadlessGraph): TaskReferenceSources {
             const identity = resolveIdentity(graph, document)
             return identity ? visibleText(graph, identity, hidden) : null
         },
-        allTasks: async () => (await everyIndexedTask(graph.index, todayISO())).filter((task) => !hidden.has(conceptKey(task.document))),
+        allTasks: async () => (await graph.index.taskLabels()).filter((task) => !hidden.has(conceptKey(task.document))),
     }
 }
 
@@ -1461,7 +1460,7 @@ async function referenceFor(graph: HeadlessGraph, concept: string, line: number,
 async function requireReferencedTask(graph: HeadlessGraph, reference: string, purpose: 'read' | 'write' = 'read'): Promise<ResolvedTaskReference> {
     const parsed = parseTaskReference(reference)
     if (!parsed) {
-        throw new ToolError('invalid_argument', 'That is not a task reference: one is etherpk:/g/<graph>/d/<document>#task=<line>-<fingerprint>, as Copy task reference in EtherPK writes it.')
+        throw new ToolError('invalid_argument', 'That is not a task reference: one is etherpk:/g/<graph>/d/<document>#task=<line>-<fingerprint>, as Copy agent instruction in EtherPK writes it.')
     }
     await graph.store.refresh()
     const found = await resolveTaskReference(parsed, referenceSources(graph))
@@ -1475,7 +1474,7 @@ async function requireReferencedTask(graph: HeadlessGraph, reference: string, pu
     }
     const named = resolveIdentity(graph, parsed.document)
     if (purpose === 'write' && named && (await visibleText(graph, named)) === null) throw protectedDocument(parsed.document)
-    throw new ToolError('task_not_found', 'No task in the graph has those words now: it was edited or deleted. Ask the user for a fresh reference.')
+    throw new ToolError('task_not_found', 'No task in the graph has those words now: it was edited or deleted. Ask the user for a fresh agent instruction.')
 }
 
 /**
@@ -1582,7 +1581,7 @@ export async function addTaskNote(graph: HeadlessGraph, args: AddTaskNoteArgs) {
     const found = await requireReferencedTask(graph, args.reference, 'write')
     const change = commentChange(found.body, found.line, asCommentBullet(asWritten(args.text.trim())))
     // The reference found a task on that line a moment ago, so this holds one.
-    if (!change) throw new ToolError('task_not_found', 'The task moved while the note was being written. Ask the user for a fresh reference.')
+    if (!change) throw new ToolError('task_not_found', 'The task moved while the note was being written. Ask the user for a fresh agent instruction.')
     graph.store.open(found.document).applyChange({ from: change.from, to: change.to, insert: change.insert }, 'external')
     await settle(graph)
     return {

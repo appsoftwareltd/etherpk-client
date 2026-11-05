@@ -29,7 +29,7 @@ When the MCP route applies and the `etherpk` tools are not connected, tell the u
 and connect their agent, for example:
 
 ```sh
-claude mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server <url> --graph <graph id>
+claude mcp add --scope user etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server <url> --graph <graph id>
 ```
 
 Then stop until they have restarted the agent with the tools connected.

@@ -68,7 +68,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     },
     local: {
         id: 'local',
-        label: 'A model on this computer (Ollama, LM Studio)',
+        label: 'A model on this device (Ollama, LM Studio)',
         key: 'optional',
         address: 'loopback',
         defaultAddress: 'http://localhost:11434/v1',
@@ -98,7 +98,7 @@ export function isProviderId(value: unknown): value is ProviderId {
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1'])
 
 /**
- * Why an address will not do for a provider, or null when it will. A model on this computer is
+ * Why an address will not do for a provider, or null when it will. A model on this device is
  * reached over loopback only, which is all the Client's content policy allows over plain HTTP;
  * another server needs HTTPS.
  */
@@ -112,7 +112,7 @@ export function addressProblem(provider: ProviderId, address: string): string | 
         return 'Enter the full address, starting with http:// or https://.'
     }
     if (info.address === 'loopback') {
-        if (!LOOPBACK_HOSTS.has(url.hostname)) return 'A model on this computer is reached at localhost or 127.0.0.1. For a model on another computer, choose "Another OpenAI-compatible server" and use an https address.'
+        if (!LOOPBACK_HOSTS.has(url.hostname)) return 'A model on this device is reached at localhost or 127.0.0.1. For a model on another device, choose "Another OpenAI-compatible server" and use an https address.'
         if (url.protocol !== 'http:' && url.protocol !== 'https:') return 'The address starts with http:// or https://.'
         return null
     }

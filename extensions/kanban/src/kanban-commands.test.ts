@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { setActiveEditorView } from '#lib/document/active-editor.js'
 import { registerLinkCommands } from '#lib/document/commands/link-commands.js'
-import { menuTargetTask, registerTaskReferenceCommands } from '#lib/document/commands/task-reference-commands.js'
+import { menuTargetTask, registerAgentInstructionCommands } from '#lib/document/commands/agent-instruction-commands.js'
 import { conceptPicker } from '#lib/document/view/augmentations/concept-picker.js'
 import { editorDocument } from '#lib/document/view/editor-document.js'
 import { commandMenuDetail, commandMenuItemsInOrder, listCommandMenuItems } from '#lib/surface/command-menu.js'
@@ -68,7 +68,7 @@ describe("a card's context menu", () => {
             'Open in task editor',
             'Open in pane below',
             'Open in tab',
-            'Copy task reference',
+            'Copy agent instruction',
             'Move to Doing',
             'Move to Waiting',
             'Move to Test',
@@ -157,7 +157,7 @@ describe('Open in task editor on a task outside a board', () => {
     function withClientRows(isDesktop = true) {
         const found = setup(isDesktop)
         found.services.menuTask = (target) => menuTargetTask(target as never)
-        registerTaskReferenceCommands(found.commands, found.contributions, { graphId: () => 'g1', graphName: () => null, writeClipboard: async () => {}, notify: () => {} })
+        registerAgentInstructionCommands(found.commands, found.contributions, { graphId: () => 'g1', reach: async () => ({ kind: 'synced', graphName: null, agentsUrl: 'https://app.example.com/g/g1?settings=agents' }), writeClipboard: async () => {}, notify: () => {} })
         return found
     }
 
@@ -165,7 +165,7 @@ describe('Open in task editor on a task outside a board', () => {
         const { contributions } = withClientRows()
         const rows = listContextMenuItems(contributions, row as never)
         expect(rows[0]).toMatchObject({ label: 'Open in task editor', command: KANBAN_OPEN_IN_TASK_EDITOR, separatorBefore: false })
-        expect(rows.map((r) => r.label)).toContain('Copy task reference')
+        expect(rows.map((r) => r.label)).toContain('Copy agent instruction')
     })
 
     it('opens the task the menu was raised on in the Task Editor', async () => {
@@ -203,7 +203,7 @@ describe("a lane's context menu", () => {
         const moved: string[][] = []
         const unregister = registerBoard('board-1', { ...NO_ACTIONS, moveAll: (from, to) => moved.push([from, to]) })
         const rows = listContextMenuItems(contributions, lane('done'))
-        expect(rows.map((r) => r.label)).toEqual(['Copy lane reference', 'Move all to lane…'])
+        expect(rows.map((r) => r.label)).toEqual(['Copy agent instruction', 'Move all to lane…'])
         await commands.execute(rows[1].command, lane('done'))
 
         const [options] = choose.mock.calls[0]
@@ -228,11 +228,11 @@ describe("a lane's context menu", () => {
     })
 
     it('offers no move on an empty lane', () => {
-        expect(listContextMenuItems(setup().contributions, lane('done', 0)).map((r) => r.label)).toEqual(['Copy lane reference'])
+        expect(listContextMenuItems(setup().contributions, lane('done', 0)).map((r) => r.label)).toEqual(['Copy agent instruction'])
     })
 
     it('offers the same rows under the phone layout', () => {
-        expect(listContextMenuItems(setup(false).contributions, lane('done')).map((r) => r.label)).toEqual(['Copy lane reference', 'Move all to lane…'])
+        expect(listContextMenuItems(setup(false).contributions, lane('done')).map((r) => r.label)).toEqual(['Copy agent instruction', 'Move all to lane…'])
     })
 
     it("copies a reference to the lane through the board that raised the menu, with the card's reference icon", async () => {
@@ -240,7 +240,7 @@ describe("a lane's context menu", () => {
         const copied: string[] = []
         const unregister = registerBoard('board-1', { ...NO_ACTIONS, copyLaneReference: (status) => copied.push(status) })
         const [row] = listContextMenuItems(contributions, lane('waiting', 0))
-        // The icon the Client's Copy task reference row carries, so the two read as one family.
+        // The icon the Client's Copy agent instruction row carries, so the two read as one family.
         expect(row.icon).toBe('task-reference')
         // A lane's rows start the menu: the separator goes before the move, not before the copy.
         expect(row.separatorBefore).toBeFalsy()
@@ -351,17 +351,17 @@ describe('the Graph Kanban', () => {
 describe('/kanban', () => {
     const editing = { inTable: false, tableInsertable: true, bodyWritable: true }
 
-    it("sits among the Client's rows between Copy file path and Copy task reference", () => {
+    it("sits among the Client's rows between Copy file path and Copy agent instruction", () => {
         // The whole first-party order is written down in the Client's command-menu-order.test.ts.
         const { commands, contributions } = setup()
         registerLinkCommands(commands, contributions)
-        registerTaskReferenceCommands(commands, contributions, {} as never)
+        registerAgentInstructionCommands(commands, contributions, {} as never)
         const titles = commandMenuItemsInOrder(contributions).map((item) => item.title)
-        expect(titles.slice(titles.indexOf('Copy file path'), titles.indexOf('Copy task reference') + 1)).toEqual([
+        expect(titles.slice(titles.indexOf('Copy file path'), titles.indexOf('Copy agent instruction') + 1)).toEqual([
             'Copy file path',
             'Open Kanban',
             'Graph Kanban',
-            'Copy task reference',
+            'Copy agent instruction',
         ])
     })
 

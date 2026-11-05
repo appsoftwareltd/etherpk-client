@@ -20,6 +20,8 @@ export interface PdfPreferences {
     keepScreenOn: boolean
     /** A stylus's pressure changes the Pen's width. A mouse or a finger reports none, so it does nothing there. */
     penPressure: boolean
+    /** A finger draws in place of scrolling. Unset until a person changes it, because the default depends on the device. */
+    fingerDraws?: boolean
     /** What the drawing tools last used. Checked when read (annotation-palette.ts). */
     inkColour?: unknown
     highlightColour?: unknown

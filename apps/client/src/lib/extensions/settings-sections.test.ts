@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createPersonSettings } from '#lib/person-settings/person-settings.js'
 
 import type { Catalogue } from './catalogue'
-import { settingsSectionsFor } from './settings-sections'
+import { extensionsWithSections, settingsSectionsFor } from './settings-sections'
 import { createExtensionSwitches } from './switches'
 import { fakeClientServices, memoryStorage } from './testing'
 
@@ -76,5 +76,20 @@ describe('the settings sections of an extension running in the open graph (ADR 0
         expect(found.map((entry) => entry.section.id)).toEqual(['beds'])
         expect(error).toHaveBeenCalledWith('[extensions] garden: one of its settingsSections is not a section the Client can draw', { id: 'beds', tab: 'garden' })
         error.mockRestore()
+    })
+})
+
+describe('the extensions that add a section to a tab', () => {
+    it('names each once, however many sections it adds, and only for that tab', () => {
+        const switches = createExtensionSwitches(memoryStorage())
+        const found = extensionsWithSections('agents', { catalogue: catalogue([section('models'), section('more')]), switches })
+        expect(found).toEqual([{ id: 'agent-chat', displayName: 'Agent Chat' }])
+        expect(extensionsWithSections('extension', { catalogue: catalogue([section('models')]), switches })).toEqual([])
+    })
+
+    it('leaves out one that is switched off', () => {
+        const switches = createExtensionSwitches(memoryStorage())
+        switches.set('agent-chat', false)
+        expect(extensionsWithSections('agents', { catalogue: catalogue([section('models')]), switches })).toEqual([])
     })
 })

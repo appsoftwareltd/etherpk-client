@@ -27,7 +27,7 @@ links to the server's **Access tokens** page, which makes the code.
 npx @appsoftwareltd/etherpk-mcp login --sync-server https://sync.etherpk.com --code <Agent Setup Code>
 
 # Register the graph with your agent (Claude Code shown, the Agents tab has the others).
-claude mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server https://sync.etherpk.com --graph <graph id>
+claude mcp add --scope user etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server https://sync.etherpk.com --graph <graph id>
 ```
 
 ### A local graph folder
@@ -35,7 +35,7 @@ claude mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server ht
 No sign-in and no Sync Server:
 
 ```sh
-claude mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --folder /path/to/your/notes
+claude mcp add --scope user etherpk -- npx @appsoftwareltd/etherpk-mcp serve --folder /path/to/your/notes
 ```
 
 The folder must already be an EtherPK graph, with `pages/` and `journals/` folders in it. EtherPK
@@ -62,7 +62,7 @@ onto its name is refused.
 | --- | --- | --- |
 | Find and read | `graph_info`, `list_documents`, `read_document`, `read_documents`, `search`, `backlinks`, `tasks`, `graph_insights`, `graph_path` | `list_documents` can narrow to a range of journal days. `graph_insights` lists the most-linked concepts, clusters and bridges, and `graph_path` finds how two concepts connect. |
 | Edit | `edit_document`, `append_document`, `create_page`, `set_task`, `set_frontmatter`, `set_aliases` | `edit_document` replaces one exact, unique piece of text, and on a synced graph it merges with edits made elsewhere. `append_document` creates the day's journal entry when there is none. |
-| Tasks handed over | `read_task`, `add_task_note`, `set_task` | Paste the agent a task reference copied in EtherPK. The reference still finds the task after lines are added above it, and refuses once the task's words change. |
+| Tasks handed over | `read_task`, `add_task_note`, `set_task` | Paste the agent the text **Copy agent instruction** copies in EtherPK. Its reference still finds the task after lines are added above it, and refuses once the task's words change. |
 | Rename | `plan_rename`, `rename` | Links to the old name are rewritten. Renaming onto a name in use merges two documents and needs confirming. |
 | Images and files | `upload_asset`, `read_asset`, `list_assets` | `upload_asset` returns the markdown to paste into a document. It refuses hidden files and folders (`.ssh`, `.env`), the Headless Client's own config and cache, and files over 100 MiB. |
 | Publishing | `list_publications`, `create_publication`, `update_publication`, `publish` | `publish` writes to the folder set with the `publish` command. The agent can't choose one, and it never publishes to a GitHub repository, which only the `publish` command commits to. |

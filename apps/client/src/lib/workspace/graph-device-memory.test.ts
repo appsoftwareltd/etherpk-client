@@ -86,6 +86,7 @@ describe('forgetGraphOnDevice', () => {
             'etherpk:spelling-languages:g1',
             'etherpk:protection:g1',
             'etherpk-folder-path:g1',
+            'etherpk-folder-path-skipped:g1',
             // Picture references with the size each was drawn at (image-footprints.ts).
             'etherpk:image-footprints:g1',
         ])

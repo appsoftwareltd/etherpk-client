@@ -40,7 +40,7 @@ export const CLIENT_IMPORT_EXCEPTIONS = {
         '#lib/document/calendar/month-grid-core.js',
         '#lib/document/caret-concepts.js',
         '#lib/document/commands/link-commands.js',
-        '#lib/document/commands/task-reference-commands.js',
+        '#lib/document/commands/agent-instruction-commands.js',
         '#lib/document/in-memory-store.js',
         '#lib/document/index-db-sqlite.js',
         '#lib/document/index-db.js',

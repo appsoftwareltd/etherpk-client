@@ -39,6 +39,7 @@ import {
     propertyValues,
     searchText,
     searchTextCount,
+    taskLabels,
     tasksMatching,
     tasksMatchingCount,
     templatePages,
@@ -477,20 +478,9 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
                 case 'property-match':
                     return [{ type: 'property-match', id: request.id, documents: db ? documentsMatchingProperties(db, request.filters) : [] }]
 
-                case 'tasks': {
-                    const page = db
-                        ? tasksMatching(db, request.query, request.offset, request.limit)
-                        : { hits: [], hasMore: false }
-                    return [
-                        {
-                            type: 'tasks',
-                            id: request.id,
-                            hits: page.hits,
-                            hasMore: page.hasMore,
-                            total: db ? tasksMatchingCount(db, request.query) : 0,
-                        },
-                    ]
-                }
+                case 'tasks':
+                case 'task-labels':
+                    return [taskResponse(db, request)]
 
                 case 'asset-usage': {
                     // No database means no evidence, and the caller must NOT read that as
@@ -590,6 +580,13 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
  * request failed" from "this request failed and the whole index is now empty — re-derive".
  */
 export const INDEX_DISCARDED_PREFIX = 'index-discarded:'
+
+/** The answer to a request for tasks: nothing with no database open. */
+function taskResponse(db: SqlDb | undefined, request: Extract<IndexRequest, { type: 'tasks' | 'task-labels' }>): IndexResponse {
+    if (request.type === 'task-labels') return { type: 'task-labels', id: request.id, tasks: db ? taskLabels(db) : [] }
+    const page = db ? tasksMatching(db, request.query, request.offset, request.limit) : { hits: [], hasMore: false }
+    return { type: 'tasks', id: request.id, hits: page.hits, hasMore: page.hasMore, total: db ? tasksMatchingCount(db, request.query) : 0 }
+}
 
 /**
  * Whether an error is SQLite saying the file itself is damaged, as opposed to a bad query or

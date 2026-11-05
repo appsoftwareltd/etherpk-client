@@ -1,9 +1,8 @@
 /**
- * A [[Task Reference]] (ADR 0114, ADR 0165): what a person copies from a task to hand it to an
- * agent. A few lines: where the task is from (the graph by name and id, and the board when it was
- * copied from one), its words, the reference itself, and how an agent reads it. The reference is
- * the path of the task's [[Document URL]] under an `etherpk:` scheme, with
- * `#task=<line>-<fingerprint>` as the fragment: `etherpk:/g/<graph>/d/<document>#task=…`. It is not
+ * A [[Task Reference]] (ADR 0114, ADR 0165): the address of a task inside the [[Agent Instruction]]
+ * a person copies to hand it to an agent (agent-instruction.ts). It is the path of the task's
+ * [[Document URL]] under an `etherpk:` scheme, with `#task=<line>-<fingerprint>` as the fragment:
+ * `etherpk:/g/<graph>/d/<document>#task=…`. It is not
  * a web address, so an agent reads it with its [[Headless Client]] rather than trying to fetch it,
  * and it keeps the `/g/…/d/…#task=…` shape that every Headless Client version parses. The Client
  * and the Headless Client both resolve it back to the task by its position and its words, so
@@ -20,7 +19,7 @@
  */
 import { documentUrl } from '../navigation/document-url'
 import { fencedBlocks } from './fenced-code'
-import { TASK_PRIORITY_FILTERS, TASK_STATUSES, type TaskQuery } from './index-db'
+import type { TaskLabel } from './index-db'
 import { bulletLabel } from './index-derive'
 import { parseTaskLine, parseTaskTags, withoutFreeTags } from './task-tags'
 
@@ -47,15 +46,6 @@ export function taskWords(label: string): string {
     return text.normalize('NFC').replace(/\s+/g, ' ').trim()
 }
 
-/**
- * The task as the copied text shows it: the text after the tag run, whitespace collapsed, with its
- * [[Free Tag]]s where they were written. A tag can be part of a sentence ("e.g. #bug."), which
- * {@link taskWords} would leave reading "e.g..", and an agent reads this line as the request.
- */
-function taskTextAsWritten(label: string): string {
-    return (parseTaskTags(label).text || label).normalize('NFC').replace(/\s+/g, ' ').trim()
-}
-
 /** The fingerprint of a task's words, from its label (tag run included or not). */
 export async function taskFingerprint(label: string): Promise<string> {
     const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(taskWords(label)))
@@ -76,28 +66,6 @@ const SCHEME = 'etherpk:'
 /** The reference as an agent is handed it: `etherpk:` and the address's path and fragment. */
 export function taskReferenceId(reference: TaskReference): string {
     return `${SCHEME}${taskReferenceUrl(reference)}`
-}
-
-export interface TaskReferenceContext {
-    /** The graph's name, which tells an agent with several EtherPK servers which one to use; null when it has none. */
-    graphName: string | null
-}
-
-/**
- * The text a person copies: the graph the task is in, its words, the reference, and how an agent
- * reads it. An agent does not know the reference format, so the last line names the tools. The
- * same wherever it is copied from (the editor, the Tasks View, a Kanban card): a task is a task,
- * whichever View showed it.
- */
-export function formatTaskReference(reference: TaskReference, label: string, context: TaskReferenceContext): string {
-    const graph = context.graphName ? `the graph "${context.graphName}" (${reference.graphId})` : `the graph ${reference.graphId}`
-    const server = context.graphName ? `"${context.graphName}"` : 'that graph'
-    return [
-        `EtherPK task from ${graph}`,
-        `Task: ${taskTextAsWritten(label)}`,
-        `Reference: ${taskReferenceId(reference)}`,
-        `This is not a web address. Use the EtherPK MCP server connected to ${server}: read_task with this whole text to read the task and its detail, set_task if you are asked to change its status, add_task_note to record what you did.`,
-    ].join('\n')
 }
 
 const PATH = String.raw`\/g\/([^/?#\s]+)\/d\/([^?#\s]+?)(?:\?[^#\s]*)?#task=(\d+)-([0-9a-f]{12})(?![0-9a-f])`
@@ -155,7 +123,7 @@ export interface TaskReferenceSources {
     /** A document's body, the text below any frontmatter, or null when it cannot be read. */
     readBody(document: string): Promise<string | null>
     /** Every task the index knows, by document, body line and label: where else to look. */
-    allTasks(): Promise<readonly { document: string; line: number; label: string }[]>
+    allTasks(): Promise<readonly TaskLabel[]>
 }
 
 /**
@@ -194,25 +162,6 @@ export async function resolveTaskReference(reference: TaskReference, sources: Ta
     if (found.length === 1) return { ok: true, ...found[0], foundBy: 'other_document' }
     if (found.length > 1) return { ok: false, code: 'task_ambiguous', candidates: found.map(({ document, line }) => ({ document, line })) }
     return { ok: false, code: 'task_not_found' }
-}
-
-/** The one round trip `everyIndexedTask` needs from an index client. */
-export interface IndexedTaskSource {
-    tasks(query: TaskQuery, offset: number, limit: number): Promise<{ hits: readonly { concept: string; line: number; text: string }[]; hasMore: boolean }>
-}
-
-/** How many tasks `everyIndexedTask` asks the index for at a time. */
-const INDEX_PAGE = 500
-
-/** Every task the index knows, in pages, as {@link TaskReferenceSources.allTasks} wants them. */
-export async function everyIndexedTask(index: IndexedTaskSource, today: string): Promise<{ document: string; line: number; label: string }[]> {
-    const query: TaskQuery = { concept: null, statuses: TASK_STATUSES, priorities: TASK_PRIORITY_FILTERS, due: 'any', groupBy: 'document', today }
-    const out: { document: string; line: number; label: string }[] = []
-    for (let offset = 0; ; offset += INDEX_PAGE) {
-        const page = await index.tasks(query, offset, INDEX_PAGE)
-        for (const hit of page.hits) out.push({ document: hit.concept, line: hit.line, label: hit.text })
-        if (!page.hasMore) return out
-    }
 }
 
 /** The lines of `lines` that hold a task with this fingerprint, never one inside a code fence. */

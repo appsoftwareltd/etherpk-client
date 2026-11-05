@@ -1,6 +1,6 @@
 <script lang="ts">
     /**
-     * One command for an agent's computer, to copy: its label, the command, a copy button, a note,
+     * One command for an agent's device, to copy: its label, the command, a copy button, a note,
      * and a failed copy's message beside the button that failed. Used by a graph's Agents tab and
      * the Graphs page's Agents tab alike (ADR 0147).
      */
@@ -25,7 +25,7 @@
 
 <span class="text-sm font-medium">{label}</span>
 <div class="flex items-start gap-2">
-    <pre class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm" data-testid="agents-extra-{key}">{text}</pre>
+    <pre class="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm" data-testid="agents-extra-{key}">{text}</pre>
     <button
         type="button"
         onclick={copy}

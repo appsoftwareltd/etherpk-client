@@ -97,10 +97,10 @@
     import { type LinkRenameChoice, type LinkRenameRow, previewPlans, runInOrder, type RunStatus, scopeRenamesInTypedName, usesScopeBeyondPage } from "#lib/document/view/link-renames.js";
     import SearchModal from "#lib/document/view/SearchModal.svelte";
     import TasksView from "#lib/document/view/TasksView.svelte";
-    import { menuTargetTask, registerTaskReferenceCommands } from "#lib/document/commands/task-reference-commands.js";
+    import { menuTargetTask, registerAgentInstructionCommands } from "#lib/document/commands/agent-instruction-commands.js";
     import { registerTaskStatusCommands } from "#lib/document/commands/task-status-commands.js";
-    import { everyIndexedTask, parseTaskReference, resolveTaskReference, type TaskReference } from "#lib/document/task-reference.js";
-    import { taskDateKey } from "#lib/document/index-db.js";
+    import type { AgentReach } from "#lib/document/agent-instruction.js";
+    import { parseTaskReference, resolveTaskReference, type TaskReference } from "#lib/document/task-reference.js";
     import QuickNotesView from "#lib/document/view/QuickNotesView.svelte";
     import {
         createTaskFilterStore,
@@ -207,7 +207,7 @@
         writeSettingsTab,
         type SettingsTab,
     } from "#lib/workspace/device-memory.js";
-    import { SETTINGS_PARAM, settingsTabFromUrl, withSettingsTab, withoutSettingsTab } from "#lib/workspace/settings-url.js";
+    import { agentsSettingsUrl, SETTINGS_PARAM, settingsTabFromUrl, withSettingsTab, withoutSettingsTab } from "#lib/workspace/settings-url.js";
     import { WORKSPACE_LAUNCH_PARAM, withoutParams, workspaceLaunchFrom } from "#lib/navigation/launch-shortcuts.js";
     import { claimInstallOfferHere } from "#lib/install/install-notices.js";
     import { registerInstallCommands } from "#lib/install/install-commands.js";
@@ -247,7 +247,7 @@
     } from "#lib/document/frontmatter/add-frontmatter.js";
     import { addFrontmatterThroughEditor, addFrontmatterThroughStore, readForAddFrontmatter } from "#lib/workspace/add-frontmatter-service.js";
     import { frontmatterLineOffset } from "#lib/document/reveal.js";
-    import { canCreateDocuments } from "#lib/document/draft.js";
+    import { canCreateDocuments, createEmptyDocument } from "#lib/document/draft.js";
     import { ProtectionSession } from "#lib/document/protection/protection-session.svelte.js";
     import { DocumentNotFoundError } from "#lib/document/types.js";
     import {
@@ -565,6 +565,7 @@
     import type { Subdir } from "#lib/storage/fs/directory-adapter.js";
     import {
         joinGraphPath,
+        folderPathOrAskOnce,
         readGraphFolderPath,
         writeGraphFolderPath,
     } from "#lib/storage/fs/folder-path.js";
@@ -1223,7 +1224,7 @@
         hasPasskey: boolean;
         then: (() => void) | null;
     } | null>(null);
-    /** A concept Protect was asked of before it had a document - a [[Draft]] nothing has been typed into. */
+    /** A concept Protect was asked of before it had a document - a [[Draft]] nothing has been typed into - waiting on the create-and-protect dialog. */
     let protectingDraft = $state<string | null>(null);
     /**
      * A protect asked of a document that is public or a publication's include: never both, so
@@ -1361,7 +1362,7 @@
      * "Copy full file path" asked on a device that has not been told where the graph folder is
      * (folder-path.ts): the concept whose path is wanted once the folder path is entered.
      */
-    let folderPathPrompt = $state<{ concept: string } | null>(null);
+    let folderPathPrompt = $state<{ skippable: boolean; answered(path: string | null): void } | null>(null);
     let mirror: LocalMirror | undefined;
     /** What the running mirror reports, shown on Settings → Mirror; null when there is none. */
     let mirrorStatus = $state<MirrorStatus | null>(null);
@@ -1430,6 +1431,8 @@
         tab: SettingsTab;
         /** A publication whose last report the Publish tab opens on (a finished publish's toast). */
         publishReport?: string;
+        /** The Agents sub-tab this open of Settings starts on. */
+        agentsSubTab?: string;
     } | null>(null);
     /**
      * The tab the current history entry names for [[Settings]], or null while it is closed
@@ -1441,6 +1444,8 @@
     const settingsTab = $derived(page.state.etherpkSettings?.tab ?? null);
     /** A toast's "show report" carried from openGraphSettings to the open that follows the history write. */
     let pendingPublishReport: string | undefined;
+    /** The Agents sub-tab the next Settings to open starts on, as for the report above. */
+    let pendingAgentsSubTab: string | undefined;
     /** Which showGraphSettings run is current, so an older one cannot land after Back closed the modal. */
     let settingsShowToken = 0;
     /** The Keyboard Shortcuts card; a reference, so nothing to carry in but "open". */
@@ -1469,7 +1474,7 @@
     let detachEditorCommands: (() => void) | undefined;
     let detachLinkCommands: (() => void) | undefined;
     let detachDocumentCommands: (() => void) | undefined;
-    /** Copy task reference, and a task's status and priority rows: the Commands a task's menus run. */
+    /** Copy agent instruction, and a task's status and priority rows: the Commands a task's menus run. */
     let detachTaskCommands: (() => void) | undefined;
     let detachQuickNotesCommands: (() => void) | undefined;
     let detachBookmarkCommands: (() => void) | undefined;
@@ -1978,39 +1983,69 @@
     /**
      * Protect a document. A graph with no Protection Key gets the set-passphrase dialog first -
      * that is the one moment the "there is no recovery" warning is shown, so it is never skipped.
+     *
+     * `create` is the person's answer to the create-and-protect dialog for a [[Draft]]: the
+     * document is created only once the protect itself runs, after the passphrase, so a person
+     * who backs out of the passphrase is not left with an empty page they did not want.
      */
-    async function startProtect(concept: string, options: { withdrawn?: boolean } = {}): Promise<void> {
+    async function startProtect(concept: string, options: { withdrawn?: boolean; create?: boolean } = {}): Promise<void> {
         // A page is created the moment something is typed into it (ADR 0050); until then there
-        // is no document and nothing to encrypt. Said in a dialog, and before the passphrase is
-        // asked for: the store's "No document for X" in a toast read as a fault, and the way out
-        // - type something first - is not something a toast has room to explain.
-        if (!documentExists(concept)) {
+        // is no document to encrypt. Asked in a dialog, and before the passphrase is asked for,
+        // because creating the page is a decision of its own: the dialog says that one is made.
+        const exists = documentExists(concept);
+        if (!exists && !options.create) {
             protectingDraft = concept;
             return;
         }
-        // A protected document is never published (ADR 0082's consent rule cuts the other way
-        // too): a public one, or one a publication names as a snippet, is withdrawn first, and
-        // only with the user's say-so - a padlock that silently took a page off a website would
-        // be found by the site's readers, not by its author.
-        if (!options.withdrawn && store) {
-            await store.whenReady?.(concept);
-            const membership = readMembership(store.open(concept).getText());
-            const uses = includeUsesOf(concept);
-            if (membership.isPublic || uses.length > 0) {
-                protectingPublic = { concept, isPublic: membership.isPublic, uses };
-                return;
-            }
-        }
+        // A page not created yet is neither public nor an include, so it has nothing to withdraw.
+        if (exists && !options.withdrawn && (await askToWithdraw(concept))) return;
+        await withProtectionKey(concept, exists ? () => protectDocument(concept) : () => createAndProtect(concept));
+    }
+
+    /**
+     * A protected document is never published (ADR 0082's consent rule cuts the other way too): a
+     * public one, or one a publication names as a snippet, is withdrawn first, and only with the
+     * user's say-so - a padlock that silently took a page off a website would be found by the
+     * site's readers, not by its author. True when the dialog asking for that is open.
+     */
+    async function askToWithdraw(concept: string): Promise<boolean> {
+        if (!store) return false;
+        await store.whenReady?.(concept);
+        const membership = readMembership(store.open(concept).getText());
+        const uses = includeUsesOf(concept);
+        if (!membership.isPublic && uses.length === 0) return false;
+        protectingPublic = { concept, isPublic: membership.isPublic, uses };
+        return true;
+    }
+
+    /** Run a protect once the key is in memory: set the passphrase first, or unlock, as the graph needs. */
+    async function withProtectionKey(concept: string, run: () => Promise<void>): Promise<void> {
         if (!protection || !(await protectionRecordReady())) return;
         if (!protection.isConfigured) {
             settingProtectionPassphrase = {
                 concept,
-                then: () => void protectDocument(concept),
+                then: () => void run(),
             };
             return;
         }
         if (!protection.isUnlocked) {
-            await openUnlockProtection(() => void protectDocument(concept));
+            await openUnlockProtection(() => void run());
+            return;
+        }
+        await run();
+    }
+
+    /**
+     * Create a [[Draft]]'s document, empty, then protect it. A page typed into meanwhile is taken
+     * as it is, so nothing typed is overwritten.
+     */
+    async function createAndProtect(concept: string): Promise<void> {
+        if (!store) return;
+        try {
+            if (!canCreateDocuments(store)) throw new Error("this graph cannot create a page here.");
+            await createEmptyDocument(store, concept);
+        } catch (e) {
+            notify(`Could not create ${concept}: ${(e as Error).message}`);
             return;
         }
         await protectDocument(concept);
@@ -2882,7 +2917,7 @@
     // Settings asked for before that seed, opened just after it (openGraphSettings).
     let settingsAskedBeforeSeed: {
         tab?: SettingsTab;
-        options: { publishReport?: string };
+        options: { publishReport?: string; agentsSubTab?: string };
     } | null = null;
 
     // Debounced layout persistence. Fed by the controller's onChange (open/close/
@@ -3298,7 +3333,7 @@
                         });
                     });
                 }
-                return everyIndexedTask(index, taskDateKey(new Date()));
+                return index.taskLabels();
             },
         });
         if (found.ok) {
@@ -3635,6 +3670,11 @@
      * (the dev gate's server graphs), since there is no server for an agent to sign in to. A local
      * graph (ADR 0070): where its folder and AGENTS.md are.
      */
+    /** A synced graph's own name, as its export names it, or null when it has none. */
+    function syncedGraphName(): string | null {
+        return serverGraph?.getMeta().name || graphDisplayName || null;
+    }
+
     function agentsTabProps(): AgentsTabProps | null {
         // The EtherPK-hosted Client runs the latest release, which is also npm's latest, and a
         // pin there could name a release npm has not published yet. A self-hosted Client names
@@ -3650,6 +3690,7 @@
             return {
                 kind: "synced",
                 graphId,
+                graphName: syncedGraphName(),
                 serverBaseUrl: connection.serverBaseUrl,
                 headlessClient,
                 // The managed sign-in makes the code. A custom server's access token may not
@@ -3657,9 +3698,10 @@
                 createSetupCode: connection.kind === "managed" ? () => syncApiFor(connection).createAgentSetupCode() : null,
             };
         }
+        if (fsFolderName === undefined) return { kind: "browser" };
         return {
             kind: "local",
-            folderName: fsFolderName ?? null,
+            folderName: fsFolderName,
             folderPath: readGraphFolderPath(graphId) || null,
             headlessClient,
         };
@@ -4616,7 +4658,11 @@
         // The publishing pair (ADR 0082): Alt+P for the settings, Alt+Shift+P to publish again.
         commandRegistry.register("publish.settings", () => openGraphSettings("publish"));
         // The Agents tab: where an Agent Chat asks for a Model Connection when there is none (ADR 0147).
-        commandRegistry.register("agents.settings", () => openGraphSettings("agents"));
+        // An extension with a section on the Agents tab names itself, to open on its own sub-tab.
+        commandRegistry.register("agents.settings", (arg) => {
+            const extension = (arg as { extension?: unknown } | undefined)?.extension;
+            openGraphSettings("agents", typeof extension === "string" ? { agentsSubTab: extension } : {});
+        });
         // Spell Check (ADR 0095): its Spelling tab, then the spelling menu's rows, the phone's
         // Fix spelling button and the `/` row.
         commandRegistry.register(SPELLING_OPEN_SETTINGS, () => openGraphSettings("spelling"));
@@ -4791,13 +4837,12 @@
             },
         });
         void extensionHost.start(extensionGraph);
-        // Copy task reference (ADR 0114): the task on the caret's line, or a card's, on the
-        // clipboard as its words and an address, to hand to an agent. Said, since a clipboard
-        // shows nothing of its own.
-        const detachTaskReferences = registerTaskReferenceCommands(commandRegistry, contributions, {
+        // Copy agent instruction (ADR 0114, ADR 0178): the task on the caret's line, or a card's, or
+        // a board's lane, on the clipboard with how an agent reaches this graph, to hand to it.
+        // Said, since a clipboard shows nothing of its own.
+        const detachAgentInstructions = registerAgentInstructionCommands(commandRegistry, contributions, {
             graphId: () => graphId,
-            // A synced graph's own name, as its export names it; a folder graph's display name.
-            graphName: () => serverGraph?.getMeta().name || graphDisplayName || null,
+            reach: agentReach,
             writeClipboard: (text) => navigator.clipboard.writeText(text),
             notify: (text) => notify(text),
         });
@@ -4807,7 +4852,7 @@
             store: () => workspaceService("store") ?? null,
         });
         detachTaskCommands = () => {
-            detachTaskReferences();
+            detachAgentInstructions();
             detachTaskStatuses();
         };
         // The Quick Notes move and its Command Menu row (ADR 0078). The raw store, not the
@@ -5937,7 +5982,14 @@
         if (!location || fsFolderName === undefined) return;
         const folder = readGraphFolderPath(graphId);
         if (!folder) {
-            folderPathPrompt = { concept };
+            folderPathPrompt = {
+                skippable: false,
+                answered: (given) => {
+                    if (given === null) return;
+                    writeGraphFolderPath(graphId, given);
+                    void copyDocumentFilePath(concept);
+                },
+            };
             return;
         }
         const path = joinGraphPath(folder, location.subdir, location.fileName);
@@ -5947,6 +5999,26 @@
         } catch (err) {
             notify(copyFailureMessage("file path", err, path));
         }
+    }
+
+    /** Close the folder path dialog with what the person gave, or null, and carry on with whatever raised it. */
+    function answerFolderPath(path: string | null): void {
+        const prompt = folderPathPrompt;
+        folderPathPrompt = null;
+        prompt?.answered(path);
+    }
+
+    /**
+     * How an agent can reach this graph, and `document`'s file in it, for an [[Agent Instruction]].
+     * A folder on disk is asked after once (folderPathOrAskOnce); the copy then runs after the
+     * dialog closes, whichever way it closes.
+     */
+    async function agentReach(document: string | null): Promise<AgentReach> {
+        const agentsUrl = agentsSettingsUrl(location.origin, graphId);
+        if (isServerStore) return { kind: "synced", graphName: syncedGraphName(), agentsUrl };
+        if (fsFolderName === undefined) return { kind: "browser", graphName: graphDisplayName || null, agentsUrl };
+        const folderPath = await folderPathOrAskOnce(graphId, () => new Promise((answered) => (folderPathPrompt = { skippable: true, answered })));
+        return { kind: "folder", folderName: fsFolderName, folderPath, file: document === null ? null : fileLocationOf(document) };
     }
 
     // ── Publishing (ADR 0082) ─────────────────────────────────────────────────────────────
@@ -6440,7 +6512,7 @@
      * never says "settings" without saying which tab; the dialog still falls back to General
      * if the tab is not offered (a Filesystem graph has no Mirror tab) and says so.
      */
-    function openGraphSettings(tab?: SettingsTab, options: { publishReport?: string } = {}) {
+    function openGraphSettings(tab?: SettingsTab, options: { publishReport?: string; agentsSubTab?: string } = {}) {
         // The toolbar shows before the first Layout has mounted, and seed() then writes the first
         // Visit's address by replacing the history entry in front. An entry pushed for Settings
         // before that is the one it replaces, which closes Settings as it opens, so a request
@@ -6457,9 +6529,11 @@
                 // report asked for now is not shown (as before this change) - and must not be
                 // carried to some later, unrelated open.
                 pendingPublishReport = undefined;
+                pendingAgentsSubTab = undefined;
                 return renameSettingsEntry(target);
             }
             pendingPublishReport = options.publishReport;
+            pendingAgentsSubTab = options.agentsSubTab;
             return goto(location.pathname + withSettingsTab(location.search, target), {
                 shallow: true,
                 state: {
@@ -6566,8 +6640,10 @@
             storage: storage ?? null,
             tab,
             publishReport: pendingPublishReport,
+            agentsSubTab: pendingAgentsSubTab,
         };
         pendingPublishReport = undefined;
+        pendingAgentsSubTab = undefined;
         if (tab === "mirror") void refreshExportTab();
     }
 
@@ -7737,11 +7813,14 @@
 {#if protectingDraft}
     <ConfirmDialog
         open={true}
-        title="Nothing to protect yet"
-        message={`“${protectingDraft}” isn’t a document yet. A page is created the moment you type something into it, and protection encrypts what the page holds - so until then there is nothing to protect. Add the content you want kept private, then choose Protect… again.`}
-        confirmLabel="OK"
-        hideCancel={true}
-        onconfirm={() => (protectingDraft = null)}
+        title={`Create “${protectingDraft}” and protect it?`}
+        message={`“${protectingDraft}” has no page yet. EtherPK creates the page when you first type in it. To protect it now, EtherPK creates an empty page and encrypts it. Anything you add after that is protected.`}
+        confirmLabel="Create and protect"
+        onconfirm={() => {
+            const concept = protectingDraft;
+            protectingDraft = null;
+            if (concept) void startProtect(concept, { create: true });
+        }}
         oncancel={() => (protectingDraft = null)}
     />
 {/if}
@@ -7872,13 +7951,9 @@
 {#if folderPathPrompt && fsFolderName !== undefined}
     <GraphFolderPathDialog
         folderName={fsFolderName}
-        onsave={(path) => {
-            const { concept } = folderPathPrompt!;
-            folderPathPrompt = null;
-            writeGraphFolderPath(graphId, path);
-            void copyDocumentFilePath(concept);
-        }}
-        onclose={() => (folderPathPrompt = null)}
+        skippable={folderPathPrompt.skippable}
+        onsave={answerFolderPath}
+        onclose={() => answerFolderPath(null)}
     />
 {/if}
 
@@ -7948,6 +8023,7 @@
               }
             : null}
         agents={agentsTabProps()}
+        agentsSubTab={graphSettingsDialog.agentsSubTab}
         publish={publishTabProps()}
         duplicateNames={duplicateNames}
         formatting={formattingScan && !useMobile

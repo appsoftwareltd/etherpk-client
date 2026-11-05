@@ -177,12 +177,14 @@
     <div class="space-y-2">
         <h3 id={`${fieldId}-heading`} class="flex items-center gap-2 text-base font-semibold text-gray-950 dark:text-gray-100"><RobotIcon class="size-5 text-gray-600 dark:text-gray-400" />Agent Chat</h3>
         <p class={help}>
-            Ask a language model about your notes from inside EtherPK: type <kbd class="font-mono">/Agent</kbd> in a document. It can only read, and only what you allow in each chat.
-            Chats stay on the device you had them on, and nothing goes into a document unless you save it there.
+            Use to chat with a language model (local or via remote provider) about your notes from inside EtherPK, by typing <kbd class="font-mono">/Agent</kbd> in a document or clicking the
+            Agent button. It can only read and respond, and only sees the context you choose in each chat session. Chats stay on the device you had them on, and nothing goes into a document
+            unless you save it there.
         </p>
         <p class={help}>
-            The model is called from this browser with your own key: EtherPK's servers are not in the path. These connections are yours on every graph and device, and members of a shared
-            graph don't see them. Set a spending limit on each key at your provider. Agents you sign in with the Headless Client cannot read these keys.
+            The model is called from this browser with your own key: EtherPK's servers do not see the chat conversation. These connections are yours on each graph and device, and members of a
+            shared graph don't see them. We recommend setting a spending limit on each key if you use a remote provider. Agents you sign in with the MCP Server / Headless Client cannot read these
+            keys.
         </p>
     </div>
 
@@ -240,7 +242,7 @@
                     <p id={`${fieldId}-address-help`} class={errors.address ? fieldError : help}>
                         {errors.address ??
                             (form.provider === "local"
-                                ? "Ollama listens at http://localhost:11434/v1 and LM Studio at http://localhost:1234/v1. The server must allow requests from this page: for Ollama, set OLLAMA_ORIGINS to this page's address, and for LM Studio, switch on CORS. Your browser may ask whether this page may reach your computer's network."
+                                ? "Ollama listens at http://localhost:11434/v1 and LM Studio at http://localhost:1234/v1. The server must allow requests from this page: for Ollama, set OLLAMA_ORIGINS to this page's address, and for LM Studio, switch on CORS. Your browser may ask whether this page may reach your device's network."
                                 : "The address of the server's OpenAI-compatible API, ending in /v1 for most servers.")}
                     </p>
                 </div>
@@ -324,7 +326,7 @@
     </div>
 
     <div class="space-y-1">
-        <label class={label} for={`${fieldId}-instruction`}>Agent instruction</label>
+        <label class={label} for={`${fieldId}-instruction`}>Chat instruction</label>
         <textarea
             id={`${fieldId}-instruction`}
             class="{input} min-h-24"

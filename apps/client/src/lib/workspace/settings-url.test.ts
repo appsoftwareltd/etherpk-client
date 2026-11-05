@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest'
 
-import { SETTINGS_PARAM, settingsTabFromUrl, withSettingsTab, withoutSettingsTab } from './settings-url'
+import { agentsSettingsUrl, SETTINGS_PARAM, settingsTabFromUrl, withSettingsTab, withoutSettingsTab } from './settings-url'
 
 // Settings rides the query string of whatever address is beneath it (ADR 0023, 2026-09-20):
 // `?settings=<tab>` is the modal open on that tab, and its absence is the modal closed. The
 // fragment stays reserved for in-document anchors.
+
+describe('agentsSettingsUrl', () => {
+    it("is a graph's Agents tab, which an address reads back as that tab", () => {
+        const url = agentsSettingsUrl('https://app.test', 'g-1')
+        expect(url).toBe('https://app.test/g/g-1?settings=agents')
+        expect(settingsTabFromUrl(new URL(url))).toBe('agents')
+    })
+
+    it('encodes the graph id', () => {
+        expect(agentsSettingsUrl('https://app.test', 'a b')).toBe('https://app.test/g/a%20b?settings=agents')
+    })
+})
 
 describe('settingsTabFromUrl', () => {
     it('reads the tab an address names', () => {
