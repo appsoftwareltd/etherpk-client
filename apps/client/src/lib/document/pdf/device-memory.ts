@@ -22,6 +22,10 @@ export interface PdfPreferences {
     penPressure: boolean
     /** A finger draws in place of scrolling. Unset until a person changes it, because the default depends on the device. */
     fingerDraws?: boolean
+    /** On a touch phone, the top bar and the page buttons go while a person reads. */
+    hidesControls: boolean
+    /** The hint on how to bring them back has been shown here. */
+    controlsHintSeen?: boolean
     /** What the drawing tools last used. Checked when read (annotation-palette.ts). */
     inkColour?: unknown
     highlightColour?: unknown
@@ -48,7 +52,7 @@ export interface PdfDeviceMemory {
 }
 
 const KEY = 'etherpk.pdf.device'
-const DEFAULTS: PdfPreferences = { pageByPage: false, darkPages: false, keepScreenOn: true, penPressure: true }
+const DEFAULTS: PdfPreferences = { pageByPage: false, darkPages: false, keepScreenOn: true, penPressure: true, hidesControls: true }
 /** Enough for a person's reading, without letting the record grow for ever. */
 export const MAX_REMEMBERED_PDFS = 200
 

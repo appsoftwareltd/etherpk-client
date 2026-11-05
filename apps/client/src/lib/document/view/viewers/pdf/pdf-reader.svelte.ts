@@ -3,8 +3,6 @@
  * PDF. A class of `$state` fields, so the components stay about presentation and this stays
  * about behaviour. pdf.js owns the pages; {@link PdfOverlays} draws what a person put on them.
  */
-import { tick } from 'svelte'
-
 import { contentMargins, cropFromSamples, pageFitsCrop, samplePages, type DocumentCrop, type Margins } from '#lib/document/pdf/crop-margins.js'
 import { DEFAULT_CUSTOM, DEFAULT_HIGHLIGHT, DEFAULT_INK, knownColour, knownStrokeWidth, type DrawingTool } from '#lib/document/pdf/annotation-palette.js'
 import type { FileSelection } from '#lib/document/file-in-front.js'
@@ -21,6 +19,7 @@ import { listenForPinch, wheelZoomFactor } from './pdf-pinch'
 import { listenForTextDrag } from './pdf-text-drag'
 import { dropSignatures, heldSignatures, holdSignatures, signaturesKey, type HeldSignatures } from './held-signatures.svelte'
 import { listenForHandPan } from './pdf-hand-pan'
+import { HidingControls } from './pdf-hiding-controls'
 import { frameOf, PdfOverlays, type OverlayHost, type OverlayPage, type PdfTool, type PlacedSignature } from './pdf-overlay'
 import { printPdf } from './pdf-print'
 import { browserKeepScreenOn, type KeepScreenOn } from './wake-lock'
@@ -77,6 +76,9 @@ function isPhone(): boolean {
     return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 640px), (max-height: 640px) and (pointer: coarse)').matches
 }
 
+/** A phone in a person's hand, upright or sideways. A window that narrow with a mouse has no tap to answer. */
+export const TOUCH_PHONE = '(pointer: coarse) and (max-width: 640px), (pointer: coarse) and (max-height: 640px)'
+
 export function isTouchFirst(): boolean {
     return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
 }
@@ -123,8 +125,12 @@ export class PdfReader {
     /** The note open for editing: where it is, and what it says. */
     noteEditor = $state<{ id: string | null; page: number; x: number; y: number; text: string } | null>(null)
 
-    /** Phone only, when asked for: the toolbar and the app's chrome are hidden while reading. */
-    immersive = $state(false)
+    /** The phone's top bar and the page buttons are out of sight for now. */
+    controlsHidden = $state(false)
+    readonly controls = new HidingControls(
+        (hidden) => (this.controlsHidden = hidden),
+        () => !!document.activeElement?.matches('input, select, textarea') && !!this.container?.contains(document.activeElement),
+    )
     /** The floating page count is up. Only where the toolbar is on the Command Bar does it ever go. */
     pageCountShowing = $state(false)
     /** The side a tap has just turned the page from. A new object for each tap, so each one flashes. */
@@ -564,6 +570,11 @@ export class PdfReader {
         this.pageCountTimer = setTimeout(() => (this.pageCountShowing = false), PAGE_COUNT_MS)
     }
 
+    private hidePageCount(): void {
+        this.pageCountShowing = false
+        clearTimeout(this.pageCountTimer)
+    }
+
     private onTapStart(event: PointerEvent): void {
         this.toolOptionsOpen = false
         this.keepScreen?.touched()
@@ -638,14 +649,16 @@ export class PdfReader {
         }
         this.lastTap = { at: now, x: event.clientX, y: event.clientY }
         clearTimeout(this.singleTapTimer)
-        this.singleTapTimer = setTimeout(() => this.onSingleTap(), DOUBLE_TAP_MS)
+        // A tap clears a selection before this wait is up, and that tap has then done its job.
+        const answered = this.hasSelection || (event.target instanceof Element && !!event.target.closest(ANSWERS_A_TAP))
+        this.singleTapTimer = setTimeout(() => this.onSingleTap(answered), DOUBLE_TAP_MS)
     }
 
-    private onSingleTap(): void {
-        if (window.getSelection()?.toString()) return
-        this.showPageCount()
-        // Going full screen is asked for in the More menu, so a tap steadying the page never does it.
-        this.setImmersive(false)
+    /** The middle of the page, or anywhere on it without Page by page, where no side turns the page. */
+    private onSingleTap(answered: boolean): void {
+        if (answered || window.getSelection()?.toString()) return
+        if (!this.controls.on || this.controls.toggle()) this.showPageCount()
+        else this.hidePageCount()
     }
 
     /** Double-tap: fit-width and a closer zoom, in turn. */
@@ -655,20 +668,6 @@ export class PdfReader {
         if (this.pageFitsScreen()) viewer.updateScale({ scaleFactor: 2, origin: [event.clientX, event.clientY] })
         else this.fitWidth()
         this.rememberZoom()
-    }
-
-    /**
-     * Hide or show the app's chrome. The pages keep their place on screen: going full-screen moves the
-     * scroller up by the height of what it covers, so it scrolls by the same amount.
-     */
-    setImmersive(on: boolean): void {
-        if (this.immersive === on) return
-        const { container } = this
-        const before = container?.getBoundingClientRect().top ?? 0
-        this.immersive = on
-        void tick().then(() => {
-            if (container) container.scrollTop += container.getBoundingClientRect().top - before
-        })
     }
 
     // ---- Reading controls ----
@@ -1288,6 +1287,7 @@ export class PdfReader {
         clearTimeout(this.placeTimer)
         clearTimeout(this.singleTapTimer)
         clearTimeout(this.pageCountTimer)
+        this.controls.destroy()
         this.writePlace()
         this.controller.abort()
         this.keepScreen?.destroy()

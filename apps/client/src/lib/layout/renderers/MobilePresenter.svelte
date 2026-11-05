@@ -19,6 +19,7 @@
     import { markIcon, tabTitleWidth, type TabMark } from './tab-renderer'
     import { iconSvg } from '#lib/surface/icons.js'
     import { unavailableViewMessage } from './unavailable-view'
+    import { noteTopBarOpened, topBarOverView } from '../top-bar-over-view.svelte'
     import { createViewVisibility, watchPageVisibility } from '../view-visibility'
     import { workspaceService } from '#lib/workspace/workspace-services.js'
 
@@ -194,6 +195,16 @@
     // and a long press on the control or a row raises that tab's Context Menu.
     let menuOpen = $state(false)
     let currentEl = $state<HTMLButtonElement>()
+
+    // A View that asks has the top bar lying over it, out of the way until wanted. A Sidebar or the list
+    // is put away from the top bar, so the View keeps the bar up for them.
+    const overView = $derived(topBarOverView.current)
+    let topBarHeight = $state(0)
+    const pressedBar = () => overView?.pressed()
+    $effect(() => {
+        noteTopBarOpened(leftOpen || rightOpen || menuOpen)
+        return () => noteTopBarOpened(false)
+    })
 
     /** Put the list away, handing focus back to the control that opened it. */
     function closeList() {
@@ -377,10 +388,10 @@
     </div>
 {/snippet}
 
-<div class="mobile" data-testid="mobile-presenter" style="--keyboard-inset: {keyboardInset}px">
+<div class="mobile" data-testid="mobile-presenter" style="--keyboard-inset: {keyboardInset}px; --top-bar-over: {overView ? topBarHeight : 0}px">
     <!-- The drawer toggles, and between them the button to Search, the control naming the
          document in front and the button to today's journal -->
-    <div class="topbar" data-testid="mobile-topbar">
+    <div class="topbar" class:over={overView} data-gone={overView?.hidden || undefined} bind:offsetHeight={topBarHeight} onpointerdowncapture={pressedBar} data-testid="mobile-topbar">
         <button
             class="toggle"
             data-testid="mobile-toggle-left"
@@ -556,7 +567,7 @@
     <!-- The Command Bar: always shown on mobile, fixed at the bottom. Its buttons act on
          the active editor (no-op when none is focused), or on the tab that put its tools there.
          That is never what an open drawer shows, so a drawer turns them all off. -->
-    <div class="command-bar-slot">
+    <div class="command-bar-slot" onpointerdowncapture={pressedBar}>
         <CommandBar off={leftOpen || rightOpen} />
     </div>
 </div>
@@ -644,6 +655,28 @@
            each paint their own surface over it. */
         background: var(--gk-toolbar-accent, var(--gk-surface-1));
     }
+    /* Out of the grid, whose first row then closes up, so the View has the height whether the bar shows or
+       not and nothing in it moves. What opens from the top of the content clears it (--top-bar-over).
+       Under a menu tall enough to reach it, so that the menu's first rows stay reachable. */
+    .topbar.over {
+        position: absolute;
+        top: 0;
+        right: 0;
+        left: 0;
+        z-index: 15;
+        transition:
+            transform 150ms ease-out,
+            visibility 150ms;
+    }
+    .topbar.over[data-gone] {
+        transform: translateY(-100%);
+        visibility: hidden;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .topbar.over {
+            transition: none;
+        }
+    }
     /* The Command Bar's grid row, pinned to the bottom of the surface. */
     .command-bar-slot {
         grid-row: 3;
@@ -658,11 +691,11 @@
     }
     .tabmenu {
         position: absolute;
-        top: 0;
+        top: var(--top-bar-over, 0px);
         left: 0;
         right: 0;
         z-index: 21;
-        max-height: 100%;
+        max-height: calc(100% - var(--top-bar-over, 0px));
         overflow-y: auto;
         display: flex;
         flex-direction: column;
@@ -985,7 +1018,7 @@
     }
     .backdrop {
         position: absolute;
-        inset: 0;
+        inset: var(--top-bar-over, 0px) 0 0;
         z-index: 10;
         border: 0;
         background: rgba(3, 7, 18, 0.35);
@@ -993,7 +1026,7 @@
     }
     .drawer {
         position: absolute;
-        top: 0;
+        top: var(--top-bar-over, 0px);
         bottom: 0;
         z-index: 11;
         width: 78%;
@@ -1010,6 +1043,8 @@
         flex: 1;
         min-height: 0;
         overflow: auto;
+        /* A drawer starts below the top bar, so what is in it has nothing to clear. */
+        --top-bar-over: 0px;
     }
     /* The same connected-tab look as the desktop strip (compass-theme.css → .dv-tab): squared
        tabs sitting on the strip's bottom rule, the active one filled with the panel background

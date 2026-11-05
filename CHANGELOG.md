@@ -5,6 +5,16 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.19.3 - 2026-11-05
+
+### Client
+
+- **More room to read a PDF on a phone.** The top bar and the page buttons go 5 seconds after they show, and
+  the page stays where it is. Tap the middle of the page, or anywhere on it without **Page by page**, to bring
+  them back, and tap again to hide them. The command bar stays. A tool, or anything opened from the command
+  bar, keeps them up until it is done. **Hide top bar and page buttons** in **More** turns this off. It replaces
+  **Full screen**, which is no longer in **More**.
+
 ## 0.19.2 - 2026-11-05
 
 ### Client

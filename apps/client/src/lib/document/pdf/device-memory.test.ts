@@ -10,7 +10,7 @@ function fakeStorage(): Pick<Storage, 'getItem' | 'setItem'> & { map: Map<string
 describe('PDF device memory', () => {
     it('starts with the defaults', () => {
         const memory = createPdfDeviceMemory(fakeStorage())
-        expect(memory.preferences()).toEqual({ pageByPage: false, darkPages: false, keepScreenOn: true, penPressure: true })
+        expect(memory.preferences()).toEqual({ pageByPage: false, darkPages: false, keepScreenOn: true, penPressure: true, hidesControls: true })
         expect(memory.pdf('graph', 'a')).toEqual({})
     })
 

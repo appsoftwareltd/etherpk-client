@@ -20,8 +20,9 @@
     import { iconSvg } from "#lib/surface/icons.js";
     import { editorContext } from "#lib/document/index.js";
     import { registerFileSelection } from "#lib/document/file-in-front.js";
-    import { createSubscriber } from "svelte/reactivity";
+    import { createSubscriber, MediaQuery } from "svelte/reactivity";
     import { offerCommandBarTools } from "#lib/surface/command-bar-tools.svelte.js";
+    import { putTopBarOverView, topBarOverView } from "#lib/layout/top-bar-over-view.svelte.js";
     import { hideAppHeaderOnPhone } from "#lib/workspace/app-header.svelte.js";
     import { currentWorkspaceServices, workspaceService } from "#lib/workspace/workspace-services.js";
 
@@ -30,7 +31,7 @@
     import { assetRefOf } from "./pdf-asset-ref";
     import PdfFindBar from "./PdfFindBar.svelte";
     import PdfPasswordPrompt from "./PdfPasswordPrompt.svelte";
-    import { EDGE_TAP_SHARE, isTouchFirst, PdfReader } from "./pdf-reader.svelte";
+    import { EDGE_TAP_SHARE, isTouchFirst, PdfReader, TOUCH_PHONE } from "./pdf-reader.svelte";
     import { saveCopy } from "./pdf-save";
     import PdfSaveDialog, { type LinkPlace, type SaveRequest } from "./PdfSaveDialog.svelte";
     import PdfSidePanel from "./PdfSidePanel.svelte";
@@ -138,8 +139,8 @@
         void service.keptOnDevice(target).then((kept) => (keptOnDevice = kept));
     });
 
-    // On a phone the pages take the height of the app's header. The phone's top bar stays, and leads
-    // to the rest of the graph, where the header comes back.
+    // On a phone the pages take the height of the app's header. The phone's top bar leads to the rest
+    // of the graph, where the header comes back.
     $effect(() => hideAppHeaderOnPhone());
 
     /** Where a Command Bar shows, the toolbar's buttons are on it, which saves the rows they took up here. */
@@ -159,13 +160,55 @@
         if (inBar && reader.tool === tool) button.scrollIntoView({ block: "nearest", inline: "nearest" });
     };
 
-    // Full-screen on a phone goes in the browser's top layer: it alone sits over the phone's top bar,
-    // whichever stacking context the tab is in. A manual popover closes only when told to.
+    // Reading on a touch phone, the top bar and the page buttons go a few seconds after they show. The
+    // Command Bar stays, so there is always a control in sight and a way to turn a tool off.
+    const touchPhone = new MediaQuery(TOUCH_PHONE);
+    const hidesControls = $derived(reader.status === "ready" && inBar && touchPhone.current && reader.preferences.hidesControls);
+    const toolOn = $derived(reader.tool !== "none");
+    /** A row across the top of the tab is showing: each is drawn above the pages, below. */
+    const topRowShowing = $derived(renameOpen || deleteOpen || printOptionsOpen || closeGuardOpen || reader.findOpen || !!reader.printing || !!reader.printError || !!reader.stateProblem || reader.signatures.length > 0);
+    /** What a press has to reach under the top bar: those rows, the panel, and for a tool the top of the page. */
+    const clearsTopBar = $derived(hidesControls && (topRowShowing || panelOpen || toolOn));
+
+    $effect(() =>
+        reader.controls.update({
+            on: hidesControls,
+            opened: topRowShowing || panelOpen || toolOn || moreOpen || signatureOpen || saveOpen || topBarOverView.opened,
+            busy: reader.hasSelection || !!reader.noteEditor,
+        }),
+    );
+
     $effect(() => {
-        const element = root;
-        if (!element || typeof element.showPopover !== "function") return;
-        if (reader.immersive) element.showPopover();
-        else if (element.matches(":popover-open")) element.hidePopover();
+        if (!hidesControls) return;
+        return putTopBarOverView({
+            get hidden() {
+                return reader.controlsHidden;
+            },
+            pressed: () => reader.controls.pressed(),
+        });
+    });
+
+    // Once on a device, because a top bar going by itself could look like a fault.
+    $effect(() => {
+        if (!reader.controlsHidden || reader.preferences.controlsHintSeen) return;
+        untrack(() => {
+            reader.updatePreferences({ controlsHintSeen: true });
+            showToast("Tap the middle of the page to bring back the top bar and page buttons");
+        });
+    });
+
+    // Clearing the top bar moves the pages down, so the scroller scrolls by as much: a page taller than
+    // the view stays where the person was reading it, and they can scroll up to its top.
+    const scroller = () => root?.querySelector<HTMLElement>(".etherpk-pdf-scroller") ?? null;
+    let scrollerTopBefore: number | null = null;
+    $effect.pre(() => {
+        void clearsTopBar;
+        scrollerTopBefore = scroller()?.getBoundingClientRect().top ?? null;
+    });
+    $effect(() => {
+        void clearsTopBar;
+        const element = scroller();
+        if (element && scrollerTopBefore !== null) element.scrollTop += element.getBoundingClientRect().top - scrollerTopBefore;
     });
 
     // A signature nobody saved is in no file, so closing the tab asks first.
@@ -263,6 +306,7 @@
         // Ahead of the text entry check, because the menu's rows are checkboxes.
         if (key === "escape" && moreOpen) return closeMoreMenu();
         if (isTextEntry(document.activeElement)) return;
+        reader.controls.show();
         handleReaderKeys(event, mod, key);
     }
 
@@ -676,7 +720,7 @@
 {/snippet}
 
 {#snippet barStrip()}
-    {#if reader.status === "ready" && !reader.immersive}
+    {#if reader.status === "ready"}
         <div class="contents" role="toolbar" aria-label="PDF tools" tabindex="-1" onpointerdown={keepPress} onmousedown={keepPress} data-testid="pdf-toolbar">
             {@render tools("command-bar__btn")}
         </div>
@@ -684,7 +728,7 @@
 {/snippet}
 
 {#snippet barPinned()}
-    {#if reader.status === "ready" && !reader.immersive}{@render moreToggle("command-bar__btn")}{/if}
+    {#if reader.status === "ready"}{@render moreToggle("command-bar__btn")}{/if}
 {/snippet}
 
 {#snippet moreMenuBlock()}
@@ -712,13 +756,14 @@
                 {@render toggleRow("Keep the screen on", reader.preferences.keepScreenOn, "pdf-keep-screen", (next) => reader.setKeepScreenOn(next))}
                 {@render toggleRow("Draw with finger", reader.fingerDraws, "pdf-finger-draws", (next) => (reader.fingerDraws = next))}
             {/if}
+            {#if touchPhone.current}
+                {@render toggleRow("Hide top bar and page buttons", reader.preferences.hidesControls, "pdf-hide-controls", (next) => reader.updatePreferences({ hidesControls: next }))}
+            {/if}
             {#if service?.backend === "synced"}
                 {@render toggleRow(`Keep on this device (${fileSize})`, keptOnDevice, "pdf-keep-on-device", (next) => void setKept(next))}
                 {#if keepError}<p class="px-2 text-sm text-red-700 dark:text-red-400" role="alert" data-testid="pdf-keep-error">{keepError}</p>{/if}
             {/if}
             <hr class="my-0.5 border-(--gk-surface-2)" />
-            <!-- A phone alone has this: anything wider keeps the app's chrome in place. -->
-            <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2) sm:hidden" onclick={() => { moreOpen = false; reader.setImmersive(true); }} data-testid="pdf-full-screen">Full screen</button>
             <!-- On a phone these leave the toolbar, so the page keeps the room. -->
             <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2) sm:hidden" onclick={() => { moreOpen = false; signatureOpen = true; }} data-testid="pdf-more-sign">Add your signature</button>
             <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2) sm:hidden" onclick={() => { moreOpen = false; openSave(); }} data-testid="pdf-more-save">Save a copy</button>
@@ -736,8 +781,7 @@
 
 <div
     bind:this={root}
-    popover="manual"
-    class={["etherpk-pdf-reader flex h-full flex-col", reader.immersive && "etherpk-pdf-immersive", reader.preferences.darkPages && "etherpk-pdf-dark-pages"]}
+    class={["etherpk-pdf-reader flex h-full flex-col", reader.preferences.darkPages && "etherpk-pdf-dark-pages"]}
     data-testid="pdf-asset-viewer"
     data-pages={reader.pageCount || undefined}
     data-hash={reader.hash ?? undefined}
@@ -751,13 +795,14 @@
     {:else if reader.status === "opening"}
         <p class="p-6 text-center text-sm text-(--gk-text-muted)" role="status">Opening {name}…</p>
     {:else}
-        {#if !reader.immersive && !inBar}
+        {#if !inBar}
             <div class="etherpk-pdf-toolbar flex shrink-0 flex-wrap items-center gap-0.5 border-b border-(--gk-surface-2) bg-(--gk-surface-1) px-1 py-1" role="toolbar" aria-label="PDF tools" data-testid="pdf-toolbar">
                 {@render tools("pdf-tool")}
                 <div class="relative shrink-0">{@render moreToggle("pdf-tool")}</div>
             </div>
         {/if}
         {#if !inBar}{@render moreMenuBlock()}{/if}
+        {#if clearsTopBar}<div class="etherpk-pdf-top-bar-room" aria-hidden="true"></div>{/if}
         {#if renameOpen}
             <form class="flex flex-wrap items-center gap-2 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2" onsubmit={submitRename} data-testid="pdf-rename-form">
                 <label class="text-sm font-medium text-(--gk-text-default)" for="pdf-rename-input">Name</label>
@@ -850,13 +895,13 @@
                         ></div>
                     {/if}
                 {/key}
-                {#if reader.pageCount > 1 && !reader.immersive && (reader.preferences.pageByPage || inBar)}
+                {#if reader.pageCount > 1 && (reader.preferences.pageByPage || inBar)}
                     <!-- Over the page, in the style of a document's floating buttons. A person can turn
                          the page without finding a key, a swipe or the edge of the screen. On a touch
                          screen or a phone the buttons move out to the edges of the view, near a thumb.
                          Where the toolbar is on the Command Bar the count is the only sign of the page in
                          view, in either mode. It shows when the page changes, and takes no touches. -->
-                    <div class="etherpk-pdf-page-nav" data-in-bar={inBar || undefined} role="group" aria-label="Turn the page" data-testid="pdf-page-nav">
+                    <div class="etherpk-pdf-page-nav" data-in-bar={inBar || undefined} data-buttons-gone={reader.controlsHidden || undefined} role="group" aria-label="Turn the page" data-testid="pdf-page-nav">
                         {#if turningPages}{@render turnPage("previous", "pdf-tool etherpk-pdf-page-edge")}{/if}
                         <div class="etherpk-pdf-page-progress" data-gone={(inBar && (!reader.pageCountShowing || reader.hasSelection)) || undefined} data-testid="pdf-page-progress">
                             {#if !inBar}{@render turnPage("previous", "pdf-tool etherpk-pdf-page-inner")}{/if}
@@ -866,7 +911,7 @@
                         {#if turningPages}{@render turnPage("next", "pdf-tool etherpk-pdf-page-edge")}{/if}
                     </div>
                 {/if}
-                {#if fileActions.length > 0 && !reader.immersive}
+                {#if fileActions.length > 0}
                     <!-- Level with the page controls. Where the layout has a Command Bar, these buttons are on it. -->
                     <div class="etherpk-pdf-file-actions" data-beside-next={turningPages || undefined}>
                         {#each fileActions as action (action.id)}
@@ -887,7 +932,7 @@
                         {/each}
                     </div>
                 {/if}
-                {#if showsColours && !reader.immersive}
+                {#if showsColours}
                     <!-- Over the page, so choosing a tool never moves the page under the pointer. -->
                     <!-- On a phone they would cover the top of the page, so they tuck to its right edge, behind a
                          button that shows the colour in hand and points to where they come out. -->
@@ -944,12 +989,6 @@
             {/if}
         </div>
         {#if inBar}{@render moreMenuBlock()}{/if}
-        {#if reader.immersive}
-            <button type="button" class="etherpk-pdf-page-chip flex items-center gap-1.5 rounded-full bg-black/70 px-3 py-2 text-sm text-white" aria-label={`Leave full screen, page ${reader.page} of ${reader.pageCount}`} title="Leave full screen" onclick={() => reader.setImmersive(false)} data-testid="pdf-show-controls">
-                {reader.page} of {reader.pageCount}
-                {@render icon("pdf-full-screen-exit")}
-            </button>
-        {/if}
     {/if}
     {#if toast}
         <div class="etherpk-pdf-toast flex items-center gap-3 rounded-lg bg-gray-900 px-3 py-2 text-sm text-white shadow-lg" role="status" data-testid="pdf-toast">
@@ -1032,31 +1071,10 @@
         position: relative;
         background: var(--gk-surface-2);
     }
-    /* A phone reading: the PDF over the app's own chrome, which comes back with a tap. */
-    .etherpk-pdf-immersive {
-        position: fixed;
-        inset: 0;
-        z-index: var(--z-window, 40);
-        margin: 0;
-        border: 0;
-        width: 100%;
-        height: 100%;
-        max-width: none;
-        max-height: none;
-        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-    }
-    /* A popover is hidden until shown. This one is the tab's own content until it goes full-screen. */
-    .etherpk-pdf-reader[popover]:not(:popover-open) {
-        display: flex;
-        position: relative;
-        inset: auto;
-        margin: 0;
-        padding: 0;
-        border: 0;
-        width: auto;
-        max-width: none;
-        max-height: none;
-        overflow: visible;
+    /* The strip the phone's top bar lies over, where something needs to be reachable below it. */
+    .etherpk-pdf-top-bar-room {
+        flex-shrink: 0;
+        height: var(--top-bar-over, 0px);
     }
     .etherpk-pdf-more {
         position: absolute;
@@ -1272,8 +1290,19 @@
         opacity: 0;
         visibility: hidden;
     }
+    /* Gone with the phone's top bar. A tap where one was lands on the side of the view, which turns the page too. */
+    .etherpk-pdf-page-nav[data-in-bar] :global(.pdf-tool.etherpk-pdf-page-edge) {
+        transition:
+            opacity 150ms ease-out,
+            visibility 150ms;
+    }
+    .etherpk-pdf-page-nav[data-buttons-gone] :global(.pdf-tool.etherpk-pdf-page-edge) {
+        opacity: 0;
+        visibility: hidden;
+    }
     @media (prefers-reduced-motion: reduce) {
-        .etherpk-pdf-page-nav[data-in-bar] .etherpk-pdf-page-progress {
+        .etherpk-pdf-page-nav[data-in-bar] .etherpk-pdf-page-progress,
+        .etherpk-pdf-page-nav[data-in-bar] :global(.pdf-tool.etherpk-pdf-page-edge) {
             transition: none;
         }
     }
@@ -1309,12 +1338,6 @@
             animation-timing-function: step-end;
         }
     }
-    .etherpk-pdf-page-chip {
-        position: absolute;
-        bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
-        right: 0.75rem;
-        z-index: 10;
-    }
     .etherpk-pdf-toast {
         position: absolute;
         bottom: 1rem;
@@ -1339,6 +1362,8 @@
     .etherpk-pdf-scroller {
         touch-action: pan-x pan-y;
         background: var(--gk-surface-2);
+        /* pdf.js numbers a page's form fields and links with z-indexes, which stay under the top bar this way. */
+        isolation: isolate;
     }
     /* A finger that draws: the browser must not take the same move for a scroll. Two fingers still
        zoom and move the page, through the reader's own handling (`pdf-pinch.ts`). */
