@@ -68,7 +68,8 @@ export async function revokeHeldToken(call: Call & { token: string }): Promise<b
     try {
         const response = await (call.fetch ?? fetch)(`${base(call.syncServer)}/api/v1/sync/tokens/current`, {
             method: 'DELETE',
-            headers: { authorization: `Bearer ${call.token}` },
+            // A built SvelteKit server refuses a write that names no type, even with no body to describe.
+            headers: { 'content-type': 'application/json', authorization: `Bearer ${call.token}` },
         })
         return response.ok
     } catch {

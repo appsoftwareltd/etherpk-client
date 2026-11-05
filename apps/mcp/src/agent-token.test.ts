@@ -72,6 +72,8 @@ describe('revoking the token this computer holds', () => {
         expect(String(url)).toBe(`${SERVER}/api/v1/sync/tokens/current`)
         expect(init?.method).toBe('DELETE')
         expect(new Headers(init?.headers).get('authorization')).toBe(`Bearer ${AGENT}`)
+        // A built Sync Server refuses a write that names no Content-Type before it reads the token.
+        expect(new Headers(init?.headers).get('content-type')).toBe('application/json')
     })
 
     it('answers false, and does not throw, when the server cannot be reached or refuses', async () => {

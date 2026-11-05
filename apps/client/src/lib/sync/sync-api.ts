@@ -202,6 +202,14 @@ export interface InviteRequest {
     signature: string
 }
 
+/**
+ * A write names its type even with no body: a built SvelteKit server refuses a cross-origin write
+ * that names none before the route runs, and a browser reports that as "Failed to fetch".
+ */
+function contentTypeHeader(method = 'GET'): Record<string, string> {
+    return method === 'GET' ? {} : { 'Content-Type': 'application/json' }
+}
+
 export function createSyncApi(deps: SyncApiDeps) {
     const f = deps.fetch ?? fetch
     const base = deps.baseUrl.replace(/\/$/, '')
@@ -212,7 +220,7 @@ export function createSyncApi(deps: SyncApiDeps) {
             ...init,
             headers: {
                 Authorization: `Bearer ${token}`,
-                ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+                ...contentTypeHeader(init?.method),
                 ...init?.headers,
             },
         })

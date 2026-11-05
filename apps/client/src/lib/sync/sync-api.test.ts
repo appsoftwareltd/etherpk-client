@@ -7,6 +7,27 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 describe('sync-api', () => {
+    // A built SvelteKit server refuses a write from another origin that names no Content-Type,
+    // before any of the Sync Server's code runs, and `vite dev` skips the check. So this walks every
+    // method: one added later is covered without touching this test.
+    it('names a content type on every write, and on no read', async () => {
+        const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(200, {}))
+        const api = createSyncApi({ baseUrl: 'https://sync.example.com', token: 'access-token', fetch: fetchMock })
+
+        await Promise.allSettled(
+            Object.values(api).map(async (method) => (method as (...args: string[]) => Promise<unknown>)('one', 'two')),
+        )
+
+        const requests = fetchMock.mock.calls.map(([url, init]) => ({
+            request: `${init?.method ?? 'GET'} ${String(url)}`,
+            contentType: new Headers(init?.headers).get('content-type'),
+        }))
+        const writes = requests.filter(({ request }) => !request.startsWith('GET '))
+        expect(writes.length).toBeGreaterThan(20)
+        expect(writes.filter(({ contentType }) => contentType !== 'application/json')).toEqual([])
+        expect(requests.filter(({ request, contentType }) => request.startsWith('GET ') && contentType !== null)).toEqual([])
+    })
+
     it('loads the authenticated account summary with the configured bearer token', async () => {
         const summary = {
             principal: {

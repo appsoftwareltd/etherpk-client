@@ -5,6 +5,21 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.19.4 - 2026-11-05
+
+### Client
+
+- **New synced graph works again.** From 0.17.0 it failed against any deployed Sync Server, with "The sync
+  server could not be reached (Failed to fetch)". So did the other actions that send no data: **Create an
+  Agent Setup Code**, accepting or declining an invite, removing a member, leaving or deleting a graph,
+  **Rotate key** and removing unused files.
+
+### Headless Client
+
+- **Fixes.**
+  - `logout` revokes the token it holds again. From 0.17.0 the server refused the request, so `logout`
+    reported that it could not.
+
 ## 0.19.3 - 2026-11-05
 
 ### Client

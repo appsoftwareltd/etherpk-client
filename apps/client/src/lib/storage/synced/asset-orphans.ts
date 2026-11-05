@@ -76,7 +76,9 @@ export interface ListedAsset {
 function api(deps: ServerAssetOrphanDeps) {
     const f = deps.fetch ?? fetch
     const base = deps.baseUrl.replace(/\/$/, '')
-    return { f, base, headers: async () => ({ 'x-sync-token': await deps.syncToken() }) }
+    // The type goes on the bodiless DELETE too: a built SvelteKit server refuses a cross-origin write
+    // that names none before the route runs.
+    return { f, base, headers: async () => ({ 'x-sync-token': await deps.syncToken(), 'Content-Type': 'application/json' }) }
 }
 
 /**

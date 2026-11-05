@@ -46,10 +46,12 @@ async function openTestGraph() {
 /** A fetch stub for the two asset endpoints; records DELETE calls. */
 function stubApi(assets: Array<{ assetId: string; size: number }>) {
     const deleted: string[] = []
+    const deleteContentTypes: Array<string | null> = []
     const f = (async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
         if (init?.method === 'DELETE') {
             deleted.push(url.split('/').pop()!)
+            deleteContentTypes.push(new Headers(init.headers).get('content-type'))
             return new Response(JSON.stringify({ ok: true }), { status: 200 })
         }
         return new Response(
@@ -57,7 +59,7 @@ function stubApi(assets: Array<{ assetId: string; size: number }>) {
             { status: 200 },
         )
     }) as typeof fetch
-    return { f, deleted }
+    return { f, deleted, deleteContentTypes }
 }
 
 /** The graph's protection, unlocked, with cheap Argon2id: the cost parameters are proven elsewhere. */
@@ -274,13 +276,15 @@ describe('scanOrphanedServerAssets', () => {
 
     it('deletes orphans over the DELETE endpoint', async () => {
         const { graph, cache } = await openTestGraph()
-        const { f, deleted } = stubApi([])
+        const { f, deleted, deleteContentTypes } = stubApi([])
         const removed = await deleteOrphanedServerAssets(
             { graph, graphId: 'g-orphans', baseUrl: 'http://server', syncToken: fixedSyncToken('t'), fetch: f },
             [ORPHAN],
         )
         expect(removed).toBe(1)
         expect(deleted).toEqual([ORPHAN])
+        // A built Sync Server refuses a write that names no Content-Type before it reads the token.
+        expect(deleteContentTypes).toEqual(['application/json'])
         graph.dispose()
         cache.dispose()
     })
