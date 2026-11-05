@@ -12,6 +12,7 @@
     import ApplicationHeader from "@appsoftwareltd/etherpk-shared/application-header";
     import { suppressBrowserChords } from "#lib/surface/index.js";
     import { startPersonSettingsSync } from "#lib/person-settings/person-settings-sync.js";
+    import { appHeaderHiddenOnPhone } from "#lib/workspace/app-header.svelte.js";
 
     let { data, children } = $props();
 
@@ -64,16 +65,18 @@
     <GraphNavigationMenu />
 {/snippet}
 
-    <ApplicationHeader
-        items={navItems}
-        actions={headerActions}
-        itemMenu={{ label: "Graphs", panel: graphsMenu }}
-        {mobileUtilities}
-        brandHref={data.deploymentHomeUrl}
-        testId="app-navbar"
-        mobileToggleTestId="mobile-nav-toggle"
-        mobilePanelTestId="mobile-nav-flyout"
-    />
+    <div class={["app-header", { "hidden-on-phone": appHeaderHiddenOnPhone.current }]}>
+        <ApplicationHeader
+            items={navItems}
+            actions={headerActions}
+            itemMenu={{ label: "Graphs", panel: graphsMenu }}
+            {mobileUtilities}
+            brandHref={data.deploymentHomeUrl}
+            testId="app-navbar"
+            mobileToggleTestId="mobile-nav-toggle"
+            mobilePanelTestId="mobile-nav-flyout"
+        />
+    </div>
 
     <!-- The Client has no app-level sidebar. Graph workspaces provide their own dockable panes. -->
     <main class="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
@@ -86,3 +89,15 @@
 <DeviceApprovalPrompt />
 <RecoveryCodeHost />
 <ActivityToastHost />
+
+<style>
+    .app-header {
+        display: contents;
+    }
+    /* Below LAYOUT_BREAKPOINT_PX in #lib/layout/breakpoint.ts, as the workspace layout's own query is. */
+    @media not all and (min-width: 1024px) {
+        .app-header.hidden-on-phone {
+            display: none;
+        }
+    }
+</style>

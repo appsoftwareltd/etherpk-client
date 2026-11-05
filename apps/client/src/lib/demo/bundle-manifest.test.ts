@@ -91,6 +91,12 @@ describe('buildDemoBundleManifest', () => {
         ])
     })
 
+    it('reads a link to a page of a PDF as a reference to the PDF', () => {
+        expect(problemsOf([sidecar, bin('assets/sheet.00000001.pdf', 2), text('pages/Plant.md', '[p.3](../assets/sheet.00000001.pdf#page=3) [gone](../assets/other.00000003.pdf#page=1)')])).toEqual([
+            'pages/Plant.md: references ../assets/other.00000003.pdf, which is not in the bundle',
+        ])
+    })
+
     it('catches a reference to an asset that is not in the bundle', () => {
         expect(problemsOf([sidecar, text('pages/Plant.md', '![a](../assets/leaf.00000001.png) [sheet](../assets/care%20sheet.00000002.pdf)')])).toEqual([
             'pages/Plant.md: references ../assets/leaf.00000001.png, which is not in the bundle',

@@ -866,26 +866,31 @@
                                 : ''}"
                             title={row.name}
                         >
-                            {#if row.icon}
-                                <!-- In the row's left padding, so a View's title lines up with
-                                     the documents' above and below it. -->
-                                <span
-                                    class="-ml-5 inline-flex w-3.5 shrink-0 self-start pt-0.5 text-(--gk-text-subtle)"
-                                    data-testid="favourite-icon"
-                                >
-                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                                    {@html iconSvg(row.icon, { size: 14 })}
-                                </span>
-                            {/if}
-                            <span class="min-w-0 flex-1">
-                                <span class="block truncate">{row.name}</span>
-                                {#if row.note}
+                            <!-- The row centres this block whole, whatever its height under a
+                                 coarse pointer. Inside it the icon is one line tall, so it stays
+                                 on its title's line with a note under the title or without. -->
+                            <span class="flex min-w-0 flex-1 items-start gap-1.5">
+                                {#if row.icon}
+                                    <!-- In the row's left padding, so a View's title lines up with
+                                         the documents' above and below it. -->
                                     <span
-                                        class="block truncate text-(--gk-text-subtle)"
-                                        data-testid="favourite-note"
-                                        >{row.note}</span
+                                        class="-ml-5 inline-flex h-5 w-3.5 shrink-0 items-center text-(--gk-text-subtle)"
+                                        data-testid="favourite-icon"
                                     >
+                                        <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                                        {@html iconSvg(row.icon, { size: 14 })}
+                                    </span>
                                 {/if}
+                                <span class="min-w-0 flex-1">
+                                    <span class="block truncate" data-testid="favourite-name">{row.name}</span>
+                                    {#if row.note}
+                                        <span
+                                            class="block truncate text-(--gk-text-subtle)"
+                                            data-testid="favourite-note"
+                                            >{row.note}</span
+                                        >
+                                    {/if}
+                                </span>
                             </span>
                             {#if row.concept !== undefined && protectedConcepts.has(row.concept.toLowerCase())}
                                 <span

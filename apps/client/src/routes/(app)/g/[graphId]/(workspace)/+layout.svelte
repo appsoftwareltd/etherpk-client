@@ -12,6 +12,7 @@
 
     import { isDemoGraph } from '#lib/demo/demo-graph.js'
     import { ensurePersistentStorage } from '#lib/storage/storage-persistence.js'
+    import { appHeaderHiddenOnPhone } from '#lib/workspace/app-header.svelte.js'
     import DemoBar from '#lib/demo/ui/DemoBar.svelte'
     import GraphWorkspace from '#lib/workspace/GraphWorkspace.svelte'
 
@@ -50,7 +51,7 @@
         </div>
     {/if}
     <div
-        class={['workspace-host', { demo }]}
+        class={['workspace-host', { demo, 'no-header-on-phone': appHeaderHiddenOnPhone.current }]}
         style:--header-height={HEADER_HEIGHT}
         style:--demo-bar-height={DEMO_BAR_HEIGHT}
     >
@@ -81,6 +82,12 @@
      */
     .demo-chrome {
         display: none;
+    }
+    /* The app layout hides its header under the same query, so the workspace moves into the room. */
+    @media not all and (min-width: 1024px) {
+        .workspace-host.no-header-on-phone {
+            --workspace-top: 0px;
+        }
     }
     @media (min-width: 1024px) {
         .demo-chrome {

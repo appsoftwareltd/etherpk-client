@@ -37,6 +37,10 @@ const DOUBLE_TAP_PX = 32
 const TAP_SLOP_PX = 10
 const SWIPE_PX = 48
 const EDGE_TAP_SHARE = 0.22
+/** How long the floating page count stays once the page in view changes, where it is the only one. */
+const PAGE_COUNT_MS = 5000
+/** Something on the page that answers a tap for itself. */
+const ANSWERS_A_TAP = 'a, button, input, select, textarea, .etherpk-pdf-note, .etherpk-pdf-signature'
 
 const boxesOverlap = (a: DOMRect, b: DOMRect): boolean => a.bottom > b.top && a.top < b.bottom && a.right > b.left && a.left < b.right
 
@@ -119,6 +123,8 @@ export class PdfReader {
 
     /** Phone only, when asked for: the toolbar and the app's chrome are hidden while reading. */
     immersive = $state(false)
+    /** The floating page count is up. Only where the toolbar is on the Command Bar does it ever go. */
+    pageCountShowing = $state(false)
     printing = $state<{ done: number; total: number } | null>(null)
     printError = $state<string | null>(null)
 
@@ -314,6 +320,7 @@ export class PdfReader {
         eventBus.on('pagesinit', () => this.onPagesInit())
         eventBus.on('pagechanging', ({ pageNumber }: { pageNumber: number }) => {
             this.page = pageNumber
+            this.showPageCount()
             void this.readPageText(pageNumber)
         })
         eventBus.on('scalechanging', ({ scale }: { scale: number }) => {
@@ -336,6 +343,7 @@ export class PdfReader {
         // Here, not as the viewer starts: it has no pages to show one of until now, and it goes back to
         // scrolling each time it is given the document again.
         if (this.preferences.pageByPage && this.web) viewer.scrollMode = this.web.ScrollMode.PAGE
+        this.showPageCount()
         void this.readPageText(this.page)
         const remembered = this.memory.pdf(this.environment.graphId, this.hash)
         // A link clicked while the file was still loading is newer than the one remembered.
@@ -496,6 +504,15 @@ export class PdfReader {
         tab.addEventListener('gesturestart', (event) => event.preventDefault(), { signal })
         container.addEventListener('pointerdown', (event) => this.onTapStart(event), { signal })
         container.addEventListener('pointerup', (event) => this.onTapEnd(event), { signal })
+        // The tap that turned the page ends there, or its click lands on whatever the next page has under it.
+        container.addEventListener(
+            'touchend',
+            (event) => {
+                if (this.turnedAtEdge) event.preventDefault()
+                this.turnedAtEdge = false
+            },
+            { signal, passive: false },
+        )
         document.addEventListener('selectionchange', () => this.onSelectionChange(), { signal })
     }
 
@@ -507,6 +524,14 @@ export class PdfReader {
     }
 
     private tapStart: { x: number; y: number; at: number } | null = null
+    private turnedAtEdge = false
+    private pageCountTimer: ReturnType<typeof setTimeout> | undefined
+
+    private showPageCount(): void {
+        this.pageCountShowing = true
+        clearTimeout(this.pageCountTimer)
+        this.pageCountTimer = setTimeout(() => (this.pageCountShowing = false), PAGE_COUNT_MS)
+    }
 
     private onTapStart(event: PointerEvent): void {
         this.toolOptionsOpen = false
@@ -518,11 +543,34 @@ export class PdfReader {
         this.onPointerRelease()
         const start = this.tapStart
         this.tapStart = null
-        if (!start || event.pointerType !== 'touch' || this.tool !== 'none') return
+        if (!start || this.tool !== 'none' || (event.pointerType !== 'touch' && event.pointerType !== 'pen')) return
         const dx = event.clientX - start.x
         const dy = event.clientY - start.y
-        if (Math.hypot(dx, dy) <= TAP_SLOP_PX) this.onTap(event)
+        const tapped = Math.hypot(dx, dy) <= TAP_SLOP_PX
+        if (tapped && this.turnAtEdge(event)) return
+        if (event.pointerType !== 'touch') return
+        if (tapped) this.onTap(event)
         else this.onSwipe(dx, dy)
+    }
+
+    /**
+     * A tap in the outer part of the view, at any height, does what the button under it does. At once,
+     * so that quick taps turn quickly: a double-tap zooms only away from these. It is the page's own
+     * tap that a selection, a link or a form field keeps, and a page zoomed past the screen moves instead.
+     */
+    private turnAtEdge(event: PointerEvent): boolean {
+        const container = this.container
+        if (!container || !this.preferences.pageByPage || !this.pageFitsScreen() || this.hasSelection) return false
+        if (event.target instanceof Element && event.target.closest(ANSWERS_A_TAP)) return false
+        const box = container.getBoundingClientRect()
+        const share = (event.clientX - box.left) / box.width
+        if (share >= EDGE_TAP_SHARE && share <= 1 - EDGE_TAP_SHARE) return false
+        clearTimeout(this.singleTapTimer)
+        this.lastTap = null
+        this.turnedAtEdge = true
+        if (share < EDGE_TAP_SHARE) this.previousPage()
+        else this.nextPage()
+        return true
     }
 
     /** A page turn: page by page, not zoomed in past the screen, and not while drawing. */
@@ -549,20 +597,13 @@ export class PdfReader {
             return
         }
         this.lastTap = { at: now, x: event.clientX, y: event.clientY }
-        const { clientX } = event
         clearTimeout(this.singleTapTimer)
-        this.singleTapTimer = setTimeout(() => this.onSingleTap(clientX), DOUBLE_TAP_MS)
+        this.singleTapTimer = setTimeout(() => this.onSingleTap(), DOUBLE_TAP_MS)
     }
 
-    private onSingleTap(clientX: number): void {
-        const container = this.container
-        if (!container || window.getSelection()?.toString()) return
-        const box = container.getBoundingClientRect()
-        const share = (clientX - box.left) / box.width
-        if (this.preferences.pageByPage && this.pageFitsScreen()) {
-            if (share < EDGE_TAP_SHARE) return this.previousPage()
-            if (share > 1 - EDGE_TAP_SHARE) return this.nextPage()
-        }
+    private onSingleTap(): void {
+        if (window.getSelection()?.toString()) return
+        this.showPageCount()
         // Going full screen is asked for in the More menu, so a tap steadying the page never does it.
         this.setImmersive(false)
     }
@@ -1162,6 +1203,7 @@ export class PdfReader {
         this.destroyed = true
         clearTimeout(this.placeTimer)
         clearTimeout(this.singleTapTimer)
+        clearTimeout(this.pageCountTimer)
         this.writePlace()
         this.controller.abort()
         this.keepScreen?.destroy()

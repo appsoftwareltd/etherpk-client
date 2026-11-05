@@ -5,7 +5,7 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.19.1 - 2026-11-05
 
 ### Client
 
@@ -14,23 +14,36 @@ starts at 0.9.3.
   as its message, ready for a question. The model receives only what is in the chat, and the chat is not
   kept: **Copy** takes the latest answer as bullets to paste anywhere.
 - **Select text in a PDF with a finger or a stylus.** A new **Select text** tool sits before Highlight
-  text. Neither can be turned on on a page with no text.
-- **Reading a PDF on a phone.** The toolbar stays in place when you scroll or tap the page. **Full screen**
-  in the **More** menu gives the PDF the whole window, and a button at the bottom right brings the
-  controls back.
-- **Saving a copy of a PDF.** **Save a copy** is on the phone's toolbar, with a new icon. The new link goes
+  text. Neither can be turned on on a page with no text. Selected text brings up a bar with **Highlight**
+  and a new **Copy**.
+- **Reading a PDF on a phone.** The toolbar's buttons move to the Command Bar, in place of the editing
+  buttons, and the app's header hides while a PDF is in front, coming back when you open anything else. The
+  page box is in the **More** menu, and the page number shows over the page for 5 seconds when it changes
+  or when you tap the page. In **Page by page**, a tap at any height on either side turns the page at once,
+  with a finger or a stylus. **Full screen** in the **More** menu gives the PDF the whole window, and a
+  button at the bottom right brings the controls back.
+- **Saving a copy of a PDF.** **Save a copy** is on the phone's Command Bar, with a new icon. Its dialog is
+  headed **Save an additional copy** and says your annotations are already saved. The new link goes
   after an existing link to the PDF unless you choose otherwise.
+- **A PDF to try in the demo.** The demo graph has a Houseplant Handbook, with a form to fill in and sign,
+  so you can try the PDF reader without a PDF of your own. Today's journal links to it near the top.
 - **Extension API.** `layout.activeFile()` says which file's tab is in front and what is selected in it,
   and `layout.openWindow` takes a `size` and `closesOnOutsideClick`. A Command Bar button's `files`
-  names the types of file it works on, and replaces `documentOnly`.
+  names the types of file it works on, and replaces `documentOnly`. With a PDF in front, a button that does
+  not name `pdf` is not shown. A window over the whole screen ends above a phone's keyboard.
 - **Kanban boards on a phone.** Boards now open in the phone layout, from the same menus as on a desktop
   and from the **Graph Kanban** button. A board shows one lane at a time, chosen from a selector that
   counts the tasks in each, and remembers your lane on each device. To move a card, long-press it or
   press its three dots, or use **Lane** in the task editor. The board says where the card went, with
   **Undo**.
-- **Fixes.** A right-click menu too tall for the screen now scrolls. What you are reading in a journal tab's older days stays still when several lines arrive above it in quick succession. The **More** menu in a PDF closes with its close button or a press outside it. Undo and redo in
-  a PDF go to the page they change. Search has a close button at the top right. The message shown while a
+- **Fixes.** A signature placed on a PDF's form field stays above it, where you can see and drag it, and
+  its remove button shows a cross in the dark theme. A form's check boxes no longer show over the tab in
+  front of a PDF. A right-click menu too tall for the screen now scrolls. What you are reading in a journal
+  tab's older days stays still when several lines arrive above it in quick succession. The **More** menu in a
+  PDF closes with its close button or a press outside it. Undo and redo in a PDF go to the page they change. Search has a close button at the top right. The message shown while a
   file loads is at the top of the view, and a phone's list of open documents shows a synced PDF's name.
+  On a phone, the icons on the sidebar's favourites and bookmarks sit level with their names, Agent Chat's input
+  stays above the keyboard, and the Command Bar's buttons are off while a drawer is open.
 
 ## 0.19.0 - 2026-11-04
 

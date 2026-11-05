@@ -333,25 +333,30 @@
                                         data-bookmark-focus
                                         {@attach menuOn({ kind: "bookmark", id: bookmark.id })}
                                         onclick={() => execute(BOOKMARK_OPEN, { kind: "bookmark", id: bookmark.id })}
-                                        class="flex w-full touch-manipulation items-start gap-1.5 rounded-md py-1.5 pr-8 pl-8 text-left text-sm hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
+                                        class="flex w-full touch-manipulation items-center rounded-md py-1.5 pr-8 pl-8 text-left text-sm hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
                                         title={bookmark.label ? `${bookmark.label}: ${bookmark.text}` : bookmark.text}
                                     >
-                                        <span class="mt-0.5 inline-flex shrink-0 text-(--gk-text-subtle)" aria-hidden="true">
-                                            <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                                            {@html iconSvg("bookmark", { size: 13 })}
-                                        </span>
-                                        <span class="min-w-0 flex-1">
-                                            <span class="block truncate">{bookmark.label ?? bookmark.text}</span>
-                                            {#if bookmark.label}
-                                                <!-- The line under its label, in reach of a keyboard and a finger, not only a hover. -->
-                                                <span class="block truncate text-sm text-(--gk-text-subtle)" data-testid="bookmark-line-text">{bookmark.text}</span>
-                                            {/if}
-                                            {#if missing.has(bookmark.id)}
-                                                <span
-                                                    class="block text-sm text-(--gk-text-subtle)"
-                                                    data-testid="bookmark-missing">Line not found</span
-                                                >
-                                            {/if}
+                                        <!-- The row centres this block whole, whatever its height under a
+                                             coarse pointer. Inside it the icon is one line tall, so it stays
+                                             on the title's line with more lines under the title or without. -->
+                                        <span class="flex min-w-0 flex-1 items-start gap-1.5">
+                                            <span class="inline-flex h-5 shrink-0 items-center text-(--gk-text-subtle)" aria-hidden="true" data-testid="bookmark-icon">
+                                                <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                                                {@html iconSvg("bookmark", { size: 13 })}
+                                            </span>
+                                            <span class="min-w-0 flex-1">
+                                                <span class="block truncate" data-testid="bookmark-title">{bookmark.label ?? bookmark.text}</span>
+                                                {#if bookmark.label}
+                                                    <!-- The line under its label, in reach of a keyboard and a finger, not only a hover. -->
+                                                    <span class="block truncate text-sm text-(--gk-text-subtle)" data-testid="bookmark-line-text">{bookmark.text}</span>
+                                                {/if}
+                                                {#if missing.has(bookmark.id)}
+                                                    <span
+                                                        class="block text-sm text-(--gk-text-subtle)"
+                                                        data-testid="bookmark-missing">Line not found</span
+                                                    >
+                                                {/if}
+                                            </span>
                                         </span>
                                     </button>
                                     <button
@@ -359,7 +364,7 @@
                                         data-testid="bookmark-menu"
                                         aria-label="Actions for this bookmark"
                                         onclick={(e) => menuFromButton(e, { kind: "bookmark", id: bookmark.id })}
-                                        class="absolute top-1.5 right-1 rounded px-1 text-(--gk-text-subtle) opacity-0 group-hover/row:opacity-100 focus:opacity-100 hover:bg-(--gk-surface-2) max-lg:opacity-100"
+                                        class="absolute top-1/2 right-1 -translate-y-1/2 rounded px-1 text-(--gk-text-subtle) opacity-0 group-hover/row:opacity-100 focus:opacity-100 hover:bg-(--gk-surface-2) max-lg:opacity-100"
                                         >⋯</button
                                     >
                                 {/if}

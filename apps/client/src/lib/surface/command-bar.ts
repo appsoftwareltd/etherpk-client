@@ -31,8 +31,9 @@ export interface CommandBarItem {
     align?: 'start' | 'end'
     /**
      * The types of file this works on (`['pdf']`): disabled while a tab that shows any other file is in
-     * front. Left out, it takes no notice of what is in front. A pinned button naming a file type also
-     * floats over that file's tab in the desktop layout, which has no Command Bar.
+     * front. Left out, it takes no notice of what is in front, except that it is not shown beside a tab's
+     * own tools (`command-bar-tools.svelte.ts`) unless it names their file. A pinned button naming a file
+     * type also floats over that file's tab in the desktop layout, which has no Command Bar.
      */
     files?: readonly string[]
     /**

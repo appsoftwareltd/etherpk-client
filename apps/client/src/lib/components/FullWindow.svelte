@@ -16,6 +16,8 @@
     import type { Snippet } from "svelte";
     import type { Attachment } from "svelte/attachments";
 
+    import { watchKeyboardInset } from "#lib/layout/keyboard-inset.js";
+
     const {
         title,
         testId,
@@ -24,6 +26,7 @@
         focusClose = false,
         dialog = false,
         closesOnOutsideClick,
+        endsAboveKeyboard = false,
         children,
     }: {
         title: string;
@@ -41,11 +44,21 @@
         dialog?: boolean;
         /** For a `dialog`: asked on a click outside it, and it closes when this says yes. */
         closesOnOutsideClick?: () => boolean;
+        /**
+         * The window ends above a phone's soft keyboard, so what sits at the bottom of its content stays
+         * in sight. Off for a widget whose canvas should not resize each time the keyboard opens.
+         */
+        endsAboveKeyboard?: boolean;
         /** The content, handed the window's own close: it also gives the keyboard back. */
         children: Snippet<[close: () => void]>;
     } = $props();
 
     const titleId = $props.id();
+
+    let keyboardInset = $state(0);
+    $effect(() => {
+        if (endsAboveKeyboard) return watchKeyboardInset((inset) => (keyboardInset = inset));
+    });
 
     /**
      * The element that has the keyboard. In a shadow root `document.activeElement` is only the
@@ -116,12 +129,12 @@
 </script>
 
 {#snippet shell()}
-    <div class={["full-window", dialog && "full-window--dialog"]} role="dialog" aria-modal="true" aria-labelledby={titleId} tabindex="-1" {onkeydown} data-testid={testId}>
+    <div class={["full-window", dialog && "full-window--dialog", keyboardInset > 0 && "full-window--above-keyboard"]} style:bottom={keyboardInset > 0 ? `${keyboardInset}px` : undefined} role="dialog" aria-modal="true" aria-labelledby={titleId} tabindex="-1" {onkeydown} data-testid={testId}>
         <header class="flex shrink-0 items-center justify-between gap-3 border-b border-(--gk-border-soft) px-4 py-2">
             <h2 id={titleId} class="m-0 truncate text-sm font-semibold text-(--gk-text-default)">{title}</h2>
             <button type="button" class="return" onclick={close} aria-label="Close" title="Close" data-testid="{testId}-return" {@attach focusOnOpen}><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg></button>
         </header>
-        <div class="relative min-h-0 flex-1">
+        <div class="full-window__content relative min-h-0 flex-1">
             {@render children(close)}
         </div>
     </div>
@@ -146,6 +159,13 @@
         flex-direction: column;
         background: var(--gk-surface-0);
         animation: full-window-in 150ms ease-out both;
+    }
+    /* A phone on its side has little left over the keyboard: the content keeps a usable height and the window scrolls. */
+    .full-window--above-keyboard {
+        overflow-y: auto;
+    }
+    .full-window--above-keyboard .full-window__content {
+        min-height: 16rem;
     }
     .full-window-backdrop {
         position: fixed;

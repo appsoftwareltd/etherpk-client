@@ -38,7 +38,7 @@
         };
 </script>
 
-<FullWindow {title} testId="extension-window" {onclose} closeOnEscape dialog={size === "dialog"} {closesOnOutsideClick}>
+<FullWindow {title} testId="extension-window" {onclose} closeOnEscape dialog={size === "dialog"} {closesOnOutsideClick} endsAboveKeyboard={size === "whole"}>
     {#snippet children(close)}
         <div class="relative h-full" {@attach drawn(close)}></div>
     {/snippet}

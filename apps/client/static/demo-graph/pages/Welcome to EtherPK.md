@@ -5,6 +5,7 @@ This is the demo graph. It's about houseplants, because everyone has killed at l
 
 **What to try**
 
+- Read [The Houseplant Handbook](../assets/houseplant-handbook.14b9fb60.pdf), a PDF, in a tab of its own. Highlight it, draw on it, fill in its form and sign it. [[Houseplant Handbook]] has more links into it.
 - Click a link like [[Plant]] and follow the trail. Every `[[double bracket]]` is a concept, and the **Backlinks** panel on the right shows everything that mentions the one you're on.
 - Click [[Yellow Leaves]]. There's no page for it yet - three pages link to it anyway. You get a draft, and it only becomes a real page if you type something.
 - Open the **Tasks** view (right sidebar). The journal entries are full of them, with priorities, due dates and a couple that are waiting on someone else.
@@ -24,6 +25,7 @@ This is the demo graph. It's about houseplants, because everyone has killed at l
 - [[Watering]] - more nuanced than "pour water on it"
 - [[Repotting]] - because roots need space too
 - [[Season Guide]] - what to do and when
+- [[Houseplant Handbook]] - 14 pages of the above, as a PDF to read and mark up
 - [[Where to Learn About Plants]] - gardens worth a visit, gathered onto one map
 - [[Plant Index]] - every species in the graph, a page each, from [[Aloe Vera]] to [[ZZ Plant]]
 

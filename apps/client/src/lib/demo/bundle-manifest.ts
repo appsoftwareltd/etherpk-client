@@ -53,7 +53,8 @@ export class DemoBundleError extends Error {
     }
 }
 
-const ASSET_REFERENCE = /\]\(\.\.\/assets\/([^)\s]+)\)/g
+// The name alone: a link to a page of a PDF ends in `#page=12`, which is no part of the file's name.
+const ASSET_REFERENCE = /\]\(\.\.\/assets\/([^)\s#]+)(?:#[^)\s]*)?\)/g
 
 function isSubdir(value: string): value is Subdir {
     return (SUBDIRS as readonly string[]).includes(value)

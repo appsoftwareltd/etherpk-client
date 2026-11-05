@@ -11,6 +11,7 @@
     import type { LayoutController, LayoutModel, Region, ViewInstance } from '#lib/layout/index.js'
     import { attachContextMenu, type ContextMenuTarget, createControlHelp, tryGetActiveCommandRegistry } from '#lib/surface/index.js'
 
+    import { watchKeyboardInset } from '../keyboard-inset'
     import CommandBar from './CommandBar.svelte'
     import type { MobileRenderer } from './mobile-renderer.svelte'
     import SidebarToggleIcon from './SidebarToggleIcon.svelte'
@@ -301,20 +302,7 @@
     // viewport and shrink the whole mobile surface to it via `--keyboard-inset`, so
     // the content reflows and the bottom Command Bar lands just above the keyboard.
     let keyboardInset = $state(0)
-    $effect(() => {
-        const vv = window.visualViewport
-        if (!vv) return
-        const update = () => {
-            keyboardInset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
-        }
-        update()
-        vv.addEventListener('resize', update)
-        vv.addEventListener('scroll', update)
-        return () => {
-            vv.removeEventListener('resize', update)
-            vv.removeEventListener('scroll', update)
-        }
-    })
+    $effect(() => watchKeyboardInset((inset) => (keyboardInset = inset)))
 </script>
 
 <!-- The pin on a pinned View, leading its title as pinned Views lead the list. Read straight off
@@ -566,9 +554,10 @@
     </div>
 
     <!-- The Command Bar: always shown on mobile, fixed at the bottom. Its buttons act on
-         the active editor (no-op when none is focused). -->
+         the active editor (no-op when none is focused), or on the tab that put its tools there.
+         That is never what an open drawer shows, so a drawer turns them all off. -->
     <div class="command-bar-slot">
-        <CommandBar />
+        <CommandBar off={leftOpen || rightOpen} />
     </div>
 </div>
 

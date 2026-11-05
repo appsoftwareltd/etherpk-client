@@ -15,6 +15,8 @@ Roots need space too, same as the rest of us. Signs it's time:
 3. Tease the roots loose a little. Don't be precious about it.
 4. Water it in, then leave it alone for a week to sulk.
 
+The [[Houseplant Handbook]] has the same steps on one page, if you'd rather print them.
+
 Spring is the time - see the [[Season Guide]]. A [[Monstera]] will forgive you for doing it in autumn. A [[Fern]] will not.
 
 Some plants would rather you didn't. An [[Agapanthus]] or a [[Hoya]] flowers best with its roots crammed in, and a [[Peony]] in the ground sulks for years if it's moved.

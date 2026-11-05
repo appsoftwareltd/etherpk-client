@@ -17,6 +17,11 @@
      * on mousedown, which is where Firefox moves the focus),
      * so the soft keyboard stays up and the active editor keeps its selection. Riding above the
      * keyboard is handled by {@link MobilePresenter} shrinking the surface to the visual viewport.
+     *
+     * A tab can put its own tools here (`command-bar-tools.svelte.ts`): the strip then draws those in
+     * place of the editor's buttons, and only the contributed buttons naming that tab's file stay.
+     * `off` disables every button, whichever set is showing, which a `fieldset` does for the tab's
+     * snippets as much as for this file's own buttons.
      */
     import { onMount } from 'svelte'
     import { createSubscriber } from 'svelte/reactivity'
@@ -30,9 +35,14 @@
         tryGetActiveContributionRegistry,
     } from '#lib/surface/index.js'
 
+    import { commandBarTools } from '#lib/surface/command-bar-tools.svelte.js'
     import { iconSvg } from '#lib/surface/icons.js'
 
     import HScrollbar from './HScrollbar.svelte'
+
+    let { off = false }: { off?: boolean } = $props()
+
+    const tools = $derived(commandBarTools.current)
 
     // The Client's own buttons are registered before this mounts, and an extension's come and go
     // as it starts or is switched off, so the list is read again whenever one is added or taken back.
@@ -42,16 +52,27 @@
         watchItems()
         return contributions ? listCommandBarItems(contributions) : []
     })
+    /** Beside a tab's tools, only what names that tab's file. */
+    function besideTools(item: CommandBarItem): boolean {
+        return !tools || !!item.files?.includes(tools.file)
+    }
     /** A contextual group's buttons exist only while the caret is on their subject. */
     function shown(item: CommandBarItem): boolean {
+        if (!besideTools(item)) return false
         if (item.contextualGroup === 'table') return editorContext.table !== null
         if (item.contextualGroup === 'spelling') return editorContext.misspelling
         return true
     }
     const startItems = $derived(items.filter((i) => (i.align ?? 'start') === 'start' && shown(i)))
-    const endItems = $derived(items.filter((i) => i.align === 'end'))
+    const endItems = $derived(items.filter((i) => i.align === 'end' && besideTools(i)))
 
     let stripEl = $state<HTMLDivElement>()
+
+    // Another set of buttons starts at its first, wherever the last one had been scrolled to.
+    $effect(() => {
+        void tools
+        if (stripEl) stripEl.scrollLeft = 0
+    })
 
     // The bullet button's gate scans the document's fences on a bullet at column 0, so the editor
     // context computes it only while a bar is mounted to show it (editor-context.svelte.ts).
@@ -121,15 +142,17 @@
     </button>
 {/snippet}
 
-<div class="command-bar" data-testid="command-bar">
+<fieldset class="command-bar" data-testid="command-bar" disabled={off} aria-label="Command Bar">
     <div class="command-bar__row">
         <div class="command-bar__buttons" bind:this={stripEl}>
+            {#if tools}{@render tools.strip()}{/if}
             {#each startItems as item (item.id)}
                 {@render barButton(item)}
             {/each}
         </div>
-        {#if endItems.length}
+        {#if endItems.length || tools}
             <div class="command-bar__pinned" data-testid="command-bar-pinned">
+                {#if tools}{@render tools.pinned()}{/if}
                 {#each endItems as item (item.id)}
                     {@render barButton(item)}
                 {/each}
@@ -137,12 +160,17 @@
         {/if}
     </div>
     <HScrollbar target={stripEl} testid="command-bar-scroll" />
-</div>
+</fieldset>
 
 <style>
     .command-bar {
         display: flex;
         flex-direction: column;
+        /* A fieldset is as wide as its content unless told otherwise, and has its own box to clear. */
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
         background: var(--gk-surface-1);
         border-top: 1px solid var(--gk-border-soft);
     }
@@ -172,7 +200,7 @@
         padding: 0.35rem 0.5rem;
         border-left: 1px solid var(--gk-border-soft);
     }
-    .command-bar__btn {
+    .command-bar :global(.command-bar__btn) {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -190,30 +218,36 @@
     }
     /* A finger needs a 44 CSS px target. */
     @media (pointer: coarse) {
-        .command-bar__btn {
+        .command-bar :global(.command-bar__btn) {
             width: 2.75rem;
             height: 2.75rem;
         }
     }
+    /* The display above would beat Tailwind's utility, which sits in a lower layer. */
+    @media (width < 40rem) {
+        .command-bar :global(.command-bar__btn.max-sm\:hidden) {
+            display: none;
+        }
+    }
     /* A toggle that is on: a neutral fill and a firmer edge that stay at rest. The icon keeps the
        bar's own colour, as on every other button. */
-    .command-bar__btn[aria-pressed='true'] {
+    .command-bar :global(.command-bar__btn[aria-pressed='true']) {
         background: var(--gk-surface-2);
         border-color: var(--gk-border-strong, var(--gk-border-soft));
     }
-    .command-bar__btn:active:not(:disabled) {
+    .command-bar :global(.command-bar__btn:active:not(:disabled)) {
         background: var(--gk-surface-2);
     }
-    .command-bar__btn:disabled {
+    .command-bar :global(.command-bar__btn:disabled) {
         opacity: 0.35;
         cursor: default;
     }
     /* The slash button leads and is visually primary (it opens the Command Menu). */
-    .command-bar__btn.slash {
+    .command-bar :global(.command-bar__btn.slash) {
         font-weight: 600;
         border-color: var(--gk-border-strong, var(--gk-border-soft));
     }
-    .command-bar__btn :global(svg) {
+    .command-bar :global(.command-bar__btn svg) {
         display: block;
     }
 </style>

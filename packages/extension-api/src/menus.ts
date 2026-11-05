@@ -200,7 +200,8 @@ export interface CommandBarButton {
     /**
      * The types of file the button works on, by extension (`['pdf']`, or `[]` for none): it is greyed
      * while a tab that shows any other file is in front. Left out, the button takes no notice of what
-     * is in front. A `pinned` button that names a file type also floats at the bottom right of that
+     * is in front, except that a PDF's tab puts its own tools on the bar, and a button that does not name
+     * `pdf` is not shown beside them. A `pinned` button that names a file type also floats at the bottom right of that
      * file's tab in the desktop layout, which has no Command Bar. Only `pdf` files draw it there so far.
      */
     files?: readonly string[]
