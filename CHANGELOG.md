@@ -5,7 +5,7 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.20.0 - 2026-11-06
 
 ### Client
 
@@ -51,6 +51,9 @@ starts at 0.9.3.
   the clipboard. It shows your places and routes with their names, without the map's buttons. With your own
   Mapbox token it keeps the Mapbox background, including satellite, and the map reminds you that Mapbox's terms
   don't allow you to distribute the picture.
+- **Two new extension calls, in beta.** A framed block with `asImage` gets **Copy as image** and **Save as image**
+  in its menu. `context.assets.storeImage` keeps an image and answers its reference as well as its markdown, or
+  why it was not kept.
 - **Fixes.**
   - A map's search box no longer pushes the map's buttons off the edge of a narrow map.
   - A local graph opened from its address or a restored tab shows **Grant access** when the browser needs a
