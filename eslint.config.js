@@ -223,6 +223,9 @@ export default tseslint.config(
             // Git worktrees Claude Code creates inside the repository: whole checkouts, each
             // linted by a run of its own. Relative to this file, so a run inside one still lints it.
             '.claude/worktrees/**',
+            // Handoff notes and reproduction scripts: gitignored, so they exist only in the checkout
+            // that wrote them and CI never lints them. One here would otherwise stop every push from it.
+            'handoff/**',
         ],
     },
     js.configs.recommended,
