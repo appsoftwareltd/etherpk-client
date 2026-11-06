@@ -47,6 +47,11 @@ describe('deriving map items', () => {
         ])
     })
 
+    it('derives no item from a size line, which holds how the map is drawn', () => {
+        const derived = deriveDoc(['# Trip', '', fence('size 640x380', seal)].join('\n'))
+        expect(derived.mapItems.map((item) => [item.line, item.name])).toEqual([[4, 'Pebble Cove']])
+    })
+
     it('reads a map fence inside a bullet, de-indented to the fence column', () => {
         const text = ['- Ideas', '  ```map', `  ${seal}`, '  ```'].join('\n')
         expect(deriveDoc(text).mapItems).toMatchObject([{ line: 2, fenceLine: 1, name: 'Pebble Cove', text: seal }])
@@ -149,6 +154,13 @@ describe('what search can read', () => {
         expect(text).toContain('Pebble Cove')
         expect(text).toContain('Coast walk')
         expect(text).not.toMatch(/50\.7486|4\.0789/)
+    })
+
+    it('leaves a size line out of text search', () => {
+        ingest(db, [page('Campsites', ['Places we liked', '', fence('size 640x380', seal)].join('\n'))])
+        const text = db.all<{ text: string }>('SELECT text FROM block_fts').map((row) => row.text).join('\n')
+        expect(text).toContain('Pebble Cove')
+        expect(text).not.toContain('640x380')
     })
 
     it('leaves the coordinates out of Semantic Search\'s passages', () => {

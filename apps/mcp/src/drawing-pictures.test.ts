@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { chromiumOnThisMachine, WARM_UP_TIMEOUT } from './chromium-fixture'
 import { launchChromium } from './diagrams'
-import { type DrawingRenderer, needsDrawings, openDrawingRenderer } from './drawing-pictures'
+import { drawingImages, type DrawingRenderer, needsDrawings, openDrawingRenderer } from './drawing-pictures'
 import { createNodePublishEnvironment } from './publish-environment'
 
 // A drawing published from the Headless Client is a picture drawn in a real Chromium by the
@@ -14,6 +14,12 @@ import { createNodePublishEnvironment } from './publish-environment'
 const HEADER = '{"type":"excalidraw.drawing","version":1,"id":"k3j9x2q8ab","background":"#ffffff"}'
 const BOX = '{"type":"rectangle","x":0,"y":0,"width":120,"height":60}'
 const LABEL = '{"type":"text","x":10,"y":10,"text":"Raised beds"}'
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
+const PLAN = '../assets/garden-plan.a1b2c3d4.png'
+const imageLine = (asset: string) => JSON.stringify({ type: 'image', customData: { asset }, x: 0, y: 0, width: 200, height: 100 })
+
+/** A graph holding one image, as a publish reads it. */
+const readAsset = async (ref: string) => (ref === PLAN ? { name: 'garden-plan.a1b2c3d4.png', type: 'image/png', bytes: new Uint8Array(PNG) } : null)
 
 describe('which publishes draw drawings', () => {
     it('is any whose pages hold a drawing fence, in prose or on a bullet', () => {
@@ -25,6 +31,21 @@ describe('which publishes draw drawings', () => {
 
     it('is not one that only mentions them, or holds a fence of another extension', () => {
         expect(needsDrawings(['Draw with `excalidraw.drawing`', '```js\nconst drawing = 1\n```', '```excalidraw.other\n{}\n```', '```ink.drawing\n{}\n```'])).toBe(false)
+    })
+})
+
+describe('the images a drawing names', () => {
+    it('are read as data URLs by reference, with the type its name says', async () => {
+        expect(await drawingImages([HEADER, imageLine(PLAN), BOX], readAsset)).toEqual({ [PLAN]: `data:image/png;base64,${PNG.toString('base64')}` })
+    })
+
+    it('leave out what cannot be read, and what is not an image whatever it holds', async () => {
+        const failing = async () => {
+            throw new Error('offline')
+        }
+        expect(await drawingImages([HEADER, imageLine('../assets/gone.png')], readAsset)).toEqual({})
+        expect(await drawingImages([HEADER, imageLine(PLAN)], failing)).toEqual({})
+        expect(await drawingImages([HEADER, imageLine('../assets/notes.a1b2c3d4.html')], readAsset)).toEqual({})
     })
 })
 
@@ -59,7 +80,7 @@ describe.skipIf(!chromium)('drawing a picture in Chromium', () => {
         const { build } = await import('vite')
         const root = join(dirname(fileURLToPath(import.meta.url)), '..')
         await build({ configFile: join(root, 'vite.drawing-page.config.ts'), root, logLevel: 'error' })
-        renderer = await openDrawingRenderer({ ...process.env, ETHERPK_CHROMIUM: chromium! })
+        renderer = await openDrawingRenderer({ ...process.env, ETHERPK_CHROMIUM: chromium! }, readAsset)
         await renderer!.render([HEADER, BOX])
     }, WARM_UP_TIMEOUT)
 
@@ -77,6 +98,25 @@ describe.skipIf(!chromium)('drawing a picture in Chromium', () => {
         const svg = new TextDecoder().decode(out.bytes)
         expect(svg).toContain('<svg')
         expect(svg).toContain('Raised beds')
+    })
+
+    it('holds its image in the file, drawn from within it, and says it has one', async () => {
+        const out = await renderer!.render([HEADER, imageLine(PLAN), BOX])
+        if (out?.kind !== 'picture') throw new Error('no picture')
+        const svg = new TextDecoder().decode(out.bytes)
+        expect(svg).toContain(`href="data:image/png;base64,${PNG.toString('base64')}"`)
+        expect(svg).toMatch(/<use [^>]*href="#image-[^"]+"/)
+        expect(out.alt).toBe('Drawing with an image')
+    })
+
+    it('refuses to draw a picture with an image the graph cannot read, saying which', async () => {
+        await expect(renderer!.render([HEADER, imageLine('../assets/gone.png')])).rejects.toThrow('../assets/gone.png')
+    })
+
+    it('leaves out an image written with no size, which stays in the document as written', async () => {
+        const out = await renderer!.render([HEADER, BOX, JSON.stringify({ type: 'image', customData: { asset: PLAN }, x: 0, y: 0 })])
+        if (out?.kind !== 'picture') throw new Error('no picture')
+        expect(new TextDecoder().decode(out.bytes)).not.toContain('data:image/png')
     })
 
     it('holds the fonts its words use, so the file stands on its own', async () => {

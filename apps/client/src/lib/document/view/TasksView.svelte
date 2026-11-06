@@ -44,6 +44,7 @@
         statusFilterLabel,
     } from "../task-filter-labels";
     import { defaultTaskFilter, type TaskFilterState } from "../task-filter-store";
+    import { PRIORITY_LABEL_CLASSES, priorityColour } from "../task-priority-colour";
     import { parseTaskTags, taskDisplay } from "../task-tags";
     import { toggleIndexedTask } from "../task-toggle";
     import { showCascadeNotice } from "../task-cascade-notice";
@@ -932,7 +933,11 @@
                                         </span>
                                         <span class="ml-1 inline-flex flex-wrap gap-1 align-middle">
                                             {#if tags.priority !== null}
-                                                <span class="rounded bg-(--gk-surface-2) px-1 text-sm font-semibold" data-testid="tasks-badge-priority">
+                                                <span
+                                                    class={["rounded px-1 text-sm font-semibold", PRIORITY_LABEL_CLASSES]}
+                                                    style:--priority-colour={priorityColour(tags.priority)}
+                                                    data-testid="tasks-badge-priority"
+                                                >
                                                     P{tags.priority}
                                                 </span>
                                             {/if}

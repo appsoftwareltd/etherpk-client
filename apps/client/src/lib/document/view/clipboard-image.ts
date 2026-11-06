@@ -30,6 +30,29 @@ export function canCopyImages(): boolean {
     )
 }
 
+/** The write, started now, with the PNG to follow. Its own rejection comes first (see `copyImageToClipboard`). */
+function writePng(png: Promise<Blob>): Promise<void> {
+    const write = navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]).catch(rethrowDescribed)
+    return Promise.all([png, write]).then(() => undefined)
+}
+
+const NO_IMAGE_CLIPBOARD = 'Could not copy the image: this browser cannot put images on the clipboard.'
+
+/**
+ * Copy a PNG still being drawn to the clipboard. A rejection of `png` surfaces as it is, in the
+ * caller's words, and the clipboard stays as it was.
+ *
+ * Call this synchronously from the activating event's handler chain, with no `await` before it.
+ */
+export function copyPngToClipboard(png: Promise<Blob>): Promise<void> {
+    if (!canCopyImages()) {
+        // The caller's drawing goes unheard from here on, and may yet fail.
+        png.catch(() => {})
+        return Promise.reject(new Error(NO_IMAGE_CLIPBOARD))
+    }
+    return writePng(png)
+}
+
 /**
  * Copy the image to the clipboard. `asset` is a promise so the write can start before the bytes
  * exist (see the module note); a rejection of it - the asset is gone - surfaces as this function's
@@ -38,17 +61,14 @@ export function canCopyImages(): boolean {
  * Call this synchronously from the activating event's handler chain, with no `await` before it.
  */
 export function copyImageToClipboard(asset: Promise<ResolvedAsset>): Promise<void> {
-    if (!canCopyImages()) {
-        return Promise.reject(new Error('Could not copy the image: this browser cannot put images on the clipboard.'))
-    }
+    if (!canCopyImages()) return Promise.reject(new Error(NO_IMAGE_CLIPBOARD))
     // The asset's own rejection passes through untouched; only what goes wrong from here on -
     // decoding, encoding, the write itself - is put into words here.
     const png = asset.then((resolved) => pngBlobFor(resolved).catch(rethrowDescribed))
-    const write = navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]).catch(rethrowDescribed)
-    // `png` first: when the asset is missing it rejects before the write does, so the message is
-    // about the asset and not about a clipboard item that failed to materialise. Both rejections
-    // are observed here, so neither is reported as unhandled.
-    return Promise.all([png, write]).then(() => undefined)
+    // `png` first in `writePng`: when the asset is missing it rejects before the write does, so the
+    // message is about the asset and not about a clipboard item that failed to materialise. Both
+    // rejections are observed there, so neither is reported as unhandled.
+    return writePng(png)
 }
 
 /** The asset's bytes as a PNG blob: its own bytes when it already is one, else a rasterised copy. */

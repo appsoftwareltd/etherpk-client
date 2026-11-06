@@ -70,7 +70,7 @@ export function fakeContext(options: { desktop?: boolean } = {}) {
             tasks: async () => ({ tasks: [], total: 0, hasMore: false }),
         },
         records: { get: async () => undefined, set: async () => {}, remove: async () => {}, keys: async () => [] },
-        assets: { prepareImage: async (image) => image, saveImage: async () => null, describe: () => null, imageUrl: async () => null, viewImages: async () => {} },
+        assets: { prepareImage: async (image) => image, saveImage: async () => null, storeImage: async () => ({ stored: false, reason: 'unused' }), describe: () => null, imageUrl: async () => null, viewImages: async () => {} },
         layout,
         concepts: { key: (name) => name.toLowerCase(), canonicalName: (name) => name },
         storage: { get: () => undefined, set: () => {}, remove: () => {} },

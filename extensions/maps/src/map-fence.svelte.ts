@@ -9,6 +9,7 @@
  */
 import { type Component, mount, unmount } from 'svelte'
 
+import { mapSizeOf } from '#lib/document/map-text.js'
 import type {
     InteractiveFence,
     InteractiveFenceContext,
@@ -16,19 +17,17 @@ import type {
 } from '#lib/document/view/augmentations/interactive-fence-contract.js'
 
 import type { MapBlockServices } from './map-block-services'
+import { followNarrowScreen, mapHeight, narrowScreen } from './map-size'
 
-/** A Map Block's height on a wide screen, a narrow one, and folded, in CSS pixels. */
-export const MAP_HEIGHT_WIDE = 380
-export const MAP_HEIGHT_NARROW = 320
+/** A folded Map Block's height, in CSS pixels. */
 export const MAP_HEIGHT_FOLDED = 44
 
-const NARROW = '(max-width: 640px)'
-
-function narrow(): boolean {
-    return typeof matchMedia === 'function' && matchMedia(NARROW).matches
+type MapBlockProps = {
+    context: InteractiveFenceContext
+    services: MapBlockServices
+    /** Show the map at this height while its handle is dragged, or at its own height again for null. */
+    previewHeight(height: number | null): void
 }
-
-type MapBlockProps = { context: InteractiveFenceContext; services: MapBlockServices }
 
 let widget: Promise<Component<MapBlockProps>> | null = null
 
@@ -54,15 +53,44 @@ function placeholder(): HTMLElement {
     return element
 }
 
+/** Whether a map's widget has anything to draw differently, the editor having drawn it again. */
+function sameMap(a: InteractiveFenceContext, b: InteractiveFenceContext): boolean {
+    return (
+        a.document === b.document &&
+        a.ordinal === b.ordinal &&
+        a.writable === b.writable &&
+        a.dark === b.dark &&
+        a.onScreen === b.onScreen &&
+        a.body.length === b.body.length &&
+        a.body.every((line, i) => line === b.body[i])
+    )
+}
+
 export function createMapFence(services: MapBlockServices): InteractiveFence {
+    /**
+     * The height of each map whose handle is being dragged, by where it is drawn. The editor reads it
+     * through `height`, so a drag changes a map's room as folding does, through a redraw, and the
+     * height map follows it whatever else happens during the drag (ADR 0022).
+     */
+    const dragged = new Map<string, number>()
+    const height = (info: InteractiveFenceInfo): number => {
+        const drag = info.instance === undefined ? undefined : dragged.get(info.instance)
+        if (drag !== undefined) return drag
+        if (services.memory.folded(info)) return MAP_HEIGHT_FOLDED
+        return mapHeight(mapSizeOf(info.body), narrowScreen())
+    }
     return {
-        height(info: InteractiveFenceInfo): number {
-            if (services.memory.folded(info)) return MAP_HEIGHT_FOLDED
-            return narrow() ? MAP_HEIGHT_NARROW : MAP_HEIGHT_WIDE
-        },
+        height,
 
         mount(host: HTMLElement, context: InteractiveFenceContext) {
-            const props: MapBlockProps = $state({ context, services })
+            const previewHeight = (preview: number | null) => {
+                const { instance } = props.context
+                if (instance === undefined) return
+                if (preview === null) dragged.delete(instance)
+                else dragged.set(instance, preview)
+                props.context.resized()
+            }
+            const props: MapBlockProps = $state({ context, services, previewHeight })
             let component: ReturnType<typeof mount> | null = null
             let destroyed = false
             const waiting = host.appendChild(placeholder())
@@ -93,17 +121,17 @@ export function createMapFence(services: MapBlockServices): InteractiveFence {
             show()
 
             // The height follows the screen: a map that crosses the narrow breakpoint is measured again.
-            const query = typeof matchMedia === 'function' ? matchMedia(NARROW) : null
-            const remeasure = () => props.context.resized()
-            query?.addEventListener('change', remeasure)
+            const stopFollowing = followNarrowScreen(() => props.context.resized())
 
             return {
                 update(next: InteractiveFenceContext) {
-                    props.context = next
+                    // A drag redraws the map on every move with nothing changed but its room, which
+                    // need not read its places again or redraw its pins.
+                    if (!sameMap(props.context, next)) props.context = next
                 },
                 destroy() {
                     destroyed = true
-                    query?.removeEventListener('change', remeasure)
+                    stopFollowing()
                     if (component) void unmount(component)
                     waiting.remove()
                 },

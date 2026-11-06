@@ -13,7 +13,8 @@
  *
  * Mapbox's terms ask for its logo and its credits on every map drawn with its styles. The credits
  * (© Mapbox, © OpenStreetMap, Improve this map, and © Maxar over satellite) come with the styles'
- * sources and show in the map's credits control. The logo is `MapboxLogo`.
+ * sources and show in the map's credits control. The logo is `MapboxLogo`, and on a picture a person
+ * saves (map-save.ts) `drawMapboxLogo`, with the same credits drawn beside it.
  */
 import type { IControl, StyleSpecification } from 'maplibre-gl'
 
@@ -172,6 +173,31 @@ function logoSvg(): SVGElement {
     face.append(svgElement('use', { href: `#${id}-mark` }), svgElement('use', { href: `#${id}-word` }))
     svg.append(defs, mask, edge, face)
     return svg
+}
+
+/** The logo's size in CSS pixels, on a map or a picture of one. */
+export const MAPBOX_LOGO_SIZE = { width: 88, height: 23 }
+
+/** The logo on a picture of a map, with its top left corner at (x, y), as `logoSvg` draws it. */
+export function drawMapboxLogo(context: CanvasRenderingContext2D, x: number, y: number): void {
+    const mark = new Path2D(LOGO_MARK)
+    const word = new Path2D(LOGO_WORD)
+    context.save()
+    context.translate(x, y)
+    context.globalAlpha = 0.3
+    context.strokeStyle = '#000'
+    context.lineWidth = 3
+    context.beginPath()
+    context.arc(11.5, 11.5, 9.25, 0, Math.PI * 2)
+    context.stroke()
+    context.stroke(word)
+    // Opaque, where the SVG cuts the edge out of the shapes with a mask: a canvas already holds the
+    // map beneath, so the inner half of the edge is covered instead.
+    context.globalAlpha = 1
+    context.fillStyle = '#fff'
+    context.fill(mark, 'evenodd')
+    context.fill(word, 'evenodd')
+    context.restore()
 }
 
 /** Mapbox's logo, linking to Mapbox, in the lower right with the credits while a Mapbox style draws. */

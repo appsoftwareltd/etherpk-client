@@ -79,6 +79,17 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
         return { env, dir, host: { env, cmd: 'etherpk-mcp' } }
     }
 
+    // graph_info is how an agent learns the copy is offline, so it answers whatever the publications do.
+    it('answers without the publications when they cannot be read in time, and says where to get them', async () => {
+        const g = await graph('g-publishing-stuck')
+        const { host } = await hostFor()
+        const stuck: HeadlessGraph = { ...g, publishing: { ...g.publishing, readSource: () => new Promise<never>(() => {}) } }
+        const info = await publishingInfo(stuck, host, 10)
+        expect(info.publications).toBeNull()
+        expect(info.note).toContain('list_publications')
+        expect(info.mermaid).toBeDefined()
+    })
+
     async function rejectsWith(promise: Promise<unknown>, code: ToolError['code']): Promise<ToolError> {
         try {
             await promise

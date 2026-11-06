@@ -42,7 +42,8 @@ export function mapStyles(
  * The style a picture of a map is drawn over (map-picture.ts), or null for the plain background:
  * the light style for a published page, which never asks for a theme, and the theme's own for a
  * picture in the Backlinks panel, unless it asks to be drawn without its basemap. Never the
- * person's Mapbox: a picture is always drawn over the deployment's own basemap (ADR 0119).
+ * person's Mapbox: these pictures are always drawn over the deployment's own basemap (ADR 0119). A
+ * picture a person saves is drawn over the basemap the map shows instead (map-save.ts).
  */
 export function pictureStyle(styles: MapStyles | null, request?: MapPictureRequest): string | null {
     if (!styles || request?.basemap === false) return null

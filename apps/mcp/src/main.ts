@@ -64,6 +64,7 @@ import { watchFolder } from './folder-watch'
 import { describeGraphLabel, findGraphByName, graphLabel, resolveGraphLabel, type MetaNameReader } from './graph-labels'
 import { readGraphName } from './graph-names'
 import { runGraphHost, type HostedGraph, type PublishRequest } from './graph-host'
+import { connectionChangeLine } from './graph-connection'
 import { openHeadlessFolder } from './headless-folder'
 import { openHeadlessGraph, type HeadlessGraph } from './headless-graph'
 import { requestHost, runningHosts, spawnHostProcess, stopHosts, type HostLauncher } from './host-client'
@@ -1053,6 +1054,7 @@ async function openSyncedGraph(syncServer: string, graphId: string, named: (name
         embeddingModel: () => loadEmbeddingModel(process.env),
         onSemanticProgress: reportSemanticProgress,
         onError: (error) => console.error(`etherpk-mcp: ${error.message}`),
+        onConnectionChange: (change) => console.error(`etherpk-mcp: ${connectionChangeLine(change)}`),
         // One line, once, and the sync loop stops rather than retrying in silence. The tools
         // refuse with a typed error from here on.
         onAccessLost: (loss) =>

@@ -355,8 +355,8 @@ export function createScopedContext(
                 if (!owned) throw new Error(`A fence's info word must be "${id}" or "${id}.<name>", not "${info}".`)
                 if (disposed) return noop
                 // The editor frame is Proposed: only the extensions that come with EtherPK draw in it.
-                if (options.frame !== undefined && !builtIn) throw new Error("A fence's frame is in the Proposed part of the Extension API, which only the extensions that come with EtherPK may use.")
-                const fence = toInteractiveFence(manifest.displayName, widget, options, fenceIsolation, { settingsChanged: ownSettingsChanged, notify: (text) => graph.notify(text) })
+                if ((options.frame !== undefined || options.asImage !== undefined) && !builtIn) throw new Error("A fence's frame is in the Proposed part of the Extension API, which only the extensions that come with EtherPK may use.")
+                const fence = toInteractiveFence(manifest.displayName, widget, options, fenceIsolation, { settingsChanged: ownSettingsChanged, notify: (text, notice) => graph.notify(text, notice) })
                 return keep(graph.contributions.register(INTERACTIVE_FENCE_KIND, info, fence))
             },
             insertBlock: (text, options) => (disposed ? false : graph.editor.insertBlock(text, options)),

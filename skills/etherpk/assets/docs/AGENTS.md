@@ -246,10 +246,11 @@ inside a block, open it with four. Inline maths is `$...$` on one line - there i
 block form.
 
 **Maps.** A ` ```map ` block is a map EtherPK draws in place. It holds one line for each place
-or route and nothing else:
+or route, and a size line once the map has been resized:
 
 ````markdown
 ```map
+size 640x380
 Pebble Cove Campsite @ 50.74860, -4.07890
 Coast walk @ 50.74860, -4.07890 > 50.75112, -4.08240 > 50.75300, -4.09000
 Ridge walk @ 54.60120, -3.13410 > 54.60500, -3.14000 (../assets/ridge-walk.a1b2c3d4.gpx)
@@ -262,6 +263,9 @@ Ridge walk @ 54.60120, -3.13410 > 54.60500, -3.14000 (../assets/ridge-walk.a1b2c
   the file is the full recording.
 - The name is plain text. A wikilink in a map is not a link: a place belongs to the concepts of
   the line or bullet its map sits under, as a task does.
+- `size 640x380` is the map's width and height in pixels, and `size x500` a map that fills its
+  column at that height. Leave it out unless the map should have a size of its own. EtherPK writes
+  it as the first line when a person resizes the map, and a published picture follows it.
 - Open the fence on a line of its own, at the bullet's content column inside a bullet, or on the
   bullet's own line (`- ```map`), where the map is drawn beside the bullet's dot.
 - A line EtherPK cannot read is kept as written and reported on the map, never rewritten.
@@ -270,9 +274,31 @@ Ridge walk @ 54.60120, -3.13410 > 54.60500, -3.14000 (../assets/ridge-walk.a1b2c
 `excalidraw.drawing`) holds that extension's own data, such as a drawing's elements as one JSON
 object per line. EtherPK draws it through the extension, never searches it, and never publishes it
 as text. Leave such a fence exactly as it is: do not edit, reformat, re-indent or sort its lines,
-and do not add one by hand, because the extension that wrote it reads every line. A fence whose
-info-string is an extension's id alone (such as `video`, holding a link) is ordinary text that you
-may read and edit.
+and do not add one by hand, because the extension that wrote it reads every line. A drawing is the
+one exception, as set out below. A fence whose info-string is an extension's id alone (such as
+`video`, holding a link) is ordinary text that you may read and edit.
+
+**Drawings.** You may start an `excalidraw.drawing` fence and add lines to one, to draw shapes or to
+place an image and draw over it. Never edit, re-indent or reorder the lines already there. The first
+line names the drawing, and each line after it is one thing it draws, as one JSON object:
+
+````markdown
+```excalidraw.drawing
+{"type":"excalidraw.drawing","version":1,"id":"k3v9q2m8xa","background":"#ffffff"}
+{"type":"image","customData":{"asset":"../assets/garden-plan.a1b2c3d4.png"},"x":0,"y":0,"width":640,"height":400}
+{"id":"beds","type":"rectangle","x":40,"y":40,"width":160,"height":80,"label":{"text":"Beds"}}
+{"type":"arrow","x":200,"y":80,"width":120,"height":60}
+```
+````
+
+- The `id` on the first line is ten letters and digits of your choosing. Keep it when adding to a
+  drawing.
+- An image names its file in `assets/` as a reference, in `customData.asset`. Its `width` and `height`
+  are required: without them the line stays as you wrote it and nothing is drawn for it. Add the file
+  as under Assets below. `upload_asset` and `read_asset` report an image's size in pixels.
+- A line added later draws above the ones before it, so place the image first and the marks after it.
+- EtherPK rewrites a line you add as a full element, with more fields, the next time the drawing is
+  shown. A line it has rewritten has a `version` field: leave those as they are.
 
 **Tables.** GFM pipe tables. Leave a blank line between two tables or they read as one. A
 table cannot sit inside a code block or the frontmatter.

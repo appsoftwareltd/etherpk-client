@@ -877,7 +877,7 @@ describe('assets', () => {
 
         const image = await uploadAsset(g, { path: png })
         expect(image.reference).toMatch(/^\.\.\/assets\/diagram-one\..+\.png$/)
-        expect(image).toMatchObject({ name: 'diagram-one.png', type: 'image/png', bytes: PNG.byteLength, reused: false })
+        expect(image).toMatchObject({ name: 'diagram-one.png', type: 'image/png', bytes: PNG.byteLength, width: 1, height: 1, reused: false })
         expect(image.markdown).toBe(`![diagram-one](${image.reference})`)
 
         const again = await uploadAsset(g, { path: png, name: 'Same Bytes.png' })
@@ -887,6 +887,7 @@ describe('assets', () => {
         const text = await uploadAsset(g, { path: txt })
         expect(text.markdown).toBe(`[notes](${text.reference})`)
         expect(text.type).toBe('text/plain')
+        expect(text).not.toHaveProperty('width')
 
         await rejectsWith(uploadAsset(g, { path: join(tmpdir(), 'no-such-file.png') }), 'invalid_argument')
     })
@@ -939,6 +940,29 @@ describe('assets', () => {
         expect(read.path).toBe(early.path) // same bytes, same file
         // The name alone is enough.
         expect((await readAsset(g, { reference: image.reference.split('/').pop()!, out_dir: 'out' })).path).toBe(early.path)
+    })
+
+    it('serves and lists an image a drawing names, with its size in pixels, which is how an agent places marks on it', async () => {
+        const g = await graph('g-assets-drawing')
+        const saved = await g.assets!.store.save({ name: 'garden-plan.png', bytes: new Uint8Array(PNG) as Uint8Array<ArrayBuffer>, type: 'image/png' })
+        const line = JSON.stringify({ type: 'image', customData: { asset: saved.ref }, x: 0, y: 0, width: 200, height: 100 })
+        await seed(g, 'Post', ['```excalidraw.drawing', '{"type":"excalidraw.drawing","version":1,"id":"k1"}', line, '```'].join('\n'))
+        await indexed(g, async () => (await listAssets(g)).total === 1)
+        expect((await listAssets(g)).assets).toEqual([expect.objectContaining({ reference: saved.ref, documents: ['Post'] })])
+        const read = await readAsset(g, { reference: saved.ref, out_dir: 'out' })
+        expect(read).toMatchObject({ width: 1, height: 1, documents: [{ concept: 'Post', kind: 'page' }] })
+    })
+
+    it('lets an agent add an image to a drawing by adding a line, leaving the lines already there', async () => {
+        const g = await graph('g-assets-drawing-edit')
+        const { png } = await files()
+        const image = await uploadAsset(g, { path: png })
+        const header = '{"type":"excalidraw.drawing","version":1,"id":"k1"}'
+        const shape = '{"id":"r1","type":"rectangle","version":3,"versionNonce":7,"x":0,"y":0,"width":10,"height":10}'
+        await seed(g, 'Post', ['Before', '```excalidraw.drawing', header, shape, '```', 'After'].join('\n'))
+        const line = JSON.stringify({ type: 'image', customData: { asset: image.reference }, x: 0, y: 0, width: image.width, height: image.height })
+        await editDocument(g, { concept: 'Post', old: shape, new: `${shape}\n${line}` })
+        expect((await readDocument(g, 'Post')).text).toBe(['Before', '```excalidraw.drawing', header, shape, line, '```', 'After'].join('\n'))
     })
 
     it('does not serve or list an asset nothing readable references', async () => {
@@ -1192,6 +1216,8 @@ describe('task references', () => {
         const { g, reference } = await withTask('g-ref-edited')
         await editDocument(g, { concept: 'Plan', old: 'Send the quote', new: 'Send the new quote' })
         await rejectsWith(readTask(g, { reference }), 'task_not_found')
+        // The tools know only this copy, so the refusal leaves room for an edit still on its way.
+        await expect(readTask(g, { reference })).rejects.toThrow('or the change has not reached this computer yet')
         await rejectsWith(setTask(g, { reference, changes: { status: 'done' } }), 'task_not_found')
         expect((await readDocument(g, 'Plan')).text).toContain('- [ ] #P1 Send the new quote')
         await rejectsWith(readTask(g, { reference: 'Send the quote' }), 'invalid_argument')

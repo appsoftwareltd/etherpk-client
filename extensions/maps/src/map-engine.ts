@@ -24,7 +24,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import type { MapLine, MapPoint } from '#lib/document/map-text.js'
 
 import type { Basemap } from './basemap'
-import { blankStyle, NAMED_PLACES, routeLayers, SINGLE_PLACE_ZOOM, WORLD } from './map-drawing'
+import { blankStyle, type MapCamera, NAMED_PLACES, routeLayers, SINGLE_PLACE_ZOOM, WORLD } from './map-drawing'
 import { type FramePadding, frameRoom, itemsBounds, type PixelPoint, placesAtSpot } from './map-geometry'
 import { AllPins, ClusteredPins, type PlaceLayer } from './map-pins'
 import './map-worker'
@@ -47,12 +47,6 @@ export type BasemapProblem = 'offline' | 'unavailable' | 'none'
 
 /** A place or route as the engine draws it, under the number its owner knows it by. */
 export type EngineItem = MapLine & { key: number }
-
-/** Where the map is looking, kept by an owner that takes its map down and builds it again. */
-export interface MapCamera {
-    centre: MapPoint
-    zoom: number
-}
 
 export interface MapEngineOptions {
     /** What the map is drawn over, or null for no basemap. */
@@ -109,6 +103,8 @@ export class MapEngine {
     /** A basemap's style has been asked for and has not loaded: an error now means it will not. */
     private styleLoading = false
     private destroyed = false
+    /** The person moved the map, or asked to see one item, since it last framed all of them. */
+    private movedSinceFramed = false
 
     constructor(container: HTMLElement, options: MapEngineOptions) {
         this.options = options
@@ -164,6 +160,11 @@ export class MapEngine {
             if (typeof key === 'number') options.onItemClick(key)
             else options.onMapClick({ lat: event.lngLat.lat, lon: event.lngLat.lng })
         })
+        // A person's move carries the event behind it. The map's own moves carry none: `frameItems`,
+        // and the `movestart` that `map.resize()` fires as a block changes size.
+        this.map.on('movestart', (event) => {
+            if (event.originalEvent) this.movedSinceFramed = true
+        })
         this.map.on('mouseenter', `${ROUTES}-hit`, () => (this.map.getCanvas().style.cursor = 'pointer'))
         this.map.on('mouseleave', `${ROUTES}-hit`, () => (this.map.getCanvas().style.cursor = ''))
         if (basemap?.kind === 'mapbox' && !startWithout) this.draw(basemap)
@@ -189,7 +190,13 @@ export class MapEngine {
 
     /** Frame every item (ADR 0118): the whole world when there are none, a capped zoom for one place. */
     frame(animate = false): void {
+        this.movedSinceFramed = false
         this.frameItems(this.items, animate)
+    }
+
+    /** Frame every item again after a resize, unless the person has moved the map to look at something. */
+    frameUnlessMoved(): void {
+        if (!this.movedSinceFramed) this.frame()
     }
 
     /**
@@ -199,6 +206,7 @@ export class MapEngine {
     showItem(key: number, animate = true): void {
         const item = this.items.find((candidate) => candidate.key === key)
         if (!item) return
+        this.movedSinceFramed = true
         if (item.kind === 'route') {
             this.frameItems([item], animate)
             return
@@ -209,6 +217,7 @@ export class MapEngine {
 
     /** Bring a point into the middle of the map, close enough to place it. */
     show(point: MapPoint): void {
+        this.movedSinceFramed = true
         this.map.jumpTo({ center: [point.lon, point.lat], zoom: Math.max(this.map.getZoom(), SINGLE_PLACE_ZOOM) })
     }
 
@@ -216,6 +225,12 @@ export class MapEngine {
     camera(): MapCamera {
         const centre = this.map.getCenter()
         return { centre: { lat: centre.lat, lon: centre.lng }, zoom: this.map.getZoom() }
+    }
+
+    /** The map's size on screen, in CSS pixels. */
+    size(): { width: number; height: number } {
+        const container = this.map.getContainer()
+        return { width: container.clientWidth, height: container.clientHeight }
     }
 
     /** Look where an earlier map was looking. */

@@ -4,7 +4,8 @@
  * runs any script in it, in the site's origin, and the site is served wherever its owner hosts it,
  * with no CSP of ours. So the file keeps only what DOMPurify's SVG profile allows: no script, no
  * event handler, no `javascript:` link and no HTML. Its `<style>` stays, since a drawing declares its
- * fonts there.
+ * fonts there. So does a `<use>` that points within the file, since a drawing draws each image with
+ * one. A `<use>` pointing anywhere else is taken out, because it draws whatever is at that address.
  *
  * The picture a fence's `quote` returns is cleaned the same way. The Backlinks panel shows it as an
  * image, where nothing in it runs, but a person can open that image in a tab of its own.
@@ -26,11 +27,15 @@ export function cleanedSvgFile(svg: string): string | null {
     if (!DOMPurify.isSupported) return null
     const fragment = DOMPurify.sanitize(svg, {
         USE_PROFILES: { svg: true, svgFilters: true },
-        ADD_TAGS: ['style'],
+        ADD_TAGS: ['style', 'use'],
         RETURN_DOM_FRAGMENT: true,
     })
     const root = fragment.firstElementChild
     if (!root || root.namespaceURI !== SVG_NAMESPACE || root.localName !== 'svg') return null
+    for (const use of root.querySelectorAll('use')) {
+        const target = use.getAttribute('href') ?? use.getAttribute('xlink:href')
+        if (!target?.startsWith('#')) use.remove()
+    }
     return new XMLSerializer().serializeToString(root)
 }
 

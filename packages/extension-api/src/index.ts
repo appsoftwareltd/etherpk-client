@@ -41,7 +41,7 @@ export type {
     NoticeAction,
     NoticeOptions,
 } from './context'
-export type { AssetDescription, ExtensionAssets, ViewImagesOptions } from './assets'
+export type { AssetDescription, ExtensionAssets, StoredImage, ViewImagesOptions } from './assets'
 export type { AuthorizeOptions, ExtensionAuth } from './auth'
 export type { ChooseChoice, ChooseOptions, ExtensionDialogs, PickDateOptions, PromptOptions } from './dialogs'
 export type { DocumentBacklink, DocumentSearchResult, DocumentSummary, DocumentTask, DocumentText, ExtensionDocuments } from './documents'
@@ -49,6 +49,8 @@ export type {
     ExtensionEditor,
     FenceContext,
     FenceEdit,
+    FenceImage,
+    FenceImageRequest,
     FenceInfo,
     FenceOptions,
     FencePresentation,

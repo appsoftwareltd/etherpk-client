@@ -6,8 +6,8 @@
  * - **One fence is edited at a time**, in all the documents open. Starting one stops the one before,
  *   which writes what it holds first (`EditingRegistry`).
  * - **Which actions show where**: a toolbar while the fence is edited in the document, a menu over
- *   its picture otherwise, and nothing in a tab or a window, or where the document cannot be written
- *   (`frameActions`).
+ *   its picture otherwise, and nothing in a tab or a window. Where the document cannot be written the
+ *   menu holds only what leaves the document as it is: a fence's image (`frameActions`).
  */
 import type { FencePresentation } from '@appsoftwareltd/etherpk-extension-api'
 
@@ -75,7 +75,7 @@ export function createEditingRegistry(): EditingRegistry {
 /** The registry the Client's framed fences share. */
 export const frameEditing = createEditingRegistry()
 
-export type FrameAction = 'done' | 'full-window' | 'open-tab' | 'edit-as-text' | 'delete'
+export type FrameAction = 'done' | 'full-window' | 'open-tab' | 'copy-image' | 'save-image' | 'edit-as-text' | 'delete'
 
 export interface FrameState {
     presentation: FencePresentation
@@ -85,18 +85,25 @@ export interface FrameState {
     editing: boolean
     /** Whether the fence has an id (`identify`), which a tab and the full window need. */
     identified: boolean
+    /** Whether the fence can be drawn as an image (`asImage`). */
+    image: boolean
+    /** Whether this browser's clipboard can take an image. */
+    copies: boolean
 }
 
 /**
  * The actions the frame shows: the toolbar's, while the fence is edited in the document, where Edit
  * as text and Delete stand apart from the actions that move the fence (`apart`); and the menu's over
- * the picture otherwise. None in a tab or a window, which has the Client's own Return, nor where the
- * document cannot be written.
+ * the picture otherwise. None in a tab or a window, which has the Client's own Return. Where the
+ * document cannot be written, the menu holds only the fence's image, which changes nothing. While the
+ * fence is edited its widget offers its own way to the image, if it has one, so the toolbar does not.
  */
 export function frameActions(state: FrameState): { toolbar: FrameAction[]; apart: FrameAction[]; menu: FrameAction[] } {
     const none = { toolbar: [], apart: [], menu: [] }
-    if (state.presentation !== 'inline' || !state.writable) return none
-    if (!state.editing) return { ...none, menu: ['edit-as-text', 'delete'] }
+    if (state.presentation !== 'inline') return none
+    const image: FrameAction[] = !state.image ? [] : state.copies ? ['copy-image', 'save-image'] : ['save-image']
+    if (!state.writable) return { ...none, menu: image }
+    if (!state.editing) return { ...none, menu: [...image, 'edit-as-text', 'delete'] }
     return { toolbar: state.identified ? ['done', 'full-window', 'open-tab'] : ['done'], apart: ['edit-as-text', 'delete'], menu: [] }
 }
 
@@ -105,8 +112,25 @@ export const FRAME_ACTION_LABELS: Readonly<Record<FrameAction, string>> = {
     done: 'Done',
     'full-window': 'Full window',
     'open-tab': 'Open in tab',
+    'copy-image': 'Copy as image',
+    'save-image': 'Save as image',
     'edit-as-text': 'Edit as text',
     delete: 'Delete',
+}
+
+/** Whether a menu item leaves the fence as it was, so the keyboard goes back to the menu's button. */
+export function keepsMenuFocus(action: FrameAction): boolean {
+    return action === 'copy-image' || action === 'save-image'
+}
+
+/** What the person is told once a fence is on the clipboard, which they cannot see. */
+export function imageCopiedNotice(title: string | undefined): string {
+    return `${title ?? 'Block'} copied as an image.`
+}
+
+/** What the person is told when a fence's image could not be copied or saved, with the fence's own reason. */
+export function imageFailedNotice(title: string | undefined, how: 'copy' | 'save', reason: string): string {
+    return `The ${(title ?? 'Block').toLowerCase()} couldn't be ${how === 'copy' ? 'copied' : 'saved'} as an image. ${reason}`
 }
 
 /** What the person is told after Delete, which takes the fence out without asking first. */

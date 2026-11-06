@@ -133,6 +133,17 @@
     border-radius: 0;
 }
 
+/* Its menu takes its width from its contents, under a button narrower than any of them, so the longest
+   row would wrap or be cut: as wide as its rows, with a shortcut on one line. */
+.excalidraw.excalidraw .App-menu_top__left .dropdown-menu {
+    width: max-content;
+    max-width: calc(100vw - 2rem);
+}
+
+.excalidraw.excalidraw .dropdown-menu .dropdown-menu-item__shortcut {
+    white-space: nowrap;
+}
+
 /* Excalidraw's own controls are violet, on greys tinted to match. Here they are Tailwind's neutral
    scale, step for step by lightness. A drawing keeps its own colours, and Excalidraw always draws in its
    light theme (editor.ts). Two classes, to outrank its stylesheet, which loads later. */

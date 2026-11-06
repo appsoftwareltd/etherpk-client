@@ -9,6 +9,15 @@ starts at 0.9.3.
 
 ### Client
 
+- **Images in Excalidraw drawings.** Paste an image over a drawing, drop it there or use Excalidraw's
+  image tool, then draw over it. The image is kept as one of the graph's assets, and it shows in the
+  drawing's picture, in backlinks and on published sites. An agent can place one too: `upload_asset`
+  and `read_asset` report an image's size in pixels, and `AGENTS.md` describes the line to add.
+- **Copy or save a drawing as an image.** The menu over a drawing's picture has **Copy as image** and
+  **Save as image**: a light PNG at twice the drawing's size, named after the document. While you edit a
+  drawing, **Export image...** in Excalidraw's menu offers PNG, SVG and the clipboard, with its own options.
+- **Open in tab in the task editor.** A link under the task editor's buttons closes it and opens the
+  task's document in its own tab at the task line.
 - **Task tags in any case.** `#p1` means the same as `#P1`, and so do `#w`, `#c`, `#d-2026-11-05` and the
   other task tags, in the editor, the Tasks View, Kanban boards and published pages. Lower-case tags already
   at the start of a task count the next time you open the graph. A word like `#c` or `#w` later in a task is
@@ -30,7 +39,20 @@ starts at 0.9.3.
   colour. The Graphs menu lists synced and local graphs under separate labels.
 - **Error messages about syncing are in plain words.** They say what failed and what to try next. The
   underlying error goes to the browser console.
+- **Kanban cards show their priority.** A card in a P1, P2 or P3 section carries that label, so you can
+  still tell which priority you are in after a long lane has scrolled its section heading away. Priority
+  labels on cards and in the Tasks view have the Task Editor's colours.
+- **Resize a map.** Drag the handle on a map's corner, as you would on an image, and double-click it for the
+  default size. The size is saved in the map's text as a line such as `size 640x380`, so your other devices
+  and the other members of a shared graph see the same size, and a published picture of the map follows it.
+  An older Client draws the map at its default size and reports the line as one it can't read.
+- **Copy or save a map as an image.** In a map's **More map actions** menu, **Save as image** downloads a PNG
+  of the map as it is on screen, at twice its size, named after the document, and **Copy as image** puts it on
+  the clipboard. It shows your places and routes with their names, without the map's buttons. With your own
+  Mapbox token it keeps the Mapbox background, including satellite, and the map reminds you that Mapbox's terms
+  don't allow you to distribute the picture.
 - **Fixes.**
+  - A map's search box no longer pushes the map's buttons off the edge of a narrow map.
   - A local graph opened from its address or a restored tab shows **Grant access** when the browser needs a
     click before it will ask for the folder. It used to fail with a message about the sync server. If you
     refuse, the screen says so and offers **Back to graphs**.
@@ -41,11 +63,19 @@ starts at 0.9.3.
     lands behind a `/` already in the text, where **Enter** would run a row. After **Escape** it stays closed
     until you type another `/`.
   - Saving a synced graph's settings from the Graphs page no longer reports an error after saving them.
+  - Search results on a published site with the EtherPK Docs theme nearly fill a phone's width. They used to be
+    as narrow as the search box.
 
 ### Headless Client
 
 - `tasks`, `read_task` and `set_task` read a task tag in any case, so `#p1` means the same as `#P1`.
+- **Agents say when their copy of a synced graph is offline.** While the Headless Client cannot reach the
+  Sync Server, every tool answer ends with a note saying since when, and `graph_info` reports `connection`.
+  `task_not_found` says a task may be newer than the copy, and the same instruction works once the
+  connection returns. The background process's log records the connection going and coming back.
 - **Fixes.**
+  - `graph_info` answers within about 15 seconds when the publications cannot be read, with `publications`
+    set to null and a note.
   - `read_asset` takes `reference`, the word the task tools use, in place of `ref`. `upload_asset`,
     `read_asset` and `list_assets` answer with `reference` too.
 

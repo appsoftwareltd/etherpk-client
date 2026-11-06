@@ -7,14 +7,16 @@
  *   the full size costs bytes and tokens for nothing.
  * - `saveImage` keeps an image as one of the graph's assets through the store a paste saves into,
  *   optimised as a paste is, and answers the markdown that shows it, with the graph's default
- *   display size as a pasted image carries it.
+ *   display size as a pasted image carries it. `storeImage` does the same and also answers the
+ *   reference, or why the image was not kept, for an extension that holds the reference itself
+ *   and must tell the person.
  * - `describe` names the asset a reference points at as a person reads it, and `imageUrl` reads an
  *   image through the same store the editor draws one from, so a list of a task's assets (the
  *   Kanban Task Editor's) shows the pictures the document does.
  * - `viewImages` shows the images among a list of references in the [[Lightbox]], named as
  *   `describe` names them, so a thumbnail opens the picture larger as View larger does in a document.
  */
-import type { AssetDescription, ExtensionAssets } from '@appsoftwareltd/etherpk-extension-api'
+import type { AssetDescription, ExtensionAssets, StoredImage } from '@appsoftwareltd/etherpk-extension-api'
 
 import { assetLightboxImage, type LightboxImage } from '#lib/components/lightbox/lightbox-image.js'
 
@@ -22,6 +24,7 @@ import { defaultMaxImageDisplaySize } from '#lib/document/view/asset-upload.js'
 import { canvasToBlob, drawImageToCanvas } from '#lib/document/view/image-canvas.js'
 import { canvasEncoder, optimizeImage } from '#lib/document/view/image-optimize.js'
 import { assetNameFromRef, type AssetStore, buildAssetMarkdown, displayAssetName, isImageExt, splitNameExt } from '#lib/storage/fs/asset-store.js'
+import { AssetRefusedError } from '#lib/storage/synced/server-asset-store.js'
 
 /** The longest side an image is sent at, in pixels: what the large models read without scaling it again. */
 export const MAX_PREPARED_EDGE = 2048
@@ -34,9 +37,19 @@ export function preparedSize(width: number, height: number, max = MAX_PREPARED_E
     return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) }
 }
 
+const IMAGE_EXTENSIONS: Record<string, string> = {
+    'image/webp': 'webp',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/svg+xml': 'svg',
+    'image/avif': 'avif',
+    'image/bmp': 'bmp',
+}
+
 /** A file name with the extension its type says, so the stores read it as an image. */
 function named(name: string, type: string): string {
-    const ext = type === 'image/webp' ? 'webp' : type === 'image/jpeg' ? 'jpg' : type === 'image/png' ? 'png' : type === 'image/gif' ? 'gif' : null
+    const ext = IMAGE_EXTENSIONS[type] ?? null
     const stem = name.replace(/\.[A-Za-z0-9]+$/, '') || 'image'
     return ext ? `${stem}.${ext}` : name
 }
@@ -61,6 +74,20 @@ export interface ExtensionAssetsDeps {
 }
 
 export function createExtensionAssets(deps: ExtensionAssetsDeps): ExtensionAssets {
+    async function storeImage(image: Blob, name: string): Promise<StoredImage> {
+        const store = deps.store()
+        if (!store) return { stored: false, reason: 'This graph keeps no images on this device.' }
+        try {
+            const { file } = await optimizeImage(new File([image], named(name, image.type), { type: image.type }))
+            const saved = await store.save({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()), type: file.type })
+            return { stored: true, ref: saved.ref, markdown: buildAssetMarkdown(saved, saved.isImage ? defaultMaxImageDisplaySize() : undefined) }
+        } catch (error) {
+            console.warn('[extensions] an image could not be kept as an asset', error)
+            // A refusal says why in the person's terms, such as a plan's limit. Anything else is worth another go.
+            return { stored: false, reason: error instanceof AssetRefusedError ? error.message : "It couldn't be stored just now. Try again." }
+        }
+    }
+
     return {
         async prepareImage(image) {
             const url = URL.createObjectURL(image)
@@ -87,17 +114,11 @@ export function createExtensionAssets(deps: ExtensionAssetsDeps): ExtensionAsset
         },
 
         async saveImage(image, name) {
-            const store = deps.store()
-            if (!store) return null
-            try {
-                const { file } = await optimizeImage(new File([image], named(name, image.type), { type: image.type }))
-                const saved = await store.save({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()), type: file.type })
-                return buildAssetMarkdown(saved, saved.isImage ? defaultMaxImageDisplaySize() : undefined)
-            } catch (error) {
-                console.warn('[extensions] an image could not be kept as an asset', error)
-                return null
-            }
+            const stored = await storeImage(image, name)
+            return stored.stored ? stored.markdown : null
         },
+
+        storeImage,
 
         describe: describeAsset,
 

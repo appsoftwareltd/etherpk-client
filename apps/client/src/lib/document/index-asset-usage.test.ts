@@ -25,6 +25,12 @@ function dbWith(...docs: IndexDoc[]): SqlDb {
 const NAME = 'q3-report.a1b2c3d4.pdf'
 
 describe('assetUsage', () => {
+    it("counts a drawing's image, whose reference is in the drawing's data, which search never reads", () => {
+        const line = JSON.stringify({ id: 'i1', type: 'image', version: 1, versionNonce: 1, fileId: 'f1', customData: { asset: `../assets/${NAME}` } })
+        const db = dbWith(page('Plans', ['```excalidraw.drawing', '{"type":"excalidraw.drawing","version":1,"id":"k1"}', line, '```'].join('\n')))
+        expect(assetUsage(db, [NAME])).toMatchObject({ references: 1, documents: [{ concept: 'Plans', references: 1 }] })
+    })
+
     it('finds nothing when no document mentions the asset', () => {
         const db = dbWith(page('Alpha', 'Just some prose.'))
 

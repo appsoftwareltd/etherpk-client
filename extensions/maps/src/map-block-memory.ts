@@ -6,7 +6,8 @@
  * A Map Block is known by its graph, its document and its own text, so a map keeps its fold however
  * many maps are added, moved or deleted round it, and an undo that brings it back brings its fold
  * back. A change to a map's text, or a rename of its document, unfolds it, which loses nothing, and
- * two maps with the same text in one document fold together. A map put in by `/map` starts open:
+ * two maps with the same text in one document fold together. Its size line is left out of that text,
+ * so another member's resize leaves a map folded here. A map put in by `/map` starts open:
  * the fold of an empty map in its document is let go first (`map-commands.ts`). Until 2026-10-09 a
  * map was known by how many maps came before it, so a map put in above a folded one took that
  * fold, and the folded map took the next one's.
@@ -14,6 +15,7 @@
  * The editor reads the memory for the room it keeps for each map, and the map for whether it shows
  * folded, so the memory tells its listeners of every change and the two never disagree.
  */
+import { readMapSize } from '#lib/document/map-text.js'
 import type { InteractiveFenceInfo } from '#lib/document/view/augmentations/interactive-fence-contract.js'
 
 const PREFIX = 'etherpk-map-folded'
@@ -31,10 +33,10 @@ export interface MapBlockMemory {
     subscribe(listener: () => void): () => void
 }
 
-/** A short fingerprint of a map's text, FNV-1a over its lines, as eight hex digits. */
+/** A short fingerprint of a map's text less its size line, FNV-1a over its lines, as eight hex digits. */
 export function textFingerprint(body: readonly string[]): string {
     let hash = 0x811c9dc5
-    const text = body.join('\n')
+    const text = body.filter((line) => readMapSize(line) === null).join('\n')
     for (let i = 0; i < text.length; i++) {
         hash ^= text.charCodeAt(i)
         hash = Math.imul(hash, 0x01000193)

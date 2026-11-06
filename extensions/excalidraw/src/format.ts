@@ -26,6 +26,18 @@
  * (`{"type":"rectangle","x":0,"y":0,"width":120,"height":60,"label":{"text":"Beds"}}`). The browser
  * converts such shapes to full elements and writes those in their place (`scene.ts`).
  *
+ * An image is an element like any other, with its picture kept as one of the graph's Assets and the
+ * reference to it in the element's own data, so the line says which Asset and no more (ADR 0180):
+ *
+ * ````markdown
+ * {"id":"i1","type":"image","fileId":"…","status":"saved","customData":{"asset":"../assets/plan.3f9a1c2e.webp"},"x":0,"y":0,"width":640,"height":400,"version":3,…}
+ * ````
+ *
+ * The reference is written as a document writes one, so whatever finds or rewrites references in a
+ * document's text finds it here too. It lives and dies with its element through merges, undo and copies.
+ * By hand an image needs its reference and its size, since nothing has measured it
+ * (`{"type":"image","customData":{"asset":"../assets/plan.3f9a1c2e.webp"},"x":0,"y":0,"width":640,"height":400}`).
+ *
  * A line holding two elements, as a merge of two older edits could leave, is read as both. Pure, so
  * every rule here is tested in Node.
  */
@@ -197,6 +209,28 @@ export function byStackingOrder(elements: ElementRecord[]): ElementRecord[] {
     })
 }
 
+/** The reference an image names its Asset by, or null for an image with none and anything else. */
+export function imageAsset(element: Readonly<Record<string, unknown>>): string | null {
+    if (element.type !== 'image') return null
+    const asset = (element.customData as { asset?: unknown } | null | undefined)?.asset
+    return typeof asset === 'string' && asset !== '' ? asset : null
+}
+
+/**
+ * The file id of an image known only by its reference: the same on every device, in letters, digits
+ * and hyphens, since an SVG picture names the image's element by it. Two hashes, so two images in a
+ * drawing cannot plausibly share one.
+ */
+export function imageFileId(ref: string): string {
+    return `asset-${hashText(ref)}-${hashText(`${ref}#`)}`
+}
+
+/** An image with no file id gets the one its reference makes, so a line an older Client converted still draws. */
+function withFileIdFromAsset(element: ElementRecord): ElementRecord {
+    const asset = imageAsset(element)
+    return asset && !element.fileId ? { ...element, fileId: imageFileId(asset) } : element
+}
+
 /** A drawing read from its fence's body. */
 export function readDrawing(body: readonly string[]): Drawing {
     const first = body[0] ? objectsOnLine(body[0])[0] : undefined
@@ -209,7 +243,7 @@ export function readDrawing(body: readonly string[]): Drawing {
             if (isSkeleton(value)) skeletons.push(value)
             if (!isElement(value) || value.isDeleted) continue
             const known = byId.get(value.id)
-            if (!known || later(value, known)) byId.set(value.id, value)
+            if (!known || later(value, known)) byId.set(value.id, withFileIdFromAsset(value))
         }
     })
     return { header, elements: byStackingOrder([...byId.values()]), skeletons }
@@ -228,6 +262,54 @@ export function elementLine(element: ElementRecord): string {
 /** The line the drawing's settings are on: 0, or -1 when the body does not start with them. */
 function headerIndex(body: readonly string[]): number {
     return body.length > 0 && isHeader(objectsOnLine(body[0])[0]) ? 0 : -1
+}
+
+/** Each image's file and the Asset it names, as these elements hold them. */
+export function imageAssets(elements: readonly ElementRecord[]): Map<string, string> {
+    const known = new Map<string, string>()
+    for (const element of elements) {
+        const asset = imageAsset(element)
+        if (asset && typeof element.fileId === 'string') known.set(element.fileId, asset)
+    }
+    return known
+}
+
+/**
+ * Each image's reference a body holds, written by hand or not, for whatever has to read them all
+ * before it can draw them.
+ */
+export function imageReferences(body: readonly string[]): string[] {
+    const { elements, skeletons } = readDrawing(body)
+    return [...new Set([...elements, ...skeletons].flatMap((element) => imageAsset(element) ?? []))]
+}
+
+/**
+ * The images on the canvas with no known Asset yet: each file once, with the reference the element
+ * came with, which a paste from another drawing brings and which may mean nothing in this graph.
+ * An image with no file id is still being loaded by Excalidraw, and one deleted needs no Asset.
+ */
+export function imagesToKeep(elements: readonly ElementRecord[], known: ReadonlyMap<string, string>): { fileId: string; claimed: string | null }[] {
+    const wanted = new Map<string, string | null>()
+    for (const element of elements) {
+        if (element.type !== 'image' || element.isDeleted || typeof element.fileId !== 'string' || known.has(element.fileId)) continue
+        if (!wanted.has(element.fileId)) wanted.set(element.fileId, imageAsset(element))
+    }
+    return [...wanted].map(([fileId, claimed]) => ({ fileId, claimed }))
+}
+
+/**
+ * The scene as a save writes it. An image goes in with the reference to its Asset, and is held back
+ * until that is known, so no line ever names an image nothing can find. A held-back image has no line
+ * yet, and a save leaves whatever it is not given as written.
+ */
+export function elementsToSave(elements: readonly ElementRecord[], known: ReadonlyMap<string, string>): ElementRecord[] {
+    return elements.flatMap((element) => {
+        if (element.type !== 'image' || element.isDeleted) return [element]
+        const asset = typeof element.fileId === 'string' ? known.get(element.fileId) : undefined
+        if (!asset) return []
+        // `status` is Excalidraw's account of this session's upload and load, which means nothing to the next reader.
+        return [{ ...element, status: 'saved', customData: { ...(element.customData as object | undefined), asset } }]
+    })
 }
 
 /** The edits that add `elements` at the end of a body `length` lines long, one line each. */
@@ -323,6 +405,39 @@ export function skeletonPrefix(skeletons: readonly SkeletonRecord[]): string {
     return `sk${hashText(JSON.stringify(skeletons))}`
 }
 
+/** Whether a shape written by hand can be drawn: an image needs its Asset and its size, which nothing else can give it. */
+export function isDrawableSkeleton(skeleton: SkeletonRecord): boolean {
+    if (skeleton.type !== 'image') return true
+    const positive = (value: unknown) => typeof value === 'number' && value > 0
+    return imageAsset(skeleton) !== null && positive(skeleton.width) && positive(skeleton.height)
+}
+
+/** A shape written by hand with what a conversion needs of an image: its file, known by its reference. */
+export function withImageFile(skeleton: SkeletonRecord): SkeletonRecord {
+    const asset = imageAsset(skeleton)
+    return asset ? { ...skeleton, fileId: imageFileId(asset), status: 'saved' } : skeleton
+}
+
+/** Digits of a stacking index, in the order they sort. No zero, which may not end a fractional index. */
+const INDEX_DIGITS = '123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+
+/** The `n`th of a run of fractions, all the same width so they sort as counted. */
+function indexFraction(n: number): string {
+    const base = INDEX_DIGITS.length
+    return INDEX_DIGITS[Math.floor(n / (base * base)) % base] + INDEX_DIGITS[Math.floor(n / base) % base] + INDEX_DIGITS[n % base]
+}
+
+/**
+ * Elements a conversion made, stacked above those the drawing holds, in the order they came. A
+ * conversion numbers its elements from the bottom, so without this an arrow added to a drawing could
+ * land under the image it points at. Worked out from the lines alone, so every device stacks them alike.
+ */
+export function stackedAbove(existing: readonly ElementRecord[], elements: readonly ElementRecord[]): ElementRecord[] {
+    let top: string | null = null
+    for (const { index } of existing) if (index && (top === null || index > top)) top = index
+    return top === null ? [...elements] : elements.map((element, n) => ({ ...element, index: `${top}${indexFraction(n)}` }))
+}
+
 /**
  * Merge a drawing changed elsewhere into the one on screen, with the drawing as it was last read
  * (`base`) to tell an element deleted elsewhere from one added here. `local` is the scene with its
@@ -406,7 +521,9 @@ export function drawingAlt(elements: readonly ElementRecord[]): string {
         .filter((element) => element.type === 'text' && typeof element.text === 'string')
         .map((element) => (element.text as string).replace(/\s+/g, ' ').trim())
         .filter((text) => text !== '')
-    if (words.length === 0) return 'Drawing'
+    const images = elements.filter((element) => element.type === 'image').length
+    const name = images === 0 ? 'Drawing' : images === 1 ? 'Drawing with an image' : `Drawing with ${images} images`
+    if (words.length === 0) return name
     const said = words.join(', ')
-    return `Drawing: ${said.length > 200 ? `${said.slice(0, 197)}…` : said}`
+    return `${name}: ${said.length > 200 ? `${said.slice(0, 197)}…` : said}`
 }

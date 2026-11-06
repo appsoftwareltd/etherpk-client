@@ -24,6 +24,7 @@
     import { openConceptAtLine } from "#lib/document/open-concept.js";
     import { createSettleScheduler, TASK_TEXT_FILTER_SETTLE } from "#lib/document/settle-scheduler.js";
     import { bulletLabel, parseTaskTextFilter } from "#lib/document/index-derive.js";
+    import { PRIORITY_LABEL_CLASSES, priorityColour } from "#lib/document/task-priority-colour.js";
     import { findIndexedTask, isTaskLine, type TaskChanges, type TaskWrite, type TaskWriteOutcome, undoTaskWrite, writeTaskChanges } from "#lib/document/task-write.js";
     import type { DocumentStore } from "#lib/document/types.js";
     import { TASK_COPY_LANE_REFERENCE, TASK_COPY_REFERENCE } from "#lib/document/commands/agent-instruction-commands.js";
@@ -1781,6 +1782,16 @@
                                                     <!-- Room on the right for the copy button, which sits over the card. -->
                                                     <span class={["mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm", desktop.current && "pr-7"]}>
                                                         <span class="min-w-0 truncate text-(--gk-text-subtle)" data-testid="kanban-card-document">{card.document}</span>
+                                                        <!-- A long lane scrolls its section heading away, so the card says its section's priority. No priority has no label, as in the Tasks View. -->
+                                                        {#if section.priority !== null}
+                                                            <span
+                                                                class={["shrink-0 rounded px-1.5 font-medium", PRIORITY_LABEL_CLASSES]}
+                                                                style:--priority-colour={priorityColour(section.priority)}
+                                                                data-testid="kanban-card-priority"
+                                                            >
+                                                                {section.label}
+                                                            </span>
+                                                        {/if}
                                                         {#if card.subtasks.total > 0}
                                                             <!-- The board reaches a subtask through its parent's card (ADR 0174), so the card says how many it holds. -->
                                                             <span class="inline-flex items-center gap-0.5 text-(--gk-text-muted)" data-testid="kanban-card-subtasks">

@@ -7,6 +7,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 
+import { offlineNotice, type GraphConnection } from './graph-connection'
 import type { HeadlessBackend, HeadlessGraph } from './headless-graph'
 import { createPublication, listPublications, publish, publishingInfo, updatePublication } from './publish-tools'
 import { createTheme, customisePublicationTheme, deleteTheme, deleteThemeFile, importThemeFolder, listThemes, previewTheme, readTheme, readThemeFile, writeThemeFile } from './theme-tools'
@@ -78,6 +79,15 @@ async function runTool(work: () => Promise<unknown> | unknown): Promise<ToolResu
 }
 
 /**
+ * A note after the answer, whether that is a result or a refusal, while the copy it came from is
+ * offline. A block of its own, so the answer's JSON stays as it always is.
+ */
+function withOfflineNote(result: ToolResult, connection: GraphConnection | null): ToolResult {
+    const note = offlineNotice(connection)
+    return note ? { ...result, content: [...result.content, { type: 'text', text: note }] } : result
+}
+
+/**
  * The refusal every tool gives once the Sync Server has ended access, instead of answering from
  * a cache that can no longer be trusted or saved.
  */
@@ -107,15 +117,21 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
     // end the process as an unhandled rejection. Each tool still sees the failure.
     ready?.catch(() => {})
     const backendKind = typeof source === 'function' || source instanceof Promise ? info.backendKind : source.backend.kind
-    // Every tool goes through this: it waits for the graph, and once access has ended, it refuses
-    // before touching it.
-    const run = (work: (graph: HeadlessGraph) => Promise<unknown> | unknown): Promise<ToolResult> =>
-        runTool(async () => {
-            const graph = await (ready ?? (source as () => Promise<HeadlessGraph>)())
-            const ended = accessEndedError(graph, info.cmd ?? 'etherpk-mcp')
-            if (ended) throw ended
-            return work(graph)
-        })
+    // Every tool goes through this: it waits for the graph, once access has ended it refuses before
+    // touching it, and the answer says so if its copy is offline. The note is read after the work,
+    // which can outlast a change of connection.
+    const run = async (work: (graph: HeadlessGraph) => Promise<unknown> | unknown): Promise<ToolResult> => {
+        let graph: HeadlessGraph
+        try {
+            graph = await (ready ?? (source as () => Promise<HeadlessGraph>)())
+        } catch (error) {
+            return failed(error)
+        }
+        const ended = accessEndedError(graph, info.cmd ?? 'etherpk-mcp')
+        if (ended) return failed(ended)
+        const result = await runTool(() => work(graph))
+        return withOfflineNote(result, graph.connection())
+    }
     const server = new McpServer(
         { name: 'etherpk', version: info.version },
         {
@@ -124,7 +140,10 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
                 // An agent that searches the disk for the notes finds the login file instead, so
                 // say where a synced graph is not, and that the sign-in is not the agent's to read.
                 ...(backendKind === 'synced'
-                    ? ['This graph is synced and encrypted: it has no folder on this computer, so reach it only through these tools.']
+                    ? [
+                          'This graph is synced and encrypted: it has no folder on this computer, so reach it only through these tools.',
+                          'The tools answer from this computer\'s copy of the graph. While that copy is offline from the Sync Server, every answer ends with a note saying since when and graph_info reports connection.state "offline". Edits made elsewhere since then are missing, so a page or task that is not found may only be newer than the copy: tell the user that, rather than saying it is gone.',
+                      ]
                     : []),
                 `This process holds the EtherPK sign-in and Encryption Keys it needs. Never read, print, copy or search ${info.credentialsDir ?? '~/.config/etherpk'}, or any keychain entry named etherpk-mcp: they are credentials that open the whole account, not notes.`,
                 'Concept names are case-insensitive. Protected documents are not shown here: no list, search, backlink, task or graph answer names one, and a read of one answers not_found. graph_info says how many there are. A write onto a protected document\'s name is refused with protected_document - tell the user to make that change in EtherPK.',
@@ -135,11 +154,11 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
                 'search has two kinds of matching: mode "text" (default) matches words and quoted phrases, and mode "semantic" finds passages about what a question or description means even when no words match. Use semantic for questions and descriptions, text for names, identifiers and exact phrases. "hybrid" returns both groups. When you answer from a search result, cite the document and where in it (its breadcrumb or lines). Semantic mode needs a one-time "semantic setup" on this computer - if it is not set up, search says so and names the command.',
                 'graph_insights says what the links show across the whole graph (the most-linked concepts, pages many documents ask for that do not exist yet, pages linked to nothing, groups of related concepts and the concepts bridging them), and graph_path finds how two concepts are connected. Use them to answer questions about the shape of the graph, or to suggest pages to write or link.',
                 'Start with graph_info to see what you are connected to. read_documents reads several documents in one call. tasks lists tasks and set_task changes one (status, priority, due and scheduled dates) by document and line.',
-                'An agent instruction is how a person hands you one task: a few lines naming the graph, the task\'s words and a task reference, etherpk:/g/<graph>/d/<document>#task=<line>-<fingerprint> (an earlier version wrote a web address ending in the same #task=). The reference is not a web address: never fetch it. Pass the whole text to read_task for the task and its detail, to set_task (as reference) to change it, and to add_task_note to write what you did as a task comment (a bullet under the "- Comments" bullet nested directly under the task). Leave its status as it is unless the user asks you to change it. Tasks nested under a task are its subtasks: read_task lists them in subtasks, and you may tick off or change each one with set_task as you work through it, using its reference. A Kanban board shows a subtask only through its parent\'s card when the parent is on the same board. The detail can hold images and files (its assets list): read each with read_asset and look at it before you start, as it is part of the task. A reference finds the task after lines are added above it or its tags change; if its words were edited it answers task_not_found, and you should ask the user for a fresh one.',
+                'An agent instruction is how a person hands you one task: a few lines naming the graph, the task\'s words and a task reference, etherpk:/g/<graph>/d/<document>#task=<line>-<fingerprint> (an earlier version wrote a web address ending in the same #task=). The reference is not a web address: never fetch it. Pass the whole text to read_task for the task and its detail, to set_task (as reference) to change it, and to add_task_note to write what you did as a task comment (a bullet under the "- Comments" bullet nested directly under the task). Leave its status as it is unless the user asks you to change it. Tasks nested under a task are its subtasks: read_task lists them in subtasks, and you may tick off or change each one with set_task as you work through it, using its reference. A Kanban board shows a subtask only through its parent\'s card when the parent is on the same board. The detail can hold images and files (its assets list): read each with read_asset and look at it before you start, as it is part of the task. A reference finds the task after lines are added above it or its tags change; if its words were edited, or the edit has not reached this computer yet, it answers task_not_found, and you should ask the user for a fresh one.',
                 'An agent instruction can also hand you a whole lane of a Kanban board, to work through every task in it or to triage them: a few lines naming the graph, the board and the lane, and a lane reference, etherpk:/g/<graph>/k/<concept>#lane=<status> (etherpk:/g/<graph>/kanban#lane=<status> for the Graph Kanban, which holds every task in the graph). It is not a web address either. Pass the whole text to tasks as reference to list the lane\'s tasks as the board shows them now; each comes with its own task reference for read_task, set_task and add_task_note.',
                 'Publishing: list_publications shows the publications this graph defines (a publication is a page whose frontmatter defines it - its outline is the site navigation) and the public documents none takes. A document is on a site when its frontmatter has public: true and names the publication in publications. create_publication and update_publication change the settings, and publish writes the site into the publish folder the user set for it on this machine with the etherpk-mcp publish command (the tool cannot choose a folder) and returns the report. publish with dryRun: true renders and reports without writing and needs no folder: run it after editing a publication\'s pages and fix what it names. Diagrams need a browser the user installs once with "diagrams setup".',
                 "Themes: a publication's look is a theme - Mustache templates, a stylesheet, a script and a manifest. list_themes shows the bundled ones (read-only) and the graph's own. read_theme writes a theme's files to a folder on this machine to read and edit. customise_publication_theme copies a publication's bundled theme into the graph and points the publication at the copy (create_theme copies any theme). write_theme_file, delete_theme_file and import_theme_folder change a graph theme. preview_theme renders a theme to a folder (with screenshots when a browser is set up) to check before publish. For a snippet such as an analytics script, an include slot (update_publication includes, e.g. head) filled by a page may be lighter than a theme copy.",
-                'Images and files are assets: upload_asset adds a file from this machine and returns the markdown to paste into a document. read_asset writes an asset to a local file you can open, and list_assets shows the assets documents reference. An asset is available only where a document you can read references it (or you uploaded it this session). read_asset, read_theme and preview_theme write under the graph\'s downloads directory and return the path - name a folder relative to it, never elsewhere.',
+                'Images and files are assets: upload_asset adds a file from this machine and returns the markdown to paste into a document. To put an image in a drawing, add a line to its excalidraw.drawing fence with the reference, width and height upload_asset returns: {"type":"image","customData":{"asset":"<reference>"},"x":0,"y":0,"width":<width>,"height":<height>}. A shape added after it draws above it. Add lines only, and never edit or reorder the lines there. read_asset writes an asset to a local file you can open, and list_assets shows the assets documents reference. An asset is available only where a document you can read references it (or you uploaded it this session). read_asset, read_theme and preview_theme write under the graph\'s downloads directory and return the path - name a folder relative to it, never elsewhere.',
                 'The user documentation is at https://docs.etherpk.com.',
             ].join('\n'),
         },
@@ -400,7 +419,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'upload_asset',
         {
             title: 'Upload an asset',
-            description: 'Add a file on this machine (an image, a PDF, any file) to the graph as an asset. Returns the reference and the markdown to paste into a document (an image tag for an image, a link otherwise). Bytes the graph already holds are not stored twice: the result then says reused: true and points at the existing asset. The file is stored as it is, without image optimisation. Refused with error "invalid_argument" for a folder, a file over 100 MiB, a hidden file or one in a hidden folder (.ssh, .env), and the Headless Client\'s own config and cache. Refused with error "asset_refused" when the server declines it on a quota.',
+            description: 'Add a file on this machine (an image, a PDF, any file) to the graph as an asset. Returns the reference, an image\'s width and height in pixels, and the markdown to paste into a document (an image tag for an image, a link otherwise). Bytes the graph already holds are not stored twice: the result then says reused: true and points at the existing asset. The file is stored as it is, without image optimisation. Refused with error "invalid_argument" for a folder, a file over 100 MiB, a hidden file or one in a hidden folder (.ssh, .env), and the Headless Client\'s own config and cache. Refused with error "asset_refused" when the server declines it on a quota.',
             inputSchema: {
                 path: z.string().min(1).describe('Absolute path of an ordinary file on this machine.'),
                 name: z.string().min(1).optional().describe('The name to store it under - the file\'s own name by default.'),
@@ -413,7 +432,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'read_asset',
         {
             title: 'Read an asset',
-            description: 'Write an asset\'s bytes to a file on this machine and return the path, so you can open or view it. Pass the reference as a document shows it ("../assets/<name>") or the name alone. Available only where a document you can read references the asset (or you uploaded it this session) - otherwise error "asset_not_found". The file is written under the graph\'s downloads directory, named after the asset, and never over an existing file.',
+            description: 'Write an asset\'s bytes to a file on this machine and return the path, with an image\'s width and height in pixels, so you can open or view it. Pass the reference as a document shows it ("../assets/<name>") or the name alone. Available only where a document you can read references the asset (or you uploaded it this session) - otherwise error "asset_not_found". The file is written under the graph\'s downloads directory, named after the asset, and never over an existing file.',
             inputSchema: {
                 reference: z.string().min(1).describe('The asset as a document or read_task shows it ("../assets/<name>"), or its name alone.'),
                 out_dir: z.string().min(1).optional().describe('A folder under the graph\'s downloads directory, relative to it - the downloads directory itself by default. A folder outside it is refused.'),
@@ -618,10 +637,15 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'graph_info',
         {
             title: 'Graph info',
-            description: 'What you are connected to: the graph\'s name, whether it is a synced graph (and on which server) or a folder, how many pages and journal entries it has and how many of them are protected (protected documents are counted here and shown nowhere else), the state of semantic search, whether assets are available, the publications with the publish folder set for each on this machine, and whether Mermaid diagrams can be drawn here.',
+            description: 'What you are connected to: the graph\'s name, whether it is a synced graph (on which server, and whether this computer\'s copy is connected to it now: connection.state and since) or a folder, how many pages and journal entries it has and how many of them are protected (protected documents are counted here and shown nowhere else), the state of semantic search, whether assets are available, the publications with the publish folder set for each on this machine, and whether Mermaid diagrams can be drawn here.',
             inputSchema: {},
         },
-        async () => run(async (graph) => ({ ...(await graphInfo(graph)), publishing: await publishingInfo(graph, host) })),
+        async () =>
+            run(async (graph) => {
+                // First, because it can wait, and the connection reported is the one after that wait.
+                const publishing = await publishingInfo(graph, host)
+                return { ...(await graphInfo(graph)), publishing }
+            }),
     )
 
     return server

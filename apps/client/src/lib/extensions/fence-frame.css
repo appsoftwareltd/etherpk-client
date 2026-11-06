@@ -65,7 +65,8 @@
 
 .gk-fence-frame:hover .gk-fence-frame-menu,
 .gk-fence-frame:focus-within .gk-fence-frame-menu,
-.gk-fence-frame-menu:has([aria-expanded='true']) {
+.gk-fence-frame-menu:has([aria-expanded='true']),
+.gk-fence-frame-menu:has([aria-busy='true']) {
     opacity: 1;
 }
 
@@ -93,10 +94,31 @@
     fill: currentColor;
 }
 
-/* The menu beside its button rather than below it: the editor clips a widget to its height, and the
-   smallest picture is just tall enough for the menu this way. */
+/* Its fence's image is being drawn: the dots fade between two text colours. */
+.gk-fence-frame-menu-button[aria-busy='true'] {
+    cursor: progress;
+}
+
+.gk-fence-frame-menu-button[aria-busy='true'] .gk-fence-frame-menu-icon {
+    animation: gk-fence-frame-busy 1s ease-in-out infinite;
+}
+
+@keyframes gk-fence-frame-busy {
+    50% {
+        fill: var(--gk-text-subtle);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gk-fence-frame-menu-button[aria-busy='true'] .gk-fence-frame-menu-icon {
+        animation: none;
+    }
+}
+
+/* In the page's top layer, placed beside its button by fence-frame.ts: the editor clips a widget to
+   its height, and the smallest picture is shorter than the menu. */
 .gk-fence-frame-menu-list {
-    position: absolute;
-    top: 0;
-    right: calc(100% + 0.25rem);
+    position: fixed;
+    inset: auto;
+    margin: 0;
 }

@@ -164,6 +164,8 @@ export interface ExtensionAssets {
     imageUrl(ref: string): Promise<string | null>;
     prepareImage(image: Blob): Promise<Blob>;
     saveImage(image: Blob, name: string): Promise<string | null>;
+    // @beta
+    storeImage(image: Blob, name: string): Promise<StoredImage>;
     viewImages(options: ViewImagesOptions): Promise<void>;
 }
 
@@ -517,6 +519,25 @@ export type FenceEdit = {
     expect: string;
 };
 
+// @beta
+export type FenceImage = {
+    readonly drawn: true;
+    readonly bytes: Uint8Array;
+    readonly name: string;
+} | {
+    readonly drawn: false;
+    readonly reason: string;
+    readonly tryAgain: boolean;
+};
+
+// @beta
+export interface FenceImageRequest {
+    readonly body: readonly string[];
+    readonly document: string | null;
+    readonly info: string;
+    readonly ordinal: number;
+}
+
 // @public
 export interface FenceInfo {
     readonly body: readonly string[];
@@ -529,6 +550,8 @@ export interface FenceInfo {
 
 // @public
 export interface FenceOptions {
+    // @beta
+    asImage?(fence: FenceImageRequest): Promise<FenceImage>;
     // @beta
     frame?: 'editor';
     fromPaste?(text: string): readonly string[] | null;
@@ -789,6 +812,16 @@ export interface SettingsSectionContext {
 
 // @public
 export type SettingsSectionTab = 'extension' | 'agents';
+
+// @beta
+export type StoredImage = {
+    stored: true;
+    ref: string;
+    markdown: string;
+} | {
+    stored: false;
+    reason: string;
+};
 
 // @public
 export interface TabMenuTarget {

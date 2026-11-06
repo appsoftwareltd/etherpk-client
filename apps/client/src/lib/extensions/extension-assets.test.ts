@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { AssetStore } from '#lib/storage/fs/asset-store.js'
+import { AssetRefusedError } from '#lib/storage/synced/server-asset-store.js'
 
 import { createExtensionAssets, MAX_PREPARED_EDGE, preparedSize } from './extension-assets'
 
@@ -57,6 +58,53 @@ describe('an asset a document refers to, as an extension sees it', () => {
         expect(await createExtensionAssets({ store: () => null, view: async () => {} }).imageUrl('../assets/plan.3f9a1c2e.png')).toBeNull()
         const failing = { resolve: async () => Promise.reject(new Error('offline')) } as unknown as AssetStore
         expect(await createExtensionAssets({ store: () => failing, view: async () => {} }).imageUrl('../assets/plan.3f9a1c2e.png')).toBeNull()
+    })
+})
+
+describe('an image an extension keeps as an asset', () => {
+    const image = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/gif' })
+    const saved = { ref: '../assets/plan.3f9a1c2e.gif', name: 'plan.3f9a1c2e.gif', stem: 'plan', isImage: true }
+    const assetsOver = (save: AssetStore['save'] | null) => createExtensionAssets({ store: () => (save ? ({ save } as unknown as AssetStore) : null), view: async () => {} })
+
+    it('answers its reference and its markdown', async () => {
+        const stored = await assetsOver(async () => saved).storeImage(image, 'plan')
+        expect(stored).toMatchObject({ stored: true, ref: saved.ref })
+        expect(stored.stored && stored.markdown).toContain(saved.ref)
+    })
+
+    it('is named with the extension its type says, an SVG included, so the store reads it as an image', async () => {
+        const names: string[] = []
+        const keep = assetsOver(async (file) => {
+            names.push(file.name)
+            return saved
+        })
+        await keep.storeImage(new Blob(['<svg/>'], { type: 'image/svg+xml' }), 'drawing-image')
+        await keep.storeImage(image, 'plan.png')
+        expect(names).toEqual(['drawing-image.svg', 'plan.gif'])
+    })
+
+    it("says the store's own words when it refused, which name the limit", async () => {
+        const refused = new AssetRefusedError('asset_size_limit')
+        const stored = await assetsOver(async () => {
+            throw refused
+        }).storeImage(image, 'plan')
+        expect(stored).toEqual({ stored: false, reason: refused.message })
+    })
+
+    it('says to try again when it failed some other way, keeping the error out of what the person reads', async () => {
+        const stored = await assetsOver(async () => {
+            throw new Error('socket hang up at 10.0.0.1')
+        }).storeImage(image, 'plan')
+        expect(stored).toEqual({ stored: false, reason: "It couldn't be stored just now. Try again." })
+    })
+
+    it('says so where the graph keeps no assets', async () => {
+        expect((await assetsOver(null).storeImage(image, 'plan')).stored).toBe(false)
+    })
+
+    it('answers the old way through saveImage: markdown, or null however it failed', async () => {
+        expect(await assetsOver(async () => saved).saveImage(image, 'plan')).toContain(saved.ref)
+        expect(await assetsOver(null).saveImage(image, 'plan')).toBeNull()
     })
 })
 

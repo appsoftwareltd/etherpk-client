@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createEditingRegistry, deletedNotice, frameActions, frameKey } from './fence-frame-core'
+import { createEditingRegistry, deletedNotice, frameActions, frameKey, imageCopiedNotice, imageFailedNotice, keepsMenuFocus } from './fence-frame-core'
 
 // The editor frame (`frame: 'editor'`): the toolbar and menu the Client draws round a fence that is a
 // picture until it is edited in the document, such as a drawing.
@@ -50,7 +50,7 @@ describe('which fence is edited', () => {
 })
 
 describe('which actions the frame shows', () => {
-    const inline = { presentation: 'inline' as const, writable: true, identified: true }
+    const inline = { presentation: 'inline' as const, writable: true, identified: true, image: false, copies: false }
 
     it('offers Edit as text and Delete in a menu over the picture', () => {
         expect(frameActions({ ...inline, editing: false })).toEqual({ toolbar: [], apart: [], menu: ['edit-as-text', 'delete'] })
@@ -69,6 +69,54 @@ describe('which actions the frame shows', () => {
         expect(frameActions({ ...inline, writable: false, editing: false })).toEqual(nothing)
         expect(frameActions({ ...inline, presentation: 'tab', editing: false })).toEqual(nothing)
         expect(frameActions({ ...inline, presentation: 'window', editing: true })).toEqual(nothing)
+    })
+
+    describe('for a fence that can be drawn as an image', () => {
+        const drawn = { ...inline, image: true, copies: true }
+
+        it('offers Copy as image and Save as image first in the menu over the picture', () => {
+            expect(frameActions({ ...drawn, editing: false }).menu).toEqual(['copy-image', 'save-image', 'edit-as-text', 'delete'])
+        })
+
+        it('offers only those two where the document cannot be written', () => {
+            expect(frameActions({ ...drawn, writable: false, editing: false })).toEqual({ toolbar: [], apart: [], menu: ['copy-image', 'save-image'] })
+        })
+
+        it('leaves out Copy as image where the browser cannot put an image on the clipboard', () => {
+            expect(frameActions({ ...drawn, copies: false, editing: false }).menu).toEqual(['save-image', 'edit-as-text', 'delete'])
+            expect(frameActions({ ...drawn, copies: false, writable: false, editing: false }).menu).toEqual(['save-image'])
+        })
+
+        it('adds neither to the toolbar while editing, where the widget has its own', () => {
+            expect(frameActions({ ...drawn, editing: true })).toEqual({ toolbar: ['done', 'full-window', 'open-tab'], apart: ['edit-as-text', 'delete'], menu: [] })
+        })
+
+        it('offers nothing in a tab or a window', () => {
+            expect(frameActions({ ...drawn, presentation: 'tab', editing: false }).menu).toEqual([])
+            expect(frameActions({ ...drawn, presentation: 'window', writable: false, editing: false }).menu).toEqual([])
+        })
+    })
+})
+
+describe('after a menu item', () => {
+    it('keeps the keyboard on the menu button where the fence stays as it was', () => {
+        expect(keepsMenuFocus('copy-image')).toBe(true)
+        expect(keepsMenuFocus('save-image')).toBe(true)
+        expect(keepsMenuFocus('edit-as-text')).toBe(false)
+        expect(keepsMenuFocus('delete')).toBe(false)
+    })
+})
+
+describe('a fence as an image', () => {
+    it('says it was copied, since the clipboard cannot be seen', () => {
+        expect(imageCopiedNotice('Drawing')).toBe('Drawing copied as an image.')
+        expect(imageCopiedNotice(undefined)).toBe('Block copied as an image.')
+    })
+
+    it('says what could not be done and why', () => {
+        expect(imageFailedNotice('Drawing', 'save', "There's nothing in it yet.")).toBe("The drawing couldn't be saved as an image. There's nothing in it yet.")
+        expect(imageFailedNotice('Drawing', 'copy', "It couldn't be drawn.")).toBe("The drawing couldn't be copied as an image. It couldn't be drawn.")
+        expect(imageFailedNotice(undefined, 'save', "It couldn't be drawn.")).toBe("The block couldn't be saved as an image. It couldn't be drawn.")
     })
 })
 

@@ -64,9 +64,13 @@ onto its name is refused.
 | Edit | `edit_document`, `append_document`, `create_page`, `set_task`, `set_frontmatter`, `set_aliases` | `edit_document` replaces one exact, unique piece of text, and on a synced graph it merges with edits made elsewhere. `append_document` creates the day's journal entry when there is none. |
 | Tasks handed over | `read_task`, `add_task_note`, `set_task` | Paste the agent the text **Copy agent instruction** copies in EtherPK. Its reference still finds the task after lines are added above it, and refuses once the task's words change. |
 | Rename | `plan_rename`, `rename` | Links to the old name are rewritten. Renaming onto a name in use merges two documents and needs confirming. |
-| Images and files | `upload_asset`, `read_asset`, `list_assets` | `upload_asset` returns the markdown to paste into a document. It refuses hidden files and folders (`.ssh`, `.env`), the Headless Client's own config and cache, and files over 100 MiB. |
+| Images and files | `upload_asset`, `read_asset`, `list_assets` | `upload_asset` returns the markdown to paste into a document. It and `read_asset` report an image's size in pixels, which a line placing the image in a drawing states. It refuses hidden files and folders (`.ssh`, `.env`), the Headless Client's own config and cache, and files over 100 MiB. |
 | Publishing | `list_publications`, `create_publication`, `update_publication`, `publish` | `publish` writes to the folder set with the `publish` command. The agent can't choose one, and it never publishes to a GitHub repository, which only the `publish` command commits to. |
 | Themes | `list_themes`, `read_theme`, `read_theme_file`, `create_theme`, `customise_publication_theme`, `write_theme_file`, `delete_theme_file`, `import_theme_folder`, `delete_theme`, `preview_theme` | Bundled themes are read-only, and customising one copies it into the graph. `preview_theme` renders a site, with screenshots when a browser is set up. |
+
+A synced graph's tools answer from this computer's copy. While that copy cannot reach the Sync Server,
+every answer ends with a note saying since when, and `graph_info` reports `connection`. Edits made
+elsewhere since then are not in the answer.
 
 `read_asset`, `read_theme` and `preview_theme` write only in the graph's `downloads` folder in the
 cache directory, and `import_theme_folder` reads only from there. A folder outside it is refused,

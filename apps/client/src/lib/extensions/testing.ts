@@ -76,6 +76,7 @@ export function fakeGraphServices(graphId = 'g1') {
         assets: {
             prepareImage: vi.fn(async (image: Blob) => image),
             saveImage: vi.fn(async () => '![image](assets/image.webp)'),
+            storeImage: vi.fn(async () => ({ stored: true as const, ref: 'assets/image.webp', markdown: '![image](assets/image.webp)' })),
             describe: vi.fn(() => null),
             imageUrl: vi.fn(async () => null),
             viewImages: vi.fn(async () => {}),

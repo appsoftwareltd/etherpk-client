@@ -19,6 +19,15 @@ const harbour = { document: 'Trips', body: ['Harbour @ 50.70000, -1.50000'] }
 const quay = { document: 'Trips', body: ['Quay @ 50.71000, -1.51000'] }
 
 describe('the folds this device remembers', () => {
+    it('keeps a map’s fold when its size changes, which is how it is drawn and not what it holds', () => {
+        const memory = createMapBlockMemory('graph', storage())
+        memory.setFolded(harbour, true)
+        expect(memory.folded({ ...harbour, body: ['size 640x380', ...harbour.body] })).toBe(true)
+        expect(memory.folded({ ...harbour, body: ['size x500', ...harbour.body] })).toBe(true)
+        // A size line that does not read is text of the map's like any other.
+        expect(memory.folded({ ...harbour, body: ['size 640', ...harbour.body] })).toBe(false)
+    })
+
     it('finds a fold again by the map’s text in its document, wherever the map has moved to', () => {
         const memory = createMapBlockMemory('graph', storage())
         memory.setFolded(harbour, true)

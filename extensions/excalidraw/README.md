@@ -17,25 +17,34 @@ whenever you like.
 - **Edit as text and Delete** are in the menu at the top right of a drawing's picture (the `…`
   button), and in the bar above a drawing you are drawing on. Edit as text shows the drawing's lines
   in the document. Delete removes the drawing at once. Press Mod+Z in the document to bring it back.
+- **Images to draw over.** Paste an image over the canvas, drop it there, or use the image tool in
+  Excalidraw's toolbar. It shows at once and is kept as one of the graph's assets. Excalidraw scales it
+  to 1440 pixels on its long side, and refuses one still over 4 MB. If it can't be stored, it leaves the
+  canvas and you are told why. If you try to leave the page while one is being stored, the browser asks
+  first. An image copied from a drawing in another graph is stored in this one.
 - **Bring a drawing from excalidraw.com.** Paste a share link
   (`https://excalidraw.com/#json=…`) on an empty line, and press **Import this drawing from
   excalidraw.com** on the card that appears. Nothing is fetched from excalidraw.com until you press
   it. The drawing then lives in your document, and the link and its key are gone from it. You can
-  also copy shapes on excalidraw.com and paste them on an empty line. Images aren't brought across,
-  since a drawing in EtherPK holds none.
+  also copy shapes on excalidraw.com and paste them on an empty line. Both leave images out and say
+  so. Paste an image into the drawing to add it.
 - **Phones and tablets under 1024 pixels wide** show drawings as pictures. Tap one to draw on it
   over the whole window, in Excalidraw's phone layout. A pen turns on Excalidraw's pen mode, where a
   finger no longer draws.
+- **Copy or save a drawing as an image.** The menu at the top right of a drawing's picture has Copy
+  as image and Save as image: a PNG at twice the drawing's size, always light, on the clipboard or in
+  a file named after the document. While you draw, Export image... in Excalidraw's own menu offers PNG,
+  SVG and the clipboard, with its own options.
 - **Published sites.** On a site you publish from EtherPK, a drawing is a picture of it, an SVG file
-  with its fonts inside. The drawing's data is never on the site.
+  with its fonts and images inside. The drawing's data is never on the site. If the graph can't read
+  an image, the site leaves that drawing out and the publish report says so.
 - **Backlinks.** Where a block that links to a page holds a drawing, the page's backlinks show the
   drawing as a picture. Click it to open the document it is in.
 - **Light in both themes.** In EtherPK's dark theme a drawing is still drawn light, its editor and
   its pictures alike, so it shows the colours it holds rather than Excalidraw's inverted ones.
 
 What Excalidraw can do that reaches other services is switched off: its library browser, sharing,
-web embeds, its AI features and its help and social links. The image tool is off too, since images
-belong in EtherPK's own assets.
+web embeds, its AI features and its help and social links.
 
 ## How a drawing is stored
 
@@ -52,6 +61,16 @@ after it is one Excalidraw element, as Excalidraw writes it:
 
 Because each element is a line of its own, a change saves only the lines of the elements that
 changed, and two devices drawing at once merge element by element.
+
+An image is an element whose line holds the reference to its asset, in `customData`, and never the
+image itself:
+
+```json
+{"id":"i1","type":"image","fileId":"…","status":"saved","customData":{"asset":"../assets/garden-plan.a1b2c3d4.webp"},"x":0,"y":0,"width":640,"height":400,"version":3,…}
+```
+
+The reference is written as a document writes one, so EtherPK's check for assets nothing uses counts
+it. Deleting the image removes its line and leaves the asset, which is how undo brings the image back.
 
 A save never removes what it didn't load. A line is removed only when you delete that element.
 Lines the extension can't read stay as they are: broken JSON, a note in words, or a shape this
@@ -73,8 +92,20 @@ shapes by their ids, are written the same way:
 ```
 ````
 
+An image written by hand names its asset and states its size, which nothing else can give it. A line
+without them stays as written and nothing is drawn for it:
+
+````markdown
+```excalidraw.drawing
+{"type":"excalidraw.drawing","version":1,"id":"k3v9q2m8xa","background":"#ffffff"}
+{"type":"image","customData":{"asset":"../assets/garden-plan.a1b2c3d4.png"},"x":0,"y":0,"width":640,"height":400}
+{"id":"beds","type":"rectangle","x":40,"y":40,"width":160,"height":80}
+```
+````
+
 When the drawing is next shown, the extension draws these shapes and writes them back as full
-Excalidraw elements in their place. Two devices doing so at once write the same elements.
+Excalidraw elements in their place, above what the drawing held, in the order they were written. Two
+devices doing so at once write the same elements.
 
 EtherPK treats a block named `<extension id>.<name>` as an Extension Fence: it never searches it,
 never shows its lines unless you ask (Edit as text), and never publishes it as code. With the

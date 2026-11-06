@@ -17,7 +17,7 @@
     import { createSubscriber } from 'svelte/reactivity'
 
     import { appendFenceLine, removeFenceLine, replaceFenceLine, type FenceBodyEdit } from '#lib/document/fence-body.js'
-    import { formatMapPoint, type MapItem, type MapPoint, readMapBody, writeMapLine, writeMapPlace, writeMapRoute } from '#lib/document/map-text.js'
+    import { formatMapPoint, type MapItem, type MapPoint, mapSizeEdits, readMapBody, writeMapLine, writeMapPlace, writeMapRoute, writeMapSize } from '#lib/document/map-text.js'
     import type { InteractiveFenceContext } from '#lib/document/view/augmentations/interactive-fence-contract.js'
     import { iconSvg } from '#lib/surface/icons.js'
 
@@ -28,12 +28,23 @@
     import type { MapBlockServices, PlaceSearchResult } from './map-block-services'
     import { type BasemapProblem, type EngineItem, MapEngine } from './map-engine'
     import { formatDistance, routeLengthMeters, simplifyPath } from './map-geometry'
+    import { canCopyPictures, COPIED_NOTE, copyFailureText, copyMapPicture, MAPBOX_COPIED_NOTE, MAPBOX_SAVED_NOTE, saveFailureText, saveMapPicture, savedPictureName } from './map-save'
+    import { clampedMapSize, dragMapSize, dragStart, type DrawnMapSize, narrowScreen, writtenMapSize } from './map-size'
     import { mapsAppUrl } from './maps-app-link'
+    import { attachResizeDrag } from './resize-drag'
     import { readSearchBox, type SearchBoxReading } from './place-input'
     import { recognisePostcode } from './postcode-search'
     import './maps.css'
 
-    let { context, services }: { context: InteractiveFenceContext; services: MapBlockServices } = $props()
+    let {
+        context,
+        services,
+        previewHeight,
+    }: {
+        context: InteractiveFenceContext
+        services: MapBlockServices
+        previewHeight(height: number | null): void
+    } = $props()
     /** This map's own, so two maps on one page never share an element id. */
     const uid = $props.id()
 
@@ -41,6 +52,10 @@
     const OFF_SCREEN_GRACE_MS = 8000
     /** How long a removed place can be put back from the notice. */
     const UNDO_MS = 10000
+    /** A save shows that it is drawing only once this has passed, so a quick one does not flash. */
+    const SAVE_BUSY_DELAY_MS = 200
+    /** How long the warning after a save over Mapbox's map stays: time to read it, however busy the person is. */
+    const SAVED_NOTE_MS = 20_000
     /** A recorded track is thinned to lie within this many metres of the recording. */
     const TRACK_TOLERANCE_M = 5
     /** And never kept at more points than this, so a long day's recording stays a short line of text. */
@@ -105,6 +120,18 @@
         watchFolds()
         return services.memory.folded(context)
     })
+    /** The size line's words, which change only when the size does, as `read` changes with every line. */
+    const sizeLine = $derived(read.size && writeMapSize(read.size))
+    /** What the handle shows while it is dragged. */
+    let resizing: DrawnMapSize | null = $state(null)
+    /**
+     * The width to draw, or null to fill the column. Set as a `max-width` over the stylesheet's
+     * `width: 100%`: a `width` would widen the editor's content to hold it on a narrower column.
+     */
+    const drawnWidth = $derived.by(() => {
+        if (resizing) return resizing.width
+        return read.size && clampedMapSize(read.size).width
+    })
     let mode: Mode = $state('idle')
     let draft: MapPoint[] = $state([])
     let pending: Pending | null = $state(null)
@@ -140,6 +167,8 @@
     const CREDIT_SEPARATOR = ', '
     let searching = $state(false)
     let note: string | null = $state(null)
+    /** Saving the map as an image: while it draws, what to warn once it has, or why it could not. */
+    let saveNote: 'drawing' | { warning: string } | { failed: string; again: () => void } | null = $state(null)
     let basemapProblem: BasemapProblem | null = $state(null)
     let engineFailed = $state(false)
     let menuOpen = $state(false)
@@ -171,6 +200,11 @@
     /** Which pending place a name lookup is for: a later one, or none, takes no answer meant for another. */
     let pendingSerial = 0
     let undoTimer: ReturnType<typeof setTimeout> | null = null
+    /** A save is under way, so another press saves nothing more. */
+    let saving = false
+    let saveNoteTimer: ReturnType<typeof setTimeout> | null = null
+    /** The widget has left the document, with a save perhaps still drawing. */
+    let unmounted = false
 
     const selected: MapItem | null = $derived.by(() => {
         const key = selectedKey
@@ -197,8 +231,8 @@
         requestAnimationFrame(() => (announcement = text))
     }
 
-    /** One line edit through the editor; says so when the map changed under it. */
-    function commit(change: FenceBodyEdit, done: string): boolean {
+    /** One line edit, or several applied together, through the editor; says so when the map changed under it. */
+    function commit(change: FenceBodyEdit | readonly FenceBodyEdit[], done: string): boolean {
         if (!editable) return false
         const ok = context.edit(change)
         if (ok) {
@@ -334,6 +368,8 @@
         stopTyping()
         searchAbort?.abort()
         nameAbort?.abort()
+        unmounted = true
+        if (saveNoteTimer) clearTimeout(saveNoteTimer)
     })
 
     function online() {
@@ -819,6 +855,104 @@
         engine?.frame(true)
     }
 
+    // ---- Saving as an image ---------------------------------------------------------------------
+
+    function showSaveNote(next: typeof saveNote, lastsMs: number | null = null): void {
+        if (saveNoteTimer) clearTimeout(saveNoteTimer)
+        saveNoteTimer = lastsMs === null ? null : setTimeout(() => (saveNote = null), lastsMs)
+        saveNote = next
+    }
+
+    /** Save or copy the map as an image. From the press, with nothing awaited first: a clipboard write has to start inside it. */
+    async function keepImage(how: 'save' | 'copy'): Promise<void> {
+        closeMenu()
+        if (saving || !engine) return
+        saving = true
+        // A map with no basemap on screen is saved as it is drawn, without one (`basemapProblem`).
+        const shown = basemapProblem === null ? basemap : null
+        const busy = setTimeout(() => (saveNote = 'drawing'), SAVE_BUSY_DELAY_MS)
+        showSaveNote(null)
+        const map = { source: context.body.join('\n'), camera: engine.camera(), ...engine.size(), dark: context.dark, basemap: shown }
+        try {
+            await (how === 'save' ? saveMapPicture({ ...map, name: savedPictureName(context.document, context.ordinal) }) : copyMapPicture(map))
+            clearTimeout(busy)
+            const warning = how === 'save' ? MAPBOX_SAVED_NOTE : MAPBOX_COPIED_NOTE
+            // Scrolled away while it drew, the map has nowhere to say this, and it must still be said.
+            if (shown?.kind !== 'mapbox') {
+                showSaveNote(null)
+                if (how === 'copy') services.notify(COPIED_NOTE)
+            } else if (unmounted) services.notify(warning)
+            else showSaveNote({ warning }, SAVED_NOTE_MS)
+        } catch (error) {
+            clearTimeout(busy)
+            const failed = how === 'save' ? saveFailureText(error) : copyFailureText(error)
+            if (unmounted) services.notify(failed)
+            else showSaveNote({ failed, again: () => keepImage(how) })
+        } finally {
+            saving = false
+        }
+    }
+
+    // ---- The resize handle ---------------------------------------------------------------------
+
+    // However the size changed (this handle, an undo, another member), the map follows it once the
+    // widget has drawn it, and frames its places again, which a smaller map could otherwise lose.
+    $effect(() => {
+        void sizeLine
+        untrack(() => {
+            if (!engine || !ready) return
+            const settled = engine
+            void tick().then(() => {
+                if (engine !== settled) return
+                settled.resize()
+                settled.frameUnlessMoved()
+            })
+        })
+    })
+
+    /**
+     * The handle on the map's corner (ADR 0118, amended 2026-11-06), which behaves as an image's
+     * does. During a drag only the map's size changes, with the size read out beside the handle.
+     * The document is written once, on release. A widget's edit is an undo step of its own on either
+     * history, as `input.fence` never joins the edit before it.
+     */
+    function resizeHandle(node: HTMLElement) {
+        const block = node.closest<HTMLElement>('.gk-map-block')!
+        let start: DrawnMapSize = { width: 0, height: 0 }
+        let drawn = start
+        let column = 0
+        return attachResizeDrag(node, {
+            enabled: () => editable,
+            begin() {
+                const box = block.getBoundingClientRect()
+                // The host fills the column, whatever width the block inside it is drawn at.
+                column = block.parentElement?.getBoundingClientRect().width ?? box.width
+                start = dragStart(box, column)
+                drawn = start
+                resizing = start
+            },
+            move(x, y) {
+                drawn = dragMapSize(start, { x, y }, column, narrowScreen())
+                resizing = drawn
+                previewHeight(drawn.height)
+            },
+            finish() {
+                resizing = null
+                previewHeight(null)
+            },
+            release() {
+                // A press without a drag (half of a double click) writes nothing.
+                if (drawn.width === start.width && drawn.height === start.height) return
+                const edits = mapSizeEdits(context.body, writtenMapSize(drawn, read.size, column, narrowScreen()))
+                if (edits.length > 0) commit(edits, 'Map resized.')
+            },
+            reset() {
+                const edits = mapSizeEdits(context.body, null)
+                if (edits.length > 0) commit(edits, 'Map back to its default size.')
+            },
+        })
+    }
+
     function editAsText(): void {
         menuOpen = false
         context.editAsText()
@@ -876,7 +1010,8 @@
 {/snippet}
 
 <div
-    class={['gk-map-block', { 'gk-map-block--folded': folded, 'gk-map-block--dropping': dropping }]}
+    class={['gk-map-block', { 'gk-map-block--folded': folded, 'gk-map-block--dropping': dropping, 'gk-map-block--resizable': editable && !folded, 'gk-map-block--resizing': resizing !== null }]}
+    style:max-width={drawnWidth === null ? null : `${drawnWidth}px`}
     data-testid="map-block"
     data-items={items.length}
     data-state={folded ? 'folded' : engineFailed ? 'no-map' : engine ? 'live' : 'resting'}
@@ -979,6 +1114,12 @@
                 {#if menuOpen}
                     <div bind:this={menuElement} class="gk-menu gk-map-menu" role="menu" aria-label="Map actions" tabindex="-1" onkeydown={menuKeys} data-testid="map-menu-items">
                         <button type="button" role="menuitem" class="gk-menu-item" onclick={showEverything}>{@render icon('fit')}Show everything</button>
+                        {#if engine}
+                            {#if canCopyPictures()}
+                                <button type="button" role="menuitem" class="gk-menu-item" onclick={() => keepImage('copy')} data-testid="map-copy-image">{@render icon('copy')}Copy as image</button>
+                            {/if}
+                            <button type="button" role="menuitem" class="gk-menu-item" onclick={() => keepImage('save')} data-testid="map-save-image">{@render icon('download')}Save as image</button>
+                        {/if}
                         {#if editable && services.storeFile}
                             <button type="button" role="menuitem" class="gk-menu-item" onclick={chooseFile} data-testid="map-import">{@render icon('import')}Import a GPX file…</button>
                         {/if}
@@ -1024,6 +1165,16 @@
             {/if}
             {#if note}
                 <p class="gk-map-notice gk-map-notice--warn" role="status" data-testid="map-note">{note}</p>
+            {/if}
+            {#if saveNote === 'drawing'}
+                <p class="gk-map-notice" role="status" data-testid="map-save-note">Drawing the picture…</p>
+            {:else if saveNote && 'warning' in saveNote}
+                <p class="gk-map-notice gk-map-notice--warn" role="status" data-testid="map-save-note">{saveNote.warning}</p>
+            {:else if saveNote}
+                <p class="gk-map-notice gk-map-notice--warn" role="status" data-testid="map-save-note">
+                    {saveNote.failed}
+                    <button type="button" class="gk-link gk-map-link-button" onclick={saveNote.again} data-testid="map-save-retry">Try again</button>
+                </p>
             {/if}
             {#if read.unread.length > 0}
                 <p class="gk-map-notice gk-map-notice--warn" data-testid="map-unread">
@@ -1194,5 +1345,17 @@
                 </div>
             {/if}
         </div>
+
+        <!-- Not focusable, as an image's handle is not: the keyboard route is the size line, through Edit as text. -->
+        {#if editable}
+            <span class="gk-map-resize" title="Drag to resize. Double-click for the default size." data-testid="map-resize" {@attach resizeHandle}>
+                <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+                    <path d="M11 4 4 11M11 8 8 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                </svg>
+            </span>
+            {#if resizing}
+                <span class="gk-map-resize-readout" aria-hidden="true" data-testid="map-resize-readout">{resizing.width} × {resizing.height} px</span>
+            {/if}
+        {/if}
     {/if}
 </div>

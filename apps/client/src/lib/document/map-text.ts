@@ -15,12 +15,24 @@
  * original file in brackets; the orphan scan and the Local Mirror find it there because both
  * search the raw text.
  *
+ * A map that has been resized also holds its [[Display Size]], on a line of its own that EtherPK
+ * writes first (ADR 0118, amended 2026-11-06):
+ *
+ * ```map
+ * size 640x380
+ * Pebble Cove Campsite @ 50.74860, -4.07890
+ * ```
+ *
+ * `size x500` leaves the width out, for a map that fills its column. A fence's info word could not
+ * hold this: the opener takes one word, and every reader compares that word with `map`.
+ *
  * Every line stands on its own. That is why the format is not GeoJSON: two members adding a place
  * at the same moment merge as two lines, never as a JSON value with a missing comma. A line that
  * does not read is reported and kept exactly as written; nothing here ever rewrites one.
  *
  * Framework-free: the Derived Index and the Headless Client read it as the editor does.
  */
+import { type FenceBodyEdit, removeFenceLine, replaceFenceLine } from './fence-body'
 
 /** A point on the earth in decimal degrees (WGS 84, as every map library and provider uses). */
 export interface MapPoint {
@@ -36,10 +48,18 @@ export type MapLine =
 /** A line that read, with its 0-based position in the Map Block's body. */
 export type MapItem = MapLine & { line: number }
 
-/** A Map Block's body as read: its items, and the lines that did not read. */
+/** How large a Map Block is drawn, in CSS pixels, as its size line says. */
+export interface MapSize {
+    /** The width, or null for a map that fills its column. */
+    width: number | null
+    height: number
+}
+
+/** A Map Block's body as read: its items, the lines that did not read, and its size if it has one. */
 export interface MapBody {
     items: MapItem[]
     unread: { line: number; text: string }[]
+    size: MapSize | null
 }
 
 /** The info word that opens a Map Block's fence. */
@@ -47,6 +67,7 @@ export const MAP_FENCE_INFO = 'map'
 
 const NUMBER = String.raw`[+-]?(?:\d+(?:\.\d*)?|\.\d+)`
 const POINT = new RegExp(String.raw`^\s*(${NUMBER})\s*,\s*(${NUMBER})\s*$`)
+const SIZE = /^\s*size\s+(\d{1,5})?x(\d{1,5})\s*$/
 
 /** EtherPK writes five decimal places: about a metre on the ground. */
 const DECIMALS = 5
@@ -104,13 +125,68 @@ export function readMapLine(text: string): MapLine | null {
     return readLocation(trimmed, '')
 }
 
-/** Every item in a Map Block's body, numbered by line. Blank lines are skipped, not reported. */
+/** What a size line says, or null when `text` is not one. No size line can read as a place or a route. */
+export function readMapSize(text: string): MapSize | null {
+    const match = SIZE.exec(text)
+    if (!match) return null
+    const width = match[1] === undefined ? null : Number(match[1])
+    const height = Number(match[2])
+    return width === 0 || height === 0 ? null : { width, height }
+}
+
+/**
+ * The size of a Map Block: its first line that reads as a size. For what asks on every edit, the
+ * room the editor keeps for a map, as it does not read the places and routes.
+ */
+export function mapSizeOf(lines: readonly string[]): MapSize | null {
+    for (const text of lines) {
+        const size = readMapSize(text)
+        if (size) return size
+    }
+    return null
+}
+
+/** The line for a size. */
+export function writeMapSize(size: MapSize): string {
+    return `size ${size.width ?? ''}x${size.height}`
+}
+
+/**
+ * The line changes that leave `body` saying `size`, or no size for null: the first size line changed
+ * where it is, or a new one put first, and any other removed. Two members resizing at once merge as
+ * two size lines (`fenceEditChanges` replaces a line whole), and this is what clears the second. A
+ * line that does not read as a size is left alone. Removals run last to first, as a widget's edit
+ * reads each change against the body the one before it left.
+ */
+export function mapSizeEdits(body: readonly string[], size: MapSize | null): FenceBodyEdit[] {
+    const lines = body.flatMap((text, line) => (readMapSize(text) ? [line] : []))
+    const text = size && writeMapSize(size)
+    const edits: FenceBodyEdit[] = []
+    if (text !== null) {
+        if (lines.length === 0) edits.push({ kind: 'insert', line: 0, text })
+        else if (body[lines[0]] !== text) edits.push(replaceFenceLine(lines[0], body[lines[0]], text))
+    }
+    const extra = text === null ? lines : lines.slice(1)
+    for (const line of [...extra].reverse()) edits.push(removeFenceLine(line, body[line]))
+    return edits
+}
+
+/**
+ * Every item in a Map Block's body, numbered by line, and its size. Blank lines are skipped, not
+ * reported. A second size line is reported like any line that does not read: two members resizing at
+ * once merge as two lines, and the map can only be one size.
+ */
 export function readMapBody(lines: readonly string[]): MapBody {
-    const body: MapBody = { items: [], unread: [] }
+    const body: MapBody = { items: [], unread: [], size: null }
     lines.forEach((text, line) => {
         if (text.trim() === '') return
         const read = readMapLine(text)
-        if (read) body.items.push({ ...read, line })
+        if (read) {
+            body.items.push({ ...read, line })
+            return
+        }
+        const size = body.size === null ? readMapSize(text) : null
+        if (size) body.size = size
         else body.unread.push({ line, text })
     })
     return body

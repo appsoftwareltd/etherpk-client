@@ -14,7 +14,7 @@
  * - **The editor frame**, for a registration with `frame: 'editor'` (`fence-frame.ts`): drawn in the
  *   page round wherever the widget mounts.
  */
-import type { FenceOptions, FenceWidget, MountedFence } from '@appsoftwareltd/etherpk-extension-api'
+import type { FenceOptions, FenceWidget, MountedFence, NoticeOptions } from '@appsoftwareltd/etherpk-extension-api'
 
 import type { InteractiveFence, InteractiveFenceContext, InteractiveFenceView } from '#lib/document/view/augmentations/interactive-fence-contract.js'
 
@@ -32,7 +32,7 @@ export interface FenceServices {
      */
     settingsChanged?: (listener: () => void) => () => void
     /** Tell the person what the page does not show, such as how to undo the editor frame's Delete. */
-    notify?: (text: string) => void
+    notify?: (text: string, options?: NoticeOptions) => void
 }
 
 export function toInteractiveFence(extensionName: string, widget: FenceWidget, options: FenceOptions, isolation: FenceIsolation, services: FenceServices = {}): InteractiveFence {
@@ -49,6 +49,7 @@ function adaptedFence(extensionName: string, widget: FenceWidget, options: Fence
         ...(options.identify ? { identify: options.identify.bind(options) } : {}),
         ...(options.fromPaste ? { fromPaste: options.fromPaste.bind(options) } : {}),
         ...(options.publish ? { publish: options.publish.bind(options) } : {}),
+        ...(options.asImage ? { asImage: options.asImage.bind(options) } : {}),
         ...(options.quote ? { quote: options.quote.bind(options), ...(settingsChanged ? { quotesChanged: settingsChanged } : {}) } : {}),
     }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatMapPoint, readMapBody, readMapLine, writeMapPlace, writeMapRoute, mapAltText } from './map-text'
+import { formatMapPoint, mapSizeEdits, mapSizeOf, readMapBody, readMapLine, readMapSize, writeMapPlace, writeMapRoute, writeMapSize, mapAltText } from './map-text'
 
 // A Map Block keeps its places and routes as lines of text inside its own fence (ADR 0118): one
 // line per item, latitude first, `>` joining a route's points. Every line reads on its own, so a
@@ -95,7 +95,102 @@ describe('reading a whole body', () => {
     })
 
     it('reads an empty body as no items', () => {
-        expect(readMapBody([])).toEqual({ items: [], unread: [] })
+        expect(readMapBody([])).toEqual({ items: [], unread: [], size: null })
+    })
+})
+
+describe('a size line', () => {
+    it('reads a width and a height in CSS pixels', () => {
+        expect(readMapSize('size 640x380')).toEqual({ width: 640, height: 380 })
+    })
+
+    it('reads a height alone, for a map that fills its column', () => {
+        expect(readMapSize('size x500')).toEqual({ width: null, height: 500 })
+    })
+
+    it('is lenient about spacing, as a hand-written line is', () => {
+        expect(readMapSize('  size   640x380  ')).toEqual({ width: 640, height: 380 })
+    })
+
+    it('refuses anything else', () => {
+        for (const text of ['size', 'size 640', 'size x', 'size 0x100', 'size 640x0', 'size x0', 'Size 640x380', 'size 640X380', 'size 640 x 380', 'size 640x380 wide', 'size -640x380', 'size 123456x100']) {
+            expect(readMapSize(text), text).toBeNull()
+        }
+    })
+
+    it('is the map’s size wherever it sits, and is neither an item nor an unread line', () => {
+        const body = readMapBody(['Garden @ 50.7486, -4.0789', 'size 640x380'])
+        expect(body.size).toEqual({ width: 640, height: 380 })
+        expect(body.items.map((item) => item.name)).toEqual(['Garden'])
+        expect(body.unread).toEqual([])
+    })
+
+    it('reports a second size line and one that does not read, both kept as written', () => {
+        const body = readMapBody(['size 640x380', 'size 700x400', 'size 640'])
+        expect(body.size).toEqual({ width: 640, height: 380 })
+        expect(body.unread).toEqual([
+            { line: 1, text: 'size 700x400' },
+            { line: 2, text: 'size 640' },
+        ])
+    })
+
+    it('reads a line that says where a place is as that place, whatever its name', () => {
+        const body = readMapBody(['size 640x380 @ 50.74860, -4.07890'])
+        expect(body.size).toBeNull()
+        expect(body.items.map((item) => item.name)).toEqual(['size 640x380'])
+    })
+
+    it('is found in a body without reading its places and routes', () => {
+        expect(mapSizeOf(['Garden @ 50.7486, -4.0789', 'size 640', 'size x500', 'size 640x380'])).toEqual({ width: null, height: 500 })
+        expect(mapSizeOf(['Garden @ 50.7486, -4.0789'])).toBeNull()
+    })
+
+    it('writes what it reads back', () => {
+        expect(writeMapSize({ width: 640, height: 380 })).toBe('size 640x380')
+        expect(writeMapSize({ width: null, height: 500 })).toBe('size x500')
+        expect(readMapSize(writeMapSize({ width: null, height: 500 }))).toEqual({ width: null, height: 500 })
+    })
+
+    it('leaves the words for a picture of the map alone', () => {
+        expect(mapAltText(['size 640x380', 'Garden @ 50.7486, -4.0789'])).toBe('Map of Garden')
+        expect(mapAltText(['size 640x380'])).toBe('An empty map')
+    })
+})
+
+describe('the line changes that write a size', () => {
+    const garden = 'Garden @ 50.74860, -4.07890'
+    const size = { width: 640, height: 380 }
+
+    it('puts the line first in a map that has none', () => {
+        expect(mapSizeEdits([garden], size)).toEqual([{ kind: 'insert', line: 0, text: 'size 640x380' }])
+        expect(mapSizeEdits([], size)).toEqual([{ kind: 'insert', line: 0, text: 'size 640x380' }])
+    })
+
+    it('changes the line where it is', () => {
+        expect(mapSizeEdits([garden, 'size x500'], size)).toEqual([{ kind: 'replace', line: 1, expect: 'size x500', text: 'size 640x380' }])
+    })
+
+    it('changes nothing when the line already says it', () => {
+        expect(mapSizeEdits(['size 640x380', garden], size)).toEqual([])
+    })
+
+    it('takes away what a merge left, last first, so each removal leaves the lines before it in place', () => {
+        expect(mapSizeEdits(['size 700x400', garden, 'size 500x300', 'size 600x300'], size)).toEqual([
+            { kind: 'replace', line: 0, expect: 'size 700x400', text: 'size 640x380' },
+            { kind: 'remove', line: 3, expect: 'size 600x300' },
+            { kind: 'remove', line: 2, expect: 'size 500x300' },
+        ])
+    })
+
+    it('removes every size line for no size, and leaves a line that does not read', () => {
+        expect(mapSizeEdits(['size 640x380', 'size 640', garden, 'size x500'], null)).toEqual([
+            { kind: 'remove', line: 3, expect: 'size x500' },
+            { kind: 'remove', line: 0, expect: 'size 640x380' },
+        ])
+    })
+
+    it('has nothing to remove from a map with no size', () => {
+        expect(mapSizeEdits([garden], null)).toEqual([])
     })
 })
 

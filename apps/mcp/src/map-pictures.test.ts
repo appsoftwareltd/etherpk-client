@@ -49,6 +49,17 @@ describe.skipIf(!chromium)('drawing a map picture in Chromium', () => {
         await build({ configFile: join(root, 'vite.map-page.config.ts'), root, logLevel: 'error' })
     }, 60_000)
 
+    it('follows the size line in a Map Block', async () => {
+        const renderer = await openMapRenderer({ ...process.env, ETHERPK_CHROMIUM: chromium!, ETHERPK_MAP_STYLE_URL: '' })
+        expect(renderer).not.toBeNull()
+        try {
+            const picture = await renderer!.render('size 640x380\nPebble Cove @ 50.74860, -4.07890\n')
+            expect(picture).toMatchObject({ width: 640, height: 380 })
+        } finally {
+            await renderer!.dispose()
+        }
+    }, 60_000)
+
     it('draws the places and routes of a Map Block as a WebP of the picture size', async () => {
         // No basemap: the test reaches no tile host.
         const renderer = await openMapRenderer({ ...process.env, ETHERPK_CHROMIUM: chromium!, ETHERPK_MAP_STYLE_URL: '' })

@@ -52,6 +52,7 @@ import { readPublishSource } from '#lib/document/publish/source.js'
 import type { PublishSource } from '#lib/document/publish/types.js'
 import type { GraphTheme } from '#lib/document/publish/theme/graph-theme.js'
 
+import { followConnection, type ConnectionChange, type GraphConnection } from './graph-connection'
 import type { HeadlessAssets } from './headless-assets'
 import { bodyOf, bodyView, type HeadlessDocuments, type SettleResult } from './headless-documents'
 import { nodeTransport } from './node-transport'
@@ -105,6 +106,8 @@ export interface HeadlessGraphDeps {
      * refuses from then on with `access_removed` or `token_revoked`.
      */
     onAccessLost?: (loss: SyncAccessLoss) => void
+    /** When the connection to the Sync Server goes or returns, and when it first opens. */
+    onConnectionChange?: (change: ConnectionChange) => void
     /** Feeds the Sync Server's name envelope; see `GraphSyncDeps.publishName`. */
     publishName?: (name: string) => void
     /**
@@ -204,6 +207,8 @@ export interface HeadlessGraph {
     settle(): Promise<SettleResult>
     /** Why the Sync Server ended access for good, or null while it has not; always null for a folder. */
     accessLoss(): SyncAccessLoss | null
+    /** Whether this copy is following the Sync Server, and since when; always null for a folder, which has no connection. */
+    connection(): GraphConnection | null
     /** Write the cache and the index to `persistDir` now; a no-op without one. */
     persist(): Promise<void>
     /**
@@ -251,6 +256,8 @@ export interface HeadlessGraphParts {
     name: string
     /** A synced graph's session reports why access ended; a folder has no such thing. */
     accessLoss?: () => SyncAccessLoss | null
+    /** A synced graph's session reports its connection; a folder has none. */
+    connection?: () => GraphConnection
     store: HeadlessDocuments
     index: RemoteGraphIndex
     assets?: HeadlessAssets
@@ -348,6 +355,7 @@ export function assembleHeadlessGraph(parts: HeadlessGraphParts): HeadlessGraph 
         themes: parts.themes,
         settle: () => parts.settle(schedulePersist),
         accessLoss: () => parts.accessLoss?.() ?? null,
+        connection: () => parts.connection?.() ?? null,
         persist,
         semantic,
         semanticOpened: () => (semanticOpening ? semanticOpening.catch(() => undefined) : Promise.resolve(undefined)),
@@ -394,6 +402,8 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
         onAccessLost: deps.onAccessLost,
         publishName: deps.publishName,
     })
+    // Before anything waits on the relay, so the first connection and any drop during the open are heard.
+    const connection = followConnection(sync, { onChange: deps.onConnectionChange })
     const store = createServerDocumentStore(sync, { readyTimeoutMs: deps.readyTimeoutMs })
     try {
         await store.scan()
@@ -483,6 +493,7 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
             graphId: deps.graphId,
             name: sync.getMeta().name ?? deps.graphId,
             accessLoss: () => sync.accessLoss(),
+            connection: () => connection.current(),
             store: documents,
             index,
             assets,

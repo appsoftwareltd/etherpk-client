@@ -37,6 +37,25 @@ export interface ViewImagesOptions {
 }
 
 /**
+ * What became of an image given to {@link ExtensionAssets.storeImage}.
+ *
+ * @beta
+ */
+export type StoredImage =
+    | {
+          stored: true
+          /** The reference a document writes for the image, such as `../assets/plan.3f9a1c2e.webp`. */
+          ref: string
+          /** The markdown that shows the image in a document, as {@link ExtensionAssets.saveImage} answers. */
+          markdown: string
+      }
+    | {
+          stored: false
+          /** Why not, in words for the person, such as that the account's storage is full. */
+          reason: string
+      }
+
+/**
  * The open graph's assets, as far as an extension may add to them.
  *
  * @public
@@ -57,6 +76,13 @@ export interface ExtensionAssets {
      * where the graph keeps no assets here, or the image was refused.
      */
     saveImage(image: Blob, name: string): Promise<string | null>
+    /**
+     * Keep an image as {@link ExtensionAssets.saveImage} does, and answer its reference as well as its
+     * markdown, or why it was not kept. For an extension that holds the reference in data of its own.
+     *
+     * @beta
+     */
+    storeImage(image: Blob, name: string): Promise<StoredImage>
     /**
      * What the asset reference `ref` names, as a document writes it (`../assets/plan.3f9a1c2e.png`),
      * or null when `ref` names no asset.

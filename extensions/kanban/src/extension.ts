@@ -11,8 +11,8 @@
  * shell (`components/dialog`); the document editor showing part of a document (`view/shown-range`,
  * `view/task-part-range`) and the asset upload dialog it adds to (`view/asset-picker`); the task
  * structure and where a new task goes in today's journal entry (`task-structure`, `task-placement`,
- * with `calendar/month-grid-core` for today); the graph colour set and its ink for the priority chips
- * (`sync/presence-identity`, `contrast-ink`); and the in-memory store its tests write through.
+ * with `calendar/month-grid-core` for today); the priorities' colours and their ink for the priority
+ * chips (`task-priority-colour`, `contrast-ink`); and the in-memory store its tests write through.
  */
 import type { ExtensionContext } from '@appsoftwareltd/etherpk-extension-api'
 

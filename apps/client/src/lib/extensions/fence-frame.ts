@@ -3,9 +3,10 @@
  * the Client draws round a fence that is a picture until it is edited in the document, such as a
  * drawing, so every such fence looks and behaves the same whichever extension draws it.
  *
- * - **Over the picture**, where the document can be written, a "…" menu offers Edit as text and
- *   Delete. It shows while the pointer is over the fence or the keyboard is in it, and always on a
- *   screen with no hover.
+ * - **Over the picture**, a "…" menu offers Copy as image and Save as image where the fence can be
+ *   drawn as one (`asImage`), then Edit as text and Delete where the document can be written. It
+ *   shows while the pointer is over the fence or the keyboard is in it, and always on a screen with
+ *   no hover.
  * - **While the fence is edited** (the widget calls `setEditing(true)`, as when its picture is
  *   pressed), a toolbar above it offers Done, Full window, Open in tab, and apart from those Edit as
  *   text and Delete. Each first has the widget write what it holds (`flush`), so Edit as text shows,
@@ -18,16 +19,29 @@
  * The frame mounts in the page, outside any shadow root the widget mounts in, so its controls are the
  * Client's own (`gk-button`, `gk-menu`, ADR 0151). The rules are in `fence-frame-core.ts`.
  */
-import type { InteractiveFence, InteractiveFenceContext, InteractiveFenceView } from '#lib/document/view/augmentations/interactive-fence-contract.js'
+import type { NoticeOptions } from '@appsoftwareltd/etherpk-extension-api'
 
-import { deletedNotice, FRAME_ACTION_LABELS, FRAME_TOOLBAR_HEIGHT, type FrameAction, frameActions, frameEditing, frameKey } from './fence-frame-core'
+import type { InteractiveFence, InteractiveFenceContext, InteractiveFenceView } from '#lib/document/view/augmentations/interactive-fence-contract.js'
+import { canCopyImages } from '#lib/document/view/clipboard-image.js'
+
+import { deletedNotice, FRAME_ACTION_LABELS, FRAME_TOOLBAR_HEIGHT, type FrameAction, frameActions, frameEditing, frameKey, imageCopiedNotice, keepsMenuFocus } from './fence-frame-core'
+import { imageFailure, keepFenceImage } from './fence-frame-image'
 import './fence-frame.css'
+
+type Notify = (text: string, options?: NoticeOptions) => void
 
 /** What the frame reads of a fence to know which one it is. */
 type FramedInfo = { document: string | null; body: readonly string[]; instance?: string }
 
 /** Numbers for the ids that tie a menu to its button. */
 let menus = 0
+
+/** The gap between a menu and its button, and the least it keeps from the window's edge, in CSS pixels. */
+const MENU_GAP = 4
+const MENU_MARGIN = 8
+
+/** An image shows that it is being drawn only once this has passed, so a quick one does not flash. */
+const IMAGE_BUSY_DELAY_MS = 200
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
     const node = document.createElement(tag)
@@ -64,14 +78,20 @@ interface FrameMenu {
     root: HTMLElement
     close(): void
     contains(node: Node): boolean
+    /** Say on the button that the fence's image is being drawn. */
+    showBusy(on: boolean): void
 }
 
 /**
  * A menu button and its menu, with the keyboard a menu has: the arrows, Home and End move between the
  * items, Escape closes it and gives the button back the focus, Tab closes it. Delete is drawn in the
  * danger colour, as the toolbar's is.
+ *
+ * The menu opens in the page's top layer, beside its button, since the editor clips a widget to its
+ * height and the smallest picture is shorter than a menu of four items. Scrolling closes it, rather
+ * than leaving it over other lines. `shut` keeps it from opening while the fence's image is drawn.
  */
-function actionMenu(label: string, actions: readonly FrameAction[], run: (action: FrameAction) => void): FrameMenu {
+function actionMenu(label: string, actions: readonly FrameAction[], run: (action: FrameAction) => void, shut: () => boolean): FrameMenu {
     const root = element('div', 'gk-fence-frame-menu')
     const trigger = element('button', 'gk-icon-button gk-button--raised gk-fence-frame-menu-button')
     trigger.type = 'button'
@@ -84,7 +104,7 @@ function actionMenu(label: string, actions: readonly FrameAction[], run: (action
     list.id = `gk-fence-frame-menu-${++menus}`
     list.setAttribute('role', 'menu')
     list.setAttribute('aria-label', label)
-    list.hidden = true
+    list.popover = 'manual'
     trigger.setAttribute('aria-controls', list.id)
     const entries = actions.map((action) => {
         const entry = element('button', action === 'delete' ? 'gk-menu-item gk-menu-item--danger' : 'gk-menu-item', FRAME_ACTION_LABELS[action])
@@ -92,8 +112,9 @@ function actionMenu(label: string, actions: readonly FrameAction[], run: (action
         entry.dataset.testid = `fence-frame-menu-${action}`
         entry.setAttribute('role', 'menuitem')
         entry.tabIndex = -1
+        // Run from the press itself, since a clipboard write has to start inside it.
         entry.addEventListener('click', () => {
-            close(false)
+            close(keepsMenuFocus(action))
             run(action)
         })
         return entry
@@ -101,18 +122,30 @@ function actionMenu(label: string, actions: readonly FrameAction[], run: (action
     list.append(...entries)
     root.append(trigger, list)
 
+    const isOpen = () => list.matches(':popover-open')
+    const place = () => {
+        const button = trigger.getBoundingClientRect()
+        const { width, height } = list.getBoundingClientRect()
+        list.style.left = `${Math.max(MENU_MARGIN, button.left - width - MENU_GAP)}px`
+        list.style.top = `${Math.max(MENU_MARGIN, Math.min(button.top, window.innerHeight - height - MENU_MARGIN))}px`
+    }
+    const closeOnScroll = () => close(false)
     const open = (focusAt: number) => {
-        list.hidden = false
+        if (shut()) return
+        list.showPopover()
+        place()
         trigger.setAttribute('aria-expanded', 'true')
-        entries[(focusAt + entries.length) % entries.length]?.focus()
+        entries[(focusAt + entries.length) % entries.length]?.focus({ preventScroll: true })
+        window.addEventListener('scroll', closeOnScroll, { capture: true, passive: true })
     }
     function close(restoreFocus: boolean) {
-        if (list.hidden) return
-        list.hidden = true
+        if (!isOpen()) return
+        list.hidePopover()
+        window.removeEventListener('scroll', closeOnScroll, { capture: true })
         trigger.setAttribute('aria-expanded', 'false')
         if (restoreFocus) trigger.focus()
     }
-    trigger.addEventListener('click', () => (list.hidden ? open(0) : close(true)))
+    trigger.addEventListener('click', () => (isOpen() ? close(true) : open(0)))
     trigger.addEventListener('keydown', (event) => {
         if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
         event.preventDefault()
@@ -132,7 +165,12 @@ function actionMenu(label: string, actions: readonly FrameAction[], run: (action
             close(false)
         }
     })
-    return { root, close: () => close(false), contains: (node) => root.contains(node) }
+    return {
+        root,
+        close: () => close(false),
+        contains: (node) => root.contains(node),
+        showBusy: (on) => (on ? trigger.setAttribute('aria-busy', 'true') : trigger.removeAttribute('aria-busy')),
+    }
 }
 
 /** The fence's own id, or null when it has none or `identify` throws. */
@@ -146,9 +184,9 @@ function idOf(fence: InteractiveFence, body: readonly string[]): string | null {
 
 /**
  * `inner` drawn in the editor frame. `notify` tells the person what the page does not show: how to
- * bring back a fence Delete took out.
+ * bring back a fence Delete took out, and what became of its image.
  */
-export function framedFence(inner: InteractiveFence, notify: (text: string) => void): InteractiveFence {
+export function framedFence(inner: InteractiveFence, notify: Notify): InteractiveFence {
     // Where the editor draws the fence (`fenceInstance`), so the same document open twice edits the
     // drawing only where it was pressed. A host that cannot say falls back to the document and id.
     const keyOf = (info: FramedInfo) => info.instance ?? frameKey(info.document, idOf(inner, info.body))
@@ -171,7 +209,7 @@ function mountFramed(
     host: HTMLElement,
     initial: InteractiveFenceContext,
     keyOf: (info: FramedInfo) => string | null,
-    notify: (text: string) => void,
+    notify: Notify,
 ): InteractiveFenceView {
     let context = initial
     let key = keyOf(context)
@@ -179,6 +217,10 @@ function mountFramed(
     let view: InteractiveFenceView | null = null
     /** Whether this widget was last drawn edited, so a change from elsewhere is told once. */
     let shownEditing = false
+    /** The fence's image is being drawn, so another press keeps nothing more. */
+    let keepingImage = false
+    /** Whether the menu's button says so yet, which a menu drawn again has to go on saying. */
+    let imageBusy = false
     const root = element('div', 'gk-fence-frame')
     const toolbar = element('div', 'gk-fence-frame-toolbar')
     toolbar.setAttribute('role', 'toolbar')
@@ -214,8 +256,38 @@ function mountFramed(
     /** Write what the widget holds, and leave editing, before an action that needs the fence's text as drawn. */
     const settle = () => (editing() ? stop() : view?.flush?.())
 
+    const showImageBusy = (on: boolean) => {
+        imageBusy = on
+        menu?.showBusy(on)
+    }
+
+    /** Copy or save the fence's image: from the press, as a clipboard write has to start inside it (`keepFenceImage`). */
+    const keepImage = async (how: 'copy' | 'save'): Promise<void> => {
+        if (keepingImage || !inner.asImage) return
+        keepingImage = true
+        const busy = setTimeout(() => showImageBusy(true), IMAGE_BUSY_DELAY_MS)
+        const { info, body: lines, document: concept, ordinal } = context
+        try {
+            await keepFenceImage(how, () => inner.asImage!({ info, body: lines, document: concept, ordinal }))
+            if (how === 'copy') notify(imageCopiedNotice(inner.title))
+        } catch (error) {
+            const failed = imageFailure(error, how, inner.title)
+            notify(failed.text, failed.tryAgain ? { action: { label: 'Try again', run: () => keepImage(how) } } : undefined)
+        } finally {
+            clearTimeout(busy)
+            keepingImage = false
+            showImageBusy(false)
+        }
+    }
+
     const run = (action: FrameAction) => {
         switch (action) {
+            case 'copy-image':
+                void keepImage('copy')
+                return
+            case 'save-image':
+                void keepImage('save')
+                return
             case 'done':
                 stop()
                 // Back on the picture, which is what the person goes on from.
@@ -242,7 +314,7 @@ function mountFramed(
     /** The toolbar or the menu, as the fence's state now asks. */
     const drawChrome = () => {
         const now = editing()
-        const actions = frameActions({ presentation: 'inline', writable: context.writable, editing: now, identified: idOf(inner, context.body) !== null })
+        const actions = frameActions({ presentation: 'inline', writable: context.writable, editing: now, identified: idOf(inner, context.body) !== null, image: inner.asImage !== undefined, copies: canCopyImages() })
         root.dataset.editing = String(now)
         toolbar.replaceChildren()
         toolbar.hidden = actions.toolbar.length === 0
@@ -251,9 +323,13 @@ function mountFramed(
             apart.append(...actions.apart.map((action) => actionButton(action, () => run(action))))
             toolbar.append(...actions.toolbar.map((action) => actionButton(action, () => run(action))), apart)
         }
+        menu?.close()
         menu?.root.remove()
-        menu = actions.menu.length > 0 ? actionMenu(`${inner.title ?? 'Block'} actions`, actions.menu, run) : null
-        if (menu) root.append(menu.root)
+        menu = actions.menu.length > 0 ? actionMenu(`${inner.title ?? 'Block'} actions`, actions.menu, run, () => keepingImage) : null
+        if (menu) {
+            menu.showBusy(imageBusy)
+            root.append(menu.root)
+        }
     }
 
     /** Editing started or stopped, here or elsewhere: draw the frame and the widget again, at its new height. */
@@ -322,6 +398,7 @@ function mountFramed(
             }
             view?.destroy()
             view = null
+            menu?.close()
             root.remove()
         },
     }

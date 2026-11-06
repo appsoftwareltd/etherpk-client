@@ -9,6 +9,7 @@ import { assetShown, setTaskEditorAssets, taskAssetImage, viewTaskImages } from 
 const assets: ExtensionAssets = {
     prepareImage: async (image) => image,
     saveImage: async () => null,
+    storeImage: async () => ({ stored: false, reason: 'unused' }),
     describe: (ref) => (ref.startsWith('../assets/') ? { name: 'plan.png', fileName: ref.slice('../assets/'.length), image: ref.endsWith('.png') } : null),
     imageUrl: async (ref) => (ref.endsWith('.png') ? `blob:${ref}` : null),
     viewImages: async () => {},

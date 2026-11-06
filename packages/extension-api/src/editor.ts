@@ -231,6 +231,43 @@ export interface QuoteFenceRequest {
 }
 
 /**
+ * A fence to draw as an image a person keeps.
+ *
+ * @beta
+ */
+export interface FenceImageRequest {
+    /** The fence's info word. */
+    readonly info: string
+    /** The fence's body lines. */
+    readonly body: readonly string[]
+    /** The document the fence is in, by its concept, or null outside a workspace. */
+    readonly document: string | null
+    /** How many fences with this info word come before this one in the document. */
+    readonly ordinal: number
+}
+
+/**
+ * A fence drawn as an image, or why it could not be.
+ *
+ * @beta
+ */
+export type FenceImage =
+    | {
+          readonly drawn: true
+          /** A PNG's bytes: the one kind of image every browser's clipboard takes. */
+          readonly bytes: Uint8Array
+          /** The file's name, without its extension. */
+          readonly name: string
+      }
+    | {
+          readonly drawn: false
+          /** Why, as a sentence the person reads after what could not be done. */
+          readonly reason: string
+          /** Whether pressing again may work, so the notice offers Try again. */
+          readonly tryAgain: boolean
+      }
+
+/**
  * Options for a fence registration.
  *
  * @public
@@ -285,16 +322,26 @@ export interface FenceOptions {
     /**
      * `'editor'` asks the Client to draw the frame a drawing has in the document, so every fence
      * edited this way looks and behaves the same. While the fence is not being edited, a "…" menu
-     * over the widget offers Edit as text and Delete. While it is (`setEditing`), a toolbar above it
-     * offers Done, Full window, Open in tab, Edit as text and Delete. Full window and Open in tab
-     * need `identify`. Delete removes the fence as one change and says how to undo it, naming the
-     * fence by `title`. Only one framed fence is edited at a time, in all the documents open, and a
-     * press outside it stops editing it. In a tab or a window the Client draws no frame. The menu
-     * and toolbar show only where the document can be written.
+     * over the widget offers Edit as text and Delete, after Copy as image and Save as image where the
+     * fence has `asImage`. While it is (`setEditing`), a toolbar above it offers Done, Full window,
+     * Open in tab, Edit as text and Delete. Full window and Open in tab need `identify`. Delete
+     * removes the fence as one change and says how to undo it, naming the fence by `title`. Only one
+     * framed fence is edited at a time, in all the documents open, and a press outside it stops
+     * editing it. In a tab or a window the Client draws no frame. Where the document cannot be
+     * written, the menu holds only Copy as image and Save as image, and there is no toolbar.
      *
      * @beta
      */
     frame?: 'editor'
+    /**
+     * For a fence registered with `frame: 'editor'`: the fence as an image, for the frame's Copy as
+     * image and Save as image, which write nothing to the document. Called when one of them is
+     * pressed. The Client says it is busy, copies or downloads the image and says what went wrong.
+     * A rejection reads as a drawing that failed, with Try again.
+     *
+     * @beta
+     */
+    asImage?(fence: FenceImageRequest): Promise<FenceImage>
 }
 
 /**

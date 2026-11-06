@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { MapLine } from '#lib/document/map-text.js'
 
-import { formatDistance, frameRoom, haversineMeters, itemsBounds, oneSpotAt, placesAtSpot, routeLengthMeters, simplifyPath, worldPixels } from './map-geometry'
+import { formatDistance, frameRoom, haversineMeters, itemsBounds, nearestCopy, oneSpotAt, placesAtSpot, routeLengthMeters, simplifyPath, worldPixels } from './map-geometry'
 
 // The arithmetic a map needs on the device: what to frame, how long a route is, and how a
 // recorded track is thinned to a line that still lies within a few metres of the original.
@@ -34,6 +34,15 @@ describe('what a map frames', () => {
     it('frames across the date line the short way round', () => {
         // Fiji and Samoa: the long way round is most of the world.
         expect(itemsBounds([place(-17.7, 178.1), place(-13.8, -171.8)])).toEqual({ west: 178.1, south: -17.7, east: 188.2, north: -13.8 })
+    })
+})
+
+describe('the copy of the world a place is drawn on', () => {
+    it('is the one nearest the middle of the map, as the live pins are', () => {
+        expect(nearestCopy(-4, 0)).toBe(-4)
+        expect(nearestCopy(-170, 170)).toBe(190)
+        expect(nearestCopy(170, -170)).toBe(-190)
+        expect(nearestCopy(10, 720)).toBe(730)
     })
 })
 

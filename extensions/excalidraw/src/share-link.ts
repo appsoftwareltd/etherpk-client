@@ -12,8 +12,9 @@
  * Shapes copied on excalidraw.com reach the clipboard as JSON (`{"type":"excalidraw/clipboard",…}`),
  * which pasted on a line of its own becomes a new drawing of them.
  *
- * A drawing in a document holds no images, so images in either are left out, and the person is told.
- * Pure apart from `fetch`, so every rule here is tested in Node.
+ * Images in either are left out, and the person is told: an image in a document's drawing is an Asset
+ * of the graph, which a paste on a line of its own has no time to store, and a share link keeps its
+ * images somewhere else again. Pure apart from `fetch`, so every rule here is tested in Node.
  */
 import type { FenceEdit } from '@appsoftwareltd/etherpk-extension-api'
 

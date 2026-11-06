@@ -6,6 +6,17 @@
  */
 import type { LayerSpecification, StyleSpecification } from 'maplibre-gl'
 
+import type { MapPoint } from '#lib/document/map-text.js'
+
+/** Where a map is looking: kept by an owner that takes its map down and builds it again, and drawn in a saved picture. */
+export interface MapCamera {
+    centre: MapPoint
+    zoom: number
+}
+
+/** Why a picture of a map could not be drawn, in words fit to show a person. */
+export class MapPictureError extends Error {}
+
 /** The zoom a single place is framed at: a few streets around it, never the inside of a building. */
 export const SINGLE_PLACE_ZOOM = 14
 

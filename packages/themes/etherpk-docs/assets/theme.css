@@ -273,7 +273,17 @@ li.task.done { color: var(--text-muted); }
     body.nav-open .site-nav { transform: translateX(0); visibility: visible; transition: transform 160ms ease-out; }
     body.nav-open .nav-backdrop { display: block; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 35; }
     .content { padding: 1rem 1.25rem 3rem; }
-    .site-search { flex-basis: 12rem; }
+    /* The box is narrow here, beside the title and the menu button, so its results hang from the
+       header instead: once the form is static, the sticky header is what they are positioned in.
+       The height limit keeps the last result reachable on a phone held sideways, since the panel
+       moves with the header and scrolling the page would not bring its end into view. */
+    .site-search { flex-basis: 12rem; position: static; }
+    .site-search-results {
+        left: auto;
+        right: 1rem;
+        width: min(26rem, calc(100vw - 2rem));
+        max-height: min(24rem, calc(100dvh - var(--header-height) - 1rem));
+    }
 }
 @media (prefers-reduced-motion: reduce) {
     .site-nav { transition: none; }

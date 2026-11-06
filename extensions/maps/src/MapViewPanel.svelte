@@ -24,7 +24,8 @@
 
     import { MAPBOX_REFUSED_NOTE } from './basemap'
     import { MAPS_OPEN_WHOLE } from './identity'
-    import { type BasemapProblem, type MapCamera, MapEngine } from './map-engine'
+    import type { MapCamera } from './map-drawing'
+    import { type BasemapProblem, MapEngine } from './map-engine'
     import { formatDistance, routeLengthMeters } from './map-geometry'
     import {
         engineItems,

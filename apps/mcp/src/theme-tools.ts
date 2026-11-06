@@ -429,7 +429,7 @@ export async function previewTheme(graph: HeadlessGraph, args: PreviewThemeArgs,
 
     const bodies = source.documents.map((d) => d.text)
     const renderer = needsMermaid(bodies) ? await openDiagramRenderer(env) : null
-    const drawings = needsDrawings(bodies) ? await openDrawingRenderer(env) : null
+    const drawings = needsDrawings(bodies) ? await openDrawingRenderer(env, source.readAsset) : null
     try {
         const environment = createNodePublishEnvironment({ graphTheme: (id) => graph.publishing.graphTheme(id), renderer, drawings })
         const { bundle, report } = await publishPublication(source, publication, environment)

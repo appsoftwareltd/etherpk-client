@@ -27,6 +27,7 @@
     import { todayISO } from "#lib/document/calendar/month-grid-core.js";
     import { TASK_COPY_REFERENCE } from "#lib/document/commands/agent-instruction-commands.js";
     import { bulletLabel } from "#lib/document/index-derive.js";
+    import { openConceptAtLine } from "#lib/document/open-concept.js";
     import { addTaskToJournal } from "#lib/document/task-placement.js";
     import { assetReferencesIn, newTaskLines, taskLineWithFreeTag, taskLineWithTitle } from "#lib/document/task-structure.js";
     import { type TaskPriority, type TaskStatus } from "#lib/document/task-tags.js";
@@ -490,30 +491,47 @@
         void workspaceService("commands")?.execute(TASK_COPY_REFERENCE, { document: task.concept, line: task.line, label: bulletLabel(task.expected) });
     }
 
-    /** Close, unless a new task would be lost (then ask) or the title could not be saved (then stay). */
-    async function requestClose(): Promise<void> {
+    /**
+     * Open, or bring forward, the task's document in a tab of its own, at the line the description
+     * editor follows. It leaves as Done does, saving the title or staying to say it could not: a tab
+     * opened behind the dialog could not be seen. The tab opens after the dialog has gone, because
+     * the dialog hands the keyboard back as it goes, and the tab's editor is to end up with it.
+     */
+    async function openInTab(): Promise<void> {
+        const target = currentTarget();
+        if (!task || !target || !(await requestClose())) return;
+        await tick();
+        openConceptAtLine(target.document, target.line, panelId);
+    }
+
+    /**
+     * Close, unless a new task would be lost (then ask) or the title could not be saved (then stay).
+     * True when it closed.
+     */
+    async function requestClose(): Promise<boolean> {
         if (!editing) {
             if (discardAsked) {
                 discardAsked = false;
-                return;
+                return false;
             }
             if (!isUntouched({ title, status, priority, freeTags, due: dates.due, scheduled: dates.scheduled }, startedIn, held.getText())) {
                 discardAsked = true;
                 await tick();
                 keepEditingEl?.focus();
-                return;
+                return false;
             }
             onclose();
-            return;
+            return true;
         }
         if ((await commitTitle()) || titleUnsaved) {
             onclose();
-            return;
+            return true;
         }
         // The title could not be saved. Closing now would lose it, so the first close says so, and
         // a second close lets it go.
         titleUnsaved = true;
         titleError ??= "Your title was not saved. Close again to leave without it.";
+        return false;
     }
 
     /** Ctrl/Cmd+Enter anywhere in a new task's form creates it, the description's editor included. */
@@ -618,6 +636,23 @@
                         </button>
                     {/if}
                 </div>
+
+                {#if editing}
+                    <!-- A link under the actions, since it goes somewhere rather than changing the task. A
+                         button, because it saves and closes first, and a new task has no document to go to.
+                         `-my-2` keeps the row's 32px hit area without widening the gaps around its text. -->
+                    <div class="-my-2 flex justify-end">
+                        <button
+                            type="button"
+                            class="inline-flex min-h-8 items-center rounded-sm text-sm text-(--gk-accent) underline hover:text-(--gk-accent-hover) focus-visible:outline-2 focus-visible:outline-(--gk-accent) disabled:text-(--gk-text-muted) disabled:no-underline"
+                            onclick={() => void openInTab()}
+                            disabled={!task}
+                            data-testid="task-editor-open-in-tab"
+                        >
+                            Open in tab
+                        </button>
+                    </div>
+                {/if}
 
                 {#if saveState === "stale" || saveState === "missing"}
                     <div role="alert" class="flex items-center gap-3 rounded-lg bg-(--gk-warning-surface) px-3 py-2 text-sm text-(--gk-text-warning)" data-testid="task-editor-stale">

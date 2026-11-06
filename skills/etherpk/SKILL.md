@@ -113,6 +113,8 @@ section to match the version the user runs, so where it and this skill differ, f
   checklist as tasks under a task, and a project's tasks under a plain `- [[Concept]]` bullet
   (`AGENTS.md`, Subtasks).
 - Put images in `assets/` and embed them as `![Alt text](../assets/<file>)`.
+- To draw over an image, place it in an `excalidraw.drawing` fence and add shapes after it
+  (`AGENTS.md`, Drawings). Add lines to a drawing and never change the ones already there.
 - The publication's `theme:` sets the look. Left out, a docs site uses `etherpk-docs` and a blog
   `etherpk-blog`. The other bundled themes suit either kind: `etherpk-papermod`, `etherpk-stack`,
   `etherpk-terminal` and `etherpk-al-folio`. A custom theme is made in EtherPK's Theme editor or

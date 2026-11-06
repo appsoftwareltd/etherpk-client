@@ -413,6 +413,7 @@ describe('an extension from the Extension Directory', () => {
     it("draws a fence in the editor frame only for an extension that comes with EtherPK, which is Proposed", () => {
         const widget = { height: () => 200, mount: () => ({ update: () => {}, destroy: () => {} }) }
         const installed = setUp({ installed: true })
+        expect(() => installed.context.editor.registerFence('graph-view.plan', widget, { asImage: async () => ({ drawn: false, reason: '', tryAgain: false }) })).toThrow("A fence's frame is")
         expect(() => installed.context.editor.registerFence('graph-view.plan', widget, { frame: 'editor' })).toThrow("A fence's frame is in the Proposed part of the Extension API")
         expect(installed.contributions.has('interactive-fence', 'graph-view.plan')).toBe(false)
 

@@ -60,6 +60,56 @@ function text(result: Awaited<ReturnType<Client['callTool']>>): unknown {
 }
 
 describe('the MCP server', () => {
+    describe('over a copy that is offline', () => {
+        const since = '2026-03-01T10:00:00.000Z'
+
+        async function client(connection: ReturnType<HeadlessGraph['connection']>): Promise<Client> {
+            const graph = await openTestGraph()
+            const server = createMcpServer({ ...graph, connection: () => connection }, { graphName: 'Notes', version: '0.0.0-test' })
+            const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
+            await server.connect(serverSide)
+            const agent = new Client({ name: 'test-agent', version: '0.0.0' })
+            await agent.connect(clientSide)
+            cleanup.push(async () => {
+                await agent.close()
+                await server.close()
+            })
+            return agent
+        }
+
+        const blocks = (result: Awaited<ReturnType<Client['callTool']>>) => (result as { content: Array<{ text: string }> }).content.map((block) => block.text)
+
+        it('adds a note after the answer, and leaves the answer as it was', async () => {
+            const agent = await client({ state: 'offline', since, unsentDocuments: 0 })
+            const result = await agent.callTool({ name: 'list_documents', arguments: {} })
+            const [answer, note, ...rest] = blocks(result)
+            expect(JSON.parse(answer)).toMatchObject({ documents: [] })
+            expect(note).toContain(`offline from the Sync Server since ${since}`)
+            expect(rest).toEqual([])
+        })
+
+        it('adds it to a refusal too, where it matters most', async () => {
+            const agent = await client({ state: 'offline', since, unsentDocuments: 0 })
+            const result = await agent.callTool({ name: 'read_document', arguments: { concept: 'Garden' } })
+            expect(result.isError).toBe(true)
+            const [answer, note] = blocks(result)
+            expect(JSON.parse(answer)).toMatchObject({ error: 'not_found' })
+            expect(note).toContain('may only be newer than the copy')
+        })
+
+        it('says nothing while connected, or on a folder, which has no connection', async () => {
+            for (const connection of [{ state: 'connected', since } as const, null]) {
+                const agent = await client(connection)
+                expect(blocks(await agent.callTool({ name: 'list_documents', arguments: {} }))).toHaveLength(1)
+            }
+        })
+
+        it('says what the note means in its instructions, for a synced graph', async () => {
+            const agent = await client({ state: 'connected', since })
+            expect(agent.getInstructions()).toContain('every answer ends with a note')
+        })
+    })
+
     it('registers the tools and names the graph in its instructions', async () => {
         const { client } = await connected()
         const { tools } = await client.listTools()

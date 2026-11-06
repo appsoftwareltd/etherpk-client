@@ -19,6 +19,8 @@
  *   (`share-link.ts`). Nothing is fetched until the person presses it.
  * - **Shapes written by hand** (skeletons, `format.ts`) are converted once Excalidraw has loaded and,
  *   where the document can be written, written back as full elements (`scene.ts`).
+ * - **Images** are the graph's Assets (`images.ts`), read when a picture or an editor needs them. One
+ *   that cannot be read is a grey box in a picture and Excalidraw's own placeholder in an editor.
  *
  * The picture is Excalidraw's own SVG export (`picture.ts`). Everything is built with the DOM and
  * React, never written as HTML. The import card's button and link carry the Client's control classes
@@ -28,6 +30,7 @@ import type { FenceContext, FenceInfo, FenceWidget, MountedFence } from '@appsof
 
 import { mountLiveEditor, type LiveEditor } from './editor'
 import { type Drawing, drawingAlt, drawingBounds, planSkeletonWrite, readDrawing } from './format'
+import type { DrawingImages } from './images'
 import { type ExcalidrawKit, loadExcalidraw } from './load'
 import { drawingSvg } from './picture'
 import { convertSkeletons, skeletonKey } from './scene'
@@ -41,6 +44,8 @@ export interface DrawingServices {
     editsInPlace(): boolean
     /** Tell the person something the page does not show, such as images left out of an import. */
     notify(message: string): void
+    /** The drawing's images, kept as the graph's Assets. */
+    images: DrawingImages
 }
 
 /** The live editor's height in the document. The frame adds its toolbar's above it. */
@@ -84,7 +89,7 @@ export function excalidrawOwns(node: Node): boolean {
 
 /** What the person is told when images were left out of a drawing brought in from excalidraw.com. */
 export function imagesLeftOut(count: number, how: 'pasted' | 'imported'): string {
-    return `The drawing was ${how} without its ${count === 1 ? 'image' : `${count} images`}. Drawings in EtherPK hold no images.`
+    return count === 1 ? `The drawing was ${how} without its image. Paste the image into the drawing to add it.` : `The drawing was ${how} without its ${count} images. Paste the images into the drawing to add them.`
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
@@ -143,7 +148,7 @@ export function createDrawingWidget(services: DrawingServices): FenceWidget {
              */
             const converted = (loaded: ExcalidrawKit, drawing: Drawing): Pick<Drawing, 'header' | 'elements'> => {
                 if (drawing.skeletons.length === 0) return drawing
-                const conversion = convertSkeletons(loaded, drawing.skeletons)
+                const conversion = convertSkeletons(loaded, drawing.skeletons, drawing.elements)
                 if (context.writable && conversion.converted.size > 0) {
                     const edits = planSkeletonWrite(context.body, (skeleton) => conversion.converted.has(skeletonKey(skeleton)), conversion.elements)
                     // Only together with taking the skeletons out, so a write can never add the elements twice.
@@ -164,7 +169,7 @@ export function createDrawingWidget(services: DrawingServices): FenceWidget {
                     const loaded = await kit()
                     if (ticket !== drawn || destroyed) return
                     const shown = converted(loaded, drawing)
-                    const svg = await drawingSvg(loaded, shown)
+                    const svg = await drawingSvg(loaded, shown, services.images.read)
                     if (ticket !== drawn || destroyed) return
                     svg.classList.add('excalidraw-drawing-svg')
                     svg.setAttribute('role', 'img')
@@ -283,7 +288,7 @@ export function createDrawingWidget(services: DrawingServices): FenceWidget {
                         // Shapes written by hand are written back first; they reach the editor in the update that follows.
                         converted(loaded, readDrawing(context.body))
                         if (ticket !== drawn || destroyed) return
-                        editor = mountLiveEditor(loaded, canvas, context, { autoFocus: focus })
+                        editor = mountLiveEditor(loaded, canvas, context, { autoFocus: focus, images: services.images, notify: services.notify, current: () => context })
                     },
                     (error: unknown) => {
                         console.error('[excalidraw] the editor could not load', error)

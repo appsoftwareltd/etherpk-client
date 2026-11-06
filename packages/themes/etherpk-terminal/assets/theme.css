@@ -297,6 +297,7 @@ li.task.done { color: var(--color-muted); text-decoration: line-through; }
     .menu__inner .site-nav-list { flex-direction: column; padding-left: 12px; }
     .menu__inner .site-nav-list li::before { margin-right: 6px; }
     .site-search { margin-left: 0; flex-basis: auto; }
+    .site-search-results { left: 0; right: 0; width: auto; }
     .post-title { font-size: 1.3rem; }
     .pagination__prev, .pagination__next { flex-basis: 100%; }
     .pagination__next { justify-content: flex-end; }

@@ -22,7 +22,7 @@ import { EditorView, keymap, showTooltip, type WidgetType } from '@codemirror/vi
 import { createContributionRegistry, registerCommandMenuItem, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
-import { editAsTextSpec, followFenceRegistrations, interactiveFenceAugmentation } from './augmentations/interactive-fence'
+import { editAsTextSpec, followFenceRegistrations, interactiveFenceAugmentation, widgetEditsChanges } from './augmentations/interactive-fence'
 import { addInlinePanel, inlinePanelsField, panelCaretBlocks, planPanelInsert, removeInlinePanel } from './augmentations/inline-panels'
 import { endOfDocument, type EndKind, startAfterCaret, startAtEnd, takeBackIfLeft } from './end-of-document'
 import { type InteractiveFence, registerInteractiveFence } from './augmentations/interactive-fence-contract'
@@ -55,7 +55,8 @@ import { taskChangeSpec } from './task-change'
 import { anchorLine, lineAnchor } from './line-anchor'
 import { shownRange, showsPart } from './shown-range'
 import { requestReveal, revealFocus, revealOnlyWhileFocused } from './augmentations/reveal-policy'
-import { collapsedExtensionFences } from './augmentations/interactive-fence-state'
+import { collapsedExtensionFences, fenceIdAt, interactiveFences } from './augmentations/interactive-fence-state'
+import { mapSizeEdits } from '../map-text'
 import { type TaskPart, taskPartRange } from './task-part-range'
 import { lineIndent } from '../outliner'
 import { editorFixture, type FixtureOptions, type HeadlessEditor, press } from './testing/editor-state-fixture'
@@ -1375,6 +1376,37 @@ describe('the resize handle writes an image’s width into its hint (Logseq)', (
             const { doc, selection } = editor.state
             const text = doc.toString()
             expect(text.slice(0, selection.main.head) + '§' + text.slice(selection.main.head)).toBe(row.after)
+        })
+    }
+})
+
+// A drag of a Map Block's resize handle writes its size line on release, and a double click removes
+// it (map-text.ts → mapSizeEdits, through the widget's edit; the gesture is in
+// tests-client/map-block.test.ts).
+describe('the resize handle writes a Map Block’s size line (Logseq)', () => {
+    const size = { width: 640, height: 380 }
+    beforeEach(() => {
+        const registry = createContributionRegistry()
+        registerInteractiveFence(registry, 'map', { height: () => 320, mount: () => ({ update: () => {}, destroy: () => {} }) })
+        setActiveContributionRegistry(registry)
+    })
+    afterEach(() => setActiveContributionRegistry(null))
+
+    const garden = 'Garden @ 50.74860, -4.07890'
+    for (const row of [
+        { rule: 'a drag puts the line first in a map that has none', size, before: `|Intro\n\`\`\`map\n${garden}\n\`\`\``, after: `Intro\n\`\`\`map\nsize 640x380\n${garden}\n\`\`\`` },
+        { rule: 'a drag changes the line where it is', size, before: `|Intro\n\`\`\`map\n${garden}\nsize x500\n\`\`\``, after: `Intro\n\`\`\`map\n${garden}\nsize 640x380\n\`\`\`` },
+        { rule: 'a drag clears a second size line a merge left, and a line that does not read stays', size, before: `|Intro\n\`\`\`map\nsize 500x300\nsize 600x300\nsize 640\n\`\`\``, after: `Intro\n\`\`\`map\nsize 640x380\nsize 640\n\`\`\`` },
+        { rule: 'the line goes in at a bullet’s column on a map opened on its line', size, before: `|- Intro\n- \`\`\`map\n  ${garden}\n  \`\`\``, after: `- Intro\n- \`\`\`map\n  size 640x380\n  ${garden}\n  \`\`\`` },
+        { rule: 'a double click removes the line', size: null, before: `|Intro\n\`\`\`map\nsize 640x380\n${garden}\n\`\`\``, after: `Intro\n\`\`\`map\n${garden}\n\`\`\`` },
+    ]) {
+        it(row.rule, () => {
+            const editor = editorFixture(row.before, { extensions: [interactiveFenceAugmentation()] })
+            const fence = interactiveFences(editor.state)[0]
+            const id = fenceIdAt(editor.state, fence.blockFrom)!
+            const changes = widgetEditsChanges(editor.state, id, mapSizeEdits(fence.body, row.size))
+            editor.dispatch(editor.state.update({ changes: changes!, userEvent: 'input.fence' }))
+            expect(editor.state.doc.toString()).toBe(row.after)
         })
     }
 })

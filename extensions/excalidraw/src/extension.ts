@@ -16,9 +16,12 @@
  * - `/drawing`, on every layout, which puts a new drawing at the caret (`context.editor.insertBlock`);
  * - pasted on a line of its own, an excalidraw.com share link becomes a drawing to import, and shapes
  *   copied on excalidraw.com become a drawing of them (the fence's `fromPaste`, `share-link.ts`);
+ * - images to draw over, kept as the graph's Assets (`images.ts`, `editor.ts`);
  * - on a published site, a picture of the drawing (the fence's `publish`);
  * - where a reference quotes the drawing, in the Backlinks panel and beneath a document, the same
- *   picture (the fence's `quote`).
+ *   picture (the fence's `quote`);
+ * - as a PNG a person copies or saves, from the frame's menu over the picture (the fence's `asImage`)
+ *   or from Excalidraw's own dialog while the drawing is edited.
  *
  * A drawing is drawn light in either of the app's themes, its editor and its pictures alike, so it
  * shows the colours it holds: Excalidraw's dark mode inverts them as it draws.
@@ -33,7 +36,9 @@ import './styles.css'
 
 import type { ExtensionContext } from '@appsoftwareltd/etherpk-extension-api'
 
+import { drawingImage } from './drawing-image'
 import { DRAWING_FENCE, identifyDrawing, newDrawingText } from './format'
+import { createImageAccess } from './images'
 import { drawingPicture } from './published-picture'
 import { pastedDrawing } from './share-link'
 import { createDrawingWidget, imagesLeftOut } from './widget'
@@ -46,7 +51,8 @@ function touchFirst(): boolean {
 }
 
 export function activate(context: ExtensionContext): void {
-    const widget = createDrawingWidget({ editsInPlace: () => context.layout.isDesktop() && !touchFirst(), notify: (message) => context.notify(message) })
+    const images = createImageAccess(context.assets)
+    const widget = createDrawingWidget({ editsInPlace: () => context.layout.isDesktop() && !touchFirst(), notify: (message) => context.notify(message), images })
     context.editor.registerFence(DRAWING_FENCE, widget, {
         title: 'Drawing',
         // The Client draws the toolbar and the menu round the drawing, and edits one drawing at a time.
@@ -59,8 +65,9 @@ export function activate(context: ExtensionContext): void {
             if (pasted.skippedImages > 0) context.notify(imagesLeftOut(pasted.skippedImages, 'pasted'))
             return pasted.lines
         },
-        publish: (fence) => drawingPicture(fence.body),
-        quote: (fence) => drawingPicture(fence.body),
+        publish: (fence) => drawingPicture(fence.body, { read: images.read, requireImages: true }),
+        quote: (fence) => drawingPicture(fence.body, { read: images.read }),
+        asImage: (fence) => drawingImage(fence, images.read),
     })
 
     context.commands.register(INSERT_COMMAND, () => {

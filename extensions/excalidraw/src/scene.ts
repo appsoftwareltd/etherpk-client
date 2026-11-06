@@ -10,9 +10,10 @@
  * - **Converting skeletons.** Shapes written without Excalidraw's bookkeeping (`format.ts`) become
  *   full elements through Excalidraw's own `convertToExcalidrawElements`, which needs a page to
  *   measure text in. Ids are made the same on every device that converts the same lines, so two
- *   converting at once write one drawing, not two copies of it.
+ *   converting at once write one drawing, not two copies of it. They stack above what the drawing
+ *   holds, and a shape that cannot be drawn, such as an image with no size, stays as written.
  */
-import { type ElementRecord, type SkeletonRecord, skeletonPrefix, withMadeUpIdsFixed, withSkeletonIds } from './format'
+import { type Drawing, type ElementRecord, isDrawableSkeleton, type SkeletonRecord, skeletonPrefix, stackedAbove, withImageFile, withMadeUpIdsFixed, withSkeletonIds } from './format'
 import type { ExcalidrawKit } from './load'
 
 /** The elements Excalidraw can draw, restored, leaving out any it cannot read. */
@@ -43,13 +44,14 @@ export function skeletonKey(skeleton: SkeletonRecord): string {
 }
 
 /**
- * Skeletons as the full elements they become, and the keys of those that converted. Converted
- * together, so an arrow can bind to a shape on another line. Failing that, each on its own, leaving
- * out any that cannot convert, which stay in the document as written.
+ * Skeletons as the full elements they become, stacked above `existing`, and the keys of those that
+ * converted. Converted together, so an arrow can bind to a shape on another line. Failing that, each
+ * on its own, leaving out any that cannot convert, which stay in the document as written.
  */
-export function convertSkeletons(kit: ExcalidrawKit, skeletons: readonly SkeletonRecord[]): { elements: ElementRecord[]; converted: Set<string> } {
+export function convertSkeletons(kit: ExcalidrawKit, written: readonly SkeletonRecord[], existing: readonly ElementRecord[] = []): { elements: ElementRecord[]; converted: Set<string> } {
     const { convertToExcalidrawElements } = kit.excalidraw
-    const withIds = withSkeletonIds(skeletons)
+    const skeletons = written.filter(isDrawableSkeleton)
+    const withIds = withSkeletonIds(skeletons).map(withImageFile)
     const convert = (some: readonly SkeletonRecord[]) => convertToExcalidrawElements(some as never, { regenerateIds: false }) as unknown as ElementRecord[]
     let made: ElementRecord[] = []
     const converted = new Set<string>()
@@ -67,5 +69,20 @@ export function convertSkeletons(kit: ExcalidrawKit, skeletons: readonly Skeleto
         })
     }
     const given = new Set(withIds.map((skeleton) => skeleton.id as string))
-    return { elements: withMadeUpIdsFixed(made, given, skeletonPrefix(skeletons)), converted }
+    return { elements: stackedAbove(existing, withMadeUpIdsFixed(made, given, skeletonPrefix(skeletons))), converted }
+}
+
+/**
+ * The elements a picture of a drawing draws: what it holds, and shapes written by hand, converted as
+ * the document would convert them.
+ *
+ * A conversion measures its words in the page's fonts, and nothing has loaded them where no editor
+ * has opened, so words would measure in a fallback font and run past the picture's edge. Exporting to
+ * a canvas loads the fonts that the elements name, and the conversion then measures in them.
+ */
+export async function elementsToDraw(kit: ExcalidrawKit, drawing: Pick<Drawing, 'elements' | 'skeletons'>): Promise<ElementRecord[]> {
+    if (drawing.skeletons.length > 0) {
+        await kit.excalidraw.exportToCanvas({ elements: convertSkeletons(kit, drawing.skeletons, drawing.elements).elements as never, appState: {}, files: null })
+    }
+    return [...drawing.elements, ...convertSkeletons(kit, drawing.skeletons, drawing.elements).elements]
 }

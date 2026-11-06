@@ -7,7 +7,7 @@ import { fixedSyncToken } from '#lib/sync/sync-token.js'
 import { createGraphSync, type TransportSocket } from '#lib/sync/graph-sync.js'
 
 import { openHeadlessGraph, type HeadlessGraph } from './headless-graph'
-import { createPage, editDocument, listDocuments, rename, search } from './tools'
+import { createPage, editDocument, graphInfo, listDocuments, readDocument, readTask, rename, search, tasks, ToolError } from './tools'
 
 /**
  * A running [[Headless Client]] follows the graph it serves: what another device writes -
@@ -47,6 +47,75 @@ function pair(id: string) {
     }
     return { relay, member }
 }
+
+/** A link to the relay that a test can cut and restore, as an outage does. */
+function cuttableLink(connect: (url: string) => TransportSocket) {
+    let up = true
+    const sockets = new Set<TransportSocket>()
+    return {
+        connect(url: string): TransportSocket {
+            // A socket that closes without opening, as a refused connection does.
+            if (!up) return { send() {}, close() {}, onOpen() {}, onMessage() {}, onClose: (cb) => queueMicrotask(() => cb()) }
+            const socket = connect(url)
+            sockets.add(socket)
+            return socket
+        },
+        cut() {
+            up = false
+            for (const socket of sockets) socket.close()
+            sockets.clear()
+        },
+        restore() {
+            up = true
+        },
+    }
+}
+
+describe('a connection to the Sync Server that drops', () => {
+    it('says the copy is offline and since when, and connected again once the link returns', async () => {
+        const { relay, member } = pair('g-offline')
+        const link = cuttableLink(relay.connect)
+        const agent = await member('Agent', link.connect)
+        await until('the first connection', async () => agent.connection()?.state === 'connected')
+        expect((await graphInfo(agent)).connection?.state).toBe('connected')
+
+        const cutAt = Date.now()
+        link.cut()
+        const offline = agent.connection()
+        expect(offline?.state).toBe('offline')
+        expect(Date.parse(offline!.since)).toBeGreaterThanOrEqual(cutAt)
+        expect((await graphInfo(agent)).connection).toEqual(offline)
+
+        link.restore()
+        await until('the connection to return', async () => agent.connection()?.state === 'connected')
+        expect((await graphInfo(agent)).connection?.state).toBe('connected')
+    }, 30_000)
+
+    it('says a task may be newer than the offline copy, and finds it once the link returns', async () => {
+        const { relay, member } = pair('g-offline-task')
+        const link = cuttableLink(relay.connect)
+        const agent = await member('Agent', link.connect)
+        const other = await member('Other device')
+        await other.store.createPage('Garden', '- [ ] water the beans')
+        await other.settle()
+        await until('the agent to read the page', async () => (await listDocuments(agent)).documents.some((d) => d.concept === 'Garden') && (await readDocument(agent, 'Garden')).text === '- [ ] water the beans')
+
+        link.cut()
+        await editDocument(other, { concept: 'Garden', old: '- [ ] water the beans', new: '- [ ] water the beans\n- [ ] weed the path' })
+        await other.settle()
+        await until('the other device to index the task', async () => (await tasks(other, { concept: 'Garden' })).total === 2)
+        const { reference } = (await tasks(other, { concept: 'Garden' })).tasks.find((task) => task.text === 'weed the path')!
+
+        const refusal = await readTask(agent, { reference }).catch((error: unknown) => error)
+        expect(refusal).toBeInstanceOf(ToolError)
+        expect((refusal as ToolError).code).toBe('task_not_found')
+        expect((refusal as ToolError).message).toContain(`offline from the Sync Server since ${agent.connection()!.since}`)
+        expect((await readDocument(agent, 'Garden')).text).toBe('- [ ] water the beans')
+
+        link.restore()
+        await until('the task to arrive', async () => (await readTask(agent, { reference }).catch(() => null))?.text === 'weed the path')
+    }, 30_000)
+})
 
 describe('a running Headless Client follows the graph', () => {
     it('sees a page created elsewhere, with its text, and an edit made elsewhere, without a restart', async () => {

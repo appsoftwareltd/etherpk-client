@@ -61,7 +61,9 @@ import { landedName, type RenameLinkStrategy, type RenamePlan, RenameUnconfirmed
 import { buildAssetMarkdown, displayAssetName, mimeTypeForExt, splitNameExt } from '#lib/storage/fs/asset-store.js'
 import { AssetRefusedError, assetIdFromRef } from '#lib/storage/synced/server-asset-store.js'
 
+import { offlineSince, type GraphConnection } from './graph-connection'
 import { readLocalFile, writeDownload } from './headless-assets'
+import { imagePixelSize } from './image-size'
 import { FolderRefused, folderUnder } from './local-folders'
 import { freeTagsIn, parseTaskLine, type TaskPriority, taskStatus } from '#lib/document/task-tags.js'
 import {
@@ -1242,6 +1244,7 @@ export async function uploadAsset(graph: HeadlessGraph, args: UploadAssetArgs) {
         name: displayNameOf(saved.ref),
         type,
         bytes: file.bytes.byteLength,
+        ...imagePixelSize(file.bytes),
         reused: saved.reused === true,
         /** Paste this into a document to show the asset: an image tag for an image, a link otherwise. */
         markdown: buildAssetMarkdown(saved),
@@ -1274,7 +1277,7 @@ export async function readAsset(graph: HeadlessGraph, args: ReadAssetArgs) {
     }
     // The stored name is a collaborator's to set; writeDownload reduces it to one plain file name.
     const path = await writeDownload(directory, asset.name || displayNameOf(ref), asset.bytes)
-    return { path, name: asset.name || displayNameOf(ref), type: asset.type, bytes: asset.bytes.byteLength, reference: ref, documents }
+    return { path, name: asset.name || displayNameOf(ref), type: asset.type, bytes: asset.bytes.byteLength, ...imagePixelSize(asset.bytes), reference: ref, documents }
 }
 
 /**
@@ -1474,7 +1477,19 @@ async function requireReferencedTask(graph: HeadlessGraph, reference: string, pu
     }
     const named = resolveIdentity(graph, parsed.document)
     if (purpose === 'write' && named && (await visibleText(graph, named)) === null) throw protectedDocument(parsed.document)
-    throw new ToolError('task_not_found', 'No task in the graph has those words now: it was edited or deleted. Ask the user for a fresh agent instruction.')
+    throw new ToolError('task_not_found', taskNotFoundMessage(graph.connection()))
+}
+
+/**
+ * The tools see only this computer's copy, so a task that is missing from it may be gone or may
+ * not have arrived. An offline copy makes the second likely, and a fresh instruction names the
+ * same words and would fail the same way, so it asks for a retry instead.
+ */
+function taskNotFoundMessage(connection: GraphConnection | null): string {
+    if (connection?.state === 'offline') {
+        return `No task in this computer's copy of the graph has those words, but the copy has been ${offlineSince(connection)}, so the task may be newer than the copy. Tell the user, and try again once graph_info says the copy is connected.`
+    }
+    return 'No task in the graph has those words now: it was edited or deleted, or the change has not reached this computer yet. Ask the user for a fresh agent instruction.'
 }
 
 /**
@@ -1602,6 +1617,8 @@ export async function graphInfo(graph: HeadlessGraph) {
     return {
         name: graph.name,
         backend: graph.backend,
+        // Only on a synced graph: a folder has no connection to report.
+        connection: graph.connection() ?? undefined,
         // Every document, protected ones included, and how many of them are protected: a count
         // lets an agent say some documents are not visible to it, without naming any.
         documents: {

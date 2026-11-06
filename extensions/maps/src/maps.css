@@ -15,6 +15,9 @@
 
 .gk-map-block {
     position: relative;
+    box-sizing: border-box;
+    /* A Map Block's Display Size narrows it with an inline max-width (map-size.ts). */
+    width: 100%;
     height: 100%;
     overflow: hidden;
     border: 1px solid var(--gk-border-soft);
@@ -70,6 +73,8 @@
     flex: 1 1 auto;
     align-items: center;
     gap: 6px;
+    /* An input's own width would otherwise push the actions off a small map. */
+    min-width: 0;
     max-width: 26rem;
     padding: 0 8px;
     border: 1px solid var(--gk-control-border);
@@ -280,11 +285,13 @@
 /* Room on the right for MapLibre's zoom buttons and the map's credit. */
 .gk-map-bottom {
     position: absolute;
+    top: 8px;
     right: 56px;
     bottom: 8px;
     left: 8px;
     z-index: 2;
     display: flex;
+    align-items: flex-end;
     pointer-events: none;
 }
 
@@ -297,6 +304,9 @@
 
 .gk-map-sheet {
     display: flex;
+    /* A map can be sized smaller than what its sheet holds, and every control stays within reach. */
+    max-height: 100%;
+    overflow-y: auto;
     max-width: 34rem;
     flex-direction: column;
     gap: 8px;
@@ -349,6 +359,75 @@
 /* The selected item's Close (`gk-icon-button`), at the end of its heading. */
 .gk-map-close {
     margin-left: auto;
+}
+
+/* The resize handle on the map's corner, drawn as an image's is (image-resize.ts). */
+.gk-map-resize {
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    box-sizing: border-box;
+    border: 1px solid var(--gk-border-soft);
+    border-radius: 5px;
+    background: var(--gk-surface-1);
+    color: var(--gk-text-default);
+    box-shadow: var(--gk-shadow);
+    cursor: nwse-resize;
+    /* The page must not scroll or zoom under a finger dragging the handle. */
+    touch-action: none;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+}
+
+.gk-map-block:hover .gk-map-resize,
+.gk-map-block--resizing .gk-map-resize {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* No hover to reveal it on a phone, so there it always shows. */
+@media (hover: none) {
+    .gk-map-resize {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}
+
+/* A finger's target round the smaller drawn handle. */
+@media (pointer: coarse) {
+    .gk-map-resize::before {
+        position: absolute;
+        inset: -10px;
+        content: '';
+    }
+}
+
+/* The map's own controls sit above the handle, on a map that shows one. */
+.gk-map-block--resizable .maplibregl-ctrl-bottom-right {
+    bottom: 24px;
+}
+
+.gk-map-resize-readout {
+    position: absolute;
+    right: 32px;
+    bottom: 2px;
+    z-index: 3;
+    padding: 1px 6px;
+    border: 1px solid var(--gk-border-soft);
+    border-radius: 4px;
+    background: var(--gk-surface-1);
+    color: var(--gk-text-default);
+    font-variant-numeric: tabular-nums;
+    line-height: 22px;
+    white-space: nowrap;
+    pointer-events: none;
 }
 
 .gk-map-folded {
@@ -576,6 +655,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .gk-map-resize {
+        transition: none;
+    }
+
     .gk-map-search-busy {
         animation: none;
     }

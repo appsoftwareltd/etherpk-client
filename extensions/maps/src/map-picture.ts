@@ -2,11 +2,13 @@
  * A [[Map Block]] drawn as a picture (ADR 0118): its places, routes and the places' names over the
  * basemap, framed as the map opens, with the basemap's credit in a corner.
  *
- * - For a [[Published Site]], at 800 by 450 in the light style. A site carries no map of its own
- *   and must never carry a Map Block's lines, which hold where each place is, so the picture is all
- *   a reader gets.
+ * - For a [[Published Site]], at the map's own [[Display Size]] or else 800 by 450, in the light
+ *   style. A site carries no map of its own and must never carry a Map Block's lines, which hold
+ *   where each place is, so the picture is all a reader gets.
  * - For a reference in the Backlinks panel (ADR 0118, amended 2026-10-10), at the panel's width
  *   and in the app's theme, as the live map would draw it there.
+ * - For a picture a person saves (map-save.ts, ADR 0118, amended 2026-11-06), where the map is
+ *   looking, at its size, in its theme and over the basemap it shows.
  *
  * MapLibre draws the basemap and the routes off screen, as the live map does (map-engine.ts). The
  * pins, the names and the credit are drawn over that on a canvas of their own, where the live map
@@ -16,16 +18,17 @@
  * Nothing here sets up MapLibre's worker: the Client loads `map-worker.ts` first, and the
  * Headless Client's page names the worker it serves.
  */
-import { Map as MapLibreMap } from 'maplibre-gl'
+import { Map as MapLibreMap, type StyleSpecification } from 'maplibre-gl'
 
 import { readMapBody } from '#lib/document/map-text.js'
 import type { MapPicture } from '#lib/document/publish/publish.js'
 
 import { attributionText } from './attribution-text'
-import { blankStyle, fitName, NAMED_PLACES, routeLayers, SINGLE_PLACE_ZOOM, WORLD } from './map-drawing'
-import { frameRoom, itemsBounds } from './map-geometry'
+import { blankStyle, fitName, type MapCamera, MapPictureError, NAMED_PLACES, routeLayers, SINGLE_PLACE_ZOOM, WORLD } from './map-drawing'
+import { frameRoom, itemsBounds, nearestCopy } from './map-geometry'
+import { pictureSize } from './map-size'
 
-/** A published picture's size in CSS pixels, a wide frame a page's column shows whole. */
+/** A published picture's size in CSS pixels with no size line, a wide frame a page's column shows whole. */
 export const PICTURE_WIDTH = 800
 export const PICTURE_HEIGHT = 450
 /** Drawn at twice that, so it stays sharp on a high-density screen. */
@@ -38,6 +41,9 @@ const PADDING = { top: 48, bottom: 40, left: 40, right: 40 }
 const MOST_NAME_ROOM = 0.4
 /** Room kept between a name's plate and the picture's right edge. */
 const EDGE_GAP = 4
+/** The height of the credit's plate, and the room kept round a logo above it. */
+const CREDIT_HEIGHT = 24
+const LOGO_GAP = 4
 
 const ROUTES = 'etherpk-picture-routes'
 const PIN_PATH = 'M12 31c-1-3-10-12-10-19a10 10 0 0 1 20 0c0 7-9 16-10 19z'
@@ -54,12 +60,26 @@ type Palette = typeof LIGHT
 
 export interface MapPictureOptions {
     /** The basemap style, or null to draw on a plain background. */
-    style: string | null
-    /** The picture's size in CSS pixels: a published picture's 800 by 450 unless given. */
+    style: StyleSpecification | string | null
+    /** The picture's size in CSS pixels: a published picture's size unless given (`pictureSize`). */
     width?: number
     height?: number
     /** Drawn for the dark theme, as the live map is in it. Light unless given. */
     dark?: boolean
+    /** Where to look, for a picture of a map as a person sees it. Unless given, it frames every item. */
+    camera?: MapCamera
+    /** The address to ask for in place of each one a style names, where MapLibre cannot read those. */
+    requestUrl?: (url: string) => string
+    /** A logo to draw above the credit, for a basemap whose terms ask for one. */
+    logo?: PictureLogo
+    /** Always a PNG, for a file other programs will open. Unless given, WebP where the browser can write it. */
+    png?: boolean
+}
+
+export interface PictureLogo {
+    width: number
+    height: number
+    draw(context: CanvasRenderingContext2D, x: number, y: number): void
 }
 
 /**
@@ -124,19 +144,19 @@ function drawCredit(context: CanvasRenderingContext2D, text: string, pictureWidt
     context.font = `14px ${FONT}`
     const width = Math.min(context.measureText(text).width, pictureWidth - 16)
     context.fillStyle = palette.plate
-    context.fillRect(pictureWidth - width - 12, pictureHeight - 24, width + 12, 24)
+    context.fillRect(pictureWidth - width - 12, pictureHeight - CREDIT_HEIGHT, width + 12, CREDIT_HEIGHT)
     context.fillStyle = palette.credit
     context.textBaseline = 'middle'
-    context.fillText(text, pictureWidth - width - 6, pictureHeight - 12, width)
+    context.fillText(text, pictureWidth - width - 6, pictureHeight - CREDIT_HEIGHT / 2, width)
 }
 
-/** The canvas as WebP where the browser can write it, PNG otherwise. */
-async function encode(canvas: HTMLCanvasElement): Promise<Pick<MapPicture, 'bytes' | 'type'>> {
-    for (const type of ['image/webp', 'image/png'] as const) {
+/** The canvas as PNG if asked, or else as WebP where the browser can write it and PNG otherwise. */
+async function encode(canvas: HTMLCanvasElement, png: boolean): Promise<Pick<MapPicture, 'bytes' | 'type'>> {
+    for (const type of png ? (['image/png'] as const) : (['image/webp', 'image/png'] as const)) {
         const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.9))
         if (blob && blob.type === type) return { bytes: new Uint8Array(await blob.arrayBuffer()), type }
     }
-    throw new Error("this browser couldn't save the picture")
+    throw new MapPictureError("this browser couldn't save the picture")
 }
 
 /** Wait until the map has drawn its basemap whole, or say why it did not. */
@@ -144,7 +164,7 @@ function drawn(map: MapLibreMap): Promise<void> {
     return new Promise((resolve, reject) => {
         let failedTiles = 0
         const timer = setTimeout(
-            () => reject(new Error("the map took too long to draw. Keep EtherPK's tab in front while it publishes, then try again")),
+            () => reject(new MapPictureError("the map took too long to draw. Keep EtherPK's tab in front while it draws, then try again")),
             LOAD_TIMEOUT_MS,
         )
         map.on('error', (event) => {
@@ -154,11 +174,11 @@ function drawn(map: MapLibreMap): Promise<void> {
                 return
             }
             clearTimeout(timer)
-            reject(new Error("the map's style couldn't be loaded"))
+            reject(new MapPictureError("the map's style couldn't be loaded"))
         })
         map.once('idle', () => {
             clearTimeout(timer)
-            if (failedTiles > 0) reject(new Error("some of the map's tiles didn't load. Check your connection, then try again"))
+            if (failedTiles > 0) reject(new MapPictureError("some of the map's tiles didn't load. Check your connection, then try again"))
             else resolve()
         })
     })
@@ -166,13 +186,16 @@ function drawn(map: MapLibreMap): Promise<void> {
 
 /** Draw a Map Block, by its fence's body, as a picture: for a published page unless the options say otherwise. */
 export async function drawMapPicture(source: string, options: MapPictureOptions): Promise<MapPicture> {
-    const width = options.width ?? PICTURE_WIDTH
-    const height = options.height ?? PICTURE_HEIGHT
+    const lines = source.split('\n')
+    const published = pictureSize(lines, { width: PICTURE_WIDTH, height: PICTURE_HEIGHT })
+    const width = options.width ?? published.width
+    const height = options.height ?? published.height
     const dark = options.dark ?? false
     const palette = dark ? DARK : LIGHT
-    const { items } = readMapBody(source.split('\n'))
+    const { camera } = options
+    const { items } = readMapBody(lines)
     if (options.style !== null && typeof navigator !== 'undefined' && navigator.onLine === false) {
-        throw new Error("you're offline, and the map's tiles can't be fetched")
+        throw new MapPictureError("you're offline, and the map's tiles can't be fetched")
     }
     const container = document.createElement('div')
     container.setAttribute('aria-hidden', 'true')
@@ -189,17 +212,18 @@ export async function drawMapPicture(source: string, options: MapPictureOptions)
                 fadeDuration: 0,
                 pixelRatio: PIXEL_RATIO,
                 canvasContextAttributes: { preserveDrawingBuffer: true },
-                ...WORLD,
+                ...(options.requestUrl ? { transformRequest: (url: string) => ({ url: options.requestUrl!(url) }) } : {}),
+                ...(camera ? { center: [camera.centre.lon, camera.centre.lat] as [number, number], zoom: camera.zoom } : WORLD),
             })
         } catch {
-            throw new Error("this browser can't draw maps")
+            throw new MapPictureError("this browser can't draw maps")
         }
         const created = map
         const canvas = document.createElement('canvas')
         canvas.width = width * PIXEL_RATIO
         canvas.height = height * PIXEL_RATIO
         const context = canvas.getContext('2d')
-        if (!context) throw new Error("this browser can't draw the picture")
+        if (!context) throw new MapPictureError("this browser can't draw the picture")
         const places = items.filter((item) => item.kind === 'place')
         const named = places.length <= NAMED_PLACES
         // Room on the right for the longest name, up to a share of the width: a longer name is cut
@@ -207,7 +231,7 @@ export async function drawMapPicture(source: string, options: MapPictureOptions)
         context.font = NAME_FONT
         let nameRoom = 0
         if (named) for (const place of places) if (place.name !== '') nameRoom = Math.max(nameRoom, nameReach(context.measureText(place.name).width))
-        const bounds = itemsBounds(items)
+        const bounds = camera ? null : itemsBounds(items)
         if (bounds) {
             created.fitBounds(
                 [
@@ -240,13 +264,16 @@ export async function drawMapPicture(source: string, options: MapPictureOptions)
 
         context.drawImage(created.getCanvas(), 0, 0, canvas.width, canvas.height)
         context.scale(PIXEL_RATIO, PIXEL_RATIO)
+        const centre = created.getCenter().lng
         for (const place of places) {
-            const { x, y } = created.project([place.point.lon, place.point.lat])
+            const { x, y } = created.project([nearestCopy(place.point.lon, centre), place.point.lat])
             drawPin(context, x, y, palette)
             if (named && place.name !== '') drawName(context, x, y, place.name, width, palette)
         }
-        drawCredit(context, credit(created), width, height, palette)
-        return { ...(await encode(canvas)), width, height }
+        const credited = credit(created)
+        drawCredit(context, credited, width, height, palette)
+        if (options.logo) options.logo.draw(context, width - options.logo.width - LOGO_GAP, height - options.logo.height - LOGO_GAP - (credited === '' ? 0 : CREDIT_HEIGHT))
+        return { ...(await encode(canvas, options.png ?? false)), width, height }
     } finally {
         map?.remove()
         container.remove()

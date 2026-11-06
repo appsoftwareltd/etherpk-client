@@ -3,27 +3,17 @@
  * priority chips and their colours, what a typed [[Free Tag]] must be, when a new task counts as
  * untouched, and the document a new task's description is written in before the task exists.
  */
+import { priorityColour } from '#lib/document/task-priority-colour.js'
 import { isFreeTagWord, type TaskPriority, type TaskStatus } from '#lib/document/task-tags.js'
 import type { TaskWriteOutcome } from '#lib/document/task-write.js'
 import type { ChangeOrigin, DocumentListener, EditorDocument, TextChange } from '#lib/document/types.js'
-import { PRESENCE_PALETTE } from '#lib/sync/presence-identity.js'
 
-/** A ready-made colour of the graph colour set (the toolbar colours in Graph Settings), by its name. */
-function pastel(label: string): string {
-    const found = PRESENCE_PALETTE.find((entry) => entry.label === label)
-    if (!found) throw new Error(`No ready-made colour is called ${label}`)
-    return found.color
-}
-
-/**
- * The priority chips, None first and then the most pressing. Each priority wears one of the graph's
- * ready-made pastels, warmest for P1, under dark ink, which reads on every one of them.
- */
+/** The priority chips, None first and then the most pressing, each priority in its colour. */
 export const PRIORITY_CHOICES: ReadonlyArray<{ priority: TaskPriority | null; label: string; colour: string | null }> = [
     { priority: null, label: 'None', colour: null },
-    { priority: 1, label: 'P1', colour: pastel('Salmon') },
-    { priority: 2, label: 'P2', colour: pastel('Peach') },
-    { priority: 3, label: 'P3', colour: pastel('Sky') },
+    { priority: 1, label: 'P1', colour: priorityColour(1) },
+    { priority: 2, label: 'P2', colour: priorityColour(2) },
+    { priority: 3, label: 'P3', colour: priorityColour(3) },
 ]
 
 /** The two dated task tags the editor sets, each a field of its own: `#D-YYYY-MM-DD` and `#S-YYYY-MM-DD`. */

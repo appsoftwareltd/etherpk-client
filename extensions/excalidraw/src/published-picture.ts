@@ -6,22 +6,20 @@
 import type { PublishedFence } from '@appsoftwareltd/etherpk-extension-api'
 
 import { drawingAlt, readDrawing } from './format'
+import type { ImageReader } from './images'
 import { loadExcalidraw } from './load'
 
-/** A drawing as a picture file, light, or null for a drawing with nothing in it. */
-export async function drawingPicture(body: readonly string[]): Promise<PublishedFence | null> {
+/**
+ * A drawing as a picture file, light, or null for a drawing with nothing in it. Its images are read
+ * through `read`. A published site would keep a picture with a hole in it, so `requireImages` rejects
+ * rather than draw a grey box, and the publish leaves that drawing out and warns.
+ */
+export async function drawingPicture(body: readonly string[], images: { read: ImageReader; requireImages?: boolean }): Promise<PublishedFence | null> {
     const drawing = readDrawing(body)
     if (drawing.elements.length === 0 && drawing.skeletons.length === 0) return null
-    const [{ drawingFile }, { convertSkeletons }] = await Promise.all([import('./picture'), import('./scene')])
+    const [{ drawingFile }, { elementsToDraw }] = await Promise.all([import('./picture'), import('./scene')])
     const kit = await loadExcalidraw()
-    // A conversion measures its words in the page's fonts, and nothing has loaded them where no
-    // editor has opened, so words would measure in a fallback font and run past the picture's edge.
-    // Exporting to a canvas loads the fonts that the elements name, and the conversion then measures in them.
-    if (drawing.skeletons.length > 0) {
-        await kit.excalidraw.exportToCanvas({ elements: convertSkeletons(kit, drawing.skeletons).elements as never, appState: {}, files: null })
-    }
-    // Shapes written by hand are drawn too, converted as the document would convert them.
-    const elements = [...drawing.elements, ...convertSkeletons(kit, drawing.skeletons).elements]
-    const file = await drawingFile(kit, { header: drawing.header, elements })
+    const elements = await elementsToDraw(kit, drawing)
+    const file = await drawingFile(kit, { header: drawing.header, elements }, images.read, { requireImages: images.requireImages })
     return { kind: 'picture', type: 'image/svg+xml', bytes: file.bytes, width: file.width, height: file.height, alt: drawingAlt(elements) }
 }

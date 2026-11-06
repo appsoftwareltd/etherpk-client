@@ -70,6 +70,14 @@ export function frameRoom(width: number, height: number, room: FramePadding): Fr
     return { top: room.top * down, bottom: room.bottom * down, left: room.left * across, right: room.right * across }
 }
 
+/**
+ * A longitude on the copy of the world nearest `centre`, for a map panned past the edge of the first
+ * copy: where MapLibre's own markers draw a pin, and so where a picture of that map must.
+ */
+export function nearestCopy(lon: number, centre: number): number {
+    return lon + 360 * Math.round((centre - lon) / 360)
+}
+
 const EARTH_RADIUS_METRES = 6_371_008.8
 
 const radians = (degrees: number) => (degrees * Math.PI) / 180

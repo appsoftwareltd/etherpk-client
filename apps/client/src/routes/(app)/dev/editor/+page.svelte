@@ -1,5 +1,6 @@
 <script lang="ts">
     import { getAppliedResolvedTheme } from '@appsoftwareltd/etherpk-shared/theme'
+    import { EditorState, StateEffect } from '@codemirror/state'
     import { onMount } from 'svelte'
     import * as Y from 'yjs'
 
@@ -170,6 +171,8 @@
         const w = window as unknown as Record<string, unknown>
         w.__setDoc = (text: string) => store.setText('doc-a', text)
         w.__getDoc = () => getActiveEditorView()?.state.doc.toString() ?? null
+        // A document that cannot be written, as nothing else in this harness makes one.
+        w.__setReadOnly = () => getActiveEditorView()?.dispatch({ effects: StateEffect.appendConfig.of(EditorState.readOnly.of(true)) })
         // Raw change (no keymap) — e2e uses it to simulate a paste and prove the fence-guard backstop.
         w.__insertRaw = (pos: number, text: string) => {
             const view = getActiveEditorView()

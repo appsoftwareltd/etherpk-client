@@ -15,6 +15,7 @@
  * publishing a site with its diagrams turned to text.
  */
 
+import { reachedWithin } from '#lib/reached-within.js'
 import { selectDocuments } from '#lib/document/publish/selection.js'
 import { isPublicationId } from '#lib/document/publish/publication.js'
 import type { Publication } from '#lib/document/publish/types.js'
@@ -361,7 +362,7 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
     }
     let drawings = null
     if (needsDrawings(bodies)) {
-        drawings = await openDrawingRenderer(env)
+        drawings = await openDrawingRenderer(env, source.readAsset)
         if (!drawings) {
             await renderer?.dispose()
             await maps?.dispose()
@@ -452,17 +453,28 @@ export function cliPublishOutput(result: Awaited<ReturnType<typeof publish>>) {
     }
 }
 
+/**
+ * How long `graph_info` waits for the publications. Reading them asks the relay how far each
+ * document has moved, and that request waits for a reconnect if the socket drops under it.
+ * `graph_info` is how an agent learns the copy is offline, so it answers without them.
+ */
+const PUBLISHING_READ_MS = 15_000
+
 /** The publishing half of `graph_info`: each publication with its folder here, and whether diagrams can be drawn. */
-export async function publishingInfo(graph: HeadlessGraph, host?: PublishHost) {
+export async function publishingInfo(graph: HeadlessGraph, host?: PublishHost, readMs = PUBLISHING_READ_MS) {
     const { env, cmd } = hostOf(host)
-    const { source } = await graph.publishing.readSource()
+    const reading = graph.publishing.readSource()
+    const read = await reachedWithin(reading, readMs)
     const destinationOf = await destinationsFor(graph, env)
     const chromium = await chromiumStatus(env, cmd)
     return {
-        publications: summarisePublishing(source).publications.map((p) => {
-            const { folder, repository } = destinationOf(p.id)
-            return { id: p.id, name: p.name, kind: p.kind, publishFolder: folder, publishRepository: repository ? repositoryLabel(repository) : null }
-        }),
+        publications: read
+            ? summarisePublishing((await reading).source).publications.map((p) => {
+                  const { folder, repository } = destinationOf(p.id)
+                  return { id: p.id, name: p.name, kind: p.kind, publishFolder: folder, publishRepository: repository ? repositoryLabel(repository) : null }
+              })
+            : null,
+        ...(read ? {} : { note: 'The publications could not be read in time. list_publications waits for them.' }),
         mermaid: { available: chromium.executable !== null, ...(chromium.executable ? {} : { setup: chromium.setupCommand }) },
     }
 }

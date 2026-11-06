@@ -20,12 +20,14 @@ export interface DrawnPicture {
 
 declare global {
     interface Window {
-        etherpkDrawDrawingPicture?: (body: readonly string[]) => Promise<DrawnPicture | null>
+        etherpkDrawDrawingPicture?: (body: readonly string[], images: Readonly<Record<string, string>>) => Promise<DrawnPicture | null>
     }
 }
 
-window.etherpkDrawDrawingPicture = async (body) => {
-    const picture = cleanedFencePicture(await drawingPicture(body))
+// `images` holds each image the drawing names, read by the Node side, as a data URL by its reference.
+// An image it does not hold could not be read, and the picture rejects rather than show a hole.
+window.etherpkDrawDrawingPicture = async (body, images) => {
+    const picture = cleanedFencePicture(await drawingPicture(body, { read: async (ref) => images[ref] ?? null, requireImages: true }))
     if (picture?.kind !== 'picture') return null
     let binary = ''
     for (const byte of picture.bytes) binary += String.fromCharCode(byte)

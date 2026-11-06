@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { drawingHeight, excalidrawOwns } from './widget'
+import { drawingHeight, excalidrawOwns, imagesLeftOut } from './widget'
 
 const header = JSON.stringify({ type: 'excalidraw.drawing', version: 1, id: 'k1', background: '#ffffff' })
 const rectangle = JSON.stringify({ id: 'r1', type: 'rectangle', version: 1, versionNonce: 1, x: 0, y: 0, width: 160, height: 80 })
@@ -18,6 +18,13 @@ describe('drawingHeight', () => {
     it("is an empty drawing's, or an import card's, whatever the editing", () => {
         expect(drawingHeight({ body: [header] })).toBe(120)
         expect(drawingHeight({ body: [header, 'https://excalidraw.com/#json=AbC123_-xyz,abcdefghijklmnopqrstuv'], editing: true })).toBe(148)
+    })
+})
+
+describe('what the person is told of images left out', () => {
+    it('says how to add them, one or several', () => {
+        expect(imagesLeftOut(1, 'pasted')).toBe('The drawing was pasted without its image. Paste the image into the drawing to add it.')
+        expect(imagesLeftOut(3, 'imported')).toBe('The drawing was imported without its 3 images. Paste the images into the drawing to add them.')
     })
 })
 

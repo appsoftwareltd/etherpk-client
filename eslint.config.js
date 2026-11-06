@@ -50,6 +50,7 @@ export const CLIENT_IMPORT_EXCEPTIONS = {
         '#lib/document/open-concept.js',
         '#lib/document/settle-scheduler.js',
         '#lib/document/task-placement.js',
+        '#lib/document/task-priority-colour.js',
         '#lib/document/task-structure.js',
         '#lib/document/task-tags.js',
         '#lib/document/task-write.js',
@@ -72,7 +73,6 @@ export const CLIENT_IMPORT_EXCEPTIONS = {
         '#lib/surface/context-menu-store.js',
         '#lib/surface/context-menu.js',
         '#lib/surface/icons.js',
-        '#lib/sync/presence-identity.js',
         '#lib/workspace/workspace-services.js',
     ],
     maps: [

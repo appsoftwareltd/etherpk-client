@@ -15,7 +15,7 @@
  * id. With nothing registered for a word, the fence is an ordinary fenced block.
  */
 
-import type { FencePresentation, PublishedFence, PublishFenceRequest, QuoteFenceRequest } from '@appsoftwareltd/etherpk-extension-api'
+import type { FenceImage, FenceImageRequest, FencePresentation, PublishedFence, PublishFenceRequest, QuoteFenceRequest } from '@appsoftwareltd/etherpk-extension-api'
 import { StateEffect } from '@codemirror/state'
 
 import { type ContributionRegistry, tryGetActiveContributionRegistry } from '#lib/surface/index.js'
@@ -146,6 +146,8 @@ export interface InteractiveFence {
      * the way to stop hearing.
      */
     quotesChanged?(listener: () => void): () => void
+    /** The fence as an image, for the editor frame's Copy as image and Save as image (`fence-frame.ts`). */
+    asImage?(fence: FenceImageRequest): Promise<FenceImage>
 }
 
 /**
