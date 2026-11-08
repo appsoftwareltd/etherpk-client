@@ -312,7 +312,8 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
     const tabStrips = installTabStripScrollbar(api, container)
 
     // Right-click / long-press on ANY tab → the Context Menu: the document rows (favourite,
-    // rename) for a document tab, the tab-management rows for every tab. Resolved by label
+    // rename) for a document tab, the favourite pair for a PDF's or an EBook's tab by its title,
+    // the tab-management rows for every tab. Resolved by label
     // because dockview puts no id on the tab element — but the search is scoped to the tab's
     // OWN group first: two tabs sharing a visible label in different Panes (an Asset tab before
     // its title resolves, a `forceNew` duplicate) must never resolve to the other Pane's panel,
@@ -330,7 +331,7 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
         const view = parseViewKey(panel.id)
         return view.kind === 'document' && view.target === label
             ? { kind: 'document-tab', concept: view.target, panelId: panel.id }
-            : { kind: 'tab', panelId: panel.id, view }
+            : { kind: 'tab', panelId: panel.id, view, title: panel.title }
     })
 
     // Persist geometry on user-driven layout changes (sash resize, tab drag/move).

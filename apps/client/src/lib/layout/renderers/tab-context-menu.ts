@@ -6,10 +6,10 @@
  * same approach `tab-strip-scrollbar.ts` already takes to that DOM, rather than a second
  * invented one.
  *
- * **Every** tab gets a menu, not only document tabs. Favouriting or renaming an [[Asset]] or
- * All Documents tab is still meaningless — those rows carry a `when` and stay away — but the
- * tab-management rows (close others, close to the right) apply to any tab, and they are the
- * reason a non-document tab has a menu at all. A tab that resolves to no panel gets nothing,
+ * **Every** tab gets a menu, not only document tabs. Renaming an [[Asset]] or All Documents tab
+ * is meaningless, and so is favouriting one, except a PDF's or an EBook's: those rows carry a
+ * `when` and stay away. The tab-management rows (close others, close to the right) apply to any
+ * tab, and they are the reason a non-document tab has a menu at all. A tab that resolves to no panel gets nothing,
  * and dockview's own menu is suppressed either way so there is one menu, styled like the rest.
  */
 

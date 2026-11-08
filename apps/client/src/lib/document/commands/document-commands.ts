@@ -211,7 +211,7 @@ export function registerDocumentCommands(
     /** A View favourite's row names its entry; a tab, the View it shows when that View can be one. */
     const viewFavouriteOf = (target: TabContextMenuTarget | ViewFavouriteContextMenuTarget): ViewFavourite | null => {
         if (target.kind === 'view-favourite') return target.favourite
-        return target.view ? (deps.viewFavourites?.favouriteOf(target.view) ?? null) : null
+        return target.view ? (deps.viewFavourites?.favouriteOf(target.view, target.title) ?? null) : null
     }
 
     /** What a notice calls a favourite: a document by its name, a View by its tab's title. */

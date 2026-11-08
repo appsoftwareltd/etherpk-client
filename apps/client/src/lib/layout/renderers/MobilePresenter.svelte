@@ -85,12 +85,12 @@
      * the View and the panel id to hand, so unlike the adapter it needs no label lookup.
      * `vertical`, because the phone lists its open Views down the screen: the rows that close
      * tabs by position say below and above. Any other tab carries its View, so a Kanban board's or
-     * a Map View's offers Add to favourites (ADR 0169).
+     * a Map View's offers Add to favourites (ADR 0169), and its title, so a PDF's or an EBook's does.
      */
     function tabTarget(v: ViewInstance): ContextMenuTarget {
         return v.view.kind === 'document'
             ? { kind: 'document-tab', concept: v.view.target, panelId: v.panelId, vertical: true }
-            : { kind: 'tab', panelId: v.panelId, view: v.view, vertical: true }
+            : { kind: 'tab', panelId: v.panelId, view: v.view, title: renderer.title(v.view), vertical: true }
     }
 
     /**

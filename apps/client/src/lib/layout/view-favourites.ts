@@ -30,8 +30,11 @@ export interface ViewFavouriteRow {
 }
 
 export interface ViewFavourites {
-    /** The favourite `view` is, or null when its kind cannot be one. */
-    favouriteOf(view: ViewRef): ViewFavourite | null
+    /**
+     * The favourite `view` is, or null when its kind cannot be one. `title` is its tab's title, which
+     * a PDF's or an EBook's favourite keeps as its name.
+     */
+    favouriteOf(view: ViewRef, title?: string): ViewFavourite | null
     describe(favourite: ViewFavourite): ViewFavouriteRow
     /** Hear a change in what {@link describe} answers: an extension switched on or off, added or removed. */
     subscribe(listener: () => void): () => void
@@ -52,6 +55,9 @@ function viewOf(entry: ViewRegistryEntry | undefined, favourite: ViewFavourite):
     return entry.soleTarget !== undefined && favourite.concept === undefined ? { kind: favourite.kind, target: entry.soleTarget } : null
 }
 
+/** The Asset tabs that are readers, by the file name the tab shows: a PDF's and an EBook's. */
+const READER_FILE = /\.(pdf|epub)$/i
+
 /** A PDF or an EBook names itself from what was stored, as a synced Asset's own target is a bare id. */
 function pdfRow({ kind, concept, name }: ViewFavourite): ViewFavouriteRow | null {
     if (kind !== 'asset' || concept === undefined) return null
@@ -61,7 +67,8 @@ function pdfRow({ kind, concept, name }: ViewFavourite): ViewFavouriteRow | null
 export function createViewFavourites(deps: ViewFavouritesDeps): ViewFavourites {
     const { registry } = deps
     return {
-        favouriteOf(view) {
+        favouriteOf(view, title) {
+            if (view.kind === 'asset') return title !== undefined && READER_FILE.test(title) ? { kind: 'asset', concept: view.target, name: title } : null
             const entry = registry.get(view.kind)
             if (!entry?.favourite) return null
             if (entry.conceptTarget) return view.target.trim() === '' ? null : { kind: view.kind, concept: view.target }

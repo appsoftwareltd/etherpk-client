@@ -768,7 +768,7 @@
             <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2) sm:hidden" onclick={() => { moreOpen = false; signatureOpen = true; }} data-testid="pdf-more-sign">Add your signature</button>
             <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2) sm:hidden" onclick={() => { moreOpen = false; openSave(); }} data-testid="pdf-more-save">Save a copy</button>
             <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2) sm:hidden" onclick={() => { moreOpen = false; printOptionsOpen = true; }} data-testid="pdf-more-print">Print</button>
-            <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={toggleFavourite} data-testid="pdf-favourite">{favourite ? "Remove from Favourites" : "Add to Favourites"}</button>
+            <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={toggleFavourite} data-testid="pdf-favourite">{favourite ? "Remove from favourites" : "Add to favourites"}</button>
             <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={downloadOriginal} data-testid="pdf-download">Download the original</button>
             {#if service}
                 <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={openRename} data-testid="pdf-rename">Rename…</button>

@@ -639,14 +639,14 @@
                     {#if keepError}<p class="px-2 text-sm text-red-700 dark:text-red-400" role="alert" data-testid="ebook-keep-error">{keepError}</p>{/if}
                 {/if}
                 <hr class="my-0.5 border-(--gk-surface-2)" />
-                <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={toggleFavourite} data-testid="ebook-favourite">{favourite ? "Remove from Favourites" : "Add to Favourites"}</button>
+                <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={toggleFavourite} data-testid="ebook-favourite">{favourite ? "Remove from favourites" : "Add to favourites"}</button>
                 {#if dictionaries}
                     <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={() => { moreOpen = false; dictionariesOpen = true; }} data-testid="ebook-dictionaries-open">Dictionaries</button>
                 {/if}
-                <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={downloadOriginal} data-testid="ebook-download">Download</button>
+                <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={downloadOriginal} data-testid="ebook-download">Download the original</button>
                 {#if files}
-                    <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={openRename} data-testid="ebook-rename">Rename</button>
-                    <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={openDelete} data-testid="ebook-delete">Delete</button>
+                    <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={openRename} data-testid="ebook-rename">Rename…</button>
+                    <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={openDelete} data-testid="ebook-delete">Delete…</button>
                 {/if}
             </div>
         </div>

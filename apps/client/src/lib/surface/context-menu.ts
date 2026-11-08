@@ -184,6 +184,8 @@ export interface TabContextMenuTarget {
     panelId: string
     /** The View the tab shows: what "Add to favourites" names when its kind can be a [[Favourite]] (ADR 0169). */
     view?: { kind: string; target: string }
+    /** The tab's title as it reads: a PDF's or an EBook's file name, which its favourite keeps. */
+    title?: string
     /**
      * The tab is drawn as a row of a vertical list, as the phone draws its open documents, rather
      * than in a strip: the rows that close tabs by position say below and above, not right and left.

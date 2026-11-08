@@ -37,6 +37,15 @@ describe('view favourites', () => {
         expect(views.favouriteOf({ kind: 'kanban.whole', target: 'other' })).toBeNull()
     })
 
+    it('names a PDF\'s or an EBook\'s tab by its target, keeping the file name its tab shows, and no other file\'s', () => {
+        const views = favourites()
+        expect(views.favouriteOf({ kind: 'asset', target: 'assets/guide.a1b2c3d4.pdf' }, 'guide.pdf')).toEqual({ kind: 'asset', concept: 'assets/guide.a1b2c3d4.pdf', name: 'guide.pdf' })
+        expect(views.favouriteOf({ kind: 'asset', target: '0b5f2c1e-7d1a-4f6b-9a39-2b1c0d3e4f5a.epub' }, 'Beans.EPUB')).toEqual({ kind: 'asset', concept: '0b5f2c1e-7d1a-4f6b-9a39-2b1c0d3e4f5a.epub', name: 'Beans.EPUB' })
+        expect(views.favouriteOf({ kind: 'asset', target: 'assets/photo.a1b2c3d4.png' }, 'photo.png')).toBeNull()
+        // Before its tab has a title, there is no name to keep.
+        expect(views.favouriteOf({ kind: 'asset', target: 'assets/guide.a1b2c3d4.pdf' })).toBeNull()
+    })
+
     it('describes a favourite by its tab title and icon, and opens the View it names', () => {
         const views = favourites()
         expect(views.describe({ kind: 'kanban.board', concept: 'Garden' })).toEqual({

@@ -518,6 +518,18 @@ describe('View favourites from a tab (ADR 0169)', () => {
         expect(getFavourites()).toEqual(['Kitchen', board, 'Hallway'])
     })
 
+    it('gives the View favourites a tab\'s title, which a PDF\'s or an EBook\'s favourite keeps as its name', async () => {
+        setFavourites([], async () => {})
+        const fileFavourites = {
+            ...viewFavourites,
+            favouriteOf: (view: { kind: string; target: string }, title?: string) => (title === undefined ? null : { kind: view.kind, concept: view.target, name: title }),
+        }
+        const { commands } = setup({ viewFavourites: fileFavourites })
+        const fileTab: ContextMenuTarget = { kind: 'tab', panelId: 'asset:guide.pdf', view: { kind: 'asset', target: 'guide.pdf' }, title: 'Garden Guide.pdf' }
+        await commands.execute(FAVOURITE_ADD, fileTab)
+        expect(getFavourites()).toEqual([{ kind: 'asset', concept: 'guide.pdf', name: 'Garden Guide.pdf' }])
+    })
+
     it('moves a View favourite by its identity', async () => {
         setFavourites(['Kitchen', board], async () => {})
         const { commands } = setup({ viewFavourites })

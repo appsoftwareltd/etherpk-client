@@ -16,6 +16,8 @@ starts at 0.9.3.
 - **More for EBooks.** Read an EBook aloud with a voice on your device, look up a word in a StarDict dictionary you add, set the
   text in Literata or Atkinson Hyperlegible, and export your highlights to a page. The time left learns how fast you read. The
   demo graph has an EBook to try.
+- **Favourite a PDF or an EBook from its tab.** Right-click its tab, or long-press it on a phone, and choose
+  **Add to favourites**.
 
 ## 0.20.0 - 2026-11-06
 
