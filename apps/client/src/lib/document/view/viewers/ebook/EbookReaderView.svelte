@@ -474,6 +474,10 @@
     const bookmarkLabel = $derived(bookmarked ? "Remove the bookmark here" : "Add a bookmark here");
     const pressedOrSelected = $derived(!!reader.selection || !!reader.pressedHighlight);
     const backTo = $derived(reader.place?.backTo ?? null);
+    const offersBack = $derived(backTo !== null && !pressedOrSelected);
+    // On a desktop the place stays at the foot of the page, as a PDF's page count does. Where the toolbar is
+    // on the Command Bar it shows when the place changes, and goes for a selection; Back keeps it.
+    const progressGone = $derived(inBar && !offersBack && (!reader.progressShowing || pressedOrSelected));
 
     // The Highlight text tool: a selection made with it on is highlighted as the pointer lets go.
     $effect(() => {
@@ -804,14 +808,18 @@
                     {/key}
                     <div class="etherpk-ebook-nav" data-in-bar={inBar || undefined} data-buttons-gone={reader.controlsHidden || undefined} role="group" aria-label="Turn the page" data-testid="ebook-nav">
                         {@render turnPage("previous", "ebook-tool etherpk-ebook-edge", "ebook-previous-edge")}
-                        {#if backTo !== null && !pressedOrSelected}
-                            <!-- After a jump, in place of the progress words, until the person goes back or reads on. -->
-                            <button type="button" class="etherpk-ebook-back" onclick={() => reader.goBack()} data-testid="ebook-back">{@render icon("ebook-back")}Back to {Math.round(backTo * 100)}%</button>
-                        {:else}
-                            <div class="etherpk-ebook-progress" data-gone={!reader.progressShowing || pressedOrSelected || undefined} data-testid="ebook-progress">
-                                <span class="px-1 text-sm whitespace-nowrap text-(--gk-text-default)">{progressWords}</span>
-                            </div>
-                        {/if}
+                        <!-- On a desktop it holds the page buttons too, as a PDF's does. On a touch screen or in a
+                             narrow window they move out to the edges of the view, near a thumb. -->
+                        <div class="etherpk-ebook-progress" data-gone={progressGone || undefined} data-testid="ebook-progress">
+                            {#if !inBar}{@render turnPage("previous", "ebook-tool etherpk-ebook-inner", "ebook-previous-inner")}{/if}
+                            {#if offersBack && backTo !== null}
+                                <!-- After a jump, in place of the progress words, until the person goes back or reads on. -->
+                                <button type="button" class="etherpk-ebook-back" onclick={() => reader.goBack()} data-testid="ebook-back">{@render icon("ebook-back")}Back to {Math.round(backTo * 100)}%</button>
+                            {:else}
+                                <span class="min-w-0 truncate px-1 text-sm text-(--gk-text-default)">{progressWords}</span>
+                            {/if}
+                            {#if !inBar}{@render turnPage("next", "ebook-tool etherpk-ebook-inner", "ebook-next-inner")}{/if}
+                        </div>
                         {@render turnPage("next", "ebook-tool etherpk-ebook-edge", "ebook-next-edge")}
                     </div>
                     {#if fileActions.length > 0}
@@ -956,33 +964,32 @@
         background: var(--gk-surface-1);
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
     }
+    /* Only its buttons take the pointer, so a tap on the words reaches the page. */
     .etherpk-ebook-progress {
         grid-column: 2;
         display: flex;
         align-items: center;
-        min-height: 2rem;
+        gap: 0.25rem;
+        min-height: 2.5rem;
         max-width: calc(100vw - 8rem);
         padding: 0 0.25rem;
         border-radius: 0.75rem;
-        overflow: hidden;
         pointer-events: none;
     }
+    .etherpk-ebook-progress > :global(button) {
+        pointer-events: auto;
+    }
     .etherpk-ebook-back {
-        grid-column: 2;
         display: inline-flex;
         align-items: center;
         gap: 0.375rem;
-        min-height: 2.25rem;
-        padding: 0 0.75rem;
-        border: 1px solid var(--gk-border-strong, var(--gk-surface-2));
-        border-radius: 0.75rem;
-        background: var(--gk-surface-1);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+        min-height: 2rem;
+        padding: 0 0.5rem;
+        border-radius: 0.5rem;
         color: var(--gk-text-default);
         font-size: 0.875rem;
         font-weight: 500;
         white-space: nowrap;
-        pointer-events: auto;
     }
     .etherpk-ebook-back:hover {
         background: var(--gk-surface-2);
@@ -992,6 +999,7 @@
         outline-offset: 2px;
     }
     @media (pointer: coarse) {
+        .etherpk-ebook-progress,
         .etherpk-ebook-back {
             min-height: 2.75rem;
         }
@@ -1012,6 +1020,9 @@
     @media (pointer: coarse), (width < 40rem) {
         .etherpk-ebook-reader :global(.ebook-tool.etherpk-ebook-edge) {
             display: inline-flex;
+        }
+        .etherpk-ebook-reader :global(.ebook-tool.etherpk-ebook-inner) {
+            display: none;
         }
     }
     .etherpk-ebook-nav[data-buttons-gone] {
