@@ -5,6 +5,18 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Read EBooks.** An EPUB in a graph opens in its own tab, with contents, page turns, find and your place kept between
+  devices. Your text size, line spacing, alignment and hyphenation apply over the EBook's own layout. Highlights, notes and bookmarks are kept beside the EBook, private to you, and a
+  highlight can be copied to your journal with a link back to the passage. An EBook reads in a document of its own, with
+  no network and no way into the rest of the app, so an EBook's scripts do not run. An EBook protected by DRM does not open.
+- **More for EBooks.** Read an EBook aloud with a voice on your device, look up a word in a StarDict dictionary you add, set the
+  text in Literata or Atkinson Hyperlegible, and export your highlights to a page. The time left learns how fast you read. The
+  demo graph has an EBook to try.
+
 ## 0.20.0 - 2026-11-06
 
 ### Client

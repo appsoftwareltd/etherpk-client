@@ -5,6 +5,7 @@ import { building } from '$app/env'
 import { SIGNED_IN_STATUS_PATH, applySecurityHeaders } from '@appsoftwareltd/etherpk-shared'
 import { createHandleError, logRequest } from '@appsoftwareltd/etherpk-shared/server/request-log'
 import * as env from '$app/env/private'
+import { EBOOK_FRAME_PATH } from '#lib/document/ebook/ebook-frame-policy.js'
 import { initLoggerFromEnv, logger, shutdownLogger } from '#lib/server/logger.js'
 import { parseOptionalManagedClientAuthConfig } from '#lib/server/auth/config.js'
 import {
@@ -81,6 +82,11 @@ export const handle: Handle = async ({ event, resolve }) => {
     return response
 }
 
+/** The app frames the page an EBook reads in, and only the app: its own policy says so too (ADR 0181). */
+function letAppFrameEbookPage(pathname: string, response: Response): void {
+    if (pathname === EBOOK_FRAME_PATH) response.headers.set('X-Frame-Options', 'SAMEORIGIN')
+}
+
 async function respond(event: RequestEvent, resolve: Parameters<Handle>[0]['resolve']): Promise<Response> {
     const themePreference = normalizeThemePreference(event.cookies.get(THEME_COOKIE_NAME))
     const systemPrefersDark = event.request.headers.get('sec-ch-prefers-color-scheme') === 'dark'
@@ -148,5 +154,6 @@ async function respond(event: RequestEvent, resolve: Parameters<Handle>[0]['reso
     // The CSP itself comes from kit.csp, which is the only thing that can nonce SvelteKit's
     // own inline scripts. Everything static is set here.
     applySecurityHeaders(response, { https: event.url.protocol === 'https:' })
+    letAppFrameEbookPage(event.url.pathname, response)
     return response
 }

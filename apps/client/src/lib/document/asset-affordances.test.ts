@@ -144,6 +144,14 @@ describe('a plain click on a link to a file', () => {
         expect(assetClickCommand('../assets/guide.a1b2c3d4.pdf#page=4')).toBe('asset.open')
     })
 
+    it('opens an EBook in its tab, at a place when the link names one', () => {
+        const contributions = createContributionRegistry()
+        registerAssetViewer(contributions, { extensions: ['epub'], component: (() => {}) as never, label: 'EBook' })
+        setActiveContributionRegistry(contributions)
+        expect(assetClickCommand('../assets/garden-notes.a1b2c3d4.epub')).toBe('asset.open')
+        expect(assetClickCommand('../assets/garden-notes.a1b2c3d4.epub#cfi=epubcfi%28%2F6%2F4%29')).toBe('asset.open')
+    })
+
     it('downloads a PDF when nothing can show it', () => {
         expect(assetClickCommand('../assets/guide.a1b2c3d4.pdf')).toBe('asset.download')
     })

@@ -44,6 +44,7 @@
         onSaved,
         autofocus = false,
         initialPrompt = "",
+        fileNoun = "PDF",
     }: {
         chats: AgentChats;
         chatId: string;
@@ -64,6 +65,8 @@
         autofocus?: boolean;
         /** What the message field starts with: the text of the line `/Agent` was typed on. Not sent until the person sends it. */
         initialPrompt?: string;
+        /** A chat about a file: what to call the file when asking for a selection. */
+        fileNoun?: string;
     } = $props();
 
     /** How long Copy says it worked. */
@@ -531,7 +534,7 @@
                         <RobotIcon class="size-8 text-(--gk-text-muted)" />
                         <p class="ac-visually-hidden">Chat with your agent.</p>
                         {#if transient}
-                            <p class="ac-muted" data-testid="agent-chat-grant-hint">{initialPrompt === "" ? "Select text in the PDF to send to your agent" : "Send selected text to your agent"}</p>
+                            <p class="ac-muted" data-testid="agent-chat-grant-hint">{initialPrompt === "" ? `Select text in the ${fileNoun} to send to your agent` : "Send selected text to your agent"}</p>
                         {:else}
                         <p class="ac-muted" data-testid="agent-chat-grant-hint">{GRANT_HINTS[chat.grant]}</p>
                         <p class="ac-muted">{noDocument ? "Chat turn data is only added to today's journal when you save it." : "Chat turn data is only added to the document when you save it."}</p>

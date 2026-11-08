@@ -11,6 +11,7 @@ import { readPackageVersion, resolveBuildInfo } from '../../packages/shared/src/
 import { devServerHttps } from '../../packages/shared/src/dev-server/dev-server-https.ts'
 import { cspDirectives } from '../../packages/shared/src/security/csp.ts'
 import { PLAYER_FRAME_HOSTS } from '../../packages/shared/src/security/frame-hosts.ts'
+import { ebookFramePlugin } from './ebook-frame-plugin.ts'
 import { demoGraphPlugin } from './demo-graph-plugin.ts'
 import { devDictionariesPlugin } from './dev-dictionaries-plugin.ts'
 import { devPostcodesPlugin } from './dev-postcodes-plugin.ts'
@@ -89,6 +90,8 @@ export default defineConfig({
             serviceWorker: { register: false }
         }),
 
+        // The page an EBook reads in, with foliate-js as its one script (ADR 0181).
+        ebookFramePlugin(),
         // The Demo Graph bundle list (ADR 0069); the files are static assets.
         demoGraphPlugin(),
         // The locally built spelling dictionaries, in development only (ADR 0095).

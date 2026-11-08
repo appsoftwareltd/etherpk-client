@@ -60,6 +60,8 @@ export function isImmutableAppFile(pathname: string): boolean {
 export function isOnDemandAppFile(pathname: string): boolean {
     return (
         /^\/_app\/immutable\/assets\/Xiaolai-Regular-[^/]+\.woff2$/.test(pathname) ||
+        // An EBook's reading fonts, for a person who chooses one.
+        /^\/_app\/immutable\/assets\/(?:literata|atkinson-hyperlegible)-latin-[^/]+\.woff2$/.test(pathname) ||
         isPdfDataFile(pathname)
     )
 }

@@ -26,12 +26,15 @@ import { canCopyImages } from './view/clipboard-image'
 /** One entry in the cluster: the shared inline-action shape (`inline-action.ts`), under the asset's name. */
 export type AssetAction = InlineAction
 
+/** The files a person reads, so a click opens them. Any other file a viewer can show still downloads on a click. */
+const READS_IN_A_TAB = new Set(['.pdf', '.epub'])
+
 /**
- * What a plain click on a link to a file runs, on every surface that draws one: a PDF reads in its tab
- * when a viewer can show it, and any other file downloads.
+ * What a plain click on a link to a file runs, on every surface that draws one: a PDF or an EBook reads in
+ * its tab when a viewer can show it, and any other file downloads.
  */
 export function assetClickCommand(ref: string): typeof ASSET_OPEN | typeof ASSET_DOWNLOAD {
-    return assetExtension(ref) === '.pdf' && canOpenAsset(ref) ? ASSET_OPEN : ASSET_DOWNLOAD
+    return READS_IN_A_TAB.has(assetExtension(ref) ?? '') && canOpenAsset(ref) ? ASSET_OPEN : ASSET_DOWNLOAD
 }
 
 /**

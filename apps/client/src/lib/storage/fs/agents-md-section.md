@@ -31,7 +31,9 @@ etherpk/    settings.json, quick-notes.json,  app-managed graph settings, quick 
             protection.json,                  key material,
             theme-<id>.jsonc,                 website themes
             pdf-<hash>.json,                  a PDF's annotations
-            pdf-bookmarks.json                and PDF bookmarks
+            pdf-bookmarks.json,               and PDF bookmarks
+            ebook-<hash>.json,                an EBook's highlights
+            ebook-bookmarks.json              and EBook bookmarks
 AGENTS.md                                     this file
 ```
 
@@ -45,7 +47,8 @@ AGENTS.md                                     this file
   bookmarks, the lines they marked to come back to. EtherPK writes it, so do not edit it. `pdf-<hash>.json` holds the
   user's annotations and form values on one PDF, under the hash of its bytes, and `pdf-bookmarks.json`
   the pages they marked across every PDF. EtherPK writes both, so do not edit them, and do not change
-  a PDF in `assets/`: a changed file has a new hash and loses them. `dictionary.txt` is the graph dictionary:
+  a PDF in `assets/`: a changed file has a new hash and loses them. `ebook-<hash>.json` and
+  `ebook-bookmarks.json` hold the same for EBooks, and the same rules apply. `dictionary.txt` is the graph dictionary:
   words spell check accepts in this graph, one per line, sorted. You may add a word to it (one
   per line, keeping the order) - EtherPK merges the file before it next writes it. `theme-<id>.jsonc` holds a website theme
   the user copied into the graph (templates, stylesheet and script as JSON strings, under a

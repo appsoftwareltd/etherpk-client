@@ -204,6 +204,7 @@ const MIME_TYPES: Record<string, string> = {
     avif: 'image/avif',
     bmp: 'image/bmp',
     pdf: 'application/pdf',
+    epub: 'application/epub+zip',
     txt: 'text/plain',
     csv: 'text/csv',
     json: 'application/json',

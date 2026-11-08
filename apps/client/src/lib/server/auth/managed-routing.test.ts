@@ -26,6 +26,10 @@ describe('managed Client automatic SSO', () => {
         },
     )
 
+    it('leaves the page an EBook reads in alone, because the app frames it', () => {
+        expect(shouldAttemptManagedClientSso({ ...documentRequest, pathname: '/__etherpk-ebook/reader.html' })).toBe(false)
+    })
+
     it('does not repeat a silent check on its immediate return request', () => {
         expect(shouldAttemptManagedClientSso({ ...documentRequest, attempted: true })).toBe(false)
     })

@@ -33,6 +33,9 @@ import type { QuickNote } from '#lib/document/quick-notes.js'
 import { QUICK_NOTES_FILE, quickNotesFileText } from '#lib/storage/fs/quick-notes-file.js'
 import type { Bookmark } from '#lib/document/bookmarks/bookmarks.js'
 import { BOOKMARKS_FILE, bookmarksFileText } from '#lib/storage/fs/bookmarks-file.js'
+import { ebookHashFromStateFile } from '#lib/document/ebook/file-ebook-state.js'
+import type { EbookBookmark } from '#lib/document/ebook/ebook-bookmarks.js'
+import { EBOOK_BOOKMARKS_FILE, ebookBookmarksFileText } from '#lib/storage/fs/ebook-bookmarks-file.js'
 import { pdfHashFromStateFile } from '#lib/document/pdf/file-pdf-state.js'
 import type { PdfBookmark } from '#lib/document/pdf/pdf-bookmarks.js'
 import { PDF_BOOKMARKS_FILE, pdfBookmarksFileText } from '#lib/storage/fs/pdf-bookmarks-file.js'
@@ -79,6 +82,8 @@ export interface MirrorMetadata {
     bookmarks?: Bookmark[]
     /** The copier's own [[PDF Bookmark]]s, written as `etherpk/pdf-bookmarks.json`. */
     pdfBookmarks?: PdfBookmark[]
+    /** The copier's own EBook bookmarks, written as `etherpk/ebook-bookmarks.json`. */
+    ebookBookmarks?: EbookBookmark[]
     /** The [[Graph Dictionary]] (ADR 0095), written as `etherpk/dictionary.txt`. */
     spellingDictionary?: string[]
     themes?: GraphTheme[]
@@ -120,6 +125,8 @@ export interface MirrorSource {
      * that have to be read, so this is asked apart from the metadata. Null: not known right now.
      */
     pdfStates?(): Promise<{ name: string; text: string }[] | null>
+    /** The copier's EBook state files, each `etherpk/ebook-<hash>.json`, likewise. */
+    ebookStates?(): Promise<{ name: string; text: string }[] | null>
     /**
      * Every [[Asset]] the graph holds, by id. Null when the question cannot be answered right
      * now - offline, or no asset storage - which stops the asset pass rather than guessing.
@@ -361,10 +368,16 @@ function isPdfMetadataFile(name: string): boolean {
     return name === PDF_BOOKMARKS_FILE || pdfHashFromStateFile(name) !== null
 }
 
+/** A person's EBook state or EBook bookmarks file. */
+function isEbookMetadataFile(name: string): boolean {
+    return name === EBOOK_BOOKMARKS_FILE || ebookHashFromStateFile(name) !== null
+}
+
 /** Whether a file in `etherpk/` is one {@link MirrorSource.metadata} writes or removes. */
 export function isMirrorMetadataFileName(name: string): boolean {
     return (
         isPdfMetadataFile(name) ||
+        isEbookMetadataFile(name) ||
         name === 'settings.json' ||
         name === 'graph.json' ||
         name === QUICK_NOTES_FILE ||
@@ -460,6 +473,7 @@ export function createLocalMirror(
     /** Document links to attachments the graph does not hold; reported, never fetched. */
     let danglingLinks: MirrorDanglingLink[] = []
     let skipped: string[] = []
+    let stateFilesLeftOut: string[] = []
     let collisions: MirrorNameCollision[] = []
     let assetCount = 0
 
@@ -500,7 +514,7 @@ export function createLocalMirror(
             lastSyncAt,
             documents: written.size,
             assets: assetCount,
-            skipped: [...skipped],
+            skipped: [...skipped, ...stateFilesLeftOut],
             collisions: [...collisions],
             missingAssets: [...missingAssets],
             danglingLinks: [...danglingLinks],
@@ -931,7 +945,7 @@ export function createLocalMirror(
      * documents. Written under the same compare-first rule as everything else.
      */
     async function writeGraphMetadata(): Promise<void> {
-        await writePdfStates()
+        await writePersonStateFiles()
         const meta = source.metadata?.()
         if (!meta) return
         // The settings carry the copier's own favourites (ADR 0159), so the file follows them even
@@ -949,7 +963,7 @@ export function createLocalMirror(
         // The copier's Bookmarks (ADR 0159), so the folder opened as a Filesystem graph, or
         // imported, keeps the lines they marked.
         if (meta.bookmarks) await writeTextIfChanged(BOOKMARKS_FILE, bookmarksFileText(meta.bookmarks))
-        await writePdfBookmarksFile(meta.pdfBookmarks)
+        await writeReadingBookmarksFiles(meta)
         // The Graph Dictionary (ADR 0095). No words, no file: a graph that never added one does
         // not grow an empty file; one that had words and removed them all has it emptied.
         if (meta.spellingDictionary) {
@@ -982,14 +996,23 @@ export function createLocalMirror(
         else if (meta.protection === null && (await adapter.exists('etherpk', PROTECTION_FILE))) await adapter.remove('etherpk', PROTECTION_FILE)
     }
 
-    /** The copier's own PDF Bookmarks. Not known right now (undefined) leaves the file alone. */
-    async function writePdfBookmarksFile(bookmarks: readonly PdfBookmark[] | undefined): Promise<void> {
-        if (bookmarks) await writeTextIfChanged(PDF_BOOKMARKS_FILE, pdfBookmarksFileText(bookmarks))
+    /** The copier's own PDF and EBook bookmarks. Not known right now (undefined) leaves a file alone. */
+    async function writeReadingBookmarksFiles({ pdfBookmarks, ebookBookmarks }: { pdfBookmarks?: readonly PdfBookmark[]; ebookBookmarks?: readonly EbookBookmark[] }): Promise<void> {
+        if (pdfBookmarks) await writeTextIfChanged(PDF_BOOKMARKS_FILE, pdfBookmarksFileText(pdfBookmarks))
+        if (ebookBookmarks) await writeTextIfChanged(EBOOK_BOOKMARKS_FILE, ebookBookmarksFileText(ebookBookmarks))
     }
 
-    /** The copier's own PDF annotations, one file per PDF. A file no PDF names goes. */
-    async function writePdfStates(): Promise<void> {
-        const files = await source.pdfStates?.()
+    /** A list that could not be brought up to date is named, so an Export does not call itself complete. */
+    async function writePersonStateFiles(): Promise<void> {
+        const pdfs = await source.pdfStates?.()
+        const ebooks = await source.ebookStates?.()
+        await writeStateFiles(pdfs, pdfHashFromStateFile)
+        await writeStateFiles(ebooks, ebookHashFromStateFile)
+        stateFilesLeftOut = [...(pdfs === null ? ['Your annotations on PDFs'] : []), ...(ebooks === null ? ['Your highlights on EBooks'] : [])]
+    }
+
+    /** The copier's own state on PDFs or EBooks, one file for each. A file none of them names goes. */
+    async function writeStateFiles(files: { name: string; text: string }[] | null | undefined, hashOfFile: (name: string) => string | null): Promise<void> {
         if (!files) return
         const keep = new Set(files.map((file) => file.name))
         for (const file of files) await writeTextIfChanged(file.name, file.text)
@@ -1000,7 +1023,7 @@ export function createLocalMirror(
             // No etherpk/ yet: nothing stale to remove.
         }
         for (const entry of entries) {
-            if (pdfHashFromStateFile(entry.name) !== null && !keep.has(entry.name)) await adapter.remove('etherpk', entry.name)
+            if (hashOfFile(entry.name) !== null && !keep.has(entry.name)) await adapter.remove('etherpk', entry.name)
         }
     }
 

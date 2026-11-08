@@ -8,6 +8,7 @@
  */
 import * as Y from 'yjs'
 import { currentEpoch, deriveJournalIdSecret, journalDocId, keyringReader, type KeyringSource } from '#lib/crypto/index.js'
+import { sanitizeEbookBookmarks, type EbookBookmark, type EbookBookmarksChange } from '#lib/document/ebook/ebook-bookmarks.js'
 import { sanitizePdfBookmarks, type PdfBookmark, type PdfBookmarksChange } from '#lib/document/pdf/pdf-bookmarks.js'
 import { derivePdfStateIdSecret, pdfStateDocId } from '#lib/document/pdf/state-doc-id.js'
 import { performanceRecorder } from '#lib/diagnostics/performance.js'
@@ -229,6 +230,20 @@ export interface GraphSync {
      * devices reaches it with nothing stored to find it by (`pdf/state-doc-id.ts`).
      */
     pdfStateDocId(member: string, hash: string): Promise<string>
+    /**
+     * Which EBooks a person has highlights on: the root doc's `ebookStates:<member>` map of hash to the
+     * time it was added, how an [[Export]] and a [[Local Mirror]] find private documents nothing lists.
+     */
+    ebookStateIndex(member: string): { hashes(): string[]; add(hash: string): void; remove(hash: string): void }
+    /**
+     * One person's EBook bookmarks: the root doc's `ebookBookmarks:<member>` map of id to entry, so two of
+     * their devices that mark an EBook while apart merge entry by entry.
+     */
+    ebookBookmarks(member: string): {
+        list(): EbookBookmark[]
+        apply(change: EbookBookmarksChange): void
+        observe(listener: () => void): () => void
+    }
     /**
      * Which PDFs a person has annotations on: the root doc's `pdfStates:<member>` map of
      * hash to when it was added. Written once per PDF, not per change. It is how an [[Export]] and a
@@ -579,10 +594,10 @@ function storedBookmark(value: unknown): unknown {
 }
 
 /** The per-member list types in the root doc (ADR 0159), each named `<kind>:<memberKey>`. */
-const MEMBER_LIST_KINDS = ['favourites', 'quickNotes', 'bookmarks', 'memberFlags', 'pdfStates', 'pdfBookmarks'] as const
+const MEMBER_LIST_KINDS = ['favourites', 'quickNotes', 'bookmarks', 'memberFlags', 'pdfStates', 'pdfBookmarks', 'ebookStates', 'ebookBookmarks'] as const
 type MemberListKind = (typeof MEMBER_LIST_KINDS)[number]
 /** Which Yjs type each kind is, so a type received but never asked for by name is read as the right one. */
-const MEMBER_LIST_IS_ARRAY: Record<MemberListKind, boolean> = { favourites: true, quickNotes: true, bookmarks: false, memberFlags: false, pdfStates: false, pdfBookmarks: false }
+const MEMBER_LIST_IS_ARRAY: Record<MemberListKind, boolean> = { favourites: true, quickNotes: true, bookmarks: false, memberFlags: false, pdfStates: false, pdfBookmarks: false, ebookStates: false, ebookBookmarks: false }
 
 /** `kind` and member key of a per-member type's name, or null for any other root-doc type. */
 function memberListName(name: string): { kind: MemberListKind; memberKey: string } | null {
@@ -1942,6 +1957,35 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                 observe(listener) {
                     map.observe(listener)
                     return () => map.unobserve(listener)
+                },
+            }
+        },
+        ebookBookmarks(member) {
+            requireMemberKey(member, 'ebookBookmarks')
+            const map = root.doc.getMap<unknown>(`ebookBookmarks:${member}`)
+            return {
+                list: () => sanitizeEbookBookmarks([...map.values()]),
+                apply(change) {
+                    root.doc.transact(() => {
+                        for (const id of change.remove) map.delete(id)
+                        for (const bookmark of change.put) map.set(bookmark.id, bookmark)
+                    })
+                },
+                observe(listener) {
+                    map.observe(listener)
+                    return () => map.unobserve(listener)
+                },
+            }
+        },
+        ebookStateIndex(member) {
+            const map = root.doc.getMap<number>(`ebookStates:${member}`)
+            return {
+                hashes: () => [...map.keys()],
+                add(hash) {
+                    if (!map.has(hash)) map.set(hash, Date.now())
+                },
+                remove(hash) {
+                    map.delete(hash)
                 },
             }
         },

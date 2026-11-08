@@ -31,6 +31,8 @@ export interface MirrorSourceDeps {
     metadata?: () => MirrorMetadata | undefined
     /** The person's PDF state files, read from their private documents. */
     pdfStates?: () => Promise<{ name: string; text: string }[] | null>
+    /** The person's EBook state files, read from their private documents. */
+    ebookStates?: () => Promise<{ name: string; text: string }[] | null>
     /**
      * Subscribe to [[Graph Name]] and [[Graph Settings]] changes. They live in the root doc's
      * `meta` map rather than the registry, so the store's own change signal never mentions them
@@ -55,6 +57,7 @@ export function createMirrorSource({
     listAssetIds,
     metadata,
     pdfStates,
+    ebookStates,
     onMetadataChange,
 }: MirrorSourceDeps): MirrorSource {
     return {
@@ -64,6 +67,7 @@ export function createMirrorSource({
         docsBehind: (docIds) => store.docsBehind(docIds),
         metadata,
         ...(pdfStates ? { pdfStates } : {}),
+        ...(ebookStates ? { ebookStates } : {}),
         ...(assets && listAssetIds
             ? {
                   async listGraphAssets(): Promise<readonly string[] | null> {

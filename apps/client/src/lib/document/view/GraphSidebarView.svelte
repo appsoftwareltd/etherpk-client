@@ -49,6 +49,7 @@
         type ViewFavourite,
     } from "#lib/document/favourite-entry.js";
     import BookmarksSection from "./BookmarksSection.svelte";
+    import EbookBookmarksSection from "./EbookBookmarksSection.svelte";
     import PdfBookmarksSection from "./PdfBookmarksSection.svelte";
     import { getActiveLayoutController, type ViewRef } from "#lib/layout/index.js";
     import { prefersMobileLayout } from "#lib/layout/breakpoint.js";
@@ -951,6 +952,7 @@
     <!-- ── Bookmarks ──────────────────────────────────────────────────────────── -->
     <BookmarksSection />
     <PdfBookmarksSection />
+    <EbookBookmarksSection />
 
     <!-- ── Recents ────────────────────────────────────────────────────────────── -->
     <section>
@@ -982,7 +984,7 @@
                         >
                             <span class="-ml-5 inline-flex w-3.5 shrink-0 text-(--gk-text-muted)" data-testid="recent-pdf-icon">
                                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
-                                {@html iconSvg("pdf", { size: 14 })}
+                                {@html iconSvg(/\.epub$/i.test(entry.name) ? "book" : "pdf", { size: 14 })}
                             </span>
                             <span class="min-w-0 flex-1 truncate">{entry.name}</span>
                         </button>

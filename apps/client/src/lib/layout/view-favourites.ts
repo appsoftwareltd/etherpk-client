@@ -52,10 +52,10 @@ function viewOf(entry: ViewRegistryEntry | undefined, favourite: ViewFavourite):
     return entry.soleTarget !== undefined && favourite.concept === undefined ? { kind: favourite.kind, target: entry.soleTarget } : null
 }
 
-/** A PDF names itself from what was stored, as a synced Asset's own target is a bare id. */
+/** A PDF or an EBook names itself from what was stored, as a synced Asset's own target is a bare id. */
 function pdfRow({ kind, concept, name }: ViewFavourite): ViewFavouriteRow | null {
     if (kind !== 'asset' || concept === undefined) return null
-    return { title: name ?? concept, icon: 'pdf', view: { kind: 'asset', target: concept } }
+    return { title: name ?? concept, icon: /\.epub$/i.test(name ?? concept) ? 'book' : 'pdf', view: { kind: 'asset', target: concept } }
 }
 
 export function createViewFavourites(deps: ViewFavouritesDeps): ViewFavourites {

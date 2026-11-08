@@ -1,5 +1,5 @@
 /**
- * The Client's service worker (ADR 0142). It does three things:
+ * The Client's service worker (ADR 0142). It does four things:
  *
  * 1. **Starts the app with no network.** Each version's files (the build's hashed files and the
  *    icons and manifest) are cached when the worker installs, and served from that cache. A few
@@ -11,6 +11,7 @@
  * 2. **Keeps extension files.** A file under `/extensions/` is fetched from the network first, so
  *    a release taken out of the directory is still refused, and kept for use offline.
  * 3. **Hosts the Theme editor's preview** (ADR 0082), unchanged from before.
+ * 4. **Keeps the page an EBook reads in** (ADR 0181), so an EBook kept on the device opens with no network.
  *
  * Every other request is not answered here at all: no `respondWith`, so the browser handles it
  * exactly as if there were no worker. `respondWith(fetch(request))` is NOT a pass-through. It
@@ -38,6 +39,7 @@ import {
     shellMatchesBuild,
     splitAppFiles,
 } from '#lib/offline/app-shell.js'
+import { EBOOK_FRAME_PATH } from '#lib/document/ebook/ebook-frame-policy.js'
 
 // SvelteKit documents `immutable` as empty in development. `import.meta.env.DEV` is not usable
 // here: SvelteKit's build of this worker compiles it to true.
@@ -100,6 +102,8 @@ async function cacheAppFiles(): Promise<void> {
     await cacheFiles(cache, [...workerFiles])
     // The shell is not worth failing the install for: the next app page refreshes it.
     await refreshShell().catch(() => {})
+    // Nor is the page an EBook reads in: it is kept when first opened instead.
+    await refreshEbookFrame().catch(() => {})
 }
 
 /**
@@ -156,6 +160,32 @@ async function refreshShell(): Promise<void> {
         return
     }
     await (await caches.open(APP_CACHE)).put(SHELL_PATH, response)
+}
+
+/** Fetch the page an EBook reads in, for this version's cache. Its name has no hash, so no earlier copy will do. */
+async function refreshEbookFrame(): Promise<void> {
+    const response = await fetch(EBOOK_FRAME_PATH, { cache: 'no-store' })
+    if (response.ok) await (await caches.open(APP_CACHE)).put(EBOOK_FRAME_PATH, response)
+}
+
+/**
+ * The page an EBook reads in, with the headers it was served with (ADR 0181): this version's copy, else the
+ * network, kept for next time. With no network it falls back on an older version's copy, and if that one
+ * speaks an older protocol the tab says to reload.
+ */
+async function ebookFrame(request: Request): Promise<Response> {
+    const cache = await caches.open(APP_CACHE)
+    const held = await cache.match(EBOOK_FRAME_PATH)
+    if (held) return held
+    try {
+        const response = await fetch(request)
+        if (response.ok) await cache.put(EBOOK_FRAME_PATH, response.clone())
+        return response
+    } catch (error) {
+        const older = await caches.match(EBOOK_FRAME_PATH)
+        if (older) return older
+        throw error
+    }
 }
 
 /**
@@ -344,11 +374,15 @@ sw.addEventListener('fetch', (event) => {
         return
     }
     if (request.method !== 'GET' || DEV) return
-    if (APP_FILES.has(url.pathname) || isImmutableAppFile(url.pathname)) {
-        event.respondWith(appFile(request))
-    } else if (request.mode === 'navigate' && isAppPagePath(url.pathname)) {
-        event.respondWith(appPage(event))
-    } else if (url.pathname.startsWith('/extensions/')) {
-        event.respondWith(extensionFile(request))
-    }
+    const answer = appAnswer(event, url)
+    if (answer) event.respondWith(answer)
 })
+
+/** The answer to a request for one of the app's own files or pages, or null to leave it to the browser. */
+function appAnswer(event: FetchEvent, url: URL): Promise<Response> | null {
+    const { request } = event
+    if (url.pathname === EBOOK_FRAME_PATH) return ebookFrame(request)
+    if (APP_FILES.has(url.pathname) || isImmutableAppFile(url.pathname)) return appFile(request)
+    if (request.mode === 'navigate' && isAppPagePath(url.pathname)) return appPage(event)
+    return url.pathname.startsWith('/extensions/') ? extensionFile(request) : null
+}

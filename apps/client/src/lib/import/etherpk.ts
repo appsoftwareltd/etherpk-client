@@ -7,6 +7,9 @@
 
 import { type QuickNote, sanitizeQuickNotes } from '#lib/document/quick-notes.js'
 import { type Bookmark, sanitizeBookmarks } from '#lib/document/bookmarks/bookmarks.js'
+import { sanitizeEbookBookmarks, type EbookBookmark } from '#lib/document/ebook/ebook-bookmarks.js'
+import { sanitizeEbookState, type EbookState } from '#lib/document/ebook/ebook-state.js'
+import { ebookHashFromStateFile } from '#lib/document/ebook/file-ebook-state.js'
 import { pdfHashFromStateFile } from '#lib/document/pdf/file-pdf-state.js'
 import { sanitizePdfBookmarks, type PdfBookmark } from '#lib/document/pdf/pdf-bookmarks.js'
 import { sanitizePdfState, type PdfState } from '#lib/document/pdf/pdf-state.js'
@@ -64,6 +67,30 @@ async function readPdfStates(content: readonly SourceFile[], report: ReportEntry
     }
     const bookmarks = await readImportedPdfBookmarks(content, report)
     return { ...(pdfStates.length > 0 ? { pdfStates } : {}), ...(bookmarks.length > 0 ? { pdfBookmarks: bookmarks } : {}) }
+}
+
+/** A person's highlights on EBooks and their EBook bookmarks, keyed by the bytes' hash as a PDF's are. */
+async function readEbookFiles(content: readonly SourceFile[], report: ReportEntry[]): Promise<{ ebookStates?: { hash: string; state: EbookState }[]; ebookBookmarks?: EbookBookmark[] }> {
+    const ebookStates: { hash: string; state: EbookState }[] = []
+    for (const file of content) {
+        const hash = file.path.startsWith('etherpk/') ? ebookHashFromStateFile(file.path.slice('etherpk/'.length)) : null
+        if (hash === null) continue
+        try {
+            ebookStates.push({ hash, state: sanitizeEbookState(JSON.parse(await readText(file))) })
+        } catch {
+            report.push({ category: 'unsupported', detail: `${file.path} is malformed, so that EBook's highlights were not carried over` })
+        }
+    }
+    let ebookBookmarks: EbookBookmark[] = []
+    const marks = findFile([...content], 'etherpk/ebook-bookmarks.json')
+    if (marks) {
+        try {
+            ebookBookmarks = sanitizeEbookBookmarks(JSON.parse(await readText(marks)))
+        } catch {
+            report.push({ category: 'unsupported', detail: 'etherpk/ebook-bookmarks.json is malformed, so EBook bookmarks were not carried over' })
+        }
+    }
+    return { ...(ebookStates.length > 0 ? { ebookStates } : {}), ...(ebookBookmarks.length > 0 ? { ebookBookmarks } : {}) }
 }
 
 export async function convertEtherpk(files: SourceFile[], control?: ImportControl): Promise<ConvertedGraph> {
@@ -304,6 +331,7 @@ export async function convertEtherpk(files: SourceFile[], control?: ImportContro
         ...(quickNotes ? { quickNotes } : {}),
         ...(bookmarks ? { bookmarks } : {}),
         ...(await readPdfStates(content, report)),
+        ...(await readEbookFiles(content, report)),
         ...(spellingDictionary.length > 0 ? { spellingDictionary } : {}),
         ...(themes.length > 0 ? { themes } : {}),
         ...(protection ? { protection } : {}),

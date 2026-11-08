@@ -64,6 +64,20 @@ describe('convertEtherpk', () => {
         expect(graph.report.some((entry) => entry.detail.includes(`pdf-${'b'.repeat(64)}`))).toBe(true)
     })
 
+    it('carries an EBook\'s highlights and bookmarks, and reports a malformed file', async () => {
+        const hash = 'a'.repeat(64)
+        const cfi = 'epubcfi(/6/4!/4/2:12)'
+        const highlight = { id: 'h', cfi, colour: '#ffee00', text: 'beans', fraction: 0.2, createdAt: 1, updatedAt: 2 }
+        const mark = { id: 'm', hash, target: 'garden.a1.epub', name: 'garden.epub', cfi, fraction: 0.2, createdAt: 1 }
+        const graph = await convertEtherpk([src(`etherpk/ebook-${hash}.json`, JSON.stringify({ version: 1, highlights: [highlight] })), src('etherpk/ebook-bookmarks.json', JSON.stringify([mark]))])
+        expect(graph.ebookStates).toEqual([{ hash, state: { highlights: [highlight] } }])
+        expect(graph.ebookBookmarks).toEqual([mark])
+        const bad = await convertEtherpk([src(`etherpk/ebook-${hash}.json`, '{ nope'), src('etherpk/ebook-bookmarks.json', '{ nope')])
+        expect(bad.ebookStates).toBeUndefined()
+        expect(bad.ebookBookmarks).toBeUndefined()
+        expect(bad.report.filter((entry) => entry.detail.includes('book'))).toHaveLength(2)
+    })
+
     it('carries PDF Bookmarks from etherpk/pdf-bookmarks.json, and reports a malformed file', async () => {
         const mark = { id: 'x', hash: 'a'.repeat(64), target: 'guide.a1b2c3d4.pdf', name: 'guide.pdf', page: 2, createdAt: 1 }
         const graph = await convertEtherpk([src('etherpk/pdf-bookmarks.json', JSON.stringify([mark]))])

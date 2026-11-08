@@ -7,6 +7,8 @@
  * same converted graph can land on a Filesystem or Server destination.
  */
 
+import type { EbookBookmark } from '#lib/document/ebook/ebook-bookmarks.js'
+import type { EbookState } from '#lib/document/ebook/ebook-state.js'
 import type { PdfBookmark } from '#lib/document/pdf/pdf-bookmarks.js'
 import type { PdfState } from '#lib/document/pdf/pdf-state.js'
 import type { QuickNote } from '#lib/document/quick-notes.js'
@@ -114,6 +116,10 @@ export interface ConvertedGraph {
     pdfStates?: { hash: string; state: PdfState }[]
     /** [[PDF Bookmark]]s from `etherpk/pdf-bookmarks.json`, the person's whose folder it was. */
     pdfBookmarks?: PdfBookmark[]
+    /** Highlights and notes on EBooks, each `etherpk/ebook-<hash>.json`. */
+    ebookStates?: { hash: string; state: EbookState }[]
+    /** EBook bookmarks from `etherpk/ebook-bookmarks.json`, the person's whose folder it was. */
+    ebookBookmarks?: EbookBookmark[]
     /** The [[Graph Dictionary]] carried from an EtherPK source's `etherpk/dictionary.txt`, when present (ADR 0095). */
     spellingDictionary?: string[]
     /** [[Theme]]s carried from an EtherPK source's `etherpk/theme-<id>.jsonc` files, when present (ADR 0082). */

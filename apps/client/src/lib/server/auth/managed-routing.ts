@@ -24,6 +24,12 @@ interface ManagedClientSsoRequest {
  * Client and Corporate use independent host-only cookies. A top-level, non-interactive OIDC
  * request is the only standards-based way for Client to recover Corporate browser SSO state.
  */
+/**
+ * Paths a silent check never runs on. The page an EBook reads in is framed by the app, so a redirect
+ * through the account site would leave a tab showing that site in place of an EBook.
+ */
+const NEVER_REDIRECTED = ['/auth/', '/_app/', '/__etherpk-ebook/']
+
 export function shouldAttemptManagedClientSso(request: ManagedClientSsoRequest): boolean {
     if (!request.configured
         || request.method !== 'GET'
@@ -40,8 +46,7 @@ export function shouldAttemptManagedClientSso(request: ManagedClientSsoRequest):
 
     // An extension's sign-in returns with the service's code in its query (ADR 0140): a redirect
     // through the account site would carry the code there, and the popup must stay on the page.
-    return !request.pathname.startsWith('/auth/')
-        && !request.pathname.startsWith('/_app/')
+    return !NEVER_REDIRECTED.some((prefix) => request.pathname.startsWith(prefix))
         && request.pathname !== SIGN_IN_PATH
 }
 

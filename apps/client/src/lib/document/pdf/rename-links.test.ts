@@ -41,3 +41,23 @@ describe('a rename, in the links to the PDF', () => {
         expect(linkRenameEdits('- plain text', rename)).toEqual([])
     })
 })
+
+describe('a rename, in the links to an EBook', () => {
+    const book: LinkRename = {
+        names: (target) => target.includes('garden-notes'),
+        newTarget: (target) => target.replace('garden-notes', 'shed-notes'),
+        oldNames: ['Garden Notes.epub'],
+        newName: 'Shed Notes.epub',
+    }
+    const renamed = (text: string) => linkRenameEdits(text, book).reduce((out, { from, to, insert }) => out.slice(0, from) + insert + out.slice(to), text)
+
+    it('changes a label that was only the old name, with or without its extension', () => {
+        expect(renamed('[Garden Notes.epub](../assets/garden-notes.a1.epub)')).toBe('[Shed Notes.epub](../assets/shed-notes.a1.epub)')
+        expect(renamed('[Garden Notes](../assets/garden-notes.a1.epub)')).toBe('[Shed Notes](../assets/shed-notes.a1.epub)')
+    })
+
+    it('keeps a place in the EBook, and a label a person wrote', () => {
+        const place = '#cfi=epubcfi%28%2F6%2F4%21%29'
+        expect(renamed(`[the good part](../assets/garden-notes.a1.epub${place})`)).toBe(`[the good part](../assets/shed-notes.a1.epub${place})`)
+    })
+})

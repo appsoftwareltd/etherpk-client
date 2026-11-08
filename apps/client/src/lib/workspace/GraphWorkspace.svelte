@@ -337,6 +337,12 @@
     import { registerBookmarkCommands } from "#lib/document/commands/bookmark-commands.js";
     import { registerPasteCommands } from "#lib/document/commands/paste-commands.js";
     import { bookmarksFileBinding } from "#lib/storage/fs/bookmarks-file.js";
+    import { cfiFromReference, requestEbookPlace } from "#lib/document/ebook/ebook-links.js";
+    import { followEbookRename, removeEbookBookmarksOf, resetEbookBookmarks } from "#lib/document/ebook/ebook-bookmarks.js";
+    import type { EbookGraphService } from "#lib/document/ebook/ebook-state.js";
+    import { createFolderEbookService, createSyncedEbookService, mirroredEbookBookmarks, openFolderEbookBookmarks, openSyncedEbookBookmarks } from "#lib/workspace/ebook-graph-service.js";
+    import { ebookHashFromStateFile } from "#lib/document/ebook/file-ebook-state.js";
+    import { readOwnEbookStateFiles } from "#lib/document/ebook/synced-ebook-files.js";
     import { pageFromReference, requestPdfPage, notePdfOpenedFrom } from "#lib/document/pdf/page-requests.js";
     import { pdfHashFromStateFile } from "#lib/document/pdf/file-pdf-state.js";
     import { followPdfRename, removePdfBookmarksOf, resetPdfBookmarks } from "#lib/document/pdf/pdf-bookmarks.js";
@@ -1729,6 +1735,7 @@
             protectedUsage: protectedUsageOf,
             assetGone: (target, hash) => {
                 void removePdfBookmarksOf(hash).catch(() => {});
+                void removeEbookBookmarksOf(hash).catch(() => {});
                 void removePdfFavourite(target).catch(() => {});
                 recents?.forgetPdf(target);
                 controller?.closeView({ kind: "asset", target });
@@ -1736,6 +1743,7 @@
             assetRenamed: (from, to, name) => {
                 void renamePdfFavourite(from, to, name).catch(() => {});
                 void followPdfRename(from, to, name).catch(() => {});
+                void followEbookRename(from, to, name).catch(() => {});
                 recents?.renamePdf(from, to, name);
                 if (from === to) return;
                 // The tab is keyed by the Asset's identity, which on a folder graph is the file's name.
@@ -1762,6 +1770,19 @@
             memberKeys: async () => ((await members?.()) ?? []).map((member) => member.userId),
             assets: () => (assetStore as ServerAssetStore | undefined) ?? null,
             store: () => store ?? null,
+        });
+    }
+
+    /** The EBook tab's side of the open graph, for whichever backend it is on. */
+    function createEbookService(): EbookGraphService | undefined {
+        if (fsAdapter) return createFolderEbookService({ adapter: fsAdapter, graphId });
+        const graph = serverGraph;
+        if (!graph) return undefined;
+        const members = currentMembers;
+        return createSyncedEbookService({
+            graph,
+            memberKey: personalLists?.memberKey ?? null,
+            memberKeys: async () => ((await members?.()) ?? []).map((member) => member.userId),
         });
     }
 
@@ -4099,6 +4120,8 @@
             }
             // [[PDF Bookmark]]s: etherpk/pdf-bookmarks.json, the person's list as above.
             await attempt.wait(openFolderPdfBookmarks(adapter, (text) => showNotice({ id: `pdf-bookmarks-file:${graphId}`, tone: "error", text })));
+            // EBook bookmarks: etherpk/ebook-bookmarks.json, the person's list as above.
+            await attempt.wait(openFolderEbookBookmarks(adapter, (text) => showNotice({ id: `ebook-bookmarks-file:${graphId}`, tone: "error", text })));
             // The Graph Dictionary: etherpk/dictionary.txt, beside quick-notes.json (ADR 0095),
             // rewritten whole on every change. Unlike quick-notes.json an agent may add to it
             // (the folder's AGENTS.md says so), so each write merges what is on disk first
@@ -4247,6 +4270,7 @@
             }
             // [[PDF Bookmark]]s: the person's own map in the root doc.
             attempt.own(openSyncedPdfBookmarks(lists.pdfBookmarks, BOOKMARKS_NEED_MEMBER_KEY));
+            attempt.own(openSyncedEbookBookmarks(lists.ebookBookmarks, BOOKMARKS_NEED_MEMBER_KEY));
             // The Graph Dictionary: the root doc's own Y.Map (ADR 0095), a peer's word adopted
             // as it arrives.
             const dictionaryApi = sg.spellingDictionary();
@@ -4920,6 +4944,9 @@
                     // A link to a page of a PDF. The tab is keyed by the Asset alone.
                     const linkedPage = pageFromReference(ref);
                     if (linkedPage !== null) requestPdfPage(assetId, linkedPage);
+                    // A link to a place in an EBook, likewise.
+                    const linkedPlace = cfiFromReference(ref);
+                    if (linkedPlace !== null) requestEbookPlace(assetId, linkedPlace);
                     // Named by the editor it was used in, so it holds however focus has gone.
                     if (line !== undefined && concept) notePdfOpenedFrom(assetId, { concept, line });
                     controller?.openView({ kind: "asset", target: assetId });
@@ -5161,6 +5188,7 @@
             store: protectedStore ?? s,
             assets: assetStore,
             pdf: createPdfService(),
+            ebook: createEbookService(),
             index: graphIndex,
             settings: isServerStore
                 ? sanitizeGraphSettings(serverGraph?.getMeta().settings ?? {})
@@ -7040,6 +7068,7 @@
             assets: assetStore,
             listAssetIds: listMirrorAssetIds,
             pdfStates: () => readOwnPdfStateFiles(serverGraph, personalLists?.memberKey),
+            ebookStates: () => readOwnEbookStateFiles(serverGraph, personalLists?.memberKey),
             metadata: () => {
                 // The exporting person's own lists (ADR 0159): their favourites in the shared
                 // settings, their Quick Notes (with the shared ones for the Owner) and their
@@ -7053,6 +7082,7 @@
                     quickNotes: own?.quickNotes ?? [],
                     bookmarks: own?.bookmarks,
                     ...mirroredPdfBookmarks(own),
+                    ...mirroredEbookBookmarks(own),
                     spellingDictionary: serverGraph?.spellingDictionary().list() ?? [],
                     themes: serverGraph?.themes().list() ?? [],
                     protection: protectionRecord,
@@ -7431,9 +7461,9 @@
             getFavourites().flatMap((entry) => (typeof entry !== "string" && entry.kind === "asset" && entry.concept ? [pdfFavouriteTarget(entry.concept)] : [])),
         );
         const memberKey = personalLists?.memberKey;
-        if (serverGraph && memberKey) return { favourites, annotatedHashes: serverGraph.pdfStateIndex(memberKey).hashes() };
+        if (serverGraph && memberKey) return { favourites, annotatedHashes: [...serverGraph.pdfStateIndex(memberKey).hashes(), ...serverGraph.ebookStateIndex(memberKey).hashes()] };
         const files = fsAdapter ? await fsAdapter.list("etherpk") : [];
-        return { favourites, annotatedHashes: files.flatMap(({ name }) => pdfHashFromStateFile(name) ?? []) };
+        return { favourites, annotatedHashes: files.flatMap(({ name }) => pdfHashFromStateFile(name) ?? ebookHashFromStateFile(name) ?? []) };
     }
 
     /**
@@ -7535,6 +7565,7 @@
         }
         assetTools = null;
         resetPdfBookmarks();
+        resetEbookBookmarks();
         formattingScan?.dispose();
         formattingScan = null;
         duplicateNames?.dispose();

@@ -16,6 +16,9 @@ import { readGraphThemes, writeGraphTheme } from '#lib/storage/fs/theme-files.js
 import { unionQuickNotes } from '#lib/document/quick-notes.js'
 import { unionBookmarks } from '#lib/document/bookmarks/bookmarks.js'
 import { readBookmarks, writeBookmarks } from '#lib/storage/fs/bookmarks-file.js'
+import { retargetImportedEbookBookmarks, sanitizeEbookBookmarks, unionEbookBookmarks } from '#lib/document/ebook/ebook-bookmarks.js'
+import { importEbookStateFiles } from '#lib/document/ebook/file-ebook-state.js'
+import { EBOOK_BOOKMARKS_FILE, ebookBookmarksFileText } from '#lib/storage/fs/ebook-bookmarks-file.js'
 import { importPdfStateFiles } from '#lib/document/pdf/file-pdf-state.js'
 import { retargetImportedPdfBookmarks, unionPdfBookmarks } from '#lib/document/pdf/pdf-bookmarks.js'
 import { readPdfBookmarks, writePdfBookmarks } from '#lib/storage/fs/pdf-bookmarks-file.js'
@@ -31,6 +34,14 @@ async function importPdfBookmarks(adapter: DirectoryAdapter, graph: ConvertedGra
     if (!graph.pdfBookmarks?.length) return
     const landed = await retargetImportedPdfBookmarks(graph.pdfBookmarks, graph.assets, (fileName) => fileName)
     await writePdfBookmarks(adapter, unionPdfBookmarks(await readPdfBookmarks(adapter), landed))
+}
+
+/** Into the folder's list of EBook bookmarks, by id, each opening the file as it is named here. */
+async function importEbookBookmarks(adapter: DirectoryAdapter, graph: ConvertedGraph): Promise<void> {
+    if (!graph.ebookBookmarks?.length) return
+    const landed = await retargetImportedEbookBookmarks(graph.ebookBookmarks, graph.assets, (fileName) => fileName)
+    const held = (await adapter.exists('etherpk', EBOOK_BOOKMARKS_FILE)) ? sanitizeEbookBookmarks(JSON.parse((await adapter.read('etherpk', EBOOK_BOOKMARKS_FILE)).text)) : []
+    await adapter.write('etherpk', EBOOK_BOOKMARKS_FILE, ebookBookmarksFileText(unionEbookBookmarks(held, landed)))
 }
 
 export async function materializeToFilesystem(
@@ -83,6 +94,8 @@ export async function materializeToFilesystem(
     }
     await importPdfStateFiles(adapter, graph.pdfStates)
     await importPdfBookmarks(adapter, graph)
+    await importEbookStateFiles(adapter, graph.ebookStates)
+    await importEbookBookmarks(adapter, graph)
     // A union, so importing the same export twice adds nothing (ADR 0095).
     if (graph.spellingDictionary?.length) {
         await writeDictionary(adapter, unionDictionary(await readDictionary(adapter), graph.spellingDictionary))

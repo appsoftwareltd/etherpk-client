@@ -141,6 +141,12 @@ importers:
       '@fontsource-variable/inter':
         specifier: ^5.3.0
         version: 5.3.0
+      '@fontsource/atkinson-hyperlegible':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/literata':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@lezer/common':
         specifier: ^1.5.2
         version: 1.5.2
@@ -244,6 +250,9 @@ importers:
       fast-check:
         specifier: ^4.9.0
         version: 4.9.0
+      foliate-js:
+        specifier: github:readest/foliate-js#0c7a0edcda672218e958fb92b4cdf090d7ca9daa
+        version: https://codeload.github.com/readest/foliate-js/tar.gz/0c7a0edcda672218e958fb92b4cdf090d7ca9daa
       linkedom:
         specifier: 0.18.13
         version: 0.18.13
@@ -1590,6 +1599,12 @@ packages:
 
   '@fontsource-variable/inter@5.3.0':
     resolution: {integrity: sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA==}
+
+  '@fontsource/atkinson-hyperlegible@5.3.0':
+    resolution: {integrity: sha512-Sp8Ve8+rQmENY2Lv02VH7sLpntzTTvnncnJMTbRE7DX6TLxGraN4ykZfzaUWIoCFmaomwkvNiqmlPkrKBuDoSA==}
+
+  '@fontsource/literata@5.3.0':
+    resolution: {integrity: sha512-9JGMT5+YfBK49thoMq9ASaMRJErHT4V4QuMhAEwKHRLreOsIMP2xP6ZRLhPJ0e6YlET+kjWTJuN7LAxt9/gWGQ==}
 
   '@hexagon/base64@1.1.28':
     resolution: {integrity: sha512-lhqDEAvWixy3bZ+UOYbPwUbBkwBq5C1LAJ/xPC8Oi+lL54oyakv/npbA0aU2hgCsx/1NUd4IBvV03+aUBWxerw==}
@@ -3240,6 +3255,9 @@ packages:
   concat-map@0.0.1:
     resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
 
+  construct-style-sheets-polyfill@3.1.0:
+    resolution: {integrity: sha512-HBLKP0chz8BAY6rBdzda11c3wAZeCZ+kIG4weVC2NM3AXzxx09nhe8t0SQNdloAvg5GLuHwq/0SPOOSPvtCcKw==}
+
   content-disposition@1.1.0:
     resolution: {integrity: sha512-5jRCH9Z/+DRP7rkvY83B+yGIGX96OYdJmzngqnw2SBSxqCFPd0w2km3s5iawpGX8krnwSGmF0FW5Nhr0Hfai3g==}
     engines: {node: '>=18'}
@@ -3925,6 +3943,10 @@ packages:
   flru@1.0.2:
     resolution: {integrity: sha512-kWyh8ADvHBFz6ua5xYOPnUroZTT/bwWfrCeL0Wj1dzG4/YOmOcfJ99W8dOVyyynJN35rZ9aCOtHChqQovV7yog==}
     engines: {node: '>=6'}
+
+  foliate-js@https://codeload.github.com/readest/foliate-js/tar.gz/0c7a0edcda672218e958fb92b4cdf090d7ca9daa:
+    resolution: {gitHosted: true, integrity: sha512-XY4Y8+UqsWBipa/v3lhdUA2AwYqCGUAeQnguaa+QqjNRUitxh7QPNvi0J0oMX8maZTkQUkrV7GFxMb9l+TV4wA==, tarball: https://codeload.github.com/readest/foliate-js/tar.gz/0c7a0edcda672218e958fb92b4cdf090d7ca9daa}
+    version: 0.0.0
 
   forwarded@0.2.0:
     resolution: {integrity: sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==}
@@ -6717,6 +6739,10 @@ snapshots:
 
   '@fontsource-variable/inter@5.3.0': {}
 
+  '@fontsource/atkinson-hyperlegible@5.3.0': {}
+
+  '@fontsource/literata@5.3.0': {}
+
   '@hexagon/base64@1.1.28': {}
 
   '@hono/node-server@2.1.5(hono@4.13.13)':
@@ -8499,6 +8525,8 @@ snapshots:
 
   concat-map@0.0.1: {}
 
+  construct-style-sheets-polyfill@3.1.0: {}
+
   content-disposition@1.1.0: {}
 
   content-type@1.0.5: {}
@@ -9166,6 +9194,10 @@ snapshots:
   flatted@3.4.4: {}
 
   flru@1.0.2: {}
+
+  foliate-js@https://codeload.github.com/readest/foliate-js/tar.gz/0c7a0edcda672218e958fb92b4cdf090d7ca9daa:
+    dependencies:
+      construct-style-sheets-polyfill: 3.1.0
 
   forwarded@0.2.0: {}
 

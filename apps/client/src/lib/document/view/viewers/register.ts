@@ -4,12 +4,14 @@
  * renderers (ADR 0022). Both ship as registrations rather than as core branches, so a type the
  * app can show is a fact about the registry rather than a condition in three files.
  *
- * PDF is loaded lazily by its own module; nothing here pulls pdf.js in.
+ * PDF is loaded lazily by its own module; nothing here pulls pdf.js in. An EBook reads in a frame of its
+ * own, whose page carries foliate-js, so nothing here pulls that in either.
  */
 
 import { type ContributionRegistry, registerAssetViewer } from '#lib/surface/index.js'
 
 import ImageAssetViewer from './ImageAssetViewer.svelte'
+import EbookAssetViewer from './ebook/EbookAssetViewer.svelte'
 import PdfAssetViewer from './pdf/PdfAssetViewer.svelte'
 
 /** Register every built-in viewer. Returns a disposer for the lot. */
@@ -23,6 +25,7 @@ export function registerAssetViewers(registry: ContributionRegistry): () => void
             label: 'Image',
         }),
         registerAssetViewer(registry, { extensions: ['pdf'], component: PdfAssetViewer, label: 'PDF' }),
+        registerAssetViewer(registry, { extensions: ['epub'], component: EbookAssetViewer, label: 'EBook' }),
     ]
     return () => {
         for (const dispose of disposers) dispose()

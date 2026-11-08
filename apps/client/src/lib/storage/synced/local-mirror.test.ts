@@ -721,6 +721,38 @@ describe('local mirror', () => {
         expect(names).not.toContain(gone)
     })
 
+    it('carries the person’s EBook bookmarks and highlights, and takes away a file no EBook names, leaving a PDF’s alone', async () => {
+        const adapter = tickingAdapter()
+        const name = `ebook-${'a'.repeat(64)}.json`
+        const gone = `ebook-${'b'.repeat(64)}.json`
+        const pdf = `pdf-${'c'.repeat(64)}.json`
+        await adapter.write('etherpk', gone, '{}')
+        await adapter.write('etherpk', pdf, '{}')
+        const mark = { id: 'x', hash: 'a'.repeat(64), target: 'garden.epub', name: 'garden.epub', cfi: 'epubcfi(/6/4!/4/2:1)', fraction: 0.5, createdAt: 1 }
+        const mirror = createLocalMirror(
+            source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'body' }], {
+                ebookStates: async () => [{ name, text: '{"version":1}\n' }],
+                metadata: () => ({ name: 'My Graph', ebookBookmarks: [mark] }),
+            }),
+            adapter,
+        )
+        await mirror.sync()
+        const names = (await adapter.list('etherpk')).map((e) => e.name)
+        expect(names).toContain(name)
+        expect(names).toContain(pdf)
+        expect(names).not.toContain(gone)
+        expect(JSON.parse((await adapter.read('etherpk', 'ebook-bookmarks.json')).text)).toEqual([mark])
+    })
+
+    it('names a person\'s PDF and EBook state as skipped when it cannot be brought up to date', async () => {
+        const mirror = createLocalMirror(
+            source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'body' }], { pdfStates: async () => null, ebookStates: async () => null }),
+            tickingAdapter(),
+        )
+        await mirror.sync()
+        expect(mirror.status().skipped).toEqual(['Your annotations on PDFs', 'Your highlights on EBooks'])
+    })
+
     it('leaves PDF annotation files alone when they cannot be read just now', async () => {
         const adapter = tickingAdapter()
         const held = `pdf-${'a'.repeat(64)}.json`

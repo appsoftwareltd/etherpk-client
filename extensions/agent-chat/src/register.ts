@@ -6,8 +6,8 @@
  *   window, with a short line in the document where `/Agent` was typed;
  * - the Agent button pinned to the phone's Command Bar, which opens a chat at the caret while the
  *   person is typing in the document, and at its end otherwise;
- * - a [[Transient Chat]] from a PDF's tab: that button on a phone, the same button floating over the
- *   tab on a desktop, or Alt+A, with the text selected in the PDF as its first message;
+ * - a [[Transient Chat]] from a PDF's or an EBook's tab: that button on a phone, the same button floating
+ *   over the tab on a desktop, or Alt+A, with the text selected in it as its first message;
  * - the [[Agent Chats View]], a resident of the right Sidebar, where a chat without a document is
  *   started, and Alt+A starts one when no document is open;
  * - what keeps the chats right as the graph changes: a renamed home is followed, and a deleted one
@@ -59,7 +59,7 @@ export interface AgentChatUi {
     /** An opening drawn inline, or over the window. */
     opening(host: HTMLElement, props: OpeningProps): { destroy(): void }
     /** A [[Transient Chat]], over the window or in a dialog. */
-    transient(host: HTMLElement, props: { chats: AgentChats; chatId: string; prompt: string; openDocument(name: string): void; openSettings(): void }): { destroy(): void }
+    transient(host: HTMLElement, props: { chats: AgentChats; chatId: string; prompt: string; fileNoun: string; openDocument(name: string): void; openSettings(): void }): { destroy(): void }
     /** The short line left in the document on a phone. */
     stub(host: HTMLElement, props: { chats: AgentChats; session: ChatSession; onOpen(): void; onClose(): void }): { destroy(): void }
 }
@@ -216,8 +216,8 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
 
     context.views.register(CHATS_VIEW, ui.view(chats, actions, { get: () => context.layout.activeDocument(), subscribe: (listener) => context.events.on('document:active-changed', listener) }))
     /**
-     * A [[Transient Chat]] about the PDF in front, with the text selected in it as its first message.
-     * A dialog on a desktop, where the PDF stays in view behind it, and the whole window on a phone.
+     * A [[Transient Chat]] about the PDF or EBook in front, with the text selected in it as its first message.
+     * A dialog on a desktop, where the file stays in view behind it, and the whole window on a phone.
      */
     function askAboutFile(file: ActiveFile) {
         const chat = chats.createTransient()
@@ -231,6 +231,7 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
                     chats,
                     chatId: chat.id,
                     prompt: promptFromSelection(file.selectedText),
+                    fileNoun: file.type === 'epub' ? 'EBook' : 'PDF',
                     openDocument(name) {
                         opened.close()
                         actions.openDocument(name)
@@ -250,15 +251,15 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
     context.commands.register(OPEN_COMMAND, (arg) => {
         const file = context.layout.activeFile()
         if (file) {
-            if (file.type === 'pdf') askAboutFile(file)
-            else context.notify('An Agent Chat cannot read this file. Open a document or a PDF to ask about it.')
+            if (file.type === 'pdf' || file.type === 'epub') askAboutFile(file)
+            else context.notify('An Agent Chat cannot read this file. Open a document, a PDF or an EBook to ask about it.')
             return
         }
         // The Command Bar's button asks for `caret-or-end`: pressed from outside the text, it has no caret to mean.
         const at = (arg as { at?: unknown } | undefined)?.at === 'caret-or-end' ? 'caret-or-end' : 'caret'
         openChat({ at })
     })
-    context.commandBar.register({ id: 'agent-chat.bar', title: 'Agent Chat', icon: 'agent-chat', command: OPEN_COMMAND, args: { at: 'caret-or-end' }, pinned: true, files: ['pdf'] })
+    context.commandBar.register({ id: 'agent-chat.bar', title: 'Agent Chat', icon: 'agent-chat', command: OPEN_COMMAND, args: { at: 'caret-or-end' }, pinned: true, files: ['pdf', 'epub'] })
     context.commandMenu.register({
         id: 'agent-chat.agent',
         title: 'Agent',

@@ -19,6 +19,7 @@
  * the socket closed moments later on a still-draining buffer.
  */
 
+import { importEbookBookmarksToGraph, importEbookStatesToGraph } from '#lib/document/ebook/synced-ebook-files.js'
 import { importPdfBookmarksToGraph, importPdfStatesToGraph } from '#lib/document/pdf/synced-pdf-files.js'
 import { mapWithPool } from '#lib/concurrency.js'
 import { formatBytes } from '@appsoftwareltd/etherpk-shared'
@@ -384,6 +385,8 @@ export async function materializeToServer(
     }
     await importPdfStatesToGraph(deps.graph, deps.memberKey, converted.pdfStates)
     await importPdfBookmarksToGraph(deps.graph, deps.memberKey, converted, refMap)
+    await importEbookStatesToGraph(deps.graph, deps.memberKey, converted.ebookStates)
+    await importEbookBookmarksToGraph(deps.graph, deps.memberKey, converted, refMap)
     if (converted.spellingDictionary?.length) {
         // A set: a word the graph already holds is simply set again (ADR 0095).
         const dictionary = deps.graph.spellingDictionary()

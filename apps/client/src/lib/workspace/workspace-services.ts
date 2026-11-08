@@ -10,6 +10,7 @@ import type { ReplaceOutcome, ReplaceRequest } from '#lib/document/find/replace-
 import type { PublishEnvironment } from '#lib/document/publish/publish.js'
 import type { PublishSource } from '#lib/document/publish/types.js'
 import type { ReadingPositionStore } from '#lib/navigation/reading-positions.js'
+import type { EbookGraphService } from '#lib/document/ebook/ebook-state.js'
 import type { PdfGraphService } from '#lib/document/pdf/pdf-service.js'
 import type { LockStatus } from '#lib/document/protection/lock-machine.js'
 import type { LayoutController } from '#lib/layout/types.js'
@@ -164,6 +165,8 @@ export interface WorkspaceServices {
     settings?: GraphSettings
     /** The open graph's PDF state and the file operations that differ by backend. */
     pdf?: PdfGraphService
+    /** The open graph's state for EBooks. Deleting, renaming and keeping a file go through `pdf`. */
+    ebook?: EbookGraphService
     layout?: LayoutController
     events?: EventBus
     commands?: CommandRegistry

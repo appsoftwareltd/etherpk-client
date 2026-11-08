@@ -67,6 +67,11 @@ export const ICON_PATHS: Record<string, string> = {
     /** A label on a string: a Free Tag, a person's own word on a task. */
     tag: '<path d="M2.5 3.5a1 1 0 0 1 1-1h4.1a1 1 0 0 1 .7.3l5 5a1 1 0 0 1 0 1.4l-4.1 4.1a1 1 0 0 1-1.4 0l-5-5a1 1 0 0 1-.3-.7z"/><circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none"/>',
 
+    /** An EBook, and the two tools only an EBook's tab has. */
+    book: '<path d="M3 3.5c1.5-.7 3.500-.7 5 .5 1.500-1.200 3.500-1.200 5-.5v9.500c-1.500-.7-3.500-.7-5 .5-1.500-1.200-3.500-1.200-5-.5zM8 4v9.500"/>',
+    'ebook-text-size': '<path d="M1.500 13 5 4l3.500 9M2.700 10h4.600M10 13l2.250-5.500L14.500 13M10.800 11h2.900"/>',
+    'ebook-read-aloud': '<path d="M2.500 6v4h2.500l3.500 3V3L5 6zM11 5.500a3.500 3.500 0 0 1 0 5M12.500 3.500a6 6 0 0 1 0 9"/>',
+    'ebook-back': '<path d="M6 3.500 2.500 7 6 10.500M2.500 7H10a3.500 3.500 0 0 1 0 7H8"/>',
     // A PDF, and the tools in its tab.
     pdf: '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z"/><path d="M9 2v4h4"/><path d="M5.5 12.5v-2.5h1a.75.75 0 0 1 0 1.5h-1M8.5 12.5V10h.5a1.25 1.25 0 0 1 0 2.5zM11.5 12.5V10h-.01"/>',
     /** A text caret, the shape a pointer takes over text: select text in a PDF. */

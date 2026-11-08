@@ -1,6 +1,6 @@
 /**
- * What a PDF's rename does to the links to it. Each link's path takes the new name. Its label does too
- * when the label was only the old name, with or without `.pdf`, as an upload or an import writes it. A
+ * What a file's rename does to the links to it. Each link's path takes the new name. Its label does too
+ * when the label was only the old name, with or without its extension, as an upload or an import writes it. A
  * label a person wrote stays. Pure, so the rule tests without a store.
  */
 import { markdownLinks } from '../markdown-link-target'
@@ -12,7 +12,7 @@ export interface LinkRename {
     newTarget(target: string): string
     /** The names the file went by: its old name, and its old file name. */
     oldNames: readonly string[]
-    /** The new name, with `.pdf`. */
+    /** The new name, with its extension. */
     newName: string
 }
 
@@ -22,13 +22,14 @@ export interface LinkEdit {
     insert: string
 }
 
-const stemOf = (name: string) => name.replace(/\.pdf$/i, '')
+const FILE_EXTENSION = /\.(?:pdf|epub)$/i
+const stemOf = (name: string) => name.replace(FILE_EXTENSION, '')
 
 function newLabel(label: string, rename: LinkRename): string {
     const lower = label.trim().toLowerCase()
     const hit = rename.oldNames.flatMap((name) => [name, stemOf(name)]).some((name) => name.toLowerCase() === lower)
     if (!hit) return label
-    return /\.pdf$/i.test(label.trim()) ? rename.newName : stemOf(rename.newName)
+    return FILE_EXTENSION.test(label.trim()) ? rename.newName : stemOf(rename.newName)
 }
 
 /** The edits to `text`, in reverse order, so applying them one by one moves none that follow. */
