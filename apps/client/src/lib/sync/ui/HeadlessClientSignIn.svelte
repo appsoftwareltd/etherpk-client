@@ -99,13 +99,13 @@
         <span class="font-medium">{heading}</span>, once per device. Create an Agent Setup Code on
         <a href={tokensPageUrl(serverBaseUrl)} target="_blank" rel="noreferrer" class={link} data-testid="agents-setup-on-portal">the Sync Server's Access tokens page</a
         >, under <strong>Set up an agent</strong>, and run the command it shows on the agent's device. The Headless Client trades the code for an Agent Token limited to the
-        routes an agent needs, then asks for Device Approval: confirm the matching code in EtherPK on any device where your Encryption Keys are unlocked.
+        routes an agent needs, then asks for Device Approval: in EtherPK, on any device where your Encryption Keys are unlocked, select Show the code and check that it matches.
     </p>
 {:else}
     <p>
         <span class="font-medium">{heading}</span>, once per device. Create an Agent Setup Code and run the command on the agent's device. The Headless Client trades the code
-        for an Agent Token limited to the routes an agent needs, then asks for Device Approval: confirm the matching code in EtherPK on any device where your Encryption Keys are
-        unlocked.
+        for an Agent Token limited to the routes an agent needs, then asks for Device Approval: in EtherPK, on any device where your Encryption Keys are unlocked, select Show the
+        code and check that it matches.
     </p>
 {/if}
 {#if command}

@@ -18,6 +18,10 @@ starts at 0.9.3.
   demo graph has an EBook to try.
 - **Favourite a PDF or an EBook from its tab.** Right-click its tab, or long-press it on a phone, and choose
   **Add to favourites**.
+- **Every unlocked device shows a new device's request.** When a new device or the Headless Client asks for your
+  Encryption Keys, **Approve a new device?** appears on each device with your keys unlocked, not only on the first one
+  to see it. Select **Show the code** on the device you approve from, and the prompt closes on the others. **Not now**
+  closes it on one device only.
 - **Colours at the side of the page.** A PDF tool's colours and thicknesses, and an EBook's highlight colours, wait
   behind a button at the right edge of the page on every screen, so they no longer cover the top of the page on a
   tablet or a desktop.

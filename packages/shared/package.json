@@ -81,6 +81,10 @@
             "types": "./src/server/configured-origin.ts",
             "default": "./src/server/configured-origin.ts"
         },
+        "./server/sign-in-second-factor": {
+            "types": "./src/server/sign-in-second-factor.ts",
+            "default": "./src/server/sign-in-second-factor.ts"
+        },
         "./server/retired-cookies": {
             "types": "./src/server/retired-cookies.ts",
             "default": "./src/server/retired-cookies.ts"

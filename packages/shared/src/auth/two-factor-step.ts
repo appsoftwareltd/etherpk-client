@@ -36,14 +36,32 @@ export function twoFactorFailureMessage(mode: TwoFactorMode, failure: TwoFactorF
     // Five wrong codes end the pending sign-in: Better Auth clears its cookie, so the next code
     // would be refused as an expired sign-in.
     if (failure.code === 'TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE') {
-        return 'Too many wrong codes for this sign-in. Go back to sign in and enter your password again.'
+        return 'Too many wrong codes for this sign-in. Go back and sign in again.'
     }
-    // The password step leaves a short-lived cookie naming the pending sign-in (ten minutes by
-    // default). Once it has gone, no code can finish that sign-in.
+    // The first step (a password, a social account or a verification link) leaves a short-lived
+    // cookie naming the pending sign-in (ten minutes by default). Once it has gone, no code can
+    // finish that sign-in.
     if (failure.code === 'INVALID_TWO_FACTOR_COOKIE') {
-        return 'This sign-in waited too long and has expired. Go back to sign in and enter your password again.'
+        return 'This sign-in waited too long and has expired. Go back and sign in again.'
     }
     return mode === 'totp'
         ? 'That code did not work. Enter the code your authenticator app shows now.'
         : 'That backup code did not work. Each code works once, so check it or try another.'
+}
+
+/**
+ * The query parameter that opens a sign-in page at the code step. A sign-in that does not start
+ * on the page itself (a GitHub or Google sign-in, a verification link) reaches the code step by
+ * a redirect from the server, which names it so (`server/sign-in-second-factor.ts`).
+ */
+export const TWO_FACTOR_STEP_PARAMETER = 'two_factor'
+
+/**
+ * The sign-in page opened at the code step, carrying where the sign-in was going as the page's
+ * usual `redirect`, which the page checks before it navigates there.
+ */
+export function twoFactorStepPath(signInPage: string, returnTo: string | null): string {
+    const query = new URLSearchParams({ [TWO_FACTOR_STEP_PARAMETER]: '1' })
+    if (returnTo) query.set('redirect', returnTo)
+    return `${signInPage}?${query}`
 }

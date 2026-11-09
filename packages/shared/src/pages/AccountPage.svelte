@@ -995,6 +995,7 @@
                 <div>
                     <p class="text-sm font-medium text-neutral-950">Two-factor authentication</p>
                     <p class="text-sm text-neutral-500 mt-0.5">Add an extra layer of security with an authenticator app.</p>
+                    <p class="text-sm text-neutral-500 mt-0.5" data-testid="mfa-when-asked">Asked whenever you sign in with your password or a social account. A passkey does not require 2FA.</p>
                 </div>
                 <div class="flex items-center gap-3 shrink-0">
                     {#if mfaEnabled}

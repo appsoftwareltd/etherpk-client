@@ -217,8 +217,8 @@
         {#if approval || startingApproval}
             {#if !approvalCode}
                 <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                    On a device where your Encryption Keys are already unlocked, an approval prompt will appear.
-                    This device then shows a code to compare with it.
+                    On each device where your Encryption Keys are already unlocked, an approval prompt will appear.
+                    Select Show the code on one of them, and this device then shows a code to compare with it.
                 </p>
                 <!-- The wait, and its outcome, are the only things happening here; a screen reader
                      that is told neither has no way to know the dialog is still working. -->

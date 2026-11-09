@@ -143,6 +143,8 @@ describe('unlockByDeviceApproval', () => {
         expect(said.join('\n')).toContain('open EtherPK at https://app.example.test')
         expect(said.join('\n')).toMatch(/any page/)
         expect(said.join('\n')).toContain("on any device where this account's\nEncryption Keys are unlocked")
+        // Every such device shows the prompt, and none answers until the person chooses one.
+        expect(said.join('\n')).toContain('choose Show the code')
     })
 
     it('shows no code until an unlocked device answers', async () => {
