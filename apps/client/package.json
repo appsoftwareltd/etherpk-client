@@ -6,7 +6,7 @@
     "type": "module",
     "scripts": {
         "dev": "node build-extensions.mjs && vite dev",
-        "build": "node build-extensions.mjs && vite build && node scripts/build-server.mjs",
+        "build": "node build-extensions.mjs && node scripts/vite-build.mjs && node scripts/build-server.mjs",
         "preview": "vite preview",
         "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p src/service-worker/tsconfig.json",
         "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",

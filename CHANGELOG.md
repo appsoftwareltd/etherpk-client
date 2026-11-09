@@ -18,6 +18,9 @@ starts at 0.9.3.
   demo graph has an EBook to try.
 - **Favourite a PDF or an EBook from its tab.** Right-click its tab, or long-press it on a phone, and choose
   **Add to favourites**.
+- **Colours at the side of the page.** A PDF tool's colours and thicknesses, and an EBook's highlight colours, wait
+  behind a button at the right edge of the page on every screen, so they no longer cover the top of the page on a
+  tablet or a desktop.
 
 ## 0.20.0 - 2026-11-06
 

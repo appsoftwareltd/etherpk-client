@@ -39,6 +39,7 @@
     import EbookDictionaries from "./EbookDictionaries.svelte";
     import EbookFindBar from "./EbookFindBar.svelte";
     import EbookSettingsPanel from "./EbookSettingsPanel.svelte";
+    import ToolOptions from "../ToolOptions.svelte";
     import EbookSidePanel from "./EbookSidePanel.svelte";
     import { EbookReader, EDGE_TAP_SHARE, TOUCH_PHONE } from "./ebook-reader.svelte";
 
@@ -205,9 +206,10 @@
 
     /** A press on the page closes what is open over it, which the app's own document never hears of. */
     function closeMenus(): boolean {
-        const anything = moreOpen || settingsOpen;
+        const anything = moreOpen || settingsOpen || reader.toolOptionsOpen;
         moreOpen = false;
         settingsOpen = false;
+        reader.toolOptionsOpen = false;
         return anything;
     }
 
@@ -257,6 +259,7 @@
     function closeOneThing(): boolean {
         if (moreOpen) moreOpen = false;
         else if (settingsOpen) settingsOpen = false;
+        else if (reader.toolOptionsOpen) reader.toolOptionsOpen = false;
         else if (reader.pressedHighlight) reader.pressedHighlight = null;
         else if (reader.selection) reader.clearSelection();
         else if (reader.highlightToolOn) reader.highlightToolOn = false;
@@ -595,7 +598,7 @@
     <button type="button" class={button} aria-label="Contents, highlights and bookmarks" title="Contents, highlights and bookmarks" aria-pressed={panelOpen} onclick={togglePanel} data-testid="ebook-panel-toggle">{@render icon("list")}</button>
     <button type="button" class={[button, bookmarked && "etherpk-ebook-bookmarked"]} aria-label={bookmarkLabel} title={bookmarkLabel} aria-pressed={bookmarked} onclick={toggleBookmark} data-testid="ebook-bookmark">{@render icon("bookmark")}</button>
     <button type="button" class={button} aria-label="Read aloud" title="Read aloud" aria-pressed={reader.readAloud.state !== "off"} onclick={toggleReadAloud} data-testid="ebook-read-aloud">{@render icon("ebook-read-aloud")}</button>
-    <button type="button" class={button} aria-label="Highlight text" title="Highlight text as you select it" aria-pressed={reader.highlightToolOn} onclick={() => (reader.highlightToolOn = !reader.highlightToolOn)} data-testid="ebook-tool-highlight">{@render icon("highlight")}</button>
+    <button type="button" class={button} aria-label="Highlight text" title="Highlight text as you select it" aria-pressed={reader.highlightToolOn} onclick={() => reader.toggleHighlightTool()} data-testid="ebook-tool-highlight">{@render icon("highlight")}</button>
     {#if !inBar}<span class="etherpk-ebook-divider"></span>{/if}
     <button type="button" class={button} aria-label="Undo" title="Undo" disabled={!reader.canUndo} onclick={() => reader.undo()} data-testid="ebook-undo">{@render icon("undo")}</button>
     <button type="button" class={button} aria-label="Redo" title="Redo" disabled={!reader.canRedo} onclick={() => reader.redo()} data-testid="ebook-redo">{@render icon("redo")}</button>
@@ -834,13 +837,15 @@
                         </div>
                     {/if}
                     {#if reader.highlightToolOn || reader.pressedHighlight}
-                        <!-- Over the page, so choosing a colour moves nothing under the pointer. -->
-                        <div class="etherpk-ebook-colours flex flex-wrap items-center justify-center gap-1 rounded-xl border border-(--gk-border-strong,var(--gk-surface-2)) bg-(--gk-surface-1) p-1 shadow-md" role="group" aria-label="Colour" data-testid="ebook-colours">
-                            {#each ANNOTATION_COLOURS as { label, colour } (colour)}
-                                {@const on = (reader.pressedHighlight?.colour ?? reader.highlightColour) === colour}
-                                <button type="button" class={["size-6 rounded-full border pointer-coarse:size-8", on ? "border-(--gk-text-strong) ring-2 ring-(--gk-text-strong)" : "border-neutral-400"]} style:background-color={colour} aria-label={label} title={label} aria-pressed={on} onclick={() => reader.setHighlightColour(colour)}></button>
-                            {/each}
-                        </div>
+                        {@const inHand = reader.pressedHighlight?.colour ?? reader.highlightColour}
+                        <ToolOptions open={reader.toolOptionsOpen} colour={inHand} label="Colour" testid="ebook" ontoggle={() => (reader.toolOptionsOpen = !reader.toolOptionsOpen)}>
+                            <div class="flex flex-wrap items-center justify-center gap-1" role="group" aria-label="Colour" data-testid="ebook-colours">
+                                {#each ANNOTATION_COLOURS as { label, colour } (colour)}
+                                    {@const on = inHand === colour}
+                                    <button type="button" class={["size-6 rounded-full border pointer-coarse:size-8", on ? "border-(--gk-text-strong) ring-2 ring-(--gk-text-strong)" : "border-neutral-400"]} style:background-color={colour} aria-label={label} title={label} aria-pressed={on} onclick={() => reader.setHighlightColour(colour)}></button>
+                                {/each}
+                            </div>
+                        </ToolOptions>
                     {/if}
                     {#if reader.selection && !reader.highlightToolOn}
                         <div class="etherpk-ebook-actions" role="group" aria-label="Selected text" data-testid="ebook-selection-actions">
@@ -1050,15 +1055,6 @@
     }
     .etherpk-ebook-file-action:hover {
         background: var(--gk-surface-2);
-    }
-    .etherpk-ebook-colours {
-        position: absolute;
-        top: 0.5rem;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 10;
-        width: max-content;
-        max-width: calc(100% - 1rem);
     }
     /* Equal columns, so that Copy turning into Copied moves no button. */
     .etherpk-ebook-actions {

@@ -109,7 +109,7 @@ export class PdfReader {
     private readonly fingerDrawsByDefault = isPhone()
     /** The page in view has been read and holds no text to select, as a scan without a text layer does. */
     pageWithoutText = $state(false)
-    /** On a phone, whether the tool's colours and thicknesses are out over the page. */
+    /** Whether the tool's colours and thicknesses are out over the page, or tucked to its right edge. */
     toolOptionsOpen = $state(false)
     /** The reference that opened this PDF, which a saved copy's link can follow. */
     openedFrom = $state.raw<PdfOpenedFrom | null>(null)

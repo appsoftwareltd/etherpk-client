@@ -28,6 +28,7 @@
 
     import { tryGetActiveAssetStore } from "../../../active-asset-store";
     import { getActiveDocumentStore } from "../../../active-store";
+    import ToolOptions from "../ToolOptions.svelte";
     import { assetRefOf } from "./pdf-asset-ref";
     import PdfFindBar from "./PdfFindBar.svelte";
     import PdfPasswordPrompt from "./PdfPasswordPrompt.svelte";
@@ -933,25 +934,7 @@
                     </div>
                 {/if}
                 {#if showsColours}
-                    <!-- Over the page, so choosing a tool never moves the page under the pointer. -->
-                    <!-- On a phone they would cover the top of the page, so they tuck to its right edge, behind a
-                         button that shows the colour in hand and points to where they come out. -->
-                    <div class="etherpk-pdf-tool-options" data-open={reader.toolOptionsOpen || undefined} data-testid="pdf-tool-options">
-                        <button
-                            type="button"
-                            class="etherpk-pdf-tool-options-toggle"
-                            aria-label="Colour and thickness"
-                            title="Colour and thickness"
-                            aria-expanded={reader.toolOptionsOpen}
-                            aria-controls="pdf-tool-options-list"
-                            onclick={() => (reader.toolOptionsOpen = !reader.toolOptionsOpen)}
-                            data-testid="pdf-tool-options-toggle"
-                        >
-                            <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
-                            {@html iconSvg(reader.toolOptionsOpen ? "pdf-page-next" : "pdf-page-previous")}
-                            <span class="size-5 rounded-full border border-neutral-400" style:background-color={reader.toolColour} data-testid="pdf-tool-options-colour"></span>
-                        </button>
-                        <div id="pdf-tool-options-list" class="etherpk-pdf-colours flex flex-wrap items-center justify-center gap-1 rounded-2xl border border-(--gk-surface-2) bg-(--gk-surface-0) p-1 shadow">
+                    <ToolOptions open={reader.toolOptionsOpen} colour={reader.toolColour} label="Colour and thickness" testid="pdf" ontoggle={() => (reader.toolOptionsOpen = !reader.toolOptionsOpen)}>
                         <div class="flex flex-wrap items-center justify-center gap-1" role="group" aria-label="Colour" data-testid="pdf-colours">
                             {#each ANNOTATION_COLOURS as { colour, label } (colour)}
                                 {@const on = reader.toolColour === colour}
@@ -973,8 +956,7 @@
                                 {/each}
                             </div>
                         {/if}
-                        </div>
-                    </div>
+                    </ToolOptions>
                 {/if}
                 {#if reader.hasSelection && reader.tool !== "highlight"}
                     <div class={["etherpk-pdf-selection-actions", turningPages && "etherpk-pdf-selection-actions--raised"]} role="group" aria-label="Selected text" data-testid="pdf-selection-actions">
@@ -1090,51 +1072,6 @@
     .etherpk-pdf-more--above {
         top: auto;
         bottom: 0.25rem;
-    }
-    .etherpk-pdf-tool-options {
-        position: absolute;
-        top: 0.5rem;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 10;
-        width: max-content;
-        max-width: calc(100% - 1rem);
-    }
-    .etherpk-pdf-tool-options-toggle {
-        display: none;
-    }
-    @media (width < 40rem) {
-        .etherpk-pdf-tool-options {
-            right: 0;
-            left: auto;
-            transform: none;
-            display: flex;
-            flex-direction: row-reverse;
-            align-items: flex-start;
-            gap: 0.25rem;
-            max-width: calc(100% - 0.75rem);
-        }
-        /* Held against the page's edge, as a tab to pull out. */
-        .etherpk-pdf-tool-options-toggle {
-            display: inline-flex;
-            flex-shrink: 0;
-            align-items: center;
-            gap: 0.125rem;
-            height: 2.75rem;
-            padding: 0 0.5rem 0 0.25rem;
-            border: 1px solid var(--gk-border-strong, var(--gk-surface-2));
-            border-right: 0;
-            border-radius: 0.75rem 0 0 0.75rem;
-            background: var(--gk-surface-1);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-            color: var(--gk-text-default);
-        }
-        .etherpk-pdf-colours {
-            min-width: 0;
-        }
-        .etherpk-pdf-tool-options:not([data-open]) .etherpk-pdf-colours {
-            display: none;
-        }
     }
     /* Reads as "any colour" with the current choice at its centre. */
     .etherpk-pdf-custom-colour {

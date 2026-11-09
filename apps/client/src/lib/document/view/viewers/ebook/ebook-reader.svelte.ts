@@ -102,6 +102,8 @@ export class EbookReader {
     selection = $state.raw<SelectionChanged | null>(null)
     highlightToolOn = $state(false)
     highlightColour = $state(DEFAULT_HIGHLIGHT)
+    /** Whether the colours are out over the page, or tucked to its right edge. */
+    toolOptionsOpen = $state(false)
     highlights = $state.raw<EbookHighlight[]>([])
     /** The highlight the person pressed, whose actions are showing. */
     pressedHighlight = $state.raw<EbookHighlight | null>(null)
@@ -284,6 +286,7 @@ export class EbookReader {
         },
         highlightPressed: ({ cfi }) => {
             this.pressedHighlight = this.highlights.find((highlight) => highlight.cfi === cfi) ?? null
+            this.toolOptionsOpen = false
         },
         searchResults: ({ id, chapter, matches }) => {
             if (id === this.searchId) this.findSections = [...this.findSections, { chapter, matches }]
@@ -382,7 +385,11 @@ export class EbookReader {
     private onSelection(message: SelectionChanged): void {
         const has = message.text.trim() !== '' && message.cfi !== null
         this.selection = has ? message : null
-        if (has) this.pressedHighlight = null
+        // Selecting words puts the colours out of the way of them, as drawing does on a PDF.
+        if (has) {
+            this.pressedHighlight = null
+            this.toolOptionsOpen = false
+        }
     }
 
     private showProgress(): void {
@@ -594,6 +601,12 @@ export class EbookReader {
         step.redo()
         this.undoStack.push(step)
         this.syncUndo()
+    }
+
+    /** The Highlight text tool on or off. Its colours start tucked away, as a PDF tool's do. */
+    toggleHighlightTool(): void {
+        this.highlightToolOn = !this.highlightToolOn
+        this.toolOptionsOpen = false
     }
 
     setHighlightColour(colour: string): void {
