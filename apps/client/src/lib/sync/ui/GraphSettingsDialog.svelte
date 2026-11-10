@@ -1179,7 +1179,7 @@
                     {#if agentCopyError?.key === "register"}
                         <p role="status" class="text-sm text-red-700 dark:text-red-400">{agentCopyError.message}</p>
                     {/if}
-                    {@render agentOptional(agents, "4. ")}
+                    {@render agentOptional(agents)}
                     <p class="text-sm text-neutral-600 dark:text-neutral-400">
                         This graph's id is <code class="font-mono" data-testid="agents-graph-id">{agents.graphId}</code>.
                         Each agent's token is listed as "Agent on" its device's name on
@@ -1488,9 +1488,9 @@
 <!-- The once-per-device setups and the publish command, for either backend: what an agent's
      tools name in a refusal, spelled here so a person can copy them to the agent's machine. -->
 <!-- What an agent can do without, on the agent's machine. The Agent Skill needs nothing from this
-     graph, so it stays when the rest does not apply: pass null for those. `step` numbers the heading
-     on the one tab with numbered steps before it. -->
-{#snippet agentOptional(props: Exclude<AgentsTabProps, { kind: "browser" }> | null, step = "")}
+     graph, so it stays when the rest does not apply: pass null for those. The Optional Steps heading
+     says what these are, so they carry no step number. -->
+{#snippet agentOptional(props: Exclude<AgentsTabProps, { kind: "browser" }> | null)}
     {@const publish = props ? publishCommand(props) : null}
     {@const rows = [
         ...(props
@@ -1503,7 +1503,9 @@
         ...(publish ? [{ key: "publish" as const, label: "Publish from the agent's machine", text: publish, note: "Publishes once and remembers the folder. The agent's publish tool then writes there and cannot choose another folder." }] : []),
     ]}
     <div class="space-y-3 border-t border-neutral-900/10 dark:border-neutral-100/15 pt-4" data-testid="agents-optional">
-        <p class="text-sm font-medium text-neutral-950 dark:text-neutral-100">{step}(Optional) Additional Capabilities</p>
+        <!-- As large as the MCP Server heading, so the tab reads as two parts: what an agent needs,
+             and what it can do without. -->
+        <h3 class="text-base font-semibold text-neutral-950 dark:text-neutral-100">Optional Steps</h3>
         <ul class="space-y-3">
             {#each rows as row (row.key)}
                 <li class="space-y-1">{@render agentCommand(row)}</li>

@@ -22,9 +22,17 @@ starts at 0.9.3.
   Encryption Keys, **Approve a new device?** appears on each device with your keys unlocked, not only on the first one
   to see it. Select **Show the code** on the device you approve from, and the prompt closes on the others. **Not now**
   closes it on one device only.
+- **Clearer agent setup.** On a synced graph's **Agents** tab, the first step is **Log in the agent**. It says what
+  the agent's token can and cannot do, and that logging in once on a device covers every graph. What an agent can do
+  without is under **Optional Steps**.
 - **Colours at the side of the page.** A PDF tool's colours and thicknesses, and an EBook's highlight colours, wait
   behind a button at the right edge of the page on every screen, so they no longer cover the top of the page on a
   tablet or a desktop.
+
+### Headless Client
+
+- **`login` is easier to read.** Its messages have blank lines between them, and the line that says
+  to press `r` for your Recovery Code is marked with `**` so that it stands out.
 
 ## 0.20.0 - 2026-11-06
 

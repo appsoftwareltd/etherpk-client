@@ -164,6 +164,7 @@ export async function unlockByDeviceApproval(api: SyncApi, io: LoginIo): Promise
         if (approved && io.codesMatch()) return approved
         if (approved && !toldApproved) {
             toldApproved = true
+            io.say('')
             io.say('EtherPK approved this device. Press y if it showed the same code.')
         }
         await io.sleep(APPROVAL_POLL_MS)

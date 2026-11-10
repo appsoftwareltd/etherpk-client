@@ -373,8 +373,10 @@ async function login(args: { 'sync-server'?: string; pat?: string; code?: string
 
     // ETHERPK_RECOVERY_CODE serves a box set up by a script, where there is no terminal to type
     // into and no unlocked device to approve from; the variable is read once and never written anywhere.
-    const byRecoveryCode = async () =>
-        unlockByRecoveryCode(account.api, process.env.ETHERPK_RECOVERY_CODE ?? (await ask('Recovery Code: ', { secret: true, hint: 'set ETHERPK_RECOVERY_CODE' })))
+    const byRecoveryCode = async () => {
+        console.log('')
+        return unlockByRecoveryCode(account.api, process.env.ETHERPK_RECOVERY_CODE ?? (await ask('Recovery Code: ', { secret: true, hint: 'set ETHERPK_RECOVERY_CODE' })))
+    }
     const vaultKey = await (args['recovery-code'] ? byRecoveryCode() : approveOrFallBack(account, byRecoveryCode)).catch(abandon)
 
     if (accessTokenKind(token) === 'standard') {
@@ -389,6 +391,7 @@ async function login(args: { 'sync-server'?: string; pat?: string; code?: string
             }
             return fail(`Could not swap the access token for an Agent Token (${reason}). Nothing was kept on this computer: run login again.`)
         })
+        console.log('')
         console.log(`The access token you gave has been revoked. This computer now holds an Agent Token, limited to the routes an agent needs. If you used that access token anywhere else, create a new one at ${syncServer}/account/tokens.`)
     }
 
@@ -396,26 +399,33 @@ async function login(args: { 'sync-server'?: string; pat?: string; code?: string
     if (previous) {
         const before = await loginCredentials(syncServer, previous, keychain()).catch(() => null)
         if (before && before.pat !== token && (await revokeHeldToken({ syncServer, token: before.pat }))) {
+            console.log('')
             console.log(`Revoked the token this computer held for ${syncServer} before this login.`)
         }
     }
 
     const where = await saveLogin({ config, path, syncServer, secrets: { token, vaultKey: toBase64Url(vaultKey) }, keychain: keychain() })
+    console.log('')
     console.log(
         where === path
             ? `Encryption Keys unlocked and kept in ${path} (owner-only). Anyone who can read your files on this machine can read this account, as with a signed-in browser. Never let an agent read, print or search that file.`
             : `Encryption Keys unlocked and kept in ${where}; ${path} names only the server. A program you run can still ask ${where} for them, so run only agents you trust with this account.`,
     )
     const others = Object.keys(config.servers).filter((server) => server !== syncServer)
-    if (others.length > 0) console.log(`Also logged in to ${others.join(', ')} - commands now need --sync-server <url> to say which.`)
+    if (others.length > 0) {
+        console.log('')
+        console.log(`Also logged in to ${others.join(', ')} - commands now need --sync-server <url> to say which.`)
+    }
 
     // The hosts serving this server's graphs hold the token and keys this login replaces; an agent
     // still connected starts a new host, with this login, on its next call.
     const restarted = await stopHosts(process.env, 'a new login for its server', ({ status }) => status.target.kind === 'synced' && status.target.server === syncServer)
     if (restarted.length > 0) {
+        console.log('')
         console.log(`Stopped the background process of ${restarted.length === 1 ? 'one graph' : `${restarted.length} graphs`} served with the previous login. Agents start a new one with this login on their next call.`)
     }
 
+    console.log('')
     await listGraphs({ syncServer, pat: token, vaultKey: toBase64Url(vaultKey) }, others.length > 0)
 }
 
@@ -454,7 +464,8 @@ async function approveOrFallBack(
     const onSignal = (name: QuitSignal) => controls.onSignal(name)
     for (const name of quitSignals) process.once(name, onSignal)
     if (interactive) {
-        console.log('(Press r to type your Recovery Code instead.)')
+        console.log('')
+        console.log('**Press r to type your Recovery Code instead.**')
         stdin.setRawMode(true)
     } else {
         stdin.on('end', onInputEnd)
@@ -487,6 +498,7 @@ async function approveOrFallBack(
     if (controls.inputClosed) {
         fail('Device approval needs someone to confirm the code it shows. Run login in a terminal and press y when the codes match, or pass --recovery-code, or set ETHERPK_RECOVERY_CODE.')
     }
+    console.log('')
     console.log('Approval cancelled - unlocking with your Recovery Code instead.')
     return byRecoveryCode()
 }

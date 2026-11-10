@@ -27,7 +27,7 @@
         headlessClient: string;
         /** Ask the server for an Agent Setup Code over the managed connection; null on a custom server (ADR 0132). */
         createSetupCode: (() => Promise<{ code: string; expiresAt: string }>) | null;
-        /** The first of numbered steps: "1. Sign in the agent's device". */
+        /** The first of numbered steps: "1. Log in the agent". */
         numbered?: boolean;
     } = $props();
 
@@ -45,7 +45,7 @@
     let copyError = $state<string | null>(null);
     onDestroy(() => clearTimeout(setupCodeTimer));
 
-    const heading = $derived(numbered ? "1. Sign in the agent's device" : "Sign in the agent's device");
+    const heading = $derived(numbered ? "1. Log in the agent" : "Log in the agent");
 
     async function makeSetupCode() {
         const create = createSetupCode;
@@ -94,18 +94,26 @@
     const link = "underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-950 dark:hover:decoration-neutral-100";
 </script>
 
+<!-- What the Agent Token can and cannot do is what agent-token-policy.ts on the Sync Server allows:
+     the relay lets it write, and so delete, notes, but no route lets it delete a graph or a file. -->
+{#snippet agentToken()}
+    The Headless Client swaps the Agent Setup Code for an Agent Token. That token can read and write your graphs and their files, and nothing else (it cannot
+    modify Encryption Keys or access tokens, delete graphs or files, or change settings). You do this once on each device, and it covers every graph. The
+    Headless Client will then ask for Device Approval: confirm the matching code in EtherPK on any device where your Encryption Keys are unlocked, or use your
+    Recovery Code.
+{/snippet}
+
 {#if createSetupCode === null}
-    <p>
-        <span class="font-medium">{heading}</span>, once per device. Create an Agent Setup Code on
+    <p data-testid="agents-sign-in-step">
+        <span class="font-medium">{heading}</span>, once per device. On
         <a href={tokensPageUrl(serverBaseUrl)} target="_blank" rel="noreferrer" class={link} data-testid="agents-setup-on-portal">the Sync Server's Access tokens page</a
-        >, under <strong>Set up an agent</strong>, and run the command it shows on the agent's device. The Headless Client trades the code for an Agent Token limited to the
-        routes an agent needs, then asks for Device Approval: in EtherPK, on any device where your Encryption Keys are unlocked, select Show the code and check that it matches.
+        >, under <span class="font-medium">Set up an agent</span>, click <span class="font-medium">Create an Agent Setup Code</span> and run the command it shows on
+        the agent's device. {@render agentToken()}
     </p>
 {:else}
-    <p>
-        <span class="font-medium">{heading}</span>, once per device. Create an Agent Setup Code and run the command on the agent's device. The Headless Client trades the code
-        for an Agent Token limited to the routes an agent needs, then asks for Device Approval: in EtherPK, on any device where your Encryption Keys are unlocked, select Show the
-        code and check that it matches.
+    <p data-testid="agents-sign-in-step">
+        <span class="font-medium">{heading}</span>, once per device. Click <span class="font-medium">Create an Agent Setup Code</span> and run the command on the
+        agent's device. {@render agentToken()}
     </p>
 {/if}
 {#if command}
@@ -125,7 +133,7 @@
 {#if copyError}<p role="status" class="text-sm text-red-700 dark:text-red-400">{copyError}</p>{/if}
 {#if setupCode.phase === "ready"}
     <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-setup-code-expiry">
-        Works once and expires at {new Date(setupCode.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Keep it secret until then.
+        Works once and expires at {new Date(setupCode.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
     </p>
 {:else if setupCode.phase === "expired"}
     <p role="status" class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-setup-code-expired">
@@ -142,12 +150,8 @@
         class="rounded-lg bg-neutral-950 dark:bg-white px-4 py-2 text-sm font-medium text-white dark:text-neutral-950 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-60"
         data-testid="agents-make-setup-code"
     >
-        {setupCode.phase === "making"
-            ? "Creating an Agent Setup Code…"
-            : setupCode.phase === "idle"
-              ? "Create an Agent Setup Code"
-              : setupCode.phase === "failed"
-                ? "Try again"
-                : "Create a new Agent Setup Code"}
+        <!-- One name in every state, the one the step above tells the person to click: after a
+             failure, the error above says what went wrong and this asks again. -->
+        {setupCode.phase === "making" ? "Creating an Agent Setup Code…" : "Create an Agent Setup Code"}
     </button>
 {/if}

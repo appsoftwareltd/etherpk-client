@@ -129,7 +129,8 @@ export function registerCommand(tool: AgentTool, graphId: string, serverBaseUrl:
 export function registerNote(tool: AgentTool): string {
     switch (tool) {
         case 'claude':
-            return 'Run this on the agent\'s device. Claude Code can then use this graph from any folder.'
+            // `--scope user`: Claude Code otherwise keeps a server to the folder the command ran in.
+            return 'Run this on the agent\'s device. User scope means Claude Code can then use this graph from any path. Modify as required.'
         case 'codex':
             return 'Run this on the agent\'s device. Codex can then use this graph from any folder.'
         case 'cursor':
