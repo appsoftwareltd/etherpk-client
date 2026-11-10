@@ -26,6 +26,7 @@
     import { describeSyncFailure } from "#lib/sync/sync-error-copy.js";
     import { PUBLIC_DOCS_URL } from "@appsoftwareltd/etherpk-shared";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
+    import { iconSvg } from "#lib/surface/icons.js";
 
     /** The user guide's section on getting back in without a Recovery Code. */
     const RECOVERING_ACCESS_URL = `${PUBLIC_DOCS_URL}/recovery-code-and-device-approval#recovering-access`;
@@ -216,13 +217,19 @@
     {#snippet body()}
         {#if approval || startingApproval}
             {#if !approvalCode}
-                <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                    On each device where your Encryption Keys are already unlocked, an approval prompt will appear.
-                    Select Show the code on one of them, and this device then shows a code to compare with it.
+                <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="approval-instruction">
+                    Use an unlocked device to approve this one. Select <strong>Show the code</strong> on any of them,
+                    and this device will show a code which should match the one shown here.
                 </p>
                 <!-- The wait, and its outcome, are the only things happening here; a screen reader
-                     that is told neither has no way to know the dialog is still working. -->
-                <p class="text-sm text-neutral-500 dark:text-neutral-400" role="status" data-testid="approval-waiting">Waiting for another device…</p>
+                     that is told neither has no way to know the dialog is still working. Bold, beside
+                     an hourglass, so the eye finds it too. -->
+                <p class="flex items-center gap-2 text-sm font-semibold text-neutral-950 dark:text-neutral-100" role="status" data-testid="approval-waiting">
+                    <span class="shrink-0 text-neutral-600 dark:text-neutral-400">
+                        <!-- eslint-disable-next-line svelte/no-at-html-tags -- the Client's own icon markup (icons.ts) -->
+                        {@html iconSvg("hourglass", { size: 18 })}
+                    </span>Waiting for another device…
+                </p>
             {:else}
                 <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     Check that your other device shows <strong>this exact code</strong>. Approve there, and

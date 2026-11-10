@@ -64,6 +64,12 @@ export const ICON_PATHS: Record<string, string> = {
     // The `#` menu: a task's priority, and its waiting, doing and cancelled states.
     flag: '<path d="M4 14V3h7l-1.5 2.5L11 8H4"/>',
     clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.2"/>',
+    /**
+     * An egg timer with its sand run down: waiting on someone else (the unlock dialog, until another
+     * device answers). Heroicons has no hourglass, so it is drawn here.
+     */
+    hourglass:
+        '<path d="M3.5 2.5h9M3.5 13.5h9"/><path d="M4.5 2.5V4c0 2 2.9 2.6 2.9 4 0 1.4-2.9 2-2.9 4v1.5M11.5 2.5V4c0 2-2.9 2.6-2.9 4 0 1.4 2.9 2 2.9 4v1.5"/><path d="M6 12.6c.6-1.2 1.4-1.8 2-1.8s1.4.6 2 1.8z" fill="currentColor" stroke="none"/>',
     /** A label on a string: a Free Tag, a person's own word on a task. */
     tag: '<path d="M2.5 3.5a1 1 0 0 1 1-1h4.1a1 1 0 0 1 .7.3l5 5a1 1 0 0 1 0 1.4l-4.1 4.1a1 1 0 0 1-1.4 0l-5-5a1 1 0 0 1-.3-.7z"/><circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none"/>',
 
