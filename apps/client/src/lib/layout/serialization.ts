@@ -160,6 +160,12 @@ export interface DefaultLayoutOptions {
      * `true`, the safe answer for a caller that has not said which presenter it is for.
      */
     rightSidebarCollapsed?: boolean
+    /**
+     * Whether the left Sidebar starts collapsed. A phone draws it as a drawer over the document,
+     * so a graph whose first screen should be its document (the demo) starts with it closed.
+     * Default `false`: open, on every presenter.
+     */
+    leftSidebarCollapsed?: boolean
 }
 
 /**
@@ -219,7 +225,7 @@ export function defaultLayout(options: DefaultLayoutOptions = {}): SerializedLay
 
     const model: LayoutModel = {
         regions: {
-            'left-sidebar': { panes: [treePane], collapsed: false },
+            'left-sidebar': { panes: [treePane], collapsed: options.leftSidebarCollapsed ?? false },
             main: { panes: [mainPane], collapsed: false },
             'right-sidebar': { panes: [rightPane], collapsed: rightSidebarCollapsed },
         },

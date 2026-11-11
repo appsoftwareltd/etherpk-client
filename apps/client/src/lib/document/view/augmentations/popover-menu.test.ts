@@ -2,7 +2,7 @@ import { EditorState, type TransactionSpec } from '@codemirror/state'
 import { type KeyBinding, keymap, showTooltip } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 
-import { popoverMenu, refreshOpenPopovers, refreshPopovers } from './popover-menu'
+import { type PopoverRow, popoverMenu, popoverSections, refreshOpenPopovers, refreshPopovers } from './popover-menu'
 
 /** An open menu over `rowCount()` rows, driven through its own keymap, without a DOM. */
 function openMenu(rowCount: () => number, computed: () => number = () => 0) {
@@ -95,5 +95,29 @@ describe('the popover menu', () => {
         const up = openMenu(() => 3, () => -1)
         up.key('ArrowUp')
         expect(up.highlight()).toBe(2)
+    })
+})
+
+// A menu whose rows name a heading is drawn in groups (the Command Menu's Insert, Go to, Settings).
+// The headings are drawn from the rows, never counted among them.
+describe('the sections a menu’s rows are drawn in', () => {
+    const row = (label: string, group?: string): PopoverRow => ({ label, group })
+    const shape = (rows: PopoverRow[]) => popoverSections(rows).map((section) => ({ group: section.group, start: section.start, labels: section.rows.map((r) => r.label) }))
+
+    it('is one section per run of neighbouring rows under the same heading, each starting at its first row’s index', () => {
+        expect(shape([row('Table', 'Insert'), row('Today', 'Insert'), row('Search', 'Go to'), row('Spell check', 'Settings')])).toEqual([
+            { group: 'Insert', start: 0, labels: ['Table', 'Today'] },
+            { group: 'Go to', start: 2, labels: ['Search'] },
+            { group: 'Settings', start: 3, labels: ['Spell check'] },
+        ])
+    })
+
+    it('has no section for a heading with no row', () => {
+        expect(shape([row('Search', 'Go to')])).toEqual([{ group: 'Go to', start: 0, labels: ['Search'] }])
+        expect(shape([])).toEqual([])
+    })
+
+    it('is a single section with no heading for rows that name none, as a wikilink completion’s are', () => {
+        expect(shape([row('Garden'), row('Kitchen')])).toEqual([{ group: undefined, start: 0, labels: ['Garden', 'Kitchen'] }])
     })
 })

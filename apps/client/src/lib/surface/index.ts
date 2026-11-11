@@ -35,7 +35,11 @@ export {
 export {
     type CommandMenuItem,
     type CommandMenuContext,
+    type CommandMenuGroup,
     COMMAND_MENU_KIND,
+    COMMAND_MENU_GROUPS,
+    commandMenuGroup,
+    commandMenuGroupRank,
     registerCommandMenuItem,
     commandMenuItemsInOrder,
     commandMenuDetail,

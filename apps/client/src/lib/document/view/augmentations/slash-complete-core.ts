@@ -6,7 +6,7 @@
  * the popover, command dispatch, the calendar) lives in `slash-complete.ts`.
  */
 
-import type { CommandMenuItem } from '../../../surface'
+import { type CommandMenuItem, commandMenuGroupRank } from '../../../surface'
 import { matchScore } from './wikilink-complete-core'
 
 /** The `/`-triggered context the cursor sits in, as columns within a line. */
@@ -53,18 +53,28 @@ function itemScore(item: CommandMenuItem, query: string): number | null {
 
 /**
  * The applicable items filtered and ranked for a typed `query`. An empty query keeps every
- * item in menu order (each row's `order`, so bare `/` lists everything in that order);
- * a non-empty query keeps only fuzzy matches (reusing `matchScore`: exact › prefix ›
- * substring › subsequence over title + keywords), best score first, ties broken by the
- * original order so a group stays contiguous. Pure; the popover renders this list verbatim.
+ * item in menu order (each row's group, then its `order`, so bare `/` lists everything in that
+ * order); a non-empty query keeps only fuzzy matches (reusing `matchScore`: exact › prefix ›
+ * substring › subsequence over title + keywords).
+ *
+ * The menu draws its rows under their group's heading, so a group's matches stay together: the
+ * group holding the best match comes first, groups that match equally well keep the menu's order,
+ * and within a group the best score comes first, ties broken by the original order. The first row,
+ * the one Enter runs, is therefore always the best match of all. Pure; the popover renders this
+ * list verbatim.
  */
 export function rankCommandMenu(items: readonly CommandMenuItem[], query: string): CommandMenuItem[] {
     if (query === '') return [...items]
-    const scored: { item: CommandMenuItem; score: number; order: number }[] = []
+    const scored: { item: CommandMenuItem; score: number; order: number; group: number }[] = []
+    /** The best score among each group's matches, by the group's rank. */
+    const best = new Map<number, number>()
     items.forEach((item, order) => {
         const score = itemScore(item, query)
-        if (score !== null) scored.push({ item, score, order })
+        if (score === null) return
+        const group = commandMenuGroupRank(item)
+        scored.push({ item, score, order, group })
+        best.set(group, Math.max(best.get(group) ?? score, score))
     })
-    scored.sort((a, b) => b.score - a.score || a.order - b.order)
+    scored.sort((a, b) => best.get(b.group)! - best.get(a.group)! || a.group - b.group || b.score - a.score || a.order - b.order)
     return scored.map((s) => s.item)
 }

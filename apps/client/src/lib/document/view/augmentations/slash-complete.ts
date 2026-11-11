@@ -6,7 +6,9 @@
  * the applicable `CommandMenuItem`s from the active Contribution registry; `accept` deletes
  * the typed `/query` and runs the row's Command through the active Command registry. The
  * Date Picker row's Command opens the sibling calendar (date-calendar.ts). It opens only on a typed
- * `/` (`typesSlash`), never on a caret that arrives behind one.
+ * `/` (`typesSlash`), never on a caret that arrives behind one. The rows are listed under three
+ * headings, Insert, Go to and Settings (`commandMenuGroup`); a heading with no row is not drawn, and
+ * the highlight moves from row to row across them.
  *
  * The pure trigger/ranking logic is in `slash-complete-core.ts`; this is the CM binding.
  */
@@ -16,8 +18,10 @@ import type { EditorView } from '@codemirror/view'
 
 import {
     type CommandMenuContext,
+    type CommandMenuGroup,
     type CommandMenuItem,
     commandMenuDetail,
+    commandMenuGroup,
     listCommandMenuItems,
     tryGetActiveCommandRegistry,
     tryGetActiveContributionRegistry,
@@ -64,8 +68,24 @@ export function resumeCommand(): TransactionSpec {
     return { effects: [resumedCommand.of(null), refreshPopovers.of(null)] }
 }
 
-/** A row as the menu shows it: its help text worked out for this caret. */
-type MenuRow = Omit<CommandMenuItem, 'detail'> & { detail?: string }
+/** A row as the menu shows it: its help text worked out for this caret, under the heading it belongs to. */
+type MenuRow = Omit<CommandMenuItem, 'detail' | 'group'> & { detail?: string; group: CommandMenuGroup }
+
+/**
+ * What the Command Menu shows in this editor, heading by heading in the order drawn, or nothing
+ * while it is shut. A heading with no row is not shown.
+ */
+export function commandMenuShown(state: EditorState): { group: CommandMenuGroup; titles: string[] }[] {
+    const shown: { group: CommandMenuGroup; titles: string[] }[] = []
+    for (const menu of state.facet(commandMenuProbe)) {
+        for (const item of menu(state)?.items ?? []) {
+            const last = shown[shown.length - 1]
+            if (last?.group === item.group) last.titles.push(item.title)
+            else shown.push({ group: item.group, titles: [item.title] })
+        }
+    }
+    return shown
+}
 
 interface MenuState extends PopoverBase {
     items: MenuRow[]
@@ -131,7 +151,8 @@ export function slashCompletion(): Extension {
         const applicable = listCommandMenuItems(registry, context)
         // No row may match for now: the menu stays open showing nothing, so deleting the key that
         // matched nothing brings the rows back without typing the `/` again.
-        const items = rankCommandMenu(applicable, ctx.query).map((item) => ({ ...item, detail: commandMenuDetail(item, context) }))
+        // `rankCommandMenu` keeps each group's rows together, which is what the headings are drawn from.
+        const items = rankCommandMenu(applicable, ctx.query).map((item) => ({ ...item, detail: commandMenuDetail(item, context), group: commandMenuGroup(item) }))
         return { anchor, items, selected: 0 }
     }
 
@@ -139,6 +160,7 @@ export function slashCompletion(): Extension {
         return menu.items.map((item) => ({
             label: item.title,
             detail: item.detail,
+            group: item.group,
             icon: iconSvg(item.icon ?? 'default', { strokeWidth: 1.3 }),
             dataAttrs: { 'data-command': item.command },
         }))

@@ -27,7 +27,7 @@ export function registerInstallCommands(
             title: 'Install EtherPK',
             detail: 'Install as an app on this device',
             icon: 'download',
-            group: 'Workspace',
+            group: 'Settings',
             order: 210,
             keywords: ['app', 'install', 'home screen', 'dock', 'taskbar', 'offline', 'pwa'],
             when: () => deps.installable(),

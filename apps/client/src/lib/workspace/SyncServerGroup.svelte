@@ -50,11 +50,11 @@
         formatBytes,
     } from "@appsoftwareltd/etherpk-shared";
     import SyncPlusOffer from "@appsoftwareltd/etherpk-shared/sync-plus-offer";
-    import { applyGraphOrder } from "#lib/storage/index.js";
     import GraphOrderList from "./GraphOrderList.svelte";
     import SyncedGraphRow from "./SyncedGraphRow.svelte";
-    import { graphOrderOf, saveGraphOrder } from "./graph-order-state";
-    import { keyCopyNotice } from "./graph-picker-helpers";
+    import { saveGraphOrder } from "./graph-order-state";
+    import { serverKeysLocked, syncedGroupRows } from "./sync-server-rows";
+    import { keyCopyNotice, syncedRowName } from "./graph-picker-helpers";
     import {
         CUSTOM_SERVER_ICON,
         MANAGED_SERVER_ICON,
@@ -104,40 +104,16 @@
 
     /**
      * Signed in, with Encryption Keys on the server that are not unlocked on this device: every
-     * graph's name is hidden and none opens, so the group says so first and offers the unlock.
+     * graph's name is hidden and nothing about a graph works, so the group shows one step, the
+     * unlock, over the graphs as locked placeholders. Deleting a graph and leaving one need no
+     * key, and stay behind each row's menu, since a reset is the only other way to drop a graph
+     * without the keys and it drops them all. Transferring comes back once the keys are unlocked,
+     * and the reset dialog offers it meanwhile.
      */
-    const keysLocked = $derived(
-        server.authState === "authenticated" &&
-            server.vaultExists === true &&
-            !server.vaultUnlocked,
-    );
+    const keysLocked = $derived(serverKeysLocked(server));
 
-    /**
-     * One row per graph. While the server's list is to hand the rows are its memberships, each
-     * joined to this device's copy; while it is not (offline, or the list failed) they are the
-     * copies this device holds for this server. None before the first account check answers, which
-     * may yet say the account changed, and none while signed out, when the copies are hidden.
-     * In the group's Graph Order, wherever each came from.
-     */
-    const rows = $derived.by(() => {
-        if (
-            server.authState === "signed-out" ||
-            (!server.checked && !server.listed)
-        )
-            return [];
-        const unordered = server.listed
-            ? server.graphs.map((view) => ({
-                  id: view.id,
-                  view: view as SyncedGraphView | null,
-                  record: records.find((record) => record.id === view.id) ?? null,
-              }))
-            : records.map((record) => ({
-                  id: record.id,
-                  view: null as SyncedGraphView | null,
-                  record: record as GraphRecord | null,
-              }));
-        return applyGraphOrder(unordered, graphOrderOf(server.origin), (row) => row.id);
-    });
+    /** One row per graph, in the group's Graph Order (sync-server-rows.ts). */
+    const rows = $derived(syncedGroupRows(server, records));
 
     /** Who is signed in here, or why nobody is, beside the kind of server. */
     const accountLine = $derived.by(() => {
@@ -157,15 +133,13 @@
     });
 
     /**
-     * Why a row carries the id placeholder rather than a name: the keys are locked here; the graph
+     * Why a row carries the id placeholder rather than a name, with the keys unlocked: the graph
      * is being read; it has no name at all; the relay did not answer; or this account holds no key
-     * for it (ADR 0031, amended). The line must never read as a key failure: "Encrypted name" once
+     * for it (ADR 0031, amended). With the keys locked the row is a locked placeholder instead. The line must never read as a key failure: "Encrypted name" once
      * sent a user towards Reset (2026-09-01).
      */
     function nameNoteFor(view: SyncedGraphView): string | null {
         if (view.onDevice || view.nameSource !== "placeholder") return null;
-        if (!server.vaultUnlocked)
-            return "Unlock Encryption Keys on this device to see its name.";
         switch (server.nameReads[view.id]) {
             case "reading":
                 return "Reading its name from the graph…";
@@ -229,14 +203,16 @@
             data-testid="synced-graphs-keys-locked"
             class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-900/15 bg-white p-4 dark:border-neutral-100/20 dark:bg-white/5"
         >
-            <p class="text-sm text-neutral-700 dark:text-neutral-200">
-                Unlock Encryption Keys for the synced graphs or go to the <button
-                    type="button"
-                    onclick={actions.showSettings}
-                    class="font-medium text-neutral-950 underline underline-offset-2 hover:no-underline dark:text-white"
-                    >Sync tab</button
-                > for more options.
-            </p>
+            <div class="min-w-0 flex-1 basis-64">
+                <p class="text-sm font-medium text-neutral-950 dark:text-white">
+                    Your synced graphs are locked on this device.
+                </p>
+                <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
+                    Unlock your Encryption Keys to see their names and open them.
+                    Another of your devices can approve it, or use your Recovery
+                    Code.
+                </p>
+            </div>
             <button type="button" onclick={actions.unlock} class={PRIMARY_BUTTON}
                 >Unlock Encryption Keys</button
             >
@@ -504,7 +480,7 @@
             testid="synced-graphs-list"
             items={rows}
             idOf={(row) => row.id}
-            nameOf={(row) => row.record?.name ?? row.view?.name ?? row.id}
+            nameOf={(row) => syncedRowName(row, keysLocked)}
             onreorder={(ids) => saveGraphOrder(server.origin, ids)}
         >
             {#snippet card(row, grip)}
@@ -512,16 +488,17 @@
                 {@const record = row.record}
                 <SyncedGraphRow
                     graphId={row.id}
-                    name={record?.name ?? view?.name ?? row.id}
+                    name={syncedRowName(row, keysLocked)}
                     role={view?.role ?? null}
                     onDevice={record !== null}
+                    locked={keysLocked}
                     accent={record?.toolbarColor ?? null}
-                    {grip}
+                    grip={keysLocked ? null : grip}
                     readOnly={view?.role === "owner" &&
                         !server.ownedGraphsWritable}
                     importInterrupted={interruptedGraphIds.has(row.id)}
                     storage={view?.storage ?? null}
-                    nameNote={view ? nameNoteFor(view) : null}
+                    nameNote={view && !keysLocked ? nameNoteFor(view) : null}
                     members={view?.role === "owner" ? view.members : undefined}
                     message={rowMessage[row.id] ?? null}
                     canInvite={server.ownedGraphsWritable}

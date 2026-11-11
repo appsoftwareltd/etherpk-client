@@ -15,11 +15,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { undoDepth } from '@codemirror/commands'
-import { type EditorState, type Transaction, type TransactionSpec } from '@codemirror/state'
+import { toggleComment, undoDepth } from '@codemirror/commands'
+import { type EditorState, type Extension, type Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, type WidgetType } from '@codemirror/view'
 
-import { createContributionRegistry, registerCommandMenuItem, setActiveContributionRegistry } from '#lib/surface/index.js'
+import { createCommandRegistry, createContributionRegistry, registerCommandMenuItem, setActiveCommandRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
 import { editAsTextSpec, followFenceRegistrations, interactiveFenceAugmentation, widgetEditsChanges } from './augmentations/interactive-fence'
@@ -37,13 +37,14 @@ import { imageWidthChange } from './augmentations/image-resize'
 import { markdownTableAugmentation } from './augmentations/markdown-table'
 import { guideThreadsFor } from './augmentations/outline-guides'
 import { outlineBaseIn } from './augmentations/outline-base'
-import { slashCompletion } from './augmentations/slash-complete'
+import { commandMenuShown, slashCompletion } from './augmentations/slash-complete'
 import { refreshOpenPopovers } from './augmentations/popover-menu'
 import { learnedFreeTags, taskTagCompletion } from './augmentations/task-tag-complete'
 import { wikilinkCompletion } from './augmentations/wikilink-complete'
 import { refreshWikilinks, wikilinkAugmentation } from './augmentations/wikilink'
 import { displayNameForRef } from '../../storage/fs/asset-store'
 import { collaborative, isEdit } from './cm-document'
+import { editorDefaultKeymap } from './editor-default-keymap'
 import { bookmarkMarks, bookmarkedLines, syncBookmarkMarks } from './augmentations/bookmark-marks'
 import { captureAnchor } from '../bookmarks/anchor'
 import { outdentBranch, toggleBullet } from './outliner-keymap'
@@ -463,6 +464,38 @@ table('prose is deliberately boring', [
     { rule: 'Alt+Down is the ordinary line move', precedent: 'VS Code', before: 'one|\ntwo', key: 'Alt-ArrowDown', after: 'two\none|' },
     { rule: 'a heading edits as a plain line', precedent: 'Obsidian', before: '# Title|', key: 'Enter', after: '# Title\n|' },
 ])
+
+// CodeMirror's default keymap binds two chords to its comment commands, and the markdown language
+// gives them `<!--` and `-->` to write. The fixture's own default handlers are a hand-kept mirror, so
+// these rows press the keymap the live editor loads (editor-default-keymap.ts) instead.
+describe('the comment chords write nothing (EtherPK: Mod+/ belongs to the Keyboard Shortcuts card)', () => {
+    const fixture = (before: string) => editorFixture(before, { extensions: [markdownWithCodeHighlight()] })
+    /** Press `key` on the editor's default keymap: whether a binding handled it, and the text after. */
+    const pressDefault = (before: string, key: string) => {
+        const editor = fixture(before)
+        const handled = editorDefaultKeymap.some((binding) => binding.key === key && binding.run?.(editor as never) === true)
+        return { handled, after: editor.fixture() }
+    }
+
+    for (const row of [
+        { rule: 'Mod+/ on a bullet leaves the line as it is', key: 'Mod-/', before: '- water the be|ans' },
+        { rule: 'Mod+/ on a prose line leaves the line as it is', key: 'Mod-/', before: 'Gar|den' },
+        { rule: 'Mod+/ over a selection leaves it as it is', key: 'Mod-/', before: '- «water» the beans' },
+        // CodeMirror names Shift+Alt+A `Alt-A`.
+        { rule: 'Shift+Alt+A over a selection leaves it as it is', key: 'Alt-A', before: '- «water» the beans' },
+    ]) {
+        it(`${row.key}: ${row.rule}`, () => {
+            // Unhandled as well as unchanged: the key goes on to the window, which opens the card.
+            expect(pressDefault(row.before, row.key)).toEqual({ handled: false, after: row.before })
+        })
+    }
+
+    it('CodeMirror’s own comment command would change the same fixture, so the rows above can fail', () => {
+        const editor = fixture('- water the be|ans')
+        expect(toggleComment(editor)).toBe(true)
+        expect(editor.text()).toBe('<!-- - water the beans -->')
+    })
+})
 
 // A space typed at column 0 goes where it is typed. Under a list, a line short of the bullet's content
 // column is still prose, so the caret stays after the space; the space that reaches the column makes
@@ -1516,6 +1549,22 @@ describe('the # helper opens at the end of what is typed, never inside a tag or 
     }
 })
 
+/** A key as the live keymap takes it: an open popover's binding comes first, then the stack's. */
+function pressThroughMenu(editor: ReturnType<typeof editorFixture>, name: string): void {
+    const view = {
+        get state() {
+            return editor.state
+        },
+        dispatch(spec: TransactionSpec | Transaction) {
+            editor.dispatch('startState' in spec ? spec : editor.state.update(spec))
+        },
+    }
+    for (const binding of editor.state.facet(keymap).flat()) {
+        if (binding.key === name && binding.run?.(view as never)) return
+    }
+    editor.key(name)
+}
+
 // Obsidian offers the tags a vault uses as a `#` word is typed. Here they follow the Task Tag rows,
 // and only once a letter is typed, so a bare `#` is the same list it always was. Nothing in these
 // fixtures but `zinnia` holds a `z`, so whether the menu opens says whether a Free Tag row is there.
@@ -1524,22 +1573,6 @@ describe('the # helper offers the graph\'s Free Tags once a letter is typed (Obs
 
     const landFreeTags = (editor: Editor, used: string[]) =>
         editor.dispatch(editor.state.update({ effects: [learnedFreeTags.of(used), refreshOpenPopovers.of(null)] }))
-
-    /** A key as the live keymap takes it: the popover's binding comes first, then the stack's. */
-    function pressThroughMenu(editor: Editor, name: string): void {
-        const view = {
-            get state() {
-                return editor.state
-            },
-            dispatch(spec: TransactionSpec | Transaction) {
-                editor.dispatch('startState' in spec ? spec : editor.state.update(spec))
-            },
-        }
-        for (const binding of editor.state.facet(keymap).flat()) {
-            if (binding.key === name && binding.run?.(view as never)) return
-        }
-        editor.key(name)
-    }
 
     const rows: { rule: string; before: string; used: string[]; open: boolean }[] = [
         { rule: 'a letter a used tag holds', before: '- [ ] water #z|', used: ['zinnia'], open: true },
@@ -1654,6 +1687,79 @@ describe('the Command Menu opens on a typed /, never on the caret arriving behin
         expect(editor.fixture()).toBe('/|\n```garden.plan\n{"id":"k1"}\n```')
         expect(editor.state.facet(showTooltip).filter(Boolean)).toHaveLength(1)
     })
+})
+
+// The Command Menu lists its rows under three headings, as a VS Code Quick Pick lists its items under
+// separators: a heading is drawn only over rows, it is never a row, and the arrow keys pass over it.
+describe('the Command Menu lists its rows under Insert, Go to and Settings, and its keys pass over the headings (VS Code)', () => {
+    let ran: string[]
+    beforeEach(() => {
+        ran = []
+        const registry = createContributionRegistry()
+        const commands = createCommandRegistry()
+        // Registered out of the menu's order: a row carries its own group and place in it.
+        const rows: { id: string; title: string; group?: string; order?: number; actsOnText?: boolean }[] = [
+            { id: 'garden.spelling', title: 'Spell check', group: 'Settings', order: 10 },
+            { id: 'garden.search', title: 'Search', group: 'Go to', order: 10 },
+            { id: 'garden.today', title: 'Today', group: 'Insert', order: 20 },
+            { id: 'garden.table', title: 'Table', group: 'Insert', order: 10 },
+            // Rows from an extension written before the headings: no group, or one the menu lacks.
+            { id: 'garden.board', title: 'Open board', group: 'Tasks' },
+            { id: 'garden.sketch', title: 'Sketch', actsOnText: true },
+        ]
+        for (const row of rows) {
+            registerCommandMenuItem(registry, { ...row, command: row.id })
+            commands.register(row.id, () => void ran.push(row.title))
+        }
+        setActiveContributionRegistry(registry)
+        setActiveCommandRegistry(commands)
+    })
+    afterEach(() => {
+        setActiveContributionRegistry(null)
+        setActiveCommandRegistry(null)
+    })
+
+    const typed = (text: string, extensions: Extension[] = []) => {
+        const editor = editorFixture('- |', { extensions: [slashCompletion(), ...extensions] })
+        for (const key of text) editor.type(key)
+        return editor
+    }
+    const insert = { group: 'Insert', titles: ['Table', 'Today', 'Sketch'] }
+    const goTo = { group: 'Go to', titles: ['Search', 'Open board'] }
+    const settings = { group: 'Settings', titles: ['Spell check'] }
+
+    const shows: { rule: string; typed: string; part?: boolean; shown: { group: string; titles: string[] }[] }[] = [
+        { rule: 'a bare / lists Insert, then Go to, then Settings, each in its own order', typed: '/', shown: [insert, goTo, settings] },
+        { rule: 'a row with no heading of the menu is under Insert when it acts on the text, else under Go to', typed: '/sketch', shown: [{ group: 'Insert', titles: ['Sketch'] }] },
+        { rule: 'a query keeps the headings and drops one with no row left', typed: '/s', shown: [{ group: 'Insert', titles: ['Sketch'] }, { group: 'Go to', titles: ['Search'] }, settings] },
+        { rule: 'the heading holding the best match comes first', typed: '/search', shown: [{ group: 'Go to', titles: ['Search'] }] },
+        // Search holds the letter earliest, so Go to leads; Insert and Settings tie and keep their order.
+        { rule: 'a heading whose rows match better comes before an earlier one', typed: '/e', shown: [{ group: 'Go to', titles: ['Search', 'Open board'] }, { group: 'Insert', titles: ['Sketch', 'Table'] }, settings] },
+        { rule: 'an editor showing part of a document has the one heading, Insert', typed: '/', part: true, shown: [{ group: 'Insert', titles: ['Sketch'] }] },
+    ]
+    for (const row of shows) {
+        it(row.rule, () => {
+            expect(commandMenuShown(typed(row.typed, row.part ? [showsPart()] : []).state)).toEqual(row.shown)
+        })
+    }
+
+    // The highlight counts rows only, so no key ever rests on a heading: Enter after each run of
+    // arrow keys says which row it reached.
+    const keys: { rule: string; keys: string[]; runs: string }[] = [
+        { rule: 'Enter runs the first row under the first heading', keys: [], runs: 'Table' },
+        { rule: 'ArrowDown from the last row under a heading goes to the first row under the next', keys: ['ArrowDown', 'ArrowDown', 'ArrowDown'], runs: 'Search' },
+        { rule: 'ArrowUp from the first row under a heading goes to the last row under the one before', keys: ['ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowUp'], runs: 'Sketch' },
+        { rule: 'ArrowUp from the first row wraps to the last row under the last heading', keys: ['ArrowUp'], runs: 'Spell check' },
+        { rule: 'ArrowDown from the last row wraps to the first', keys: ['ArrowUp', 'ArrowDown'], runs: 'Table' },
+    ]
+    for (const row of keys) {
+        it(row.rule, () => {
+            const editor = typed('/')
+            for (const key of [...row.keys, 'Enter']) pressThroughMenu(editor, key)
+            expect(ran).toEqual([row.runs])
+            expect(editor.fixture()).toBe('- |')
+        })
+    }
 })
 
 // Tidy on leave also moves a Task Tag written later in a task into its leading run, applied as the
@@ -3067,7 +3173,7 @@ describe('the end of the document', () => {
         expect(editor.fixture()).toBe('Some notes|')
     })
 
-    // With the caret in the document, the floating buttons start their line after the caret's block
+    // With the caret in the document, the new line buttons start their line after the caret's block
     // rather than at the end (ADR 0168): the text button after the caret's whole tree, so no nested
     // line is orphaned, the bullet button as a sibling of the caret's bullet. A blank line separates
     // a new text line from what follows it.

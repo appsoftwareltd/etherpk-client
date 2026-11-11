@@ -48,7 +48,7 @@ export const INVITE_SELF_COPY = 'That is your own address. You already own this 
 
 const REFUSAL_COPY: Record<string, string> = {
     invite_self: INVITE_SELF_COPY,
-    invite_already_member: 'They are already a member of this graph.',
+    invite_already_member: 'They are already a Player in this graph.',
     ownership_changed: 'The graph changed hands while this ran. Refresh the page to see who owns it now.',
     asset_complete: 'This file has already been uploaded. Add it again to create a new copy.',
     asset_manifest_mismatch: 'This upload no longer matches the file it started with. Add the file again.',

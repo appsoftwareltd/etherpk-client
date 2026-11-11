@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { type CommandMenuContext, type CommandMenuItem, commandMenuDetail, listCommandMenuItems, registerCommandMenuItem } from './command-menu'
+import { type CommandMenuContext, type CommandMenuItem, COMMAND_MENU_GROUPS, commandMenuDetail, commandMenuGroup, commandMenuItemsInOrder, listCommandMenuItems, registerCommandMenuItem } from './command-menu'
 import { createContributionRegistry } from './contribution-registry'
 
 // A Command Menu row's help text (CONTEXT.md → Command Menu): fixed, or worked out from the editor
@@ -50,7 +50,45 @@ describe('the rows offered in an editor showing part of a document', () => {
     })
 
     it('are every row in an editor showing a whole document', () => {
-        expect(titles(context)).toEqual(['Today', 'Search', 'Bold'])
-        expect(titles({ ...context, partOfDocument: false })).toEqual(['Today', 'Search', 'Bold'])
+        // In the menu's groups: the two that act on the text are under Insert, Search under Go to.
+        expect(titles(context)).toEqual(['Today', 'Bold', 'Search'])
+        expect(titles({ ...context, partOfDocument: false })).toEqual(['Today', 'Bold', 'Search'])
+    })
+})
+
+// The menu lists its rows under three headings, in this order (CONTEXT.md → Command Menu). A row says
+// which it belongs under; one that does not, or that names a heading the menu does not have (an
+// extension written before the headings), is placed by whether it acts on the text.
+describe('the group a Command Menu row is listed under', () => {
+    const item = (fields: Partial<CommandMenuItem>): CommandMenuItem => ({ id: 'test.row', title: 'Row', command: 'test.row', ...fields })
+
+    it('is one of Insert, Go to and Settings, in that order', () => {
+        expect(COMMAND_MENU_GROUPS).toEqual(['Insert', 'Go to', 'Settings'])
+    })
+
+    it('is the group the row names', () => {
+        expect(commandMenuGroup(item({ group: 'Insert' }))).toBe('Insert')
+        expect(commandMenuGroup(item({ group: 'Go to', actsOnText: true }))).toBe('Go to')
+        expect(commandMenuGroup(item({ group: 'Settings' }))).toBe('Settings')
+    })
+
+    it('is Insert for a row that names none and acts on the text, and Go to for any other', () => {
+        expect(commandMenuGroup(item({ actsOnText: true }))).toBe('Insert')
+        expect(commandMenuGroup(item({}))).toBe('Go to')
+    })
+
+    it('is worked out the same way for a heading the menu does not have', () => {
+        expect(commandMenuGroup(item({ group: 'Tasks' }))).toBe('Go to')
+        expect(commandMenuGroup(item({ group: 'Format', actsOnText: true }))).toBe('Insert')
+    })
+
+    it('comes before a row’s `order`: rows sort by group, then by `order` within it', () => {
+        const registry = createContributionRegistry()
+        registerCommandMenuItem(registry, item({ id: 'spelling', group: 'Settings', order: 1 }))
+        registerCommandMenuItem(registry, item({ id: 'search', group: 'Go to', order: 5 }))
+        registerCommandMenuItem(registry, item({ id: 'map', group: 'Insert', order: 90 }))
+        registerCommandMenuItem(registry, item({ id: 'board' }))
+        registerCommandMenuItem(registry, item({ id: 'table', group: 'Insert', order: 10 }))
+        expect(commandMenuItemsInOrder(registry).map((row) => row.id)).toEqual(['table', 'map', 'search', 'board', 'spelling'])
     })
 })

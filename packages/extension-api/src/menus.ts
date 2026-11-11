@@ -154,9 +154,17 @@ export interface CommandMenuItem {
     detail?: string | ((context: CommandMenuContext) => string | undefined)
     /** An icon drawn before the title: the extension's own or one of the Client's. */
     icon?: string
-    /** Rows are grouped under this heading. */
+    /**
+     * The heading the row is listed under: `'Insert'` for a row that puts something in the document,
+     * `'Go to'` for one that opens a View or a panel or finds something, or `'Settings'` for one that
+     * changes how EtherPK behaves. The menu lists the three in that order. Absent, or any other
+     * text, the row is listed under Insert when it sets `actsOnText` and under Go to otherwise.
+     */
     group?: string
-    /** Lower sorts earlier within the group. */
+    /**
+     * Lower sorts earlier within the group, among the Client's rows and other extensions'. Absent,
+     * the row comes after every row of its group that has one.
+     */
     order?: number
     /** More words the menu's filter matches. */
     keywords?: string[]

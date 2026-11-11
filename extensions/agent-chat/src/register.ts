@@ -265,6 +265,8 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
         title: 'Agent',
         detail: 'Ask a language model about this document',
         icon: 'agent-chat',
+        // With the Views a person opens from here. No `order`: after every row of the group that has one.
+        group: 'Go to',
         keywords: ['ai', 'chat', 'ask', 'model', 'assistant'],
         when: (editor) => !editor.protectedDocument && editor.bodyWritable,
         command: OPEN_COMMAND,

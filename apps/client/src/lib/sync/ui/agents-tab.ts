@@ -1,5 +1,6 @@
 /**
- * What the Agents tab of the Settings modal needs (ADR 0072, [[Headless Client]]).
+ * What the Agents tab of the Settings modal needs (ADR 0072, [[Headless Client]]), and the Graphs
+ * page's Agents tab, which shows the same tab for a graph chosen there (`AgentsMcpTab.svelte`).
  *
  * A module rather than a type inside the component, for the same reason as `mirror-tab.ts`:
  * both the Settings modal and the workspace that fills it name the shape, and a Svelte instance
@@ -53,6 +54,35 @@ export type AgentsTabProps =
       }
     /** A graph in the browser's private storage, such as the [[Demo Graph]]: no agent can reach it. */
     | { kind: 'browser' }
+    /**
+     * A synced graph whose commands are not shown yet, on the Graphs page: its server's Encryption
+     * Keys are locked on this device, or the server is signed out. The tab gives the reason and the
+     * step that changes it.
+     */
+    | ({ kind: 'blocked' } & AgentsBlocked)
+    /**
+     * No graph yet, on the Graphs page (ADR 0147): what belongs to the account and not to one
+     * graph. `signIn` logs an agent's device in to a server the device holds; `blocked` says what
+     * stands in the way of that, such as a server signed out or no server at all.
+     */
+    | { kind: 'none'; signIn: AgentsSignIn | null; blocked: AgentsBlocked | null }
+
+/** Why the tab shows no commands, and the step that changes it; null when there is none to offer. */
+export interface AgentsBlocked {
+    reason: string
+    step: { label: string; run: () => void } | null
+}
+
+/** Logging an agent's device in to one Sync Server: what `HeadlessClientSignIn` needs. */
+export interface AgentsSignIn {
+    serverBaseUrl: string
+    headlessClient: string
+    /** Null on a custom server, whose own Access tokens page makes the code (ADR 0132). */
+    createSetupCode: (() => Promise<{ code: string; expiresAt: string }>) | null
+}
+
+/** A graph an agent can be given commands for: a synced graph, or a folder on disk. */
+export type AgentsReachableProps = Extract<AgentsTabProps, { kind: 'synced' | 'local' }>
 
 export { HEADLESS_CLIENT_PACKAGE, headlessClientPackage } from '@appsoftwareltd/etherpk-shared'
 
@@ -200,7 +230,7 @@ export function diagramsSetupCommand(headlessClient: string): string {
  * uses (ADR 0086). `<publication>` and `<folder>` are for the person to fill in: which
  * publication, and where on that machine.
  */
-export function publishCommand(props: Exclude<AgentsTabProps, { kind: 'browser' }>): string | null {
+export function publishCommand(props: AgentsReachableProps): string | null {
     const target = props.kind === 'synced' ? `--sync-server ${props.serverBaseUrl.replace(/\/$/, '')} --graph ${props.graphId}` : props.folderPath ? `--folder ${shellPath(props.folderPath)}` : null
     if (!target) return null
     return `npx ${props.headlessClient} publish ${target} --publication <publication> --out <folder>`

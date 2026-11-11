@@ -1,3 +1,11 @@
+<script lang="ts" module>
+    /**
+     * A button of the home page, named by the row it is in and what it opens: the row under the
+     * headline ("hero") or the row that closes the page.
+     */
+    export type MarketingActionId = `${"hero" | "closing"}_${"try_demo" | "open_app" | "pricing"}`;
+</script>
+
 <script lang="ts">
     import { page } from "$app/state";
     import type { Snippet } from "svelte";
@@ -14,7 +22,8 @@
      * never drift. Only the destinations differ, which is why they are props: a standalone
      * Client has no Corporate, so pricing is simply absent there, and the button row shrinks
      * to what is offered rather than leaving a gap. `belowHero` is the one place an app adds
-     * content of its own.
+     * content of its own. `onAction` tells the app that rendered the page which button of the
+     * two rows was pressed; the page itself records nothing, and the Client passes no listener.
      *
      * `canonicalUrl` is Corporate's copy of this page: Corporate names its own, a managed
      * Client names Corporate's so search engines index one copy, and a standalone Client has
@@ -45,6 +54,7 @@
         syncServerHref = null,
         supportEmail = null,
         belowHero,
+        onAction,
     }: {
         appHref?: string;
         demoHref?: string | null;
@@ -57,8 +67,17 @@
         syncServerHref?: string | null;
         /** Where to write for support, given at the foot of the page. None on a self-hosted Client. */
         supportEmail?: string | null;
-        /** A section of the app's own, shown between the hero and the features. */
+        /**
+         * A section of the app's own, shown straight after the headline, the actions and the note
+         * beneath them, so it is the second screen of the page, above the screenshots.
+         */
         belowHero?: Snippet;
+        /**
+         * Called when a button in the row under the headline or in the row that closes the page
+         * is pressed, before the browser follows the link. It must return at once: the link is
+         * followed whatever it does.
+         */
+        onAction?: (id: MarketingActionId) => void;
     } = $props();
 
     const socialImageUrl = $derived(
@@ -66,32 +85,44 @@
     );
 
     type Action = {
-        id: string;
+        id: "try_demo" | "open_app" | "pricing";
         label: string;
         href: string;
         icon: "app" | "demo" | "pricing";
+        /** How much the row makes of it: the filled button, the outlined one, or a text link. */
+        variant: "primary" | "secondary" | "link";
     };
 
-    // One row, equal weight, in the order a first visit reads them: use it, look at it, price it.
+    // One row, ranked in the order a first visit needs them: look at it, use it, price it. The
+    // demo asks nothing of a visitor, so it is the filled button; the app is the outlined one
+    // beside it; pricing is a text link. Where there is no demo to offer, the app leads.
     const actions = $derived<Action[]>([
-        { id: "app", label: "Open The App", href: appHref, icon: "app" },
         ...(demoHref
             ? [
                   {
-                      id: "demo",
+                      id: "try_demo" as const,
                       label: "Try The Demo",
                       href: demoHref,
                       icon: "demo" as const,
+                      variant: "primary" as const,
                   },
               ]
             : []),
+        {
+            id: "open_app",
+            label: "Open The App",
+            href: appHref,
+            icon: "app",
+            variant: demoHref ? "secondary" : "primary",
+        },
         ...(pricingHref
             ? [
                   {
-                      id: "pricing",
+                      id: "pricing" as const,
                       label: "Sync+ Pricing",
                       href: pricingHref,
                       icon: "pricing" as const,
+                      variant: "link" as const,
                   },
               ]
             : []),
@@ -104,7 +135,7 @@
     const highlights = [
         "Markdown + [[Wikilinks]]",
         "Mobile and Desktop",
-        "All Platforms",
+        "Agent MCP Server",
         "Local + Sync",
         "E2E Encryption",
     ];
@@ -525,8 +556,16 @@
             .map((piece, index) => ({ code: index % 2 === 1, text: piece }));
     }
 
-    const actionClass =
-        "inline-flex h-12 w-full items-center justify-center gap-2.5 rounded-xl bg-neutral-950 px-6 text-base font-semibold text-white shadow-sm transition-colors hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 sm:flex-1 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 dark:focus-visible:outline-white";
+    // The two buttons are the same size and differ only in their fill; the link beside them is as
+    // tall, so it is as easy to hit, and takes a line of its own on a phone.
+    const actionBase =
+        "inline-flex h-12 items-center justify-center gap-2.5 text-base font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 dark:focus-visible:outline-white";
+    const buttonBase = `${actionBase} w-full rounded-xl px-6 shadow-sm sm:w-56`;
+    const actionClasses: Record<Action["variant"], string> = {
+        primary: `${buttonBase} bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100`,
+        secondary: `${buttonBase} bg-white text-neutral-950 ring-1 ring-inset ring-neutral-950/15 hover:bg-neutral-50 dark:bg-white/5 dark:text-white dark:ring-white/15 dark:hover:bg-white/10`,
+        link: `${actionBase} rounded-lg px-3 text-neutral-700 underline decoration-neutral-400 underline-offset-4 hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-white`,
+    };
 
     // Every text link on the page looks the same. The links beneath the hero add an icon, and
     // share one class list so the repository, the docs, the blog and the Discord community match.
@@ -567,7 +606,7 @@
     <meta property="og:image:height" content="630" />
     <meta
         property="og:image:alt"
-        content="EtherPK: a personal knowledge base in plain markdown, beside a screenshot of the editor"
+        content="EtherPK: one Markdown notes app for everything, beside a screenshot of the editor"
     />
     <meta name="twitter:card" content="summary_large_image" />
 </svelte:head>
@@ -640,20 +679,22 @@
     {/if}
 {/snippet}
 
-<!-- The same row opens and closes the page. -->
-{#snippet actionRow(testId: string)}
+<!-- The same row opens and closes the page. A press is reported to the app that rendered the
+     page, if it listens, and the link is followed as it would be without a listener. -->
+{#snippet actionRow(placement: "hero" | "closing")}
     <div
-        data-testid={testId}
-        class="mx-auto flex w-full max-w-2xl flex-col gap-3 sm:flex-row"
+        data-testid="marketing-{placement}-actions"
+        class="mx-auto flex w-full max-w-3xl flex-col items-center justify-center gap-3 sm:flex-row"
     >
         {#each actions as action (action.id)}
             <a
                 href={action.href}
-                class={actionClass}
-                data-testid={testId === "marketing-hero-actions" &&
-                action.id === "demo"
+                class={actionClasses[action.variant]}
+                data-variant={action.variant}
+                data-testid={placement === "hero" && action.id === "try_demo"
                     ? "marketing-try-demo"
                     : undefined}
+                onclick={onAction && (() => onAction(`${placement}_${action.id}`))}
             >
                 {@render actionIcon(action.icon)}
                 {action.label}
@@ -666,11 +707,20 @@
 <section aria-labelledby="hero-heading">
     <div class="mx-auto max-w-7xl px-4 pt-16 text-center sm:px-6 sm:pt-24">
         <MarketingHeadline id="hero-heading" />
+        <!-- What it costs, straight under the headline; then what it is for, a step quieter. -->
         <p
+            data-testid="marketing-hero-subline"
             class="mx-auto mt-5 max-w-3xl text-balance text-xl font-medium leading-8 text-neutral-800 sm:text-2xl sm:leading-9 dark:text-neutral-100"
         >
-            Journal, Link Thoughts and Ideas, Manage Tasks and Projects,
-            Publish, Own Your Data
+            Free on your computer. {managed ? "Sync+" : "Your Sync Server"} adds
+            your phone and your other devices.
+        </p>
+        <p
+            data-testid="marketing-hero-tagline"
+            class="mx-auto mt-3 max-w-2xl text-pretty text-base leading-7 text-neutral-600 sm:text-lg sm:leading-8 dark:text-neutral-300"
+        >
+            Write and link your notes, manage tasks, hand work to AI agents,
+            publish to the web. Your data stays yours.
         </p>
         <ul
             data-testid="marketing-hero-highlights"
@@ -698,19 +748,21 @@
         </ul>
 
         <div class="mt-10">
-            {@render actionRow("marketing-hero-actions")}
+            {@render actionRow("hero")}
         </div>
         <p
             data-testid="marketing-hero-note"
             class="mx-auto mt-4 max-w-2xl text-pretty text-sm leading-6 text-neutral-500 dark:text-neutral-400"
         >
-            EtherPK is free to use for folder-based graphs. {#if managed}Use our
-                Sync+ service for access to your graphs across devices, or bring
-                your own (e.g. Git or Syncthing).{:else}Use your team's Sync
-                Server for access to your graphs across devices, or bring your
-                own sync (e.g. Git or Syncthing).{/if}
+            Free for folder graphs in Chrome or Edge. {managed
+                ? "Sync+"
+                : "Your team's Sync Server"} works in every browser and on your phone,
+            or bring your own sync (Git, Syncthing).
         </p>
     </div>
+
+    <!-- The app's own section, if it passes one: the second screen of the page. -->
+    {@render belowHero?.()}
 
     <!-- The app as it is, rather than an illustration of it: the demo graph in four views. -->
     <MarketingScreenshots />
@@ -823,9 +875,6 @@
         </ul>
     </div>
 </section>
-
-<!-- ── The app's own section, if it passes one ───────────────────── -->
-{@render belowHero?.()}
 
 <!-- ── Ways to run EtherPK ────────────────────────────────────────── -->
 <section
@@ -1194,7 +1243,7 @@
         the link.
     </p>
     <div class="mt-10">
-        {@render actionRow("marketing-closing-actions")}
+        {@render actionRow("closing")}
     </div>
     {#if supportEmail}
         <p class="mt-4 text-sm leading-6 text-neutral-500 dark:text-neutral-400">

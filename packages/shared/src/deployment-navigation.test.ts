@@ -95,7 +95,7 @@ describe('deployment navigation', () => {
             graphsUrl: 'https://app.example.com/graphs',
         })).toEqual([
             { href: 'https://sync.example.com/', label: 'Sync+', current: false },
-            { href: 'https://app.example.com/graphs', label: 'Graphs', current: false },
+            { href: 'https://app.example.com/graphs', label: 'Open app', current: false },
             { href: PUBLIC_DOCS_URL, label: 'Docs', current: false },
         ])
     })
@@ -113,6 +113,7 @@ describe('deployment navigation', () => {
             signedIn: true,
             syncServerUrl: 'https://sync.example.com/',
             graphsUrl: '/graphs',
+            withinClient: true,
             current: 'graphs',
         })).toEqual([
             { href: 'https://sync.example.com/', label: 'Sync Server', current: false },
@@ -141,9 +142,38 @@ describe('deployment navigation', () => {
             pricingUrl: managed ? 'https://www.example.com/pricing' : null,
             graphsUrl: '/graphs',
         })[0]
-        expect(syncLink(true, false)).toEqual({ href: 'https://www.example.com/pricing', label: 'Sync+', current: false })
+        expect(syncLink(true, false)).toEqual({ href: 'https://www.example.com/pricing', label: 'Sync+ Pricing', current: false })
         expect(syncLink(true, true)).toEqual({ href: 'https://sync.example.com/', label: 'Sync+', current: false })
         expect(syncLink(false, false)).toEqual({ href: 'https://sync.example.com/', label: 'Sync Server', current: false })
+    })
+
+    // The link's name says where it leads. "Sync+ Pricing" is only ever the pricing page, so a
+    // signed-out link that has no pricing page to open keeps the name of the Server it opens.
+    it('names the Sync+ link for the pricing page only when it leads there', () => {
+        const signedOut = buildApplicationNavigation({
+            managed: true,
+            signedIn: false,
+            syncServerUrl: 'https://sync.example.com/',
+            pricingUrl: null,
+            graphsUrl: '/graphs',
+        })[0]
+        expect(signedOut).toEqual({ href: 'https://sync.example.com/', label: 'Sync+', current: false })
+    })
+
+    // From Corporate or the Sync Server the link opens the app. On the Client's own pages the
+    // person is already in the app, and the link is its Graphs page and the menu of their graphs.
+    it('names the Client link "Open app" from another origin and "Graphs" within the Client', () => {
+        const clientLink = (withinClient: boolean) => buildApplicationNavigation({
+            managed: true,
+            signedIn: false,
+            graphsUrl: withinClient ? '/graphs' : 'https://app.example.com/graphs',
+            withinClient,
+        })[0]
+        expect(clientLink(false)).toEqual({ href: 'https://app.example.com/graphs', label: 'Open app', current: false })
+        expect(clientLink(true)).toEqual({ href: '/graphs', label: 'Graphs', current: false })
+        // Left out, the link is named for a page on another origin.
+        expect(buildApplicationNavigation({ managed: false, signedIn: false, graphsUrl: 'https://app.example.com/graphs' })[0]?.label)
+            .toBe('Open app')
     })
 
     it('rejects unsafe or ambiguous navigation origins', () => {

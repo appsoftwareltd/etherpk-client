@@ -8,6 +8,7 @@ import {
 } from './sync-deployment'
 import {
     forgetSyncConnection,
+    holdsOtherSyncServer,
     listSyncConnections,
     resolveSyncConnection,
     saveCustomSyncConnection,
@@ -161,6 +162,22 @@ describe('the device’s Sync Connections, resolved against the deployment', () 
 
         expect(syncConnectionFor('https://team.example.org', MANAGED_URL)).toMatchObject({ credential: 'epk_pat_a' })
         expect(syncConnectionFor(MANAGED_ORIGIN, MANAGED_URL)?.kind).toBe('managed')
+    })
+
+    it('says whether the device holds another server beside the one named', async () => {
+        // What decides whether a Recovery Code's dialog mentions codes for other servers.
+        expect(holdsOtherSyncServer(TEAM, MANAGED_URL)).toBe(false)
+
+        await saveCustomSyncConnection(TEAM, 'epk_pat_a', MANAGED_URL)
+        expect(holdsOtherSyncServer(TEAM, MANAGED_URL)).toBe(false)
+        // The same server however its address is written.
+        expect(holdsOtherSyncServer('https://Team.example.org/', MANAGED_URL)).toBe(false)
+
+        saveManagedSyncConnection(MANAGED_URL)
+        expect(holdsOtherSyncServer(TEAM, MANAGED_URL)).toBe(true)
+        expect(holdsOtherSyncServer(MANAGED_ORIGIN, MANAGED_URL)).toBe(true)
+        // Managed Sync does not count on a deployment that offers none.
+        expect(holdsOtherSyncServer(TEAM, null)).toBe(false)
     })
 
     it('forgets one connection by origin and keeps the rest', async () => {

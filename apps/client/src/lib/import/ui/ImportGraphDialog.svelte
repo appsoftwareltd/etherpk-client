@@ -37,7 +37,7 @@
      */
     import { tick } from "svelte";
     import { ActivityConflictError, isRunning } from "#lib/activity/store.js";
-    import { isFsaSupported, pickGraphDirectory } from "#lib/storage/index.js";
+    import { isFsaSupported, isPickerCancel, pickGraphDirectory } from "#lib/storage/index.js";
     import type { GraphRegistry } from "#lib/storage/graph-registry.js";
     import { getOpfsRoot } from "#lib/storage/fs/web-fs-adapter.js";
     import { describeSyncFailure } from "#lib/sync/sync-error-copy.js";
@@ -53,6 +53,7 @@
     import { PROTECTION_FILE } from "#lib/document/protection/protection-store.js";
 
     import { describeOversize, oversizeAssets } from "../asset-preflight";
+    import { FOLDER_NEEDS, importDestinations } from "../import-destinations";
     import { startImport } from "../import-activity";
     import {
         directoryHasEntries,
@@ -70,6 +71,7 @@
         syncTargets,
         defaultSyncOrigin = null,
         syncUnavailableReason = "Connect this device to a sync server first.",
+        syncSetup = [],
         getWrapKey,
         ensureVaultReady,
         opfsDestination = false,
@@ -84,6 +86,12 @@
         defaultSyncOrigin?: string | null;
         /** Why no server can take the graph, shown beside the synced choice and if a run is attempted. */
         syncUnavailableReason?: string;
+        /**
+         * The ways to a synced destination when none can be used, the first one first: buttons for
+         * the dialog to show with its reasons when there is nowhere to import to. Each is a link
+         * to another page, or an action the page runs once the dialog has closed.
+         */
+        syncSetup?: { label: string; href: string | null; run: () => void }[];
         /** The vault key for the account on `origin`, asking for it when it is locked. */
         getWrapKey: (origin: string) => Promise<Uint8Array>;
         /** Settles the account's encryption keys on `origin` before a synced run creates anything. */
@@ -131,6 +139,22 @@
     ];
 
     const folderAvailable = $derived(isFsaSupported() || opfsDestination);
+    /**
+     * Which destinations can be used, read before a file is asked for. It follows the account
+     * checks, so a dialog opened while one is still out moves on by itself when it answers.
+     */
+    const destinations = $derived(
+        importDestinations({
+            folderAvailable,
+            syncedAvailable: syncTarget !== null,
+            syncedBlockedReason: syncBlockedReason,
+        }),
+    );
+
+    const SETUP_PRIMARY =
+        "inline-flex min-h-9 items-center justify-center rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 pointer-coarse:min-h-11 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200";
+    const SETUP_SECONDARY =
+        "inline-flex min-h-9 items-center justify-center rounded-lg border border-neutral-300 px-4 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5";
 
     let open = $state(true);
     let prepared = $state.raw<PreparedSource | null>(null);
@@ -240,7 +264,8 @@
         sourceProtection = null;
         void readSourceProtection(next);
         if (!name.trim()) name = next.folderName;
-        if (!folderAvailable) destination = "synced";
+        // The one that can be used when only one can; the folder when both can.
+        destination = destinations.initial ?? destination;
         // The source buttons are gone; the name is the next thing to check.
         void focusAfterRender(() => nameInput);
     }
@@ -276,8 +301,11 @@
         }
         try {
             return await pickGraphDirectory();
-        } catch {
-            return null; // the user cancelled the picker
+        } catch (err) {
+            // Closing the picker is a choice, and nothing is said. A picker that failed is
+            // reported by `runImport`, which keeps the dialog and everything typed into it.
+            if (isPickerCancel(err)) return null;
+            throw err;
         }
     }
 
@@ -409,7 +437,49 @@
     onsubmit={runImport}
 >
     {#snippet body()}
-        {#if !prepared}
+        {#if !prepared && destinations.none}
+            <!-- Nowhere to put the graph: said before a file is asked for, with what each
+                 destination needs and the way to the one this browser can have. -->
+            <div data-testid="import-no-destination" class="space-y-3">
+                <h3 class="text-sm font-semibold text-neutral-950 dark:text-white">
+                    This browser has nowhere to put an imported graph yet
+                </h3>
+                <p class="text-sm text-neutral-600 dark:text-neutral-300">
+                    An import makes a new graph, as a synced graph or in a local folder.
+                </p>
+                <ul class="list-disc space-y-1.5 pl-5 text-sm text-neutral-700 dark:text-neutral-200">
+                    <li>{destinations.none.synced}</li>
+                    <li>{destinations.none.folder}</li>
+                </ul>
+                {#if syncSetup.length > 0}
+                    <div class="flex flex-wrap gap-2">
+                        {#each syncSetup as setup, index (setup.label)}
+                            {@const style = index === 0 ? SETUP_PRIMARY : SETUP_SECONDARY}
+                            {#if setup.href}
+                                <a
+                                    href={setup.href}
+                                    data-testid="import-sync-setup"
+                                    data-autofocus={index === 0 ? "" : undefined}
+                                    data-sveltekit-reload
+                                    class={style}>{setup.label}</a
+                                >
+                            {:else}
+                                <button
+                                    type="button"
+                                    data-testid="import-sync-setup"
+                                    data-autofocus={index === 0 ? "" : undefined}
+                                    onclick={() => {
+                                        close();
+                                        setup.run();
+                                    }}
+                                    class={style}>{setup.label}</button
+                                >
+                            {/if}
+                        {/each}
+                    </div>
+                {/if}
+            </div>
+        {:else if !prepared}
             <p class="text-sm text-neutral-600 dark:text-neutral-300">
                 Bring an existing EtherPK graph, Logseq graph, Obsidian vault
                 export or AS Notes workspace in as a new knowledge graph, from a
@@ -423,6 +493,14 @@
                     class="font-medium underline">Importing an existing knowledge base</a
                 >
             </p>
+            {#if destinations.notice}
+                <p
+                    data-testid="import-destination-notice"
+                    class="text-sm text-neutral-700 dark:text-neutral-200"
+                >
+                    {destinations.notice}
+                </p>
+            {/if}
             <input
                 bind:this={sourceInput}
                 data-testid="import-source-input"
@@ -547,7 +625,7 @@
                             ><span class="font-medium {folderAvailable ? '' : 'text-neutral-500 dark:text-neutral-400'}">Local folder</span> -
                             plain markdown files in a new, empty folder you
                             choose.{#if !folderAvailable}
-                                <span class="block text-neutral-600 dark:text-neutral-300">Needs Chrome or Edge on a desktop, or Chrome on Android.</span>{/if}</span
+                                <span class="block text-neutral-600 dark:text-neutral-300">A local folder {FOLDER_NEEDS}</span>{/if}</span
                         >
                     </label>
                     <label
@@ -670,7 +748,7 @@
             onclick={close}
             disabled={busy}
             class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 disabled:opacity-40"
-            >Cancel</button
+            >{destinations.none && !prepared ? "Close" : "Cancel"}</button
         >
         {#if prepared}
             <button

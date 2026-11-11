@@ -3,6 +3,9 @@
     name of the document each is in. Groups sort by name and lines by their place in the document,
     so nothing here has an order to keep or to move under the pointer.
 
+    With no bookmark the section is its heading alone, and opening it says how to add one
+    (`bookmarks/section-open.ts`).
+
     A row reads as its label, or as its line's text when it has none. Opening a row shows the line
     (`bookmarks.open`). Removing, from a row, a group or "Remove all", acts at once and offers Undo,
     and focus moves to the nearest row left, so a keyboard user is never dropped on the page.
@@ -27,6 +30,7 @@
         writeCollapsedGroups,
     } from "#lib/document/bookmarks/collapsed-groups.js";
     import { reason } from "#lib/document/bookmarks/remove-with-undo.js";
+    import { sectionOpen, toggledChoice } from "#lib/document/bookmarks/section-open.js";
     import {
         missingBookmarkLines,
         subscribeBookmarkLabelEdit,
@@ -47,7 +51,9 @@
     let bookmarks = $state.raw<Bookmark[]>([]);
     /** Ids whose line an editor looked for and did not find. */
     let missing = $state.raw<ReadonlySet<string>>(new Set());
-    let open = $state(true);
+    /** What the person chose on the heading; until they do, the section is open only with a bookmark in it. */
+    let openChoice = $state<boolean | null>(null);
+    const open = $derived(sectionOpen(openChoice, bookmarks.length));
     const graphId = currentWorkspaceServices()?.graphId;
     /** Groups collapsed on this device, remembered per graph. */
     let collapsed = $state.raw<Set<string>>(readCollapsedGroups(graphId));
@@ -154,7 +160,7 @@
     function startEditing(id: string) {
         const bookmark = getBookmarks().find((b) => b.id === id);
         if (!bookmark) return;
-        open = true;
+        openChoice = true;
         const key = conceptKeyOf(bookmark.concept);
         if (collapsed.has(key)) openForEdit = key;
         editingId = id;
@@ -242,7 +248,7 @@
         <button
             type="button"
             data-testid="bookmarks-toggle"
-            onclick={() => (open = !open)}
+            onclick={() => (openChoice = toggledChoice(open, bookmarks.length))}
             class="flex min-w-0 flex-1 items-center gap-1 px-2 py-1 text-left text-sm font-semibold tracking-wide text-(--gk-text-subtle) uppercase pointer-coarse:min-h-11"
             aria-expanded={open}
         >

@@ -28,6 +28,7 @@ export {
     isOnDisk,
     pickGraphDirectory,
 } from './fs/web-fs-adapter'
+export { isPickerCancel } from './fs/picker-cancel'
 
 // Identity + scan (pure).
 export type { DocumentEntry } from './fs/scan'

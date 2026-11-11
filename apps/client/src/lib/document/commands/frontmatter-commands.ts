@@ -67,7 +67,7 @@ export function registerFrontmatterCommands(commands: CommandRegistry, contribut
             title: 'Add frontmatter',
             detail: 'Lay out the keys EtherPK reads at the top of this document',
             icon: 'frontmatter',
-            group: 'Document',
+            group: 'Insert',
             order: 170,
             keywords: ['frontmatter', 'properties', 'yaml', 'metadata', 'aliases', 'slug', 'public', 'publish'],
             command: ADD_FRONTMATTER_TO_ACTIVE,

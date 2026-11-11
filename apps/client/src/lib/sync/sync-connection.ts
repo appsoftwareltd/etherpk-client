@@ -98,6 +98,21 @@ export function syncConnectionFor(
 }
 
 /**
+ * Whether this device holds a Sync Server besides the one at `origin`. Each server has a Recovery
+ * Code of its own (ADR 0111), so only then is there another code to tell this server's apart from.
+ */
+export function holdsOtherSyncServer(origin: string, managedBaseUrl: string | null = managedSyncBaseUrl()): boolean {
+    let named: string
+    try {
+        named = normaliseServerOrigin(origin)
+    } catch {
+        // An address that names no server: every held server is another one.
+        named = origin
+    }
+    return listSyncConnections(managedBaseUrl).some((connection) => connection.origin !== named)
+}
+
+/**
  * The connection whose account stands for the device where one must (the header's account menu,
  * the dev gate's graphs): Managed Sync, the EtherPK account, when the device holds it, else the
  * first server added. Null when the device holds none.

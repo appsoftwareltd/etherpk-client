@@ -3,7 +3,8 @@
 
     /**
      * The landing page's screenshots of the app: the demo graph in four views, one at a time, in a
-     * carousel that moves on by itself. It follows the WAI-ARIA tabbed carousel pattern: a row of
+     * carousel that moves on by itself. It opens on the editor, because writing is what a first
+     * visit comes for, and the Graph View comes last. It follows the WAI-ARIA tabbed carousel pattern: a row of
      * tabs names each screenshot, and a button before them starts and stops the turns (WCAG 2.2.2
      * asks for one on anything that moves for more than five seconds).
      *
@@ -39,16 +40,10 @@
     /** How far a finger has to travel sideways before a touch counts as a swipe. */
     const SWIPE_PX = 40;
 
-    // The alt text and the caption describe what is in shot, so re-read them after a re-shoot.
+    // In the order they are shown. The first is the one the server renders in view and the browser
+    // fetches eagerly; the rest load lazily. The alt text and the caption describe what is in shot,
+    // so re-read them after a re-shoot.
     const SCREENSHOTS: Screenshot[] = [
-        {
-            id: "graph",
-            label: "Graph",
-            src: "/marketing/graph-view-dark.webp",
-            alt: "The EtherPK Client in the dark theme, showing the demo graph in the whole Graph View: each page is a dot, each wikilink a line, and each cluster of closely linked pages has its own colour, with place names drawn as rings. Beside it is the list of Hubs, and the Backlinks pane on the right lists everything that mentions the Plant page.",
-            caption:
-                "The Graph View: every page in the demo graph and the wikilinks between them.",
-        },
         {
             id: "editor",
             label: "Editor",
@@ -72,6 +67,14 @@
             alt: "The EtherPK Client in the dark theme, showing a Map View of the botanical gardens noted under the Where to Learn About Plants page across the demo graph: pins on a world map, with a list beside it grouped by the document each place was noted in.",
             caption:
                 "A Map View of the places noted under one page, gathered from across the graph.",
+        },
+        {
+            id: "graph",
+            label: "Graph",
+            src: "/marketing/graph-view-dark.webp",
+            alt: "The EtherPK Client in the dark theme, showing the demo graph in the whole Graph View: each page is a dot, each wikilink a line, and each cluster of closely linked pages has its own colour, with place names drawn as rings. Beside it is the list of Hubs, and the Backlinks pane on the right lists everything that mentions the Plant page.",
+            caption:
+                "The Graph View: every page in the demo graph and the wikilinks between them.",
         },
     ];
 

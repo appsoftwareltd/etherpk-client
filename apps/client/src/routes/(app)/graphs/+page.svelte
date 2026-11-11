@@ -18,12 +18,10 @@
     import { page } from "$app/state";
     import * as env from "$app/env/public";
     import AgentsSettingsTabs from "#lib/extensions/AgentsSettingsTabs.svelte";
-    import { iconSvg } from "#lib/surface/icons.js";
     import { RELEASE_VERSION } from "#lib/release.js";
     import { managedSyncOrigin } from "#lib/sync/sync-deployment.js";
-    import AgentCommandRow from "#lib/sync/ui/AgentCommandRow.svelte";
-    import { AGENT_SKILL_ROW, headlessClientPackage } from "#lib/sync/ui/agents-tab.js";
-    import HeadlessClientSignIn from "#lib/sync/ui/HeadlessClientSignIn.svelte";
+    import { headlessClientPackage, type AgentsTabProps } from "#lib/sync/ui/agents-tab.js";
+    import AgentsMcpTab from "#lib/sync/ui/AgentsMcpTab.svelte";
     import {
         type DeviceStorageReport,
         type DirectoryAdapter,
@@ -42,7 +40,10 @@
         createWebFsDirectoryAdapter,
         describeDeviceStorage,
         ensurePermission,
+        getLastGraphId,
         isFsaSupported,
+        isOnDisk,
+        isPickerCancel,
         pickGraphDirectory,
         readGraphSettings,
         PLACEHOLDER_SYNCED_GRAPH_NAME,
@@ -123,7 +124,9 @@
         type PreparedKeyReplacement,
     } from "#lib/sync/index.js";
     import {
-        PUBLIC_DOCS_URL,
+        NEW_GRAPH_PARAM,
+        type SyncPlusOfferTerms,
+        NEW_GRAPH_SYNCED,
         formatBytes,
         safeReturnPath,
     } from "@appsoftwareltd/etherpk-shared";
@@ -134,12 +137,11 @@
     import {
         EnvelopeError,
         fingerprint,
-        fromBase64Url,
-        openVault,
         type GraphKeyring,
         type KeyVault,
         type PublicIdentity,
     } from "#lib/crypto/index.js";
+    import { inviteeNeedsOf, vaultKeyForInvite } from "#lib/sync/share-access.js";
     import { promptRecoveryCode } from "#lib/sync/recovery-code-prompt.js";
     import { describeSyncFailure } from "#lib/sync/sync-error-copy.js";
     import { describeConnectionCheckFailure } from "#lib/sync/connection-check.js";
@@ -153,6 +155,7 @@
         type DevicePasscodeDialogMode,
     } from "#lib/sync/ui/DevicePasscodeDialog.svelte";
     import { devicePasscodeState } from "#lib/sync/ui/device-passcode-state.svelte.js";
+    import { devicePasscodeMarkDue } from "#lib/sync/device-passcode-notice.js";
     import DevicePasscodeSection from "#lib/workspace/DevicePasscodeSection.svelte";
     import ResetDialog from "#lib/sync/ui/ResetDialog.svelte";
     import TransferOwnershipDialog from "#lib/sync/ui/TransferOwnershipDialog.svelte";
@@ -184,6 +187,7 @@
     import SyncServerGroup, {
         type SyncServerGroupActions,
     } from "#lib/workspace/SyncServerGroup.svelte";
+    import SyncServerForget from "#lib/workspace/SyncServerForget.svelte";
     import SyncServerSettings, {
         type SyncServerSettingsActions,
     } from "#lib/workspace/SyncServerSettings.svelte";
@@ -199,16 +203,41 @@
     } from "#lib/workspace/graphs-page-icons.js";
     import { forgetGraphOnDevice } from "#lib/workspace/graph-device-memory.js";
     import { isDemoGraph } from "#lib/demo/demo-graph.js";
+    import GraphChoicePanels from "#lib/workspace/GraphChoicePanels.svelte";
+    import {
+        graphChoicePanels,
+        newSyncedGraphStep,
+        type GraphChoiceAction,
+    } from "#lib/workspace/graph-choice-panels.js";
     import {
         copyServer,
         countCopiesByServer,
         loadSyncedGraphViews,
         serverGroupVisible,
+        LOCKED_GRAPH_NAME,
+        lockedGraphDetails,
+        syncTabSignInOnly,
+        syncedRowName,
         unlabelledGraphsToRead,
         persistableGraphRecord,
         type SyncedGraphView,
         type SyncedMember,
     } from "#lib/workspace/graph-picker-helpers.js";
+    import {
+        agentsGraphChoices,
+        agentsTabPropsFor,
+        agentsTabPropsWithoutGraph,
+        chosenAgentsGraph,
+        readAgentsGraph,
+        rememberAgentsGraph,
+        type AgentsGraphChoice,
+        type AgentsPickerLocal,
+        type AgentsPickerServer,
+        type AgentsTabContext,
+    } from "#lib/workspace/graphs-page-agents.js";
+    import { serverKeysLocked, syncedGroupRows } from "#lib/workspace/sync-server-rows.js";
+    import { readGraphFolderPath } from "#lib/storage/fs/folder-path.js";
+    import { leaveWelcomeClaim, leaveWelcomeClaimForEmptyFolder } from "#lib/welcome/welcome-claims-browser.js";
 
     const registry = createIdbGraphRegistry();
     const supported = isFsaSupported();
@@ -238,8 +267,21 @@
      * from the address (`afterNavigate` below).
      */
     let activeTab = $state<GraphsPageTab>(tabIn(page.url));
-    /** The Agents tab's Sync Server, by host, for signing an agent's device in; the first when null. */
+    /**
+     * The Agents tab's Sync Server, by host, for logging an agent's device in while there is no
+     * graph to choose; the first when null.
+     */
     let agentsServerHost = $state<string | null>(null);
+    /**
+     * The graph the Agents tab is about, as its picker names it. Starts on the one chosen in this
+     * browser before; null leaves it to the graph opened last (graphs-page-agents.ts).
+     */
+    let agentsGraphPicked = $state<string | null>(readAgentsGraph());
+    /**
+     * Each local graph's folder name, or null for one kept in the browser, which no agent can
+     * reach. Asked of the handles when the list is read: telling the two apart is asynchronous.
+     */
+    let localFolders = $state.raw<Record<string, string | null>>({});
     /** The Sync tab's sub-tab as the address names it (`&server=`): a server's host, or `add`. */
     let requestedSyncPanel = $state<string | null>(
         page.url.searchParams.get("server"),
@@ -313,6 +355,37 @@
     const addOffersManaged = $derived(
         managedSyncAvailable && managedServer === null,
     );
+    /**
+     * The Sync tab shows only the sign-in: Managed Sync is offered and this device has no account
+     * yet (graph-picker-helpers.ts). A server of one's own is behind a disclosure there.
+     */
+    const syncSignInOnly = $derived(
+        syncTabSignInOnly({
+            managedOffered: managedSyncAvailable,
+            servers: servers.map((server) => ({
+                kind: server.connection.kind,
+                authState: server.authState,
+                accountKnown: readSyncAccount(server.origin) !== null,
+            })),
+        }),
+    );
+    /**
+     * The sign-in's disclosure is open: the person chose a server of their own, which is also what
+     * the page's other ways in then offer (signsInToManagedSync).
+     */
+    const ownServerOpen = $derived(connectionMode === "custom");
+
+    function toggleOwnServer() {
+        if (ownServerOpen) {
+            connectionMode = "managed";
+            syncUrlError = null;
+            syncTokenError = null;
+            return;
+        }
+        connectionMode = "custom";
+        if (!serverBaseUrl.trim()) serverBaseUrl = configuredCustomSyncUrl;
+    }
+
     /** The typed server's origin, for links to its pages; null until the address parses. */
     const customServerOrigin = $derived.by(() => {
         const typed = serverBaseUrl.trim();
@@ -490,6 +563,10 @@
     const corporatePricingUrl = $derived(
         (page.data.corporatePricingUrl as string | null | undefined) ?? null,
     );
+    /** The account site's registration page, going on to Billing: where someone new starts Sync+. */
+    const corporateSignUpUrl = $derived(
+        (page.data.corporateSyncPlusSignUpUrl as string | null | undefined) ?? null,
+    );
     const corporateAccountUrl = $derived(
         (page.data.corporateAccountUrl as string | null | undefined) ?? null,
     );
@@ -498,17 +575,6 @@
         () => servers.some((server) => server.shownPlanNotice === "pending"),
         300,
     );
-    /** What somebody `server`'s account invites must have there, for the invite dialog to name. */
-    function inviteeNeeds(server: SyncServerView) {
-        return {
-            account:
-                server.account?.authentication.mode === "standalone"
-                    ? "an account on this server"
-                    : "an EtherPK account",
-            // An older server does not say; the stricter reading names the step that may be missing.
-            verifiedEmail: server.account?.invitesNeedVerifiedEmail ?? true,
-        };
-    }
     let transferDialog = $state<{
         server: SyncServerView;
         graph: SyncedGraphView;
@@ -620,16 +686,125 @@
         );
     }
 
+    /** Each Sync Server with its graphs as the Graphs tab lists them, for the Agents tab's picker. */
+    const agentsServers = $derived(
+        orderedServers.map((server): AgentsPickerServer => {
+            const keysLocked = serverKeysLocked(server);
+            return {
+                origin: server.origin,
+                host: server.host,
+                kind: server.connection.kind,
+                serverBaseUrl: server.connection.serverBaseUrl,
+                authState: server.authState,
+                keysLocked,
+                rows: syncedGroupRows(server, recordsFor(server)).map((row) => ({
+                    id: row.id,
+                    label: syncedRowName(row, keysLocked),
+                    // The name the graph's MCP server is registered under: none while only the id
+                    // placeholder stands in for it.
+                    name: row.record?.name ?? (row.view && row.view.nameSource !== "placeholder" ? row.view.name : null),
+                })),
+            };
+        }),
+    );
+    const agentsLocals = $derived(
+        localGraphs.map(
+            (graph): AgentsPickerLocal => ({
+                id: graph.id,
+                name: graph.name,
+                folderName: localFolders[graph.id] ?? null,
+                folderPath: readGraphFolderPath(graph.id),
+            }),
+        ),
+    );
+    const agentsChoices = $derived(agentsGraphChoices(agentsServers, agentsLocals));
+    /** The choices under their headings, in the order they come. */
+    const agentsChoiceGroups = $derived.by(() => {
+        const groups: Array<{ label: string; choices: AgentsGraphChoice[] }> = [];
+        for (const choice of agentsChoices) {
+            const last = groups.at(-1);
+            if (last?.label === choice.group) last.choices.push(choice);
+            else groups.push({ label: choice.group, choices: [choice] });
+        }
+        return groups;
+    });
+    /** The graph the tab is about: the one picked, else the one opened last, else the first. */
+    const agentsGraph = $derived(chosenAgentsGraph(agentsChoices, agentsGraphPicked, getLastGraphId()));
+    /** With no graph: the server an agent is logged in to, the one picked or the first. */
+    const agentsServer = $derived(agentsServers.find((server) => server.host === agentsServerHost) ?? agentsServers[0] ?? null);
+    /** What the shared Agents tab shows: the chosen graph's own tab, or the sign-in with no graph. */
+    const agentsProps = $derived.by((): AgentsTabProps | null => {
+        const context: AgentsTabContext = {
+            servers: agentsServers,
+            locals: agentsLocals,
+            // The EtherPK-hosted Client runs the latest release, which is also npm's latest. A
+            // self-hosted Client names its own release, as a graph's own Agents tab does.
+            headlessClient: headlessClientPackage(managedSyncOrigin(env) ? null : RELEASE_VERSION),
+            // With no server held: whether the way in is the EtherPK sign-in or a server of one's
+            // own, as every other way in on this page reads it.
+            managedOffered: signsInToManagedSync(),
+            actions: {
+                signIn: (origin) => {
+                    const server = serverFor(origin);
+                    if (server) startSignIn(server);
+                },
+                reconnect: (origin) => {
+                    const server = serverFor(origin);
+                    if (server) void reconnect(server);
+                },
+                unlock: (origin) => {
+                    const server = serverFor(origin);
+                    if (server) unlockKeys(server);
+                },
+                connect: () => (signsInToManagedSync() ? connectManagedSync() : void openSyncPanel("add")),
+                createSetupCode: (origin) => {
+                    const server = serverFor(origin);
+                    if (!server) return Promise.reject(new Error(`This device is no longer connected to ${serverHost(origin)}.`));
+                    return server.api.createAgentSetupCode();
+                },
+            },
+        };
+        if (agentsGraph === null) return agentsTabPropsWithoutGraph(agentsServer, context);
+        return agentsTabPropsFor(agentsGraph, context);
+    });
+
+    function chooseAgentsGraph(value: string) {
+        agentsGraphPicked = value;
+        rememberAgentsGraph(value);
+    }
+
+    /**
+     * Ask each local graph's handle whether it is a folder on disk, which an agent can open, or a
+     * folder in the browser's own storage, which it cannot. Kept from one read of the list to the
+     * next, so the Agents tab does not blink while the answers come back.
+     */
+    async function readLocalFolders(list: readonly GraphRecord[]) {
+        const entries = await Promise.all(
+            list
+                .filter((graph) => graph.backend !== "server")
+                .map(async (graph) => {
+                    const handle = graph.handle as FileSystemDirectoryHandle;
+                    return [graph.id, (await isOnDisk(handle)) ? handle.name : null] as const;
+                }),
+        );
+        const next = Object.fromEntries(entries);
+        const same =
+            Object.keys(next).length === Object.keys(localFolders).length &&
+            Object.entries(next).every(([id, name]) => localFolders[id] === name);
+        if (!same) localFolders = next;
+    }
+
     /** The registry and the stored connections have been read; before that nothing below is known. */
     const listReady = $derived(graphsListed && connectionsRead);
 
     /**
-     * The This Device tab marks a Device Passcode not set (ADR 0129) only while this device holds a
-     * Sync Server, whose Encryption Keys or access token a passcode would protect. A passcode is
-     * optional, so a mark on the tab is all the reminder there is.
+     * The This Device tab marks a Device Passcode not set (ADR 0129) only while this device stores
+     * what a passcode would encrypt: a server's Encryption Keys, or a custom server's access token.
+     * Managed Sync held with no account signed in stores neither. A passcode is optional, so a mark
+     * on the tab is all the reminder there is.
      */
     const passcodeNotSet = $derived(
-        listReady && servers.length > 0 && devicePasscodeState() === "off",
+        listReady && devicePasscodeMarkDue(devicePasscodeState(), servers),
     );
     /**
      * Whether this is a first visit is known: at once for a browser holding graphs of its own, else
@@ -657,25 +832,46 @@
             servers.every((server) => server.graphs.length === 0),
     );
     /**
-     * Every server's plan stands in the way of a new graph, so New synced graph is disabled; the
-     * plan line in each server's group says why. A server that is signed out or not answering does
-     * not count: pressing the button then starts the way back in.
+     * Nothing this browser holds rules a first visit out, though the servers may not have answered
+     * yet: the Graphs tab then waits in the shape of the choice panels, not of a list.
      */
-    const createDisabled = $derived(
+    const mayBeFirstRun = $derived(
+        listReady &&
+            !registryUnreadable &&
+            localGraphs.length === 0 &&
+            heldCopies.length === 0,
+    );
+    /** What the two choice panels say and do for a browser with no graph of its own. */
+    const choicePanels = $derived(
+        graphChoicePanels({
+            folderSupported: supported,
+            managedOffered: signsInToManagedSync(),
+            servers: servers.map((server) => ({
+                kind: server.connection.kind,
+                authState: server.authState,
+                syncPlusRequired: server.syncPlusRequired,
+                planEnded: server.planNotice === "ended",
+                createBlockedReason: server.createBlockedReason,
+            })),
+            trialUrl: corporateSignUpUrl,
+            billingUrl: corporateBillingUrl,
+            pricingUrl: corporatePricingUrl,
+            offer: (page.data.syncPlusOffer as SyncPlusOfferTerms | null | undefined) ?? null,
+        }),
+    );
+    /**
+     * No server can take a new graph now. New synced graph stays a button that can be pressed: it
+     * then leads to Billing for an account without Sync+, or says the reason; the plan line in each
+     * server's group says why as well, and the button is described by those lines. A server that is
+     * signed out or not answering does not count: pressing the button then starts the way back in.
+     */
+    const createBlocked = $derived(
         servers.length > 0 &&
             servers.every(
                 (server) =>
                     server.authState === "authenticated" &&
                     server.createBlockedReason !== null,
             ),
-    );
-    /** The disabled button's reason, for its tooltip: the one server's own, or where to look. */
-    const createDisabledReason = $derived(
-        !createDisabled
-            ? null
-            : servers.length === 1
-              ? servers[0].createBlockedReason
-              : "None of your Sync Servers can take a new graph now. Each one's group below says why.",
     );
     const SECONDARY_BUTTON =
         "inline-flex items-center justify-center rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 pointer-coarse:min-h-11 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5";
@@ -863,7 +1059,10 @@
     /** Read this browser's graphs and synced copies. False when the list cannot be read at all. */
     async function listRegistry(): Promise<boolean> {
         try {
-            graphs = await registry.listGraphs();
+            const listed = await registry.listGraphs();
+            // Before the list shows, so the Agents tab never calls a folder a graph in the browser.
+            await readLocalFolders(listed).catch(() => undefined);
+            graphs = listed;
         } catch (err) {
             // A registry that cannot be read is not a registry that is empty, and the two used
             // to look identical: the list rejected, everything after it was skipped, and the
@@ -1352,13 +1551,14 @@
             return;
         }
         if (server.vaultExists !== false) return;
-        // Say it on the page as well as in the dialog: the ritual interrupts what they asked for.
+        // The ritual interrupts what they asked for, so the page says why it appeared. The dialog
+        // keeps to the code, and under it the one thing that matters about the interruption.
         setStatus(
             "This account had no Encryption Keys, so they are being created now. Nothing is uploaded until you save your Recovery Code.",
         );
         await mintAccountKeysWithRitual(
             server,
-            "This account had no Encryption Keys, so EtherPK has just created them. Nothing is uploaded to the sync server until you have saved this code.",
+            "Nothing is uploaded to the sync server until you have saved this code.",
         );
     }
 
@@ -1476,6 +1676,22 @@
     );
 
     /**
+     * The Import dialog's ways to a synced destination when it has nowhere to import to: the
+     * Synced Graph panel's own buttons, when they set something up (a sign-in, a plan, a server).
+     * The panel's Create button is left out, because an import names its own graph.
+     */
+    const importSyncSetup = $derived(
+        [choicePanels.synced.primary, choicePanels.synced.secondary]
+            .filter((button) => button !== null)
+            .filter(({ action }) => action.kind !== "create-synced")
+            .map(({ label, action }) => ({
+                label,
+                href: action.kind === "link" ? action.href : null,
+                run: () => runChoice(action),
+            })),
+    );
+
+    /**
      * Keys must be in hand before an import creates anything on its server. The plan check comes
      * first for the same reason as in createServerGraph: the destination was offered from a plan
      * that may have changed since.
@@ -1521,28 +1737,26 @@
     }
 
     /**
-     * Open the Sync tab on `panel` with the caret where the next step is: on Add, the Managed Sync
-     * sign-in while it is offered, else the server address, else the token; on a server, its tab.
+     * Where the Sync tab's next step is, as a selector inside the tab: the sign-in while that is
+     * all the tab shows (no account yet) or Managed Sync is offered on Add, else the server
+     * address or, with one filled in, the token; on a server, its sub-tab.
      */
+    function syncPanelNextStep(panel: SyncServerView | "add"): string {
+        const signIn = '[data-testid="managed-sync-connect"]';
+        const field = serverBaseUrl.trim() ? "#sync-token" : "#sync-url";
+        if (syncSignInOnly) return ownServerOpen ? field : signIn;
+        if (panel !== "add") return '[data-testid="sync-server-tab"][aria-selected="true"]';
+        return addOffersManaged && connectionMode === "managed" ? signIn : field;
+    }
+
+    /** Open the Sync tab on `panel` with the focus where the next step is (syncPanelNextStep). */
     async function openSyncPanel(panel: SyncServerView | "add") {
         if (panel === "add") primeAddForm();
         showSyncPanel(panel);
         await tick();
         const root = document.getElementById("graphs-sync-settings");
         root?.scrollIntoView({ block: "nearest" });
-        const next =
-            panel !== "add"
-                ? root?.querySelector<HTMLElement>(
-                      '[data-testid="sync-server-tab"][aria-selected="true"]',
-                  )
-                : addOffersManaged && connectionMode === "managed"
-                  ? root?.querySelector<HTMLElement>(
-                        '[data-testid="managed-sync-connect"]',
-                    )
-                  : document.getElementById(
-                        serverBaseUrl.trim() ? "sync-token" : "sync-url",
-                    );
-        next?.focus();
+        root?.querySelector<HTMLElement>(syncPanelNextStep(panel))?.focus();
     }
 
     /**
@@ -1804,6 +2018,60 @@
             void queueHistoryWrite(() => goto(returnTo));
     }
 
+    /**
+     * The address asked for a new synced graph (`?new=synced`), as the account site's Billing page
+     * does once Sync+ is active. Held here because the parameter comes off the address as soon as
+     * it is acted on, so a reload or Back does not open the dialog again.
+     */
+    let newGraphRequested = $state(
+        page.url.searchParams.get(NEW_GRAPH_PARAM) === NEW_GRAPH_SYNCED,
+    );
+    /** A sign-in has just finished on this page, so the request does not start another. */
+    const arrivedSignedIn = page.url.searchParams.get("managed") === "connected";
+
+    // Acts once on the request, when every server has answered: the account checks decide whether
+    // the naming dialog can open, and they answer after the page has mounted.
+    $effect(() => {
+        if (!newGraphRequested || !listReady || !initialRefreshDone) return;
+        const step = newSyncedGraphStep({
+            managedOffered: signsInToManagedSync(),
+            arrivedSignedIn,
+            servers: servers.map((server) => ({
+                kind: server.connection.kind,
+                authState: server.authState,
+                createBlockedReason: server.createBlockedReason,
+                planPending: server.planNotice === "pending",
+            })),
+        });
+        if (step === "wait") return;
+        untrack(() => {
+            newGraphRequested = false;
+            // The sign-in comes back to this address, request included.
+            if (step === "sign-in") return connectManagedSync();
+            clearNewGraphRequest();
+            if (step === "open") startCreateServerGraph();
+        });
+    });
+
+    /** Take the request off the address, after a macrotask for the reason `announceArrival` gives. */
+    function clearNewGraphRequest() {
+        setTimeout(() => {
+            void queueHistoryWrite(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.delete(NEW_GRAPH_PARAM);
+                return goto(url.pathname + url.search, { shallow: true, replace: true });
+            });
+        }, 0);
+    }
+
+    /** A choice panel's button was pressed. A link to the account site is an anchor and never arrives here. */
+    function runChoice(action: GraphChoiceAction) {
+        if (action.kind === "open-folder") void openFolder();
+        else if (action.kind === "sign-in") connectManagedSync();
+        // With no server held and no Managed Sync, this opens the Sync tab's form and says why.
+        else if (action.kind !== "link") startCreateServerGraph();
+    }
+
     async function openFolder() {
         try {
             const handle = await pickGraphDirectory();
@@ -1833,16 +2101,14 @@
                 createdAt: Date.now(),
                 handle,
             });
+            // A folder with no notes in it starts with the Welcome page (ADR 0183); one that
+            // already has notes is left as it is.
+            await leaveWelcomeClaimForEmptyFolder(id, handle, adapter);
             await queueHistoryWrite(() => goto(`/g/${id}`));
         } catch (err) {
-            // Closing the picker rejects with an AbortError whose message names the browser API;
-            // it is a choice, not a failure, so it is said plainly and not as an error.
-            if (err instanceof DOMException && err.name === "AbortError") {
-                setStatus(
-                    "Could not open a folder. User cancelled folder selection.",
-                );
-                return;
-            }
+            // Closing the picker is a choice, not a failure: nothing is said and the page stays
+            // as it was.
+            if (isPickerCancel(err)) return;
             console.error("Could not open a folder:", err);
             setStatus(
                 "Could not open that folder. Try again, or choose a different one.",
@@ -1890,6 +2156,11 @@
                     // Signed out, or the token refused: naming a graph could only fail later.
                     if (only.authState === "signed-out") {
                         startSignIn(only);
+                        return;
+                    }
+                    // An account without Sync+: Billing, where it starts, in place of a refusal.
+                    if (only.syncPlusRequired && corporateBillingUrl) {
+                        window.location.assign(corporateBillingUrl);
                         return;
                     }
                     if (only.createBlockedReason) {
@@ -1969,6 +2240,9 @@
                 membershipActive: true,
             });
             rememberNewGraphServer(server.origin);
+            // Created here and empty: its first open on this device writes the Welcome page
+            // (ADR 0183). No other device is told to, so the page is written once.
+            leaveWelcomeClaim(graph.id);
             createDialog = false;
             if (recoveryCodeJustGenerated) {
                 // Prevention (ADR 0029): the vault is written only once the code is acknowledged.
@@ -2596,23 +2870,10 @@
         void requireUnlockedVault(server, async () => {
             const wrapKey = server.heldKey()!;
             try {
-                const existing = await server.api.getVault();
-                if (!existing) throw new Error("No vault on this device");
-                const opened = await openVault(
-                    fromBase64Url(existing.vault),
-                    wrapKey,
-                );
-                server.cacheKey(opened.vaultKey); // self-heal: the vault key survives re-keys
-                const keyring = opened.vault.keyrings.find(
-                    (k) => k.graphId === graphId,
-                );
-                if (!keyring) throw new MissingGraphKeyError(graphId);
-                inviteDialog = {
-                    server,
-                    graphId,
-                    graphName,
-                    heldKey: opened.vaultKey,
-                };
+                // The same read the in-graph Share item makes (share-access.ts).
+                const vaultKey = await vaultKeyForInvite(server.api, wrapKey, graphId);
+                server.cacheKey(vaultKey); // self-heal: the vault key survives re-keys
+                inviteDialog = { server, graphId, graphName, heldKey: vaultKey };
             } catch (err) {
                 setRowStatus(
                     graphId,
@@ -2717,6 +2978,16 @@
         });
     }
 
+    /** No name can be read for `graph`: its server's keys are locked here and no copy names it. */
+    function nameIsLocked(server: SyncServerView, graph: SyncedGraphView): boolean {
+        return serverKeysLocked(server) && graph.nameSource === "placeholder";
+    }
+
+    /** What a question about `graph` calls it: its name, or Locked graph, never a piece of its id. */
+    function nameToConfirm(server: SyncServerView, graph: SyncedGraphView): string {
+        return nameIsLocked(server, graph) ? LOCKED_GRAPH_NAME : graph.name;
+    }
+
     async function askDelete(server: SyncServerView, graph: SyncedGraphView) {
         if (discardChecking) return;
         discardUnsent = null;
@@ -2742,6 +3013,8 @@
         const pending = deleteConfirm;
         if (!pending || deleteBusy || deleteText !== "DELETE") return;
         const { server, graph } = pending;
+        // Read before the delete: afterwards the server no longer lists the graph.
+        const deletedName = nameToConfirm(server, graph);
         deleteBusy = true;
         deleteError = null;
         try {
@@ -2774,7 +3047,7 @@
             deleteText = "";
             await refresh();
             setStatus(
-                `"${graph.name}" has been permanently deleted from ${server.host}.`,
+                `"${deletedName}" has been permanently deleted from ${server.host}.`,
             );
         } catch (err) {
             // Stay open: the typed DELETE is the expensive part, and making the user retype it
@@ -2790,6 +3063,7 @@
         const pending = leaveConfirm;
         if (leaveBusy || !pending) return;
         const { server, graph } = pending;
+        const leftName = nameToConfirm(server, graph);
         leaveBusy = true;
         try {
             // Leaving deletes this browser's copy with its outbox, so the same guard as Forget:
@@ -2821,7 +3095,7 @@
             leaveConfirm = null;
             await refresh();
             setStatus(
-                `You have left "${graph.name}". Ask the owner for a new invite to rejoin.`,
+                `You have left "${leftName}". Ask the owner for a new invite to rejoin.`,
             );
         } catch (err) {
             setRowStatus(
@@ -3234,7 +3508,7 @@
                 code: prepared.code,
                 arrival: "regenerate",
                 ...recoveryCodeServer(origin),
-                reason: `Your current code for ${server.host} still works. When you continue, it stops working for good and only this new code can unlock your Encryption Keys there. Codes for other Sync Servers are not affected. Save this one first.`,
+                reason: `Your current code for ${server.host} still works. When you continue, it stops working for good and only this new code can unlock your Encryption Keys there. Save this one first.`,
                 commit: async () => {
                     deviceKey = await prepared.commit();
                 },
@@ -3750,6 +4024,220 @@
     </div>
 {/snippet}
 
+<!-- A custom server's address and access token, with the links to its pages: the body of the
+     form that adds a server, on the Add sub-tab and behind the sign-in's disclosure alike. -->
+{#snippet customServerFields(cancel: boolean)}
+    <div>
+        <label
+            for="sync-url"
+            class="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300"
+            >Sync server URL</label
+        >
+        <input
+            id="sync-url"
+            data-testid="sync-url"
+            bind:value={serverBaseUrl}
+            oninput={() => {
+                // Once a field has errored it re-checks as it is corrected.
+                if (syncUrlError)
+                    syncUrlError =
+                        syncFieldErrors(
+                            serverBaseUrl.trim(),
+                            token.trim(),
+                        ).url;
+            }}
+            placeholder="https://sync.example.com"
+            aria-invalid={syncUrlError
+                ? "true"
+                : undefined}
+            aria-describedby={syncUrlError
+                ? "sync-url-help sync-url-error"
+                : "sync-url-help"}
+            class="block w-full rounded-lg border {syncUrlError
+                ? 'border-red-500'
+                : 'border-neutral-300 dark:border-neutral-700'} bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+        />
+        <p
+            id="sync-url-help"
+            class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
+        >
+            Include the scheme. Use http:// for
+            a local server, https:// for a
+            hosted one. A server this device
+            already holds gets the new token.
+        </p>
+        {#if syncUrlError}
+            <p
+                id="sync-url-error"
+                data-testid="sync-url-error"
+                class="mt-1 text-sm text-red-600 dark:text-red-400"
+            >
+                {syncUrlError}
+            </p>
+        {/if}
+    </div>
+    <div>
+        <label
+            for="sync-token"
+            class="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300"
+            >Personal Access Token</label
+        >
+        <input
+            id="sync-token"
+            data-testid="sync-token"
+            type="password"
+            bind:value={token}
+            oninput={() => {
+                if (syncTokenError)
+                    syncTokenError =
+                        syncFieldErrors(
+                            serverBaseUrl.trim(),
+                            token.trim(),
+                        ).token;
+            }}
+            placeholder="epk_pat_…"
+            aria-invalid={syncTokenError
+                ? "true"
+                : undefined}
+            aria-describedby={syncTokenError
+                ? "sync-token-error sync-token-help"
+                : "sync-token-help"}
+            class="block w-full rounded-lg border {syncTokenError
+                ? 'border-red-500'
+                : 'border-neutral-300 dark:border-neutral-700'} bg-white dark:bg-white/10 px-3 py-2 text-sm font-mono text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+        />
+        {#if syncTokenError}
+            <p
+                id="sync-token-error"
+                data-testid="sync-token-error"
+                class="mt-1 text-sm text-red-600 dark:text-red-400"
+            >
+                {syncTokenError.message}
+                {#if syncTokenError.tokensUrl}
+                    <a
+                        href={syncTokenError.tokensUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="font-medium underline"
+                        >Access tokens</a
+                    >
+                {/if}
+            </p>
+        {/if}
+    </div>
+    <p
+        id="sync-token-help"
+        class="text-sm text-neutral-500 dark:text-neutral-400"
+        data-testid="sync-token-help"
+    >
+        {#if customServerOrigin}
+            Make a token on the server's <a
+                href="{customServerOrigin}/account/tokens"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="font-medium underline"
+                >Access tokens page</a
+            >, or
+            <a
+                href="{customServerOrigin}/register"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="font-medium underline"
+                >create an account</a
+            > there first.
+        {:else}
+            Make a token on the Sync Server's
+            Access tokens page.
+        {/if}
+        A token lets this device sync, but can never
+        decrypt your notes. The server gives you
+        its own Recovery Code: a code you saved for
+        another server does not cover it.
+    </p>
+    <div class="flex justify-end gap-2">
+        {#if cancel && primaryServer}
+            <button
+                type="button"
+                onclick={() => {
+                    syncUrlError = null;
+                    syncTokenError = null;
+                    showSyncPanel(
+                        primaryServer,
+                    );
+                }}
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white"
+                >Cancel</button
+            >
+        {/if}
+        <button
+            type="submit"
+            data-testid="sync-save"
+            aria-busy={syncSaving}
+            class="aria-busy:cursor-progress rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
+            >{syncSaving
+                ? "Checking the connection…"
+                : "Save custom server"}</button
+        >
+    </div>
+{/snippet}
+
+<!-- The Agents tab's picker: which graph the tab is about, or, with no graph and several Sync
+     Servers, which server an agent is logged in to. -->
+{#snippet agentsPicker()}
+    {#if agentsChoices.length > 0}
+        <div class="flex flex-wrap items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+            <label for="graphs-agents-graph">Graph</label>
+            <select
+                id="graphs-agents-graph"
+                class="max-w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 pointer-coarse:min-h-11"
+                value={agentsGraph}
+                onchange={(event) => chooseAgentsGraph(event.currentTarget.value)}
+                data-testid="graphs-agents-graph"
+            >
+                {#each agentsChoiceGroups as group (group.label)}
+                    <optgroup label={group.label}>
+                        {#each group.choices as choice (choice.value)}
+                            <option value={choice.value}>{choice.label}</option>
+                        {/each}
+                    </optgroup>
+                {/each}
+            </select>
+        </div>
+    {:else if servers.length > 1}
+        <div class="flex flex-wrap items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+            <label for="graphs-agents-server">Sync Server</label>
+            <select
+                id="graphs-agents-server"
+                class="max-w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 pointer-coarse:min-h-11"
+                value={agentsServer?.host}
+                onchange={(event) => (agentsServerHost = event.currentTarget.value)}
+                data-testid="graphs-agents-server"
+            >
+                {#each servers as candidate (candidate.host)}<option value={candidate.host}>{candidate.host}</option>{/each}
+            </select>
+        </div>
+    {/if}
+{/snippet}
+
+<!-- In the question before deleting or leaving a graph whose name cannot be read: what the server
+     knows of it, so it can be told from the next locked graph. -->
+{#snippet lockedGraphDetailsNote(server: SyncServerView, graph: SyncedGraphView)}
+    {#if nameIsLocked(server, graph)}
+        <div
+            class="rounded-lg bg-neutral-50 p-3 text-sm text-neutral-700 dark:bg-white/5 dark:text-neutral-300"
+            data-testid="locked-graph-details"
+        >
+            <p>Its name cannot be read while your Encryption Keys are locked on this device. This is the graph:</p>
+            <ul class="mt-1 list-disc space-y-0.5 pl-5">
+                {#each lockedGraphDetails(graph) as detail (detail)}
+                    <li>{detail}</li>
+                {/each}
+                <li>Graph id <span class="font-mono select-all [overflow-wrap:anywhere]">{graph.id}</span></li>
+            </ul>
+        </div>
+    {/if}
+{/snippet}
+
 {#snippet serverIcon(server: SyncServerView, size: string)}
     <svg
         class="{size} shrink-0"
@@ -3774,11 +4262,12 @@
         <h1 class="text-2xl font-semibold text-neutral-950 dark:text-white">
             Graphs
         </h1>
-        <!-- Offered once the page knows what this browser holds: before then, which actions apply
-             (the demo, a folder) is not known. All four share one style: none of them is the right
-             first step for everyone. The ones that create a graph of your own come first, the demo
-             last. -->
-        {#if listReady}
+        <!-- Offered once the page knows this browser has a graph: before then, which actions apply
+             (the demo, a folder) is not known, and a browser with none gets the choice panels below,
+             which carry the same four actions with what each one means. All four share one style:
+             none of them is the right first step for everyone. The ones that create a graph of your
+             own come first, the demo last. -->
+        {#if firstRunKnown && !firstRun}
             <div data-testid="graphs-actions" class="flex flex-wrap gap-2">
                 {#if supported}
                     <button
@@ -3791,16 +4280,13 @@
                 <button
                     data-testid="graphs-create-server"
                     onclick={startCreateServerGraph}
-                    disabled={createDisabled}
-                    aria-disabled={createDisabled}
-                    aria-describedby={createDisabled
+                    aria-describedby={createBlocked
                         ? orderedServers
                               .map((_, index) => `graphs-plan-notice-${index}`)
                               .join(" ")
                         : undefined}
                     aria-busy={createPending}
-                    title={createDisabledReason ?? undefined}
-                    class="aria-busy:cursor-progress disabled:cursor-not-allowed disabled:border-neutral-200 disabled:bg-neutral-100 disabled:text-neutral-500 dark:disabled:border-white/10 dark:disabled:bg-white/5 dark:disabled:text-neutral-400 {SECONDARY_BUTTON}"
+                    class="aria-busy:cursor-progress {SECONDARY_BUTTON}"
                     >New synced graph</button
                 >
                 <button
@@ -4117,7 +4603,17 @@
             {/snippet}
 
             {#if !firstRunKnown}
-                {@render loadingSkeleton("Loading your graphs…")}
+                {#if mayBeFirstRun}
+                    <!-- Most likely a first visit: wait in the panels' own shape. -->
+                    <GraphChoicePanels
+                        panels={null}
+                        demoAvailable={false}
+                        onaction={runChoice}
+                        onimport={() => (importDialog = true)}
+                    />
+                {:else}
+                    {@render loadingSkeleton("Loading your graphs…")}
+                {/if}
             {:else}
                 {#if servers.length === 0}
                     <!-- On an iPhone or iPad the installed app keeps storage apart from Safari's,
@@ -4129,54 +4625,22 @@
                     />
                 {/if}
                 {#if firstRun}
-                    <!-- A browser with nothing of its own yet. The header carries every way to a
-                         graph, so the card names those actions rather than repeating them. -->
-                    <div
-                        data-testid="graphs-first-run"
-                        class="rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-white/5 p-5 space-y-3"
-                    >
-                        <p
-                            data-testid="first-run-summary"
-                            class="text-sm text-neutral-700 dark:text-neutral-300"
-                        >
-                            You don't have any graphs yet. Choose
-                            {#if supported}<span class="font-medium text-neutral-950 dark:text-white"
-                                    >Open folder</span
-                                >,{/if}
-                            <span class="font-medium text-neutral-950 dark:text-white"
-                                >New synced graph</span
-                            >
-                            or <span class="font-medium text-neutral-950 dark:text-white">Import</span> to
-                            create a graph.
-                        </p>
-                        {#if !supported}
-                            <p class="text-sm text-neutral-500 dark:text-neutral-400">
-                                Folders need Chrome or Edge on a desktop, or
-                                Chrome on Android.
-                            </p>
-                        {/if}
-                        <p
-                            data-testid="first-run-import"
-                            class="text-sm text-neutral-500 dark:text-neutral-400"
-                        >
-                            You can import graphs from Logseq, Obsidian, EtherPK
-                            and AS Notes.
-                            <a
-                                href="{PUBLIC_DOCS_URL}/importing-a-knowledge-base"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                class="font-medium text-neutral-700 underline dark:text-neutral-200"
-                                >Importing an existing knowledge base</a
-                            >
-                        </p>
-                    </div>
+                    <!-- A browser with nothing of its own yet (the demo does not count): a panel
+                         for each kind of graph, in place of the header's buttons. -->
+                    <GraphChoicePanels
+                        panels={choicePanels}
+                        {demoAvailable}
+                        creating={createPending}
+                        onaction={runChoice}
+                        onimport={() => (importDialog = true)}
+                    />
                 {/if}
 
                 <!-- A group per Sync Server (ADR 0111), so which server a graph lives on never needs
                      asking. On a first visit a server with nothing to say leaves it to the card. -->
                 {#each orderedServers as server, index (server.origin)}
                     {@const records = recordsFor(server)}
-                    {#if serverGroupVisible( { firstRun, rows: server.graphs.length + records.length, invites: server.invites.length, failed: server.error !== null, authState: server.authState, kind: server.connection.kind, planLine: server.showsPlanLine }, )}
+                    {#if serverGroupVisible( { firstRun, rows: server.graphs.length + records.length, invites: server.invites.length, failed: server.error !== null, authState: server.authState, kind: server.connection.kind, planLine: server.showsPlanLine && !(firstRun && server.syncPlusRequired && choicePanels.synced.plan !== null) }, )}
                         <SyncServerGroup
                             {server}
                             planNoticeId={`graphs-plan-notice-${index}`}
@@ -4348,6 +4812,110 @@
         >
             {#if !listReady}
                 {@render loadingSkeleton("Loading your Sync Servers…")}
+            {:else if syncSignInOnly}
+                <!-- No account on this device yet: the sign-in, in one sentence, and nothing about
+                     servers. A server of one's own, and forgetting Managed Sync where the device
+                     holds it signed out, are behind one disclosure, a click away. -->
+                <section
+                    data-testid="sync-sign-in"
+                    aria-labelledby="sync-sign-in-heading"
+                    class="space-y-4"
+                >
+                    <div
+                        class="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-white/5"
+                    >
+                        <h2
+                            id="sync-sign-in-heading"
+                            class="text-lg font-semibold text-neutral-950 dark:text-white"
+                        >
+                            Sign in to sync
+                        </h2>
+                        <p
+                            class="mt-1 text-sm leading-5 text-neutral-600 dark:text-neutral-300"
+                            data-testid="sync-sign-in-gives"
+                        >
+                            {managedServer
+                                ? "You are signed out of EtherPK on this device. Sign in to see your synced graphs again. Local folder graphs are not affected."
+                                : "Sign in with your EtherPK account to sync your graphs between your devices and share them, end-to-end encrypted."}
+                        </p>
+                        <button
+                            type="button"
+                            data-testid="managed-sync-connect"
+                            onclick={connectManagedSync}
+                            class="mt-4 inline-flex items-center justify-center rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 pointer-coarse:min-h-11 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                            >Sign in</button
+                        >
+                    </div>
+                    <div>
+                        <button
+                            type="button"
+                            data-testid="sync-own-server-toggle"
+                            aria-expanded={ownServerOpen}
+                            aria-controls="sync-own-server"
+                            onclick={toggleOwnServer}
+                            class="inline-flex items-center gap-1.5 rounded-lg py-1.5 pr-2 text-sm font-medium text-neutral-600 hover:text-neutral-950 pointer-coarse:min-h-11 dark:text-neutral-300 dark:hover:text-white"
+                        >
+                            <svg
+                                class="h-4 w-4 motion-safe:transition-transform motion-safe:duration-150 {ownServerOpen
+                                    ? 'rotate-90'
+                                    : ''}"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.5"
+                                aria-hidden="true"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="m8.25 4.5 7.5 7.5-7.5 7.5"
+                                />
+                            </svg>
+                            Use your own Sync Server
+                        </button>
+                        {#if ownServerOpen}
+                            <div id="sync-own-server" class="mt-2 space-y-4">
+                                <form
+                                    id="sync-add-server-form"
+                                    data-testid="sync-add-server-form"
+                                    aria-label="Use your own Sync Server"
+                                    onsubmit={(e) => {
+                                        e.preventDefault();
+                                        void saveSyncConfig();
+                                    }}
+                                    class="space-y-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-white/5 p-5"
+                                >
+                                    <p class="text-sm text-neutral-600 dark:text-neutral-300">
+                                        A Sync Server you or your organisation runs keeps its own
+                                        account, Encryption Keys and Recovery Code.
+                                    </p>
+                                    {@render customServerFields(false)}
+                                </form>
+                                {#if managedServer}
+                                    <!-- Held and signed out: the device still remembers Managed Sync,
+                                         and this is where it lets go of it. -->
+                                    <div
+                                        class="flex flex-wrap items-center justify-between gap-3"
+                                        data-testid="sync-sign-in-forget"
+                                    >
+                                        <p class="text-sm text-neutral-600 dark:text-neutral-300">
+                                            This device remembers Managed Sync on {managedServer.host}.
+                                        </p>
+                                        <SyncServerForget
+                                            host={managedServer.host}
+                                            managed
+                                            confirming={confirmingForget === managedServer.origin}
+                                            forgetting={forgettingServer === managedServer.origin}
+                                            onbegin={() => (confirmingForget = managedServer.origin)}
+                                            oncancel={() => (confirmingForget = null)}
+                                            onforget={() => void forgetServer(managedServer)}
+                                        />
+                                    </div>
+                                {/if}
+                            </div>
+                        {/if}
+                    </div>
+                </section>
             {:else}
                 <section
                     data-testid="sync-servers"
@@ -4534,158 +5102,7 @@
                                         </div>
                                     </div>
                                 {:else}
-                                    <div>
-                                        <label
-                                            for="sync-url"
-                                            class="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300"
-                                            >Sync server URL</label
-                                        >
-                                        <input
-                                            id="sync-url"
-                                            data-testid="sync-url"
-                                            bind:value={serverBaseUrl}
-                                            oninput={() => {
-                                                // Once a field has errored it re-checks as it is corrected.
-                                                if (syncUrlError)
-                                                    syncUrlError =
-                                                        syncFieldErrors(
-                                                            serverBaseUrl.trim(),
-                                                            token.trim(),
-                                                        ).url;
-                                            }}
-                                            placeholder="https://sync.example.com"
-                                            aria-invalid={syncUrlError
-                                                ? "true"
-                                                : undefined}
-                                            aria-describedby={syncUrlError
-                                                ? "sync-url-help sync-url-error"
-                                                : "sync-url-help"}
-                                            class="block w-full rounded-lg border {syncUrlError
-                                                ? 'border-red-500'
-                                                : 'border-neutral-300 dark:border-neutral-700'} bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
-                                        />
-                                        <p
-                                            id="sync-url-help"
-                                            class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
-                                        >
-                                            Include the scheme. Use http:// for
-                                            a local server, https:// for a
-                                            hosted one. A server this device
-                                            already holds gets the new token.
-                                        </p>
-                                        {#if syncUrlError}
-                                            <p
-                                                id="sync-url-error"
-                                                data-testid="sync-url-error"
-                                                class="mt-1 text-sm text-red-600 dark:text-red-400"
-                                            >
-                                                {syncUrlError}
-                                            </p>
-                                        {/if}
-                                    </div>
-                                    <div>
-                                        <label
-                                            for="sync-token"
-                                            class="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300"
-                                            >Personal Access Token</label
-                                        >
-                                        <input
-                                            id="sync-token"
-                                            data-testid="sync-token"
-                                            type="password"
-                                            bind:value={token}
-                                            oninput={() => {
-                                                if (syncTokenError)
-                                                    syncTokenError =
-                                                        syncFieldErrors(
-                                                            serverBaseUrl.trim(),
-                                                            token.trim(),
-                                                        ).token;
-                                            }}
-                                            placeholder="epk_pat_…"
-                                            aria-invalid={syncTokenError
-                                                ? "true"
-                                                : undefined}
-                                            aria-describedby={syncTokenError
-                                                ? "sync-token-error sync-token-help"
-                                                : "sync-token-help"}
-                                            class="block w-full rounded-lg border {syncTokenError
-                                                ? 'border-red-500'
-                                                : 'border-neutral-300 dark:border-neutral-700'} bg-white dark:bg-white/10 px-3 py-2 text-sm font-mono text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
-                                        />
-                                        {#if syncTokenError}
-                                            <p
-                                                id="sync-token-error"
-                                                data-testid="sync-token-error"
-                                                class="mt-1 text-sm text-red-600 dark:text-red-400"
-                                            >
-                                                {syncTokenError.message}
-                                                {#if syncTokenError.tokensUrl}
-                                                    <a
-                                                        href={syncTokenError.tokensUrl}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        class="font-medium underline"
-                                                        >Access tokens</a
-                                                    >
-                                                {/if}
-                                            </p>
-                                        {/if}
-                                    </div>
-                                    <p
-                                        id="sync-token-help"
-                                        class="text-sm text-neutral-500 dark:text-neutral-400"
-                                        data-testid="sync-token-help"
-                                    >
-                                        {#if customServerOrigin}
-                                            Make a token on the server's <a
-                                                href="{customServerOrigin}/account/tokens"
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                class="font-medium underline"
-                                                >Access tokens page</a
-                                            >, or
-                                            <a
-                                                href="{customServerOrigin}/register"
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                class="font-medium underline"
-                                                >create an account</a
-                                            > there first.
-                                        {:else}
-                                            Make a token on the Sync Server's
-                                            Access tokens page.
-                                        {/if}
-                                        A token lets this device sync, but can never
-                                        decrypt your notes. The server gives you
-                                        its own Recovery Code: a code you saved for
-                                        another server does not cover it.
-                                    </p>
-                                    <div class="flex justify-end gap-2">
-                                        {#if primaryServer}
-                                            <button
-                                                type="button"
-                                                onclick={() => {
-                                                    syncUrlError = null;
-                                                    syncTokenError = null;
-                                                    showSyncPanel(
-                                                        primaryServer,
-                                                    );
-                                                }}
-                                                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white"
-                                                >Cancel</button
-                                            >
-                                        {/if}
-                                        <button
-                                            type="submit"
-                                            data-testid="sync-save"
-                                            aria-busy={syncSaving}
-                                            class="aria-busy:cursor-progress rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
-                                            >{syncSaving
-                                                ? "Checking the connection…"
-                                                : "Save custom server"}</button
-                                        >
-                                    </div>
+                                    {@render customServerFields(primaryServer !== null)}
                                 {/if}
                             </form>
                         {:else}
@@ -4707,10 +5124,9 @@
             {/if}
         </div>
     {:else if activeTab === "agents"}
-        <!-- The two kinds of agent (ADR 0147), set up with no graph open because both belong to the
-             person or the account: an Agent Chat's Model Connections, drawn by the extension, and
-             signing a computer's Headless Client in to a Sync Server. What belongs to one graph
-             (its id, its serve command, its folder) stays in that graph's Agents tab. -->
+        <!-- The two kinds of agent (ADR 0147), set up with no graph open: an Agent Chat's Model
+             Connections, drawn by the extension, and the MCP Server, which is the Agents tab of
+             the graph picked here, the same component its own Settings shows. -->
         <div
             role="tabpanel"
             id="graphs-agents-settings"
@@ -4720,54 +5136,17 @@
         >
             <AgentsSettingsTabs>
                 {#snippet mcp()}
+                    <!-- The tab a graph's own Settings shows (AgentsMcpTab), for the graph chosen
+                         here, so the two never differ. With no graph it logs an agent in and
+                         offers the Agent Skill. -->
                     <section class="space-y-4" data-testid="graphs-agents-headless">
-                        <div class="space-y-1">
-                            <h3 class="flex items-center gap-2 text-base font-semibold text-neutral-950 dark:text-neutral-100">
-                                <span class="text-neutral-600 dark:text-neutral-400">
-                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- the Client's own icon markup (icons.ts) -->
-                                    {@html iconSvg("headless-client", { size: 20 })}
-                                </span>MCP Server
-                            </h3>
-                            <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                                Use to allow an AI agent on your device, such as Claude Code, Codex or VS Code, to read and modify your notes. The agent connects to the MCP server that the EtherPK
-                                Headless Client runs. A folder graph needs no setup: point the agent at the folder. For a synced graph, sign in the agent's device once
-                                (below), then add the graph's MCP command from that graph's Settings &gt; Agents.
-                            </p>
-                        </div>
-                        {#if !listReady}
-                            {@render loadingSkeleton("Loading your Sync Servers…")}
-                        {:else if servers.length === 0}
-                            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="graphs-agents-no-server">
-                                Signing in needs a Sync Server. Add one in the Sync tab to reach your synced graphs from an agent.
-                            </p>
-                        {:else}
-                            {@const server = servers.find((candidate) => candidate.host === agentsServerHost) ?? servers[0]}
-                            {#if servers.length > 1}
-                                <label class="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-                                    Sync Server
-                                    <select
-                                        class="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
-                                        value={server.host}
-                                        onchange={(event) => (agentsServerHost = event.currentTarget.value)}
-                                        data-testid="graphs-agents-server"
-                                    >
-                                        {#each servers as candidate (candidate.host)}<option value={candidate.host}>{candidate.host}</option>{/each}
-                                    </select>
-                                </label>
-                            {/if}
-                            <div class="space-y-2 text-sm text-neutral-950 dark:text-neutral-100">
-                                {#key server.host}
-                                    <HeadlessClientSignIn
-                                        serverBaseUrl={server.connection.serverBaseUrl}
-                                        headlessClient={headlessClientPackage(managedSyncOrigin(env) ? null : RELEASE_VERSION)}
-                                        createSetupCode={server.connection.kind === "managed" ? () => server.api.createAgentSetupCode() : null}
-                                    />
-                                {/key}
-                            </div>
+                        {#if !listReady || (servers.length > 0 && !initialRefreshDone)}
+                            <!-- Until every server has answered, or taken too long: the tab then
+                                 opens on its graph, not on one that a later answer replaces. -->
+                            {@render loadingSkeleton("Loading your graphs…")}
+                        {:else if agentsProps}
+                            <AgentsMcpTab agents={agentsProps} inGraph={false} picker={agentsPicker} />
                         {/if}
-                        <div class="space-y-1 border-t border-neutral-200 pt-4 dark:border-white/10 text-neutral-950 dark:text-neutral-100">
-                            <AgentCommandRow {...AGENT_SKILL_ROW} />
-                        </div>
                     </section>
                 {/snippet}
             </AgentsSettingsTabs>
@@ -5023,6 +5402,7 @@
             managedServer?.origin ?? null,
         )}
         syncUnavailableReason={importUnavailableReason}
+        syncSetup={importSyncSetup}
         getWrapKey={unlockVaultInteractively}
         ensureVaultReady={importVaultReady}
         opfsDestination={dev && page.url.searchParams.get("fs") === "opfs"}
@@ -5039,7 +5419,7 @@
         graphName={inviteDialog.graphName}
         heldKey={inviteDialog.heldKey}
         ownEmail={inviteDialog.server.account?.principal.email ?? null}
-        inviteeNeeds={inviteeNeeds(inviteDialog.server)}
+        inviteeNeeds={inviteeNeedsOf(inviteDialog.server.account)}
         onclose={(result) => {
             const invitedGraphId = inviteDialog?.graphId;
             inviteDialog = null;
@@ -5113,6 +5493,7 @@
 
 {#if deleteConfirm}
     {@const target = deleteConfirm.graph}
+    {@const deleteServer = deleteConfirm.server}
     <Modal
         open={true}
         title="Delete graph"
@@ -5129,7 +5510,7 @@
             <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 Permanently delete <span
                     class="font-medium text-neutral-900 dark:text-neutral-200"
-                    >{target.name}</span
+                    >{nameToConfirm(deleteServer, target)}</span
                 >? This deletes the graph from {deleteConfirm?.server.host ??
                     "the sync server"}
                 <span class="font-medium text-neutral-900 dark:text-neutral-200"
@@ -5146,6 +5527,7 @@
                     You are the only member.
                 {/if}
             </p>
+            {@render lockedGraphDetailsNote(deleteServer, target)}
             {#if target.onDevice}
                 <p
                     class="text-sm text-neutral-600 dark:text-neutral-400"
@@ -5628,6 +6010,7 @@
 
 {#if leaveConfirm}
     {@const leaving = leaveConfirm.graph}
+    {@const leavingServer = leaveConfirm.server}
     {@const unsentCount =
         discardUnsent?.graphId === leaving.id ? discardUnsent.unsent.length : 0}
     <Modal
@@ -5647,13 +6030,14 @@
                 <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     Leave <span
                         class="font-medium text-neutral-900 dark:text-neutral-200"
-                        >{leaving.name}</span
+                        >{nameToConfirm(leavingServer, leaving)}</span
                     >? You lose access until the owner invites you again. The
                     graph itself, and the other members, are untouched. The copy
                     in this browser, and its search index, are deleted.
                     Computers running the Headless Client for this graph drop
                     their copy the next time it starts.
                 </p>
+                {@render lockedGraphDetailsNote(leavingServer, leaving)}
             </div>
         {/snippet}
         {#snippet footer()}

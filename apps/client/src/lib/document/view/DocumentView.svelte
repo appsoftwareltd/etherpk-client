@@ -78,7 +78,7 @@
     import { prefersMobileLayout } from '#lib/layout/breakpoint.js'
     import { isApplePlatform } from '#lib/surface/index.js'
     import EndOfDocument from './EndOfDocument.svelte'
-    import { type EndKind, floatingButtonRoom, startAfterCaret, startAtEnd } from './end-of-document'
+    import { type EndKind, roomBelowCaret, startAfterCaret, startAtEnd } from './end-of-document'
     import { bodyWritable } from './body-writable'
     import DocumentViewSelf from './DocumentView.svelte'
     import JournalRoll from './JournalRoll.svelte'
@@ -221,12 +221,14 @@
     /** Whether the roll draws anything: a bar, or loaded days. */
     let rollDrawn = $state(false)
     /**
-     * Whether the two buttons float at the tab's bottom left (ADR 0149, ADR 0168): on a tab's own
-     * document while its body takes edits and its content is in. Not in an embedded editor, where a
-     * [[Task Detail]] shows one task, and not on a Journal Roll's older days, whose presses come
-     * through the tab's pair.
+     * Whether the two new line buttons show in their row at the tab's foot (ADR 0149, ADR 0168): on
+     * a tab's own document while its body takes edits and its content is in. Not in an embedded
+     * editor, where a [[Task Detail]] shows one task, and not on a Journal Roll's older days, whose
+     * presses come through the tab's pair.
      */
     const endShown = $derived(ownsTab && endWritable && contentReady)
+    /** The row's measured height, which the Lock button and a refused edit's reason sit above. */
+    let endButtonsHeight = $state(0)
     /** Something is drawn beneath the text, so the text gives up its full pane height. */
     const belowTextDrawn = $derived(panelsDrawn || backlinksDrawn || rollDrawn)
     /** Set once the View is gone, so a remount still on its way (a Draft promotion) builds nothing. */
@@ -235,13 +237,13 @@
     /**
      * What this View's mode adds to the feature stack, which is the same for every mode. An older
      * day in a Journal Roll carries the reader's position through its edits (reading-point.ts). A
-     * caret moved into view stays clear of the floating buttons (ADR 0168), in a tab's own editor and
-     * an older day's alike, which the tab's scroller scrolls.
+     * caret moved into view stays a few lines clear of the pane's foot (ADR 0168), in a tab's own
+     * editor and an older day's alike, which the tab's scroller scrolls.
      */
-    const modeExtensions = [...(rolled ? [followReadingPoint] : []), ...(embedded ? [] : [floatingButtonRoom])]
+    const modeExtensions = [...(rolled ? [followReadingPoint] : []), ...(embedded ? [] : [roomBelowCaret])]
 
     /**
-     * A floating button was pressed. With the caret in an editor of this tab (its own document or an
+     * A new line button was pressed. With the caret in an editor of this tab (its own document or an
      * older day in its Journal Roll), the new line goes after the caret's block there: the buttons
      * keep the editor's focus through the press. With none, it goes at the end of the tab's own
      * document. Either way the editor then has the keyboard.
@@ -1452,7 +1454,7 @@
         observeScrollbar(editor.view.scrollDOM)
         // The Journal Panels, the backlinks and the roll beneath the text, after the content in the
         // scroller (ADR 0120 amended 2026-10-12, ADR 0135, ADR 0136), and the presses and drops on the
-        // scroller outside the text, which CodeMirror does not hear. Whether the floating buttons
+        // scroller outside the text, which CodeMirror does not hear. Whether the new line buttons
         // show (ADR 0168) follows the body's writability.
         endWritable = bodyWritable(editor.view.state)
         placeJournalPanels(editor.view.scrollDOM)
@@ -1611,7 +1613,8 @@
     class={[
         'document-view',
         showLock && 'document-view--lock',
-        (showLock || endShown) && 'document-view--floating',
+        showLock && 'document-view--floating',
+        (showLock || endShown) && 'document-view--foot-room',
         belowTextDrawn && 'document-view--below-text',
         rolled && 'document-view--rolled',
     ]}
@@ -1622,10 +1625,14 @@
     data-find-host={ownsTab || undefined}
     style:--gk-scrollbar-inset="{scrollbarInset}px"
     style:--gk-match-list-height="{matchListShown ? matchListHeight : 0}px"
+    style:--gk-end-buttons-height="{endShown ? endButtonsHeight : 0}px"
     {@attach findHost}
 >
     <div class="document-view__mounts" data-testid="document-mounts">{mountIndex}</div>
     <div class="document-view__editor" data-testid="document-editor" bind:this={host}></div>
+    {#if endShown}
+        <EndOfDocument onstart={startNewLine} bind:height={endButtonsHeight} />
+    {/if}
     {#if find?.open && findController}
         <FindBox {find} controller={findController} entry={find.target && find.target !== view.target ? find.target : null} listId={findListId} />
         {#if find.listShown}
@@ -1633,9 +1640,6 @@
                 <MatchList {find} controller={findController} id={findListId} onescape={() => findController.focusBox()} />
             </div>
         {/if}
-    {/if}
-    {#if endShown}
-        <EndOfDocument onstart={startNewLine} />
     {/if}
     {#if showLock}
         <button
@@ -1682,6 +1686,10 @@
 
 <style>
     .document-view {
+        /* What takes the foot of the View in the flow, below the box the text scrolls in: the new
+           line buttons' row (ADR 0168) and the Match List (ADR 0153). What floats over the text,
+           the Lock button and a refused edit's reason, is placed above both. */
+        --gk-foot-height: calc(var(--gk-match-list-height, 0px) + var(--gk-end-buttons-height, 0px));
         position: relative; /* anchors the loading overlay (and the clipped mount counter) */
         height: 100%;
         display: flex;
@@ -1735,7 +1743,7 @@
         position: absolute;
         left: 1rem;
         right: calc(1rem + var(--gk-scrollbar-inset, 0px));
-        bottom: calc(1rem + var(--gk-match-list-height, 0px));
+        bottom: calc(1rem + var(--gk-foot-height));
         z-index: 2;
         display: flex;
         align-items: flex-start;
@@ -1759,10 +1767,10 @@
         padding: 0.125rem 0.5rem;
         cursor: pointer;
     }
-    /* The floating buttons own the bottom corners, so the strip sits above them (button height
+    /* The Lock button owns the bottom right corner, so the strip sits above it (button height
        plus the gap) rather than giving up its margins. */
     .document-view--floating .document-view__refusal {
-        bottom: calc(1rem + 2.75rem + 0.75rem + var(--gk-match-list-height, 0px));
+        bottom: calc(1rem + 2.75rem + 0.75rem + var(--gk-foot-height));
     }
     /* The Match List (ADR 0153) takes the foot of the View in the flow, so the editor above it
        gives up exactly its height and nothing covers the text. */
@@ -1788,7 +1796,7 @@
     .document-view__lock {
         position: absolute;
         right: calc(1rem + var(--gk-scrollbar-inset, 0px));
-        bottom: calc(1rem + var(--gk-match-list-height, 0px));
+        bottom: calc(1rem + var(--gk-foot-height));
         z-index: 2;
         display: inline-flex;
         align-items: center;
@@ -1807,18 +1815,20 @@
             background-color 120ms ease,
             transform 120ms ease;
     }
-    /* Room to scroll the last line clear of the floating buttons, the Lock button on the right and
-       the new line buttons on the left (ADR 0168): a long document's end would otherwise sit under
-       them, unreadable and unclickable. Only while one of them is showing. */
-    .document-view--floating .document-view__editor :global(.cm-content) {
+    /* Room below the last line, while the Lock button or the new line buttons show (ADR 0168). It
+       lets the last line scroll clear of the Lock button, which floats over the text at the bottom
+       right, and lets a caret on the last line keep its room above the pane's foot
+       (`roomBelowCaret`), where a menu at the caret opens. The new line buttons cover nothing
+       themselves: their row is below the text's box. */
+    .document-view--foot-room .document-view__editor :global(.cm-content) {
         padding-bottom: 4.5rem;
     }
     /*
-     * The buttons after the text (ADR 0149), a journal tab's Journal Panels (ADR 0120, amended
+     * A journal tab's Journal Panels (ADR 0120, amended
      * 2026-10-12), the backlinks beneath the text (ADR 0135) and a journal tab's roll (ADR 0136),
      * mounted into the editor's scroller after its content. CodeMirror lays the scroller out as a
      * flex row, so while any of them is drawn the row wraps, each takes a row of its own
-     * (EndOfDocument.svelte, JournalPanels.svelte, DocumentBacklinks.svelte, JournalRoll.svelte),
+     * (JournalPanels.svelte, DocumentBacklinks.svelte, JournalRoll.svelte),
      * and the rows do not stretch to share the pane's height. The content gives
      * up its full pane height for one line of room under the last line, where a click still puts
      * the caret at the end, so what is beneath follows the text instead of starting below the fold.
@@ -1834,8 +1844,8 @@
         padding-bottom: calc(0.75rem + var(--gk-line-pitch));
     }
     /* Child combinators: the older days in a Journal Roll are editors inside this one, and the
-       floating buttons' room belongs to the tab's own scroller only. */
-    .document-view--floating.document-view--below-text > .document-view__editor > :global(.cm-editor) > :global(.cm-scroller) {
+       room at the foot belongs to the tab's own scroller only. */
+    .document-view--foot-room.document-view--below-text > .document-view__editor > :global(.cm-editor) > :global(.cm-scroller) {
         padding-bottom: 3.75rem;
     }
     /*

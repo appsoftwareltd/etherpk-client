@@ -5,9 +5,39 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.21.0 - 2026-11-11
 
 ### Client
+
+- **A plainer home page.** The heading reads "One Markdown Notes App For", **Try The Demo** is the first
+  button and the screenshots open on the editor.
+- **A Welcome page in a new graph.** A graph you create empty, synced or in a folder with no notes, starts with
+  one page, **Welcome to EtherPK**, with a few things to try. It is the tab in front when the graph first opens, with the
+  journal entry for today as the tab beside it, and it is in **Favourites**. Delete it when you are done with it and it does not come back. An import, a folder that already
+  holds notes and a graph you join do not get one.
+- **Choosing a first graph.** With no graphs yet, the **Graphs** page shows two panels, **Create a Local Graph** and
+  **Create a Synced Graph**, each saying what it gives you, and a short list under them, **All graphs get**, of what
+  the two share. On the managed service the synced panel states the price and the trial, as the account site
+  publishes them. **New synced graph** is never greyed out: without a plan that includes synced graphs it leads to
+  where you start one, and coming back to the app afterwards opens the naming dialog.
+- **Import says where a graph can go before asking for a file.** When this browser has nowhere to put an imported
+  graph, the dialog says why and what to do. With one place available it is chosen for you.
+- **The `/` menu is in three groups.** **Insert** comes first, then **Go to**, then **Settings**, each under its
+  heading. Typing still searches all three. An extension chooses the group its rows appear in.
+- **New line and New block have names.** The two buttons at the end of a document are a row at the foot of its tab,
+  with their names, and no longer sit over the text.
+- **Signing in comes first on the Sync tab.** With no account on this device, the **Sync** tab shows **Sign in**, and
+  **Use your own Sync Server** opens the form for a server you run. A deployment with no managed service shows its
+  server form as before.
+- **A locked device shows one step.** Until your Encryption Keys are unlocked on a device, each server shows
+  **Unlock Encryption Keys** and lists its graphs as locked. A locked graph's menu still has **Delete graph…** or
+  **Leave graph…**, and the question it asks says which graph it is.
+- **The same agent setup on the Graphs page.** The **Agents** tab there has a graph picker and shows the steps and
+  commands a graph's own **Agents** settings show.
+- **Empty Bookmarks sections stay closed.** **Bookmarks** and **PDF Bookmarks** in the sidebar show only their
+  headings until they hold something. Open one to read what it is for.
+- **Share from inside a graph.** The Owner of a synced graph has **Share** in its Settings, **Share this graph…** on a
+  tab's menu and in the `/` menu. Each opens the invite dialog.
 
 - **Read EBooks.** An EPUB in a graph opens in its own tab, with contents, page turns, find and your place kept between
   devices. Your text size, line spacing, alignment and hyphenation apply over the EBook's own layout. Highlights, notes and bookmarks are kept beside the EBook, private to you, and a
@@ -28,11 +58,20 @@ starts at 0.9.3.
 - **Colours at the side of the page.** A PDF tool's colours and thicknesses, and an EBook's highlight colours, wait
   behind a button at the right edge of the page on every screen, so they no longer cover the top of the page on a
   tablet or a desktop.
+- **Fixes.**
+  - **Ctrl+/** opens the Keyboard Shortcuts card and leaves the line the caret is on as it was.
+  - The Recovery Code dialog opens on the warning and the code. It mentions other Sync Servers only when this device holds one.
+  - The **This Device** tab is marked only when this browser holds something a Device Passcode would protect.
+  - Closing the folder picker without choosing a folder shows no message. A folder that fails to open while importing or publishing now says so.
+  - Messages about one person with access to a graph call them a Player.
+  - On a phone the demo opens on its page with the sidebar closed, and its text says where things are on a phone.
+  - **Reset workspace** is no longer a toolbar icon. It is still at the foot of the sidebar, by name, and in the `/` menu.
 
 ### Headless Client
 
 - **`login` is easier to read.** Its messages have blank lines between them, and the line that says
   to press `r` for your Recovery Code is marked with `**` so that it stands out.
+
 
 ## 0.20.0 - 2026-11-06
 

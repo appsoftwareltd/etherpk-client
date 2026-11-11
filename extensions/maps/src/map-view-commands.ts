@@ -100,7 +100,7 @@ export function registerMapViewCommands(context: ExtensionContext): void {
         // The concept the map opens for, nearest first, under the name it resolves to.
         detail: (menu) => forConceptsDetail(menu.conceptsAtCaret ?? [], context.concepts.canonicalName),
         icon: 'map',
-        group: 'Navigate',
+        group: 'Go to',
         // Straight after Kanban board (140), the other View opened for a concept here.
         order: 141,
         keywords: ['map', 'places', 'routes', 'locations'],
@@ -117,7 +117,7 @@ export function registerMapViewCommands(context: ExtensionContext): void {
         title: GRAPH_MAP,
         detail: 'Every place and route in this graph',
         icon: 'map',
-        group: 'Navigate',
+        group: 'Go to',
         order: 142,
         keywords: ['map', 'places', 'routes', 'everything', 'all'],
         command: MAPS_OPEN_WHOLE,

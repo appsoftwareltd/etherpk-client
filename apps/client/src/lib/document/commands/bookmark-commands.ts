@@ -188,7 +188,8 @@ export function registerBookmarkCommands(
             title: 'Toggle bookmark',
             detail: 'Bookmark this line, or remove its bookmark',
             icon: 'bookmark',
-            group: 'Editor',
+            // A bookmark is how a line is come back to, so the row is listed with the ways to go somewhere.
+            group: 'Go to',
             order: 152,
             keywords: ['bookmark', 'mark', 'line'],
             command: BOOKMARK_TOGGLE,

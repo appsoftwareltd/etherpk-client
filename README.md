@@ -9,13 +9,9 @@ The source of the [EtherPK](https://etherpk.com) Client and Headless Client, ava
 
 [Try the demo](https://app.etherpk.com/demo) from [etherpk.com](<https://etherpk.com>). It runs in your browser and needs no account (data remains in your browser).
 
-**Graph View**
-
-![The EtherPK Client in the dark theme: the demo graph in the whole Graph View, its list of hubs, and the Backlinks pane](.github/assets/etherpk-graph-view.png)
-
 **Document Editor (Prose and Outliner Blocks)**
 
-![A page in the editor, with prose, headings and an outline of bullets full of wikilinks, and the page's Backlinks beside it](.github/assets/etherpk-page.webp)
+![The EtherPK Client in the dark theme: a page in the editor, with prose, headings and an outline of bullets full of wikilinks, and the page's Backlinks beside it](.github/assets/etherpk-page.webp)
 
 **Task Kanban View**
 
@@ -28,6 +24,10 @@ The source of the [EtherPK](https://etherpk.com) Client and Headless Client, ava
 **Aggregate Map View**
 
 ![A Map View of the gardens noted under one concept across the graph, on one map with a list beside it grouped by document](.github/assets/etherpk-maps.webp)
+
+**Graph View**
+
+![The EtherPK Client in the dark theme: the demo graph in the whole Graph View, its list of hubs, and the Backlinks pane](.github/assets/etherpk-graph-view.png)
 
 EtherPK is a personal knowledge base in plain Markdown. Journal entries hold daily thinking, pages
 hold what outlives a day, and `[[wikilinks]]` tie them into a knowledge graph. The **Client** is the

@@ -39,7 +39,7 @@ export function registerJournalCommands(
             title: 'Show older entry',
             detail: 'Load the previous journal entry below this one',
             icon: 'move-down',
-            group: 'Navigate',
+            group: 'Go to',
             order: 14,
             keywords: ['journal', 'previous', 'day', 'yesterday', 'roll'],
             when: () => rollOf()?.canLoad() ?? false,

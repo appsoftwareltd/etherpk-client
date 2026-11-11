@@ -85,4 +85,44 @@ describe('rankCommandMenu', () => {
     it('drops non-matches', () => {
         expect(rankCommandMenu(items, 'zzz')).toEqual([])
     })
+
+    // The menu draws its rows under headings (Insert, Go to, Settings), so each group's rows stay
+    // together whatever is typed, and the row Enter runs is still the best match.
+    describe('with rows in groups', () => {
+        const grouped = (id: string, title: string, group: string, keywords?: string[]): CommandMenuItem => ({ ...item(id, title, keywords), group })
+        const rows = [
+            grouped('table.insert', 'Table', 'Insert'),
+            grouped('date.today', 'Today', 'Insert'),
+            grouped('template.pick', 'Template', 'Insert', ['snippet']),
+            grouped('search.open', 'Search', 'Go to', ['text']),
+            grouped('journal.today', 'Open today', 'Go to'),
+            grouped('spelling.languages', 'Spelling languages', 'Settings', ['search']),
+        ]
+        const ids = (query: string) => rankCommandMenu(rows, query).map((row) => row.id)
+
+        it('an empty query keeps the groups in the menu’s order', () => {
+            expect(ids('')).toEqual(rows.map((row) => row.id))
+        })
+
+        it('a query puts the group holding the best match first, and keeps each group together', () => {
+            // Search is named; Spelling languages only has it as a keyword.
+            expect(ids('search')).toEqual(['search.open', 'spelling.languages'])
+            // "today" names an Insert row outright and is only part of a Go to row.
+            expect(ids('today')).toEqual(['date.today', 'journal.today'])
+            // "open" matches only in Go to, so no row of another group is listed.
+            expect(ids('open')).toEqual(['journal.today'])
+        })
+
+        it('groups that match equally well keep the menu’s order, each with its own best match first', () => {
+            const tabs = [grouped('timetable', 'Timetable', 'Insert'), grouped('table.insert', 'Table', 'Insert'), grouped('tabs.list', 'Tabs', 'Go to')]
+            // Table and Tabs both start with what was typed. Insert comes first and keeps Timetable,
+            // a looser match than Tabs, beside Table.
+            expect(rankCommandMenu(tabs, 'tab').map((row) => row.id)).toEqual(['table.insert', 'timetable', 'tabs.list'])
+        })
+
+        it('places a row that names no group by whether it acts on the text', () => {
+            const mixed = [item('agent', 'Tab agent'), grouped('table.insert', 'Table', 'Insert'), { ...item('wrap', 'Tab wrap'), actsOnText: true }]
+            expect(rankCommandMenu(mixed, 'tab').map((row) => row.id)).toEqual(['table.insert', 'wrap', 'agent'])
+        })
+    })
 })

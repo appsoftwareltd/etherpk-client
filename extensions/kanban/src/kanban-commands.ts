@@ -206,7 +206,8 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         // The concept the board opens for, nearest first, under the name it resolves to.
         detail: (menu) => forConceptsDetail(menu.conceptsAtCaret ?? [], context.concepts.canonicalName),
         icon: 'kanban',
-        group: 'Tasks',
+        // Under Go to, after the Client's own rows there (Search to Show older entry, 10 to 14).
+        group: 'Go to',
         order: 140,
         keywords: ['board', 'lanes', 'tasks', 'status'],
         // Not gated on `bodyWritable`: opening a board writes nothing to the page.
@@ -223,7 +224,7 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         title: GRAPH_KANBAN,
         detail: 'Every task in this graph',
         icon: 'kanban',
-        group: 'Tasks',
+        group: 'Go to',
         // Straight after Open Kanban (140), the board for one concept.
         order: 141,
         keywords: ['board', 'lanes', 'tasks', 'status', 'everything', 'all'],

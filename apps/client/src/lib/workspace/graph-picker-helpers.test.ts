@@ -16,7 +16,10 @@ import {
     loadSyncedGraphViews,
     memberTrust,
     persistableGraphRecord,
+    lockedGraphDetails,
     serverGroupVisible,
+    syncedRowName,
+    syncTabSignInOnly,
     serverPlanGate,
     unlabelledGraphsToRead,
     type SyncedGraphView,
@@ -405,6 +408,87 @@ describe('which Sync Server groups the Graphs tab shows', () => {
         expect(serverGroupVisible({ ...first, authState: 'signed-out', kind: 'custom' })).toBe(true)
         // Nor can it ask for the Device Passcode that protects the token.
         expect(serverGroupVisible({ ...first, authState: 'locked', kind: 'custom' })).toBe(true)
+    })
+})
+
+describe('the name on a synced graph row', () => {
+    const view = (nameSource: 'device' | 'envelope' | 'document' | 'placeholder', name: string) => ({ name, nameSource })
+
+    it('is the name this device holds, then the one read for the row, then its id', () => {
+        expect(syncedRowName({ id: 'a1', record: { name: 'Garden' }, view: view('device', 'Garden') }, false)).toBe('Garden')
+        expect(syncedRowName({ id: 'a1', record: null, view: view('envelope', 'Kitchen') }, false)).toBe('Kitchen')
+        expect(syncedRowName({ id: 'a1', record: null, view: view('placeholder', 'Graph a1…') }, false)).toBe('Graph a1…')
+        expect(syncedRowName({ id: 'a1', record: null, view: null }, false)).toBe('a1')
+    })
+
+    it('is Locked graph while the keys are locked and no name is known, never a piece of its id', () => {
+        expect(syncedRowName({ id: 'a1', record: null, view: view('placeholder', 'Graph a1…') }, true)).toBe('Locked graph')
+        // A name this device already holds needs no key to show.
+        expect(syncedRowName({ id: 'a1', record: { name: 'Garden' }, view: view('device', 'Garden') }, true)).toBe('Garden')
+        expect(syncedRowName({ id: 'a1', record: { name: 'Garden' }, view: null }, true)).toBe('Garden')
+    })
+})
+
+describe('what tells one locked graph from another', () => {
+    const storage = { docBytes: 2048, assetBytes: 0 }
+
+    it('is the role, the size and, for an owner, who else is in it', () => {
+        expect(lockedGraphDetails({ role: 'owner', storage, members: [{ userId: 'u1', email: 'owner@example.test', role: 'owner' }] })).toEqual([
+            'You own it',
+            '2 KiB notes · 0 B assets',
+            'No other members',
+        ])
+        expect(
+            lockedGraphDetails({
+                role: 'owner',
+                storage,
+                members: [
+                    { userId: 'u1', email: 'owner@example.test', role: 'owner' },
+                    { userId: 'u2', email: 'player@example.test', role: 'player' },
+                    { userId: 'u3', email: 'guest@example.test', role: 'player', status: 'invited' },
+                ],
+            }),
+        ).toEqual(['You own it', '2 KiB notes · 0 B assets', 'Shared with player@example.test and guest@example.test'])
+    })
+
+    it('counts the members past the first three', () => {
+        const members = ['a', 'b', 'c', 'd', 'e'].map((name, index) => ({ userId: `u${index}`, email: `${name}@example.test`, role: 'player' }))
+        expect(lockedGraphDetails({ role: 'owner', members })).toEqual(['You own it', 'Shared with a@example.test, b@example.test, c@example.test and 2 more'])
+    })
+
+    it('says a Player is one, and leaves out what the server did not say', () => {
+        expect(lockedGraphDetails({ role: 'player', storage })).toEqual(['You are a Player in it', '2 KiB notes · 0 B assets'])
+        // The member list could not be read: nothing is claimed about who else is in it.
+        expect(lockedGraphDetails({ role: 'owner', members: null })).toEqual(['You own it'])
+    })
+})
+
+describe('whether the Sync tab shows only the sign-in', () => {
+    const signedOut = { kind: 'managed' as const, authState: 'signed-out' as const, accountKnown: false }
+
+    it('does on a Client that offers Managed Sync while the device has no account', () => {
+        expect(syncTabSignInOnly({ managedOffered: true, servers: [] })).toBe(true)
+        expect(syncTabSignInOnly({ managedOffered: true, servers: [signedOut] })).toBe(true)
+    })
+
+    it('does while Managed Sync is first checked on a device no account was confirmed on', () => {
+        expect(syncTabSignInOnly({ managedOffered: true, servers: [{ ...signedOut, authState: 'checking' }] })).toBe(true)
+        // An account was confirmed here before: its sub-tab stays while it is checked again.
+        expect(syncTabSignInOnly({ managedOffered: true, servers: [{ ...signedOut, authState: 'checking', accountKnown: true }] })).toBe(false)
+    })
+
+    it('does not once an account is signed in, or its server holds the device up another way', () => {
+        for (const authState of ['authenticated', 'unavailable', 'locked'] as const) {
+            expect(syncTabSignInOnly({ managedOffered: true, servers: [{ ...signedOut, authState }] })).toBe(false)
+        }
+    })
+
+    it('does not while the device holds a custom server, whatever its state', () => {
+        expect(syncTabSignInOnly({ managedOffered: true, servers: [signedOut, { ...signedOut, kind: 'custom' }] })).toBe(false)
+    })
+
+    it('does not on a Client that offers no Managed Sync, where the server form is the way in', () => {
+        expect(syncTabSignInOnly({ managedOffered: false, servers: [] })).toBe(false)
     })
 })
 

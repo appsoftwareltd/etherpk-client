@@ -146,7 +146,7 @@ export function registerAgentInstructionCommands(commands: CommandRegistry, cont
             title: 'Copy agent instruction',
             detail: 'To hand this task to an agent',
             icon: 'copy',
-            group: 'Tasks',
+            group: 'Insert',
             order: 150,
             keywords: ['instruction', 'reference', 'link', 'agent', 'task', 'copy'],
             // Not gated on `bodyWritable`: copying writes nothing to the page.

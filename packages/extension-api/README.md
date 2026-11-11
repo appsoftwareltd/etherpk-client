@@ -89,7 +89,11 @@ These are the Stable parts of the context.
 
 `context.commands.register(id, handler)` adds a Command, whose id starts with the extension's id
 (`hello.greet`). `context.commandMenu.register(item)` adds a row to the `/` menu that runs a Command.
-A row can have a `detail` line, an `icon`, `keywords` that find it, a `group` and an `order`. Its
+A row can have a `detail` line, an `icon`, `keywords` that find it, a `group` and an `order`. The
+menu lists its rows under three headings, in this order: `Insert`, `Go to` and `Settings`. A row's
+`group` names the one it belongs under, and its `order` places it among the other rows there, lower
+first. A row with no `group`, or with any other text in it, is listed under `Insert` when it sets
+`actsOnText` and under `Go to` otherwise. Its
 `when(menu)` says whether it is offered at the caret, from what `menu` reports: `bodyWritable`,
 `inTable` and `protectedDocument`. A row that only acts on the text at the caret, inserting or
 formatting it, sets `actsOnText: true`; only such rows are offered in an editor that shows part of a

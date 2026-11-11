@@ -16,7 +16,8 @@
     import { formatBytes } from '@appsoftwareltd/etherpk-shared'
     import { inkFor } from '#lib/contrast-ink.js'
     import GraphGrip, { type GraphGripProps } from './GraphGrip.svelte'
-    import { BADGE_ON_COLOUR, GRAPH_CARD, ICON_ON_COLOUR, OPEN_ON_COLOUR } from './graph-card'
+    import { tick } from 'svelte'
+    import { BADGE_ON_COLOUR, GRAPH_CARD, GRAPH_CARD_UNCLIPPED, ICON_ON_COLOUR, OPEN_ON_COLOUR } from './graph-card'
     import type { SyncedMember } from './graph-picker-helpers'
     import { OPEN_BUTTON, OPEN_ICON } from './graphs-page-icons'
 
@@ -25,6 +26,7 @@
         name,
         role,
         onDevice,
+        locked = false,
         accent = null,
         grip = null,
         readOnly = false,
@@ -60,6 +62,13 @@
         role: string | null
         /** A copy of the graph is registered in this browser. */
         onDevice: boolean
+        /**
+         * The server's Encryption Keys are locked on this device: the row is a placeholder under
+         * the group's unlock step until they are unlocked. Deleting the graph and leaving it need
+         * no key, and are the only way to drop one graph for somebody who can never unlock (a
+         * reset drops them all), so they stay, behind the row's menu.
+         */
+        locked?: boolean
         /** Its toolbar colour, when this device knows one. */
         accent?: string | null
         /** Its handle in a list that can be put in order; null where there is nothing to order. */
@@ -148,27 +157,142 @@
         element.focus()
     }
 
+    // A locked row's menu: one item, Delete for the owner or Leave for a Player. Enter or a click
+    // opens it on that item; Escape, or the focus leaving, closes it.
+    let menuOpen = $state(false)
+    let menuTrigger = $state<HTMLButtonElement>()
+    const menuId = $props.id()
+
+    async function closeMenu(returnFocus: boolean) {
+        menuOpen = false
+        if (!returnFocus) return
+        await tick()
+        menuTrigger?.focus()
+    }
+
+    function menuKeydown(event: KeyboardEvent) {
+        if (event.key !== 'Escape' || !menuOpen) return
+        event.stopPropagation()
+        void closeMenu(true)
+    }
+
+    function menuFocusOut(event: FocusEvent) {
+        const next = event.relatedTarget
+        if (!(next instanceof Node) || !(event.currentTarget as HTMLElement).contains(next)) menuOpen = false
+    }
+
+    function choose(action: () => void) {
+        menuOpen = false
+        action()
+    }
+
+    /** A closed padlock (Heroicons outline), beside a locked row's name. */
+    const LOCK_ICON =
+        'M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z'
+
     const TEXT_BUTTON =
         'shrink-0 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5'
     const DANGER_BUTTON =
         'shrink-0 rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-progress pointer-coarse:min-h-11 dark:border-red-500/40 dark:hover:bg-red-950/30'
+    const MENU_DANGER_ITEM =
+        'flex w-full items-center rounded-md px-3 py-2 text-left text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-progress pointer-coarse:min-h-11 dark:text-red-400 dark:hover:bg-red-950/30'
     const ICON_BUTTON =
         'shrink-0 rounded-lg p-1.5 pointer-coarse:p-3 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-200'
 </script>
 
-{#snippet badges()}
-    <span data-testid="graph-card-name" class="truncate text-sm font-medium {accent ? '' : 'text-neutral-950 dark:text-white'}">{name}</span>
+<!-- The name and the role. `coloured`: on the band in the graph's toolbar colour, which a locked
+     row does not draw. -->
+{#snippet badges(coloured: boolean)}
+    <span data-testid="graph-card-name" class="truncate text-sm font-medium {coloured ? '' : 'text-neutral-950 dark:text-white'}">{name}</span>
     {#if role}
         <span
             data-testid="synced-role"
-            class={accent
+            class={coloured
                 ? BADGE_ON_COLOUR
                 : `rounded-full px-2 py-0.5 text-sm ${owner ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900' : 'bg-neutral-100 text-neutral-600 dark:bg-white/10 dark:text-neutral-400'}`}>{owner ? 'Owner' : 'Player'}</span
         >
     {/if}
 {/snippet}
 
-<div data-testid="synced-graph" data-graph-id={graphId} data-on-device={onDevice} class={GRAPH_CARD}>
+{#if locked}
+    <!-- Locked: what the graph is to this account and how much it holds. The group's unlock step,
+         above, is the one action in view; the id is left out, and deleting or leaving the graph,
+         which need no key, are behind the menu. -->
+    <div data-testid="synced-graph" data-graph-id={graphId} data-on-device={onDevice} data-locked="true" class={GRAPH_CARD_UNCLIPPED}>
+        <div data-testid="graph-band" class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
+            <svg class="h-4 w-4 shrink-0 text-neutral-500 dark:text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d={LOCK_ICON} />
+            </svg>
+            <span class="flex min-w-0 flex-1 basis-40 flex-wrap items-center gap-2">{@render badges(false)}</span>
+            <span class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="synced-locked-detail">
+                {[onDevice ? 'On this device' : 'Not on this device', ...(storage ? [`${formatBytes(storage.docBytes)} notes`, `${formatBytes(storage.assetBytes)} assets`] : [])].join(' · ')}
+            </span>
+            {#if role}
+                <!-- The handlers watch the menu's own controls: Escape and the focus leaving close it. -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div class="relative" onkeydown={menuKeydown} onfocusout={menuFocusOut}>
+                    <button
+                        bind:this={menuTrigger}
+                        type="button"
+                        data-testid="graphs-locked-menu"
+                        aria-label={`More actions for ${name}`}
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpen}
+                        aria-controls={menuOpen ? menuId : undefined}
+                        onclick={() => (menuOpen = !menuOpen)}
+                        class={ICON_BUTTON}
+                    >
+                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM12.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM18.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
+                        </svg>
+                    </button>
+                    {#if menuOpen}
+                        <div
+                            id={menuId}
+                            role="menu"
+                            aria-label={`More actions for ${name}`}
+                            class="absolute right-0 top-full z-20 mt-1 min-w-44 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg dark:border-neutral-700 dark:bg-(--gk-surface-2)"
+                        >
+                            {#if owner}
+                                <button
+                                    {@attach focusOnMount}
+                                    type="button"
+                                    role="menuitem"
+                                    data-testid="graphs-delete"
+                                    disabled={checking}
+                                    aria-busy={checking}
+                                    onclick={() => choose(ondelete)}
+                                    class={MENU_DANGER_ITEM}>Delete graph…</button
+                                >
+                            {:else}
+                                <button
+                                    {@attach focusOnMount}
+                                    type="button"
+                                    role="menuitem"
+                                    data-testid="graphs-leave"
+                                    disabled={checking}
+                                    aria-busy={checking}
+                                    onclick={() => choose(onleave)}
+                                    class={MENU_DANGER_ITEM}>Leave graph…</button
+                                >
+                            {/if}
+                        </div>
+                    {/if}
+                </div>
+            {/if}
+        </div>
+        {#if message}
+            <p
+                data-testid="synced-graph-status"
+                role={message.tone === 'error' ? 'alert' : 'status'}
+                class="px-4 pb-3 text-sm {message.tone === 'error' ? 'text-red-600 dark:text-red-400' : 'text-neutral-600 dark:text-neutral-400'}"
+            >
+                {message.text}
+            </p>
+        {/if}
+    </div>
+{:else}
+<div data-testid="synced-graph" data-graph-id={graphId} data-on-device={onDevice} data-locked="false" class={GRAPH_CARD}>
     <div
         data-testid="graph-band"
         class="flex flex-wrap items-center gap-2 px-4 py-3"
@@ -182,7 +306,7 @@
             <!-- The basis keeps room for the name: on a narrow screen the controls drop to a line of
                  their own rather than squeezing it away. -->
             <div class="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
-                <span class="flex min-w-0 flex-wrap items-center gap-2">{@render badges()}</span>
+                <span class="flex min-w-0 flex-wrap items-center gap-2">{@render badges(accent !== null)}</span>
                 <span
                     class="truncate text-sm {accent ? '' : 'text-neutral-500 dark:text-neutral-400'}"
                     data-testid="graphs-cache-hint"
@@ -222,7 +346,7 @@
             </div>
         {:else}
             <div class="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
-                <span class="flex min-w-0 flex-wrap items-center gap-2">{@render badges()}</span>
+                <span class="flex min-w-0 flex-wrap items-center gap-2">{@render badges(accent !== null)}</span>
                 <span class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="synced-not-local">Not on this device</span>
             </div>
             <button data-testid="graphs-add-device" onclick={onadd} class="ml-auto {TEXT_BUTTON}">Add to this device</button>
@@ -428,3 +552,4 @@
     {/if}
     </div>
 </div>
+{/if}

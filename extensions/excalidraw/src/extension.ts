@@ -82,7 +82,7 @@ export function activate(context: ExtensionContext): void {
         detail: 'Insert an Excalidraw drawing',
         icon: 'drawing',
         group: 'Insert',
-        // After Map (115) and Video (116).
+        // Under Insert, after Map (115) and Video (116).
         order: 117,
         keywords: ['excalidraw', 'draw', 'drawing', 'sketch', 'diagram', 'whiteboard', 'canvas'],
         // On every layout, a phone's included, and never in a Protected Document, which draws none.

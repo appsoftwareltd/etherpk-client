@@ -12,8 +12,12 @@
      * Neither arrival needs a tab-close guard: closing the tab on either changes nothing.
      *
      * Every code belongs to one Sync Server's account (ADR 0111), and a device connected to two
-     * servers is given two. The dialog, the download's name and the saved text all name the
-     * server, so a second code never reads as a replacement for the first.
+     * servers is given two. The acknowledgement, the download's name and the saved text all name
+     * the server, and on a device that holds another server the dialog opens by saying which
+     * server this code is for, so a second code never reads as a replacement for the first.
+     *
+     * A first code on a device with one server shows the warning and the code and little else:
+     * nothing above them competes with "copy this now".
      */
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import { recoveryCodeFileName, recoveryCodeFileText } from "../recovery-code-file";
@@ -25,6 +29,7 @@
         reason,
         serverOrigin,
         account = null,
+        otherServerHeld = false,
         onconfirm,
         oncancel,
     }: {
@@ -38,7 +43,16 @@
          * replace (ADR 0128) replaces the code and the keys with it.
          */
         arrival: "first" | "regenerate" | "replace";
-        /** Why the ritual appeared now, e.g. keys minted for an account that had none. */
+        /**
+         * This device holds another Sync Server besides this code's, so there may be another code
+         * to tell this one from: the dialog then opens by naming the server and the account.
+         */
+        otherServerHeld?: boolean;
+        /**
+         * What the person needs to know about this arrival. A regenerate or a replace says what
+         * confirming retires, which is read before the code, so it shows above the warning. A
+         * first mint has nothing to lose: its one sentence shows under the code.
+         */
         reason?: string;
         onconfirm: () => void;
         /** Regenerate only: dismiss without retiring the current code. */
@@ -112,12 +126,14 @@
 
 <Modal {open} {title} closeOnBackdrop={false} onclose={oncancel ? cancel : undefined}>
     {#snippet body()}
-        <p data-testid="recovery-server" class="text-sm text-neutral-700 dark:text-neutral-200">
-            For your account on <span class="font-semibold text-neutral-950 dark:text-white">{host}</span
-            >{#if account}&nbsp;({account}){/if}. It unlocks your Encryption Keys on this Sync Server only. A code you
-            saved for another Sync Server stays valid and is not replaced by this one: keep each one.
-        </p>
-        {#if reason}
+        {#if otherServerHeld}
+            <p data-testid="recovery-server" class="text-sm text-neutral-700 dark:text-neutral-200">
+                For your account on <span class="font-semibold text-neutral-950 dark:text-white">{host}</span
+                >{#if account}&nbsp;({account}){/if}. It unlocks your Encryption Keys on this Sync Server only. A code you
+                saved for another Sync Server stays valid and is not replaced by this one: keep each one.
+            </p>
+        {/if}
+        {#if reason && replacing}
             <p data-testid="recovery-reason" class="text-sm text-neutral-600 dark:text-neutral-300">{reason}</p>
         {/if}
         <div class="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-950/30 p-3">
@@ -159,6 +175,10 @@
             <p role="alert" data-testid="recovery-save-error" class="text-sm text-red-600 dark:text-red-400">{saveError}</p>
         {/if}
 
+        {#if reason && !replacing}
+            <p data-testid="recovery-note" class="text-sm text-neutral-600 dark:text-neutral-300">{reason}</p>
+        {/if}
+
         <label class="flex items-start gap-2 text-sm text-neutral-700 dark:text-neutral-300">
             <input
                 type="checkbox"
@@ -166,7 +186,7 @@
                 data-testid="recovery-ack"
                 class="mt-0.5 h-4 w-4 rounded border-neutral-300 dark:border-neutral-600"
             />
-            <span>{acknowledgement}</span>
+            <span data-testid="recovery-ack-label">{acknowledgement}</span>
         </label>
     {/snippet}
 

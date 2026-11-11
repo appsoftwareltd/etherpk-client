@@ -69,7 +69,7 @@ describe('registerEditorCommands — asset.upload', () => {
 
         const menu = listCommandMenuItems(contributions, { inTable: false, tableInsertable: true, bodyWritable: true })
         const upload = menu.find((i) => i.id === 'asset.upload')
-        expect(upload).toMatchObject({ command: 'asset.upload', group: 'Asset' })
+        expect(upload).toMatchObject({ command: 'asset.upload', group: 'Insert' })
         expect(upload?.keywords).toContain('image')
 
         const bar = listCommandBarItems(contributions)

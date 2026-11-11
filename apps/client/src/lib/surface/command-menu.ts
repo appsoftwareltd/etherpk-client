@@ -61,13 +61,19 @@ export interface CommandMenuItem {
     detail?: string | ((ctx: CommandMenuContext) => string | undefined)
     /** Icon name resolved to an SVG by the popover (unknown ⇒ a default glyph). */
     icon?: string
-    /** Section label (e.g. `Date`, `Table`). */
+    /**
+     * The heading the row is listed under: one of {@link COMMAND_MENU_GROUPS}. A row that names none,
+     * or a heading the menu does not have (an extension written before the headings), is placed by
+     * {@link commandMenuGroup}. A string rather than the union, because an extension's row arrives
+     * with whatever its author wrote.
+     */
     group?: string
     /**
-     * Sort key for a bare `/`: lower lists earlier, and equal values keep registration order. A row
-     * without one lists after every row that has one. The rows come from several modules registered
-     * in the workspace's order, so each carries its place in the menu itself; the whole first-party
-     * order is written down in `document/commands/command-menu-order.test.ts`.
+     * Sort key within the row's group for a bare `/`: lower lists earlier, and equal values keep
+     * registration order. A row without one lists after every row of its group that has one. The
+     * rows come from several modules registered in the workspace's order, so each carries its place
+     * in the menu itself; the whole first-party order is written down in
+     * `document/commands/command-menu-order.test.ts`.
      */
     order?: number
     /** Extra fuzzy-match terms beyond the title (e.g. `['calendar', 'date']`). */
@@ -93,15 +99,38 @@ export function registerCommandMenuItem(registry: ContributionRegistry, item: Co
     return registry.register(COMMAND_MENU_KIND, item.id, item)
 }
 
-/** The sort key of a row: its `order`, or after every row that has one. */
+/**
+ * The menu's headings, in the order it lists them: what puts something in the document, then what
+ * goes somewhere or finds something, then what changes how EtherPK behaves.
+ */
+export const COMMAND_MENU_GROUPS = ['Insert', 'Go to', 'Settings'] as const
+
+/** One of the menu's headings. */
+export type CommandMenuGroup = (typeof COMMAND_MENU_GROUPS)[number]
+
+/**
+ * The heading a row is listed under: the one it names, or, for a row that names none or one the
+ * menu does not have, Insert when it acts on the text at the caret and Go to otherwise. The rows
+ * extensions register without a heading open a View or a panel, or put a block in the text, so the
+ * two cover them; no row becomes a setting without saying so.
+ */
+export function commandMenuGroup(item: Pick<CommandMenuItem, 'group' | 'actsOnText'>): CommandMenuGroup {
+    const named = COMMAND_MENU_GROUPS.find((group) => group === item.group)
+    return named ?? (item.actsOnText ? 'Insert' : 'Go to')
+}
+
+/** Where a row's group comes in the menu: lower lists earlier. */
+export const commandMenuGroupRank = (item: Pick<CommandMenuItem, 'group' | 'actsOnText'>): number => COMMAND_MENU_GROUPS.indexOf(commandMenuGroup(item))
+
+/** The sort key of a row within its group: its `order`, or after every row that has one. */
 const menuOrder = (item: CommandMenuItem) => item.order ?? Number.MAX_SAFE_INTEGER
 
-/** Every registered item in menu order (`order`, then registration order), applicable or not. */
+/** Every registered item in menu order (group, then `order`, then registration order), applicable or not. */
 export function commandMenuItemsInOrder(registry: ContributionRegistry): CommandMenuItem[] {
     return registry
         .list(COMMAND_MENU_KIND)
         .map((e) => e.value as CommandMenuItem)
-        .sort((a, b) => menuOrder(a) - menuOrder(b))
+        .sort((a, b) => commandMenuGroupRank(a) - commandMenuGroupRank(b) || menuOrder(a) - menuOrder(b))
 }
 
 /**

@@ -1076,9 +1076,9 @@
             </button>
         {/if}
         {#if hasResetCommand}
-            <!-- On every presenter, unlike Settings: the phone top bar has no room for it, and on
-                 a desktop it is the one control that still works when the toolbar's own button
-                 is what the user is trying to get back to. Opens the confirmation. -->
+            <!-- On every presenter, unlike Settings: neither the phone top bar nor the desktop
+                 toolbar has a button for it, so this named row and the Command are how it is
+                 reached. Opens the confirmation. -->
             <button
                 type="button"
                 data-testid="reset-workspace"

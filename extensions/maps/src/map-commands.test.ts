@@ -6,7 +6,7 @@ import { editorAnalysis } from '#lib/document/view/analysis/editor-analysis.js'
 import { interactiveFenceAugmentation } from '#lib/document/view/augmentations/interactive-fence.js'
 import { registerInteractiveFence } from '#lib/document/view/augmentations/interactive-fence-contract.js'
 import { setActiveContributionRegistry } from '#lib/surface/index.js'
-import { commandMenuItemsInOrder, listCommandMenuItems } from '#lib/surface/command-menu.js'
+import { commandMenuGroup, commandMenuItemsInOrder, listCommandMenuItems } from '#lib/surface/command-menu.js'
 import { createContributionRegistry } from '#lib/surface/contribution-registry.js'
 
 import { mapInsertable, mapInsertPlan, registerMapCommands } from './map-commands'
@@ -39,13 +39,15 @@ describe('/map', () => {
         expect(titles({ inTable: true })).not.toContain('Map')
     })
 
-    it("sits among the Client's rows straight after Table, with the other blocks a person puts in", () => {
+    it("sits under Insert, after the Client's blocks and dates and before its formatting rows", () => {
         // The whole first-party order is written down in the Client's command-menu-order.test.ts.
         const maps = mapsContext()
         registerEditorCommands(maps.services.commands, maps.services.contributions)
         registerMapCommands(maps.context, { unfoldEmpty: () => {}, requestFocus: () => {} })
-        const all = commandMenuItemsInOrder(maps.services.contributions).map((item) => item.title)
-        expect(all[all.indexOf('Table') + 1]).toBe('Map')
+        const all = commandMenuItemsInOrder(maps.services.contributions)
+        expect(commandMenuGroup(all.find((item) => item.title === 'Map')!)).toBe('Insert')
+        const titles = all.map((item) => item.title)
+        expect(titles.slice(titles.indexOf('Tomorrow'), titles.indexOf('Bold') + 1)).toEqual(['Tomorrow', 'Map', 'Bold'])
     })
 })
 

@@ -59,23 +59,9 @@
     import type { PublishTabProps } from "./publish-tab";
     import PublishSettingsTab from "./PublishSettingsTab.svelte";
     import { PRESENCE_PALETTE } from "#lib/sync/presence-identity.js";
-    import {
-        AGENT_TOOLS,
-        type AgentTool,
-        type AgentsTabProps,
-        diagramsSetupCommand,
-        publishCommand,
-        registerCommand,
-        registerFolderCommand,
-        registerNote,
-        semanticSetupCommand,
-        AGENT_SKILL_ROW,
-        tokensPageUrl,
-    } from "./agents-tab";
-    import AgentCommandRowView from "./AgentCommandRow.svelte";
-    import HeadlessClientSignIn from "./HeadlessClientSignIn.svelte";
+    import type { AgentsTabProps } from "./agents-tab";
+    import AgentsMcpTab from "./AgentsMcpTab.svelte";
     import AgentsSettingsTabs from "#lib/extensions/AgentsSettingsTabs.svelte";
-    import { iconSvg } from "#lib/surface/icons.js";
     import { MIRROR_PHASE_LABELS } from "#lib/storage/synced/local-mirror.js";
 
     let {
@@ -89,6 +75,7 @@
         indexProgress = null,
         onrebuildindex = null,
         nameHelp = "Changes the graph name for all members.",
+        onshare = null,
         protection = null,
         spelling = null,
         mirror = null,
@@ -131,6 +118,11 @@
         onrebuildindex?: (() => Promise<void>) | null;
         /** Backend-aware copy under the name field (a filesystem rename is display-only). */
         nameHelp?: string;
+        /**
+         * Share tab: open the invite dialog for this graph. Null hides the tab: a graph in a
+         * folder, a Player, or the dialog opened outside an open graph.
+         */
+        onshare?: (() => void) | null;
         /** Protection tab. Null hides the tab entirely (dialog opened outside an open graph). */
         protection?: ProtectionTabProps | null;
         /** The Spelling tab (ADR 0095); null outside an open graph, where there is nothing to check. */
@@ -181,13 +173,13 @@
          * so the Publish chord or a history step can move an open dialog to another tab.
          * Omitted, or not offered for this graph, lands on General.
          */
-        tab?: "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance";
+        tab?: "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance";
         /**
          * The tab the dialog is on changed: the user picked one (click or arrow keys), or the
          * tab asked for is not offered on this graph and it opened on General instead. The
          * workspace remembers it and keeps the address honest.
          */
-        onchangetab?: (tab: "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance") => void;
+        onchangetab?: (tab: "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance") => void;
         onsave: (result: { name: string; settings: GraphSettings; folderPath?: string }) => void;
         onclose: () => void;
     } = $props();
@@ -201,31 +193,6 @@
     let rebuilding = $state(false);
     let rebuilt = $state(false);
     let rebuildError = $state<string | null>(null);
-
-    /** Which agent the register command is spelled for; the serve command is the same for all. */
-    let agentTool = $state<AgentTool>("claude");
-    /** Which command was last copied, for the button's "Copied" tick. */
-    type AgentCopyKey = "register" | "semantic" | "diagrams" | "publish" | "skill";
-    /** One command with its copy button: the Agent Skill row and the optional extras. */
-    type AgentCommandRow = { key: AgentCopyKey; label: string; text: string; note: string };
-    let agentCopied = $state<AgentCopyKey | null>(null);
-    /** The copy that failed, shown beside its own command rather than at a fixed place. */
-    let agentCopyError = $state<{ key: AgentCopyKey; message: string } | null>(null);
-
-    async function copyAgentCommand(which: AgentCopyKey, text: string) {
-        agentCopyError = null;
-        try {
-            await navigator.clipboard.writeText(text);
-            agentCopied = which;
-            setTimeout(() => {
-                if (agentCopied === which) agentCopied = null;
-            }, 2000);
-        } catch {
-            // No clipboard (an insecure context, a denied permission): the text is on screen
-            // and selectable, so say that rather than failing silently.
-            agentCopyError = { key: which, message: "Couldn't copy - select the command and copy it by hand." };
-        }
-    }
 
     async function rebuildIndex() {
         if (!onrebuildindex || rebuilding) return;
@@ -242,10 +209,11 @@
         }
     }
 
-    type Tab = "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance";
+    type Tab = "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance";
     const tabs = $derived(
         [
             { id: "general" as const, label: "General", shown: true },
+            { id: "share" as const, label: "Share", shown: onshare !== null },
             { id: "spelling" as const, label: "Spelling", shown: spelling !== null },
             {
                 id: "protection" as const,
@@ -639,6 +607,28 @@
             {:else if activeTab === "extensions" && extensions}
                 <!-- Each switch applies at once and is per device: nothing for Save to apply. -->
                 <ExtensionsSettingsTab host={extensions} directory={extensionDirectory} {installedSync} />
+            {:else if activeTab === "share" && onshare}
+                <!-- One action, which opens the invite dialog the Graphs page opens. The roster
+                     stays on the graph's card there, so this panel says where it is. -->
+                <div class="space-y-3" data-testid="graph-share">
+                    <h3 class="text-sm font-medium text-neutral-500 dark:text-neutral-400">Share this graph</h3>
+                    <p class="text-sm text-neutral-600 dark:text-neutral-400">
+                        Invite someone to this graph as a Player. You both edit it, and each
+                        other's changes appear as they are typed.
+                    </p>
+                    <button
+                        type="button"
+                        onclick={onshare}
+                        data-testid="graph-share-invite"
+                        class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 pointer-coarse:min-h-11"
+                        >Share this graph…</button
+                    >
+                    <p class="text-sm text-neutral-600 dark:text-neutral-400">
+                        The graph's card on the
+                        <a href="/graphs" class="font-medium text-(--gk-accent) underline underline-offset-2">Graphs page</a>
+                        lists its Players and the invites not yet accepted.
+                    </p>
+                </div>
             {:else if activeTab === "install"}
                 <!-- Per device, not per graph: it sits in this dialog because an installed app is
                      what stops a phone's browser clearing the graph data kept here, and this is
@@ -974,232 +964,7 @@
             {:else if activeTab === "agents" && agents}
                 <AgentsSettingsTabs host={extensions} initial={agentsSubTab}>
                     {#snippet mcp()}
-                        {#if agents?.kind === "browser"}
-                            <!-- An agent instruction copied from this graph sends the person here, so this says
-                                 what to do instead rather than showing commands that cannot work. -->
-                            <div class="space-y-4" data-testid="agents-tab-browser">
-                                {@render mcpHeading()}
-                                <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                                    Use to allow an AI agent on your device to read and modify a graph. This graph is
-                                    kept inside this browser, so an agent cannot reach it.
-                                </p>
-                                <p class="text-sm text-neutral-950 dark:text-neutral-100">
-                                    To work with an agent, open a local graph, which is a folder of plain files an agent
-                                    can open like any other project, or a synced graph, which an agent reaches through the
-                                    EtherPK Headless Client. You can do either from the
-                                    <a
-                                        href="/graphs"
-                                        class="underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-950 dark:hover:decoration-neutral-100"
-                                        >Graphs page</a
-                                    >.
-                                </p>
-                                {@render agentOptional(null)}
-                            </div>
-                        {:else if agents?.kind === "local"}
-                            <!-- The folder is the integration, so nothing has to be connected. The MCP server is
-                                 the one extra, and comes before what the folder's AGENTS.md covers. -->
-                            <div class="space-y-4" data-testid="agents-tab-local">
-                                {@render mcpHeading()}
-                                <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                                    Use to allow an AI agent on your device, such as Claude Code, Codex or VS Code, to read
-                                    and modify this graph. The agent connects to the MCP server that the EtherPK Headless
-                                    Client runs.
-                                </p>
-                                <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                                    The MCP server is optional on a local graph. The graph is a folder, so the agent can open
-                                    its files like any other project, and the MCP server adds search, backlinks and task
-                                    tools. The MCP can see a count of protected documents, but no names or text.
-                                </p>
-                                <p class="text-sm text-neutral-950 dark:text-neutral-100">
-                                    To hand the agent a task or a Kanban lane, use
-                                    <span class="font-medium">Copy agent instruction</span>
-                                    on it and paste the text into the agent's chat.
-                                </p>
-                                {#if agents.folderPath}
-                                    <!-- The same Headless Client that serves a synced graph serves a folder,
-                             with no sign-in: search, backlinks, tasks and format-safe edits over the
-                             files, alongside the files themselves. A person reads this, never an
-                             agent; AGENTS.md stays about the file format on purpose. -->
-                        <div class="space-y-1 border-t border-neutral-900/10 dark:border-neutral-100/15 pt-4">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <span class="text-sm font-medium text-neutral-950 dark:text-neutral-100">Optional: add the MCP server</span>
-                                <label class="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-                                    for
-                                    <select
-                                        bind:value={agentTool}
-                                        class="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
-                                        data-testid="agents-tool"
-                                    >
-                                        {#each AGENT_TOOLS as toolOption (toolOption.id)}
-                                            <option value={toolOption.id}>{toolOption.label}</option>
-                                        {/each}
-                                    </select>
-                                </label>
-                            </div>
-                            <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                                It needs no sign-in. It keeps an index of the notes, so
-                                the agent can search them, follow links and list tasks,
-                                and its edits keep the format. Edits the agent makes to
-                                the files directly still show up.
-                            </p>
-                            <div class="flex items-start gap-2">
-                                <pre
-                                    class="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-neutral-900/10 dark:border-neutral-100/15 bg-neutral-50 dark:bg-white/5 p-3 font-mono text-sm"
-                                    data-testid="agents-register-folder-command">{registerFolderCommand(agentTool, agents.folderPath, agents.headlessClient, agents.folderName)}</pre>
-                                <button
-                                    type="button"
-                                    onclick={() =>
-                                        copyAgentCommand(
-                                            "register",
-                                            registerFolderCommand(agentTool, agents!.kind === "local" ? agents!.folderPath! : "", agents!.headlessClient, agents!.kind === "local" ? agents!.folderName : ""),
-                                        )}
-                                    class="shrink-0 rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                                    data-testid="agents-copy-register-folder"
-                                    >{agentCopied === "register" ? "Copied" : "Copy"}</button
-                                >
-                            </div>
-                            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-register-note">{registerNote(agentTool)}</p>
-                            {#if agentCopyError?.key === "register"}
-                                <p role="status" class="text-sm text-red-700 dark:text-red-400">{agentCopyError.message}</p>
-                            {/if}
-                        </div>
-                                {:else}
-                                    <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                            To hand an agent a full path, or to serve the folder
-                            to an agent over MCP with search, backlinks and
-                            tasks, set
-                            <span class="font-medium">Folder path on this device</span>
-                            on the General tab, or use
-                            <span class="font-medium">Copy full file path</span>
-                            on a document's tab.
-                        </p>
-                                {/if}
-                                <p class="text-sm text-neutral-950 dark:text-neutral-100">
-                        EtherPK keeps an <code class="font-mono">AGENTS.md</code>
-                        at the top of the folder
-                        (<code class="font-mono" data-testid="agents-local-folder">{agents.folderName}</code>),
-                        beside <code class="font-mono">journals/</code>,
-                        <code class="font-mono">pages/</code> and
-                        <code class="font-mono">assets/</code>. Agents read a
-                        file of that name before they touch anything, and this
-                        one tells them how the notes are written (bullets and
-                        indenting, <code class="font-mono">[[links]]</code>,
-                        tasks and their tags, images and files) and what to
-                        leave alone: the scrambled body of a protected document
-                        and the <code class="font-mono">etherpk/</code> folder.
-                        A <code class="font-mono">CLAUDE.md</code> beside it
-                        just points Claude Code at the same file.
-                    </p>
-                    <p class="text-sm text-neutral-950 dark:text-neutral-100">
-                        Both files are yours to add to. Anything you write
-                        outside the part between the
-                        <code class="font-mono">&lt;!-- BEGIN ETHERPK --&gt;</code>
-                        and <code class="font-mono">&lt;!-- END ETHERPK --&gt;</code>
-                        lines is kept. EtherPK rewrites that part each time the
-                        graph opens, so it always matches this version.
-                    </p>
-                                {#if agents.folderPath}
-                            <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                                Path on this device:
-                                <code class="font-mono" data-testid="agents-local-path">{agents.folderPath}/AGENTS.md</code>
-                            </p>
-                                {/if}
-                                {@render agentOptional(agents.folderPath ? agents : null)}
-                                <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                        <a
-                            href="https://docs.etherpk.com/using-ai-agents-with-your-notes"
-                            target="_blank"
-                            rel="noreferrer"
-                            class="underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-950 dark:hover:decoration-neutral-100"
-                            >Read the guide</a
-                        >, including what to do when the notes folder sits inside a
-                        bigger project.
-                    </p>
-                            </div>
-                        {:else if agents?.kind === "synced"}
-                            <div class="space-y-4" data-testid="agents-tab">
-                    {@render mcpHeading()}
-                    <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                                    Use to allow an AI agent on your device, such as Claude Code, Codex or VS Code, to read
-                                    and modify this graph. The agent connects to the MCP server that the EtherPK Headless
-                                    Client runs.
-                                </p>
-                                <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                                    The Headless Client signs in and acts as one of your devices. Your notes are encrypted
-                                    before sending to the Sync Server. The MCP can see a count of protected documents, but
-                                    no names or text.
-                                </p>
-                    <ol class="space-y-3 text-sm text-neutral-950 dark:text-neutral-100">
-                        <li class="space-y-2">
-                            <HeadlessClientSignIn serverBaseUrl={agents.serverBaseUrl} headlessClient={agents.headlessClient} createSetupCode={agents.createSetupCode} numbered />
-                        </li>
-                        <li class="space-y-1">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <span class="font-medium">2. Tell the agent about this graph</span>
-                                <label class="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-                                    for
-                                    <select
-                                        bind:value={agentTool}
-                                        class="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
-                                        data-testid="agents-tool"
-                                    >
-                                        {#each AGENT_TOOLS as toolOption (toolOption.id)}
-                                            <option value={toolOption.id}>{toolOption.label}</option>
-                                        {/each}
-                                    </select>
-                                </label>
-                            </div>
-                            <div class="flex items-start gap-2">
-                                <pre
-                                    class="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-neutral-900/10 dark:border-neutral-100/15 bg-neutral-50 dark:bg-white/5 p-3 font-mono text-sm"
-                                    data-testid="agents-register-command">{registerCommand(agentTool, agents.graphId, agents.serverBaseUrl, agents.headlessClient, agents.graphName)}</pre>
-                                <button
-                                    type="button"
-                                    onclick={() =>
-                                        copyAgentCommand(
-                                            "register",
-                                            registerCommand(agentTool, agents!.graphId, agents!.serverBaseUrl, agents!.headlessClient, agents!.graphName),
-                                        )}
-                                    class="shrink-0 rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                                    data-testid="agents-copy-register"
-                                    >{agentCopied === "register" ? "Copied" : "Copy"}</button
-                                >
-                            </div>
-                            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-register-note">{registerNote(agentTool)}</p>
-                        </li>
-                        <li class="space-y-1" data-testid="agents-hand-task">
-                            <span class="font-medium">3. Hand the agent a task</span>
-                            <p class="text-neutral-600 dark:text-neutral-400">
-                                Use <span class="font-medium">Copy agent instruction</span>
-                                on a task or a Kanban lane, and paste the text into
-                                the agent's chat.
-                            </p>
-                        </li>
-                    </ol>
-                    {#if agentCopyError?.key === "register"}
-                        <p role="status" class="text-sm text-red-700 dark:text-red-400">{agentCopyError.message}</p>
-                    {/if}
-                    {@render agentOptional(agents)}
-                    <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                        This graph's id is <code class="font-mono" data-testid="agents-graph-id">{agents.graphId}</code>.
-                        Each agent's token is listed as "Agent on" its device's name on
-                        <a
-                            href={tokensPageUrl(agents.serverBaseUrl)}
-                            target="_blank"
-                            rel="noreferrer"
-                            class="underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-950 dark:hover:decoration-neutral-100"
-                            data-testid="agents-tokens-link">the Sync Server's Access tokens page</a
-                        >. Revoke it there to cut the agent off.
-                        <a
-                            href="https://docs.etherpk.com/using-ai-agents-with-your-notes"
-                            target="_blank"
-                            rel="noreferrer"
-                            class="underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-950 dark:hover:decoration-neutral-100"
-                            >Read the guide</a
-                        >.
-                    </p>
-                </div>
-                        {/if}
+                        <AgentsMcpTab {agents} />
                     {/snippet}
                 </AgentsSettingsTabs>
             {:else if activeTab === "maintenance"}
@@ -1485,51 +1250,6 @@
 
 <!-- Below Save, outside the form: installing acts at once and is per device, so it must not read
      as one of the shared settings the General tab's Save commits. -->
-<!-- The once-per-device setups and the publish command, for either backend: what an agent's
-     tools name in a refusal, spelled here so a person can copy them to the agent's machine. -->
-<!-- What an agent can do without, on the agent's machine. The Agent Skill needs nothing from this
-     graph, so it stays when the rest does not apply: pass null for those. The Optional Steps heading
-     says what these are, so they carry no step number. -->
-{#snippet agentOptional(props: Exclude<AgentsTabProps, { kind: "browser" }> | null)}
-    {@const publish = props ? publishCommand(props) : null}
-    {@const rows = [
-        ...(props
-            ? [
-                  { key: "semantic" as const, label: "Search by meaning", text: semanticSetupCommand(props.headlessClient), note: "Installs the embedding model, once per device. The agent's search then gains mode: semantic." },
-                  { key: "diagrams" as const, label: "Publish diagrams", text: diagramsSetupCommand(props.headlessClient), note: "Installs the browser a publish draws Mermaid diagrams with. A publish with diagrams refuses until this has run." },
-              ]
-            : []),
-        AGENT_SKILL_ROW,
-        ...(publish ? [{ key: "publish" as const, label: "Publish from the agent's machine", text: publish, note: "Publishes once and remembers the folder. The agent's publish tool then writes there and cannot choose another folder." }] : []),
-    ]}
-    <div class="space-y-3 border-t border-neutral-900/10 dark:border-neutral-100/15 pt-4" data-testid="agents-optional">
-        <!-- As large as the MCP Server heading, so the tab reads as two parts: what an agent needs,
-             and what it can do without. -->
-        <h3 class="text-base font-semibold text-neutral-950 dark:text-neutral-100">Optional Steps</h3>
-        <ul class="space-y-3">
-            {#each rows as row (row.key)}
-                <li class="space-y-1">{@render agentCommand(row)}</li>
-            {/each}
-        </ul>
-    </div>
-{/snippet}
-
-<!-- The heading over the MCP Server sub-tab, which also stands alone when no extension adds a sub-tab. -->
-{#snippet mcpHeading()}
-    <h3 class="flex items-center gap-2 text-base font-semibold text-neutral-950 dark:text-neutral-100">
-        <span class="text-neutral-600 dark:text-neutral-400">
-            <!-- eslint-disable-next-line svelte/no-at-html-tags -- the Client's own icon markup (icons.ts) -->
-            {@html iconSvg("headless-client", { size: 20 })}
-        </span>MCP Server
-    </h3>
-{/snippet}
-
-<!-- One command to copy: its label, the command, a copy button, a note, and a failed copy's
-     message beside the button that failed. -->
-{#snippet agentCommand(row: AgentCommandRow)}
-    <AgentCommandRowView key={row.key} label={row.label} text={row.text} note={row.note} />
-{/snippet}
-
 {#snippet storageTools()}
     <div class="space-y-2">
         <p class="text-sm font-medium text-neutral-500 dark:text-neutral-400">

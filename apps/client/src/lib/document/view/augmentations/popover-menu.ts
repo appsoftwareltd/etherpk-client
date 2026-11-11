@@ -39,6 +39,33 @@ export interface PopoverRow {
     icon?: TrustedMarkup
     /** Extra `data-*` attributes set on the row element (e.g. a kind for styling/tests). */
     dataAttrs?: Record<string, string>
+    /**
+     * The heading the row is listed under. Neighbouring rows with the same one are drawn as a group
+     * under it; the caller keeps a group's rows together. Omitted ⇒ the row is drawn with no heading.
+     */
+    group?: string
+}
+
+/** A run of neighbouring rows under one heading, or under none. `start` is the first row's index. */
+export interface PopoverSection {
+    group?: string
+    start: number
+    rows: PopoverRow[]
+}
+
+/**
+ * `rows` as the menu draws them: each run of neighbouring rows with the same heading is one section.
+ * A heading is drawn once per run and is never a row, so the highlight's index counts rows only and
+ * the arrow keys pass from the last row under one heading to the first under the next.
+ */
+export function popoverSections(rows: readonly PopoverRow[]): PopoverSection[] {
+    const sections: PopoverSection[] = []
+    rows.forEach((row, i) => {
+        const last = sections[sections.length - 1]
+        if (last && last.group === row.group) last.rows.push(row)
+        else sections.push({ group: row.group, start: i, rows: [row] })
+    })
+    return sections
 }
 
 export interface PopoverMenuOptions<S extends PopoverBase> {
@@ -74,6 +101,14 @@ const TAILWIND_MENU =
 const TAILWIND_ITEM =
     'flex cursor-pointer select-none items-center gap-2 px-2.5 py-1.5 text-sm text-[var(--gk-text-default)]'
 const TAILWIND_ITEM_SELECTED = 'bg-[var(--gk-surface-2)]'
+// A heading over a group of rows: the rows' size, set apart by weight and the muted text colour
+// (never by a smaller size or opacity, ADR 0106), and not something to pick.
+const TAILWIND_GROUP_LABEL = 'cursor-default select-none px-2.5 pt-2 pb-1 text-sm font-semibold text-[var(--gk-text-muted)]'
+// A rule between one group and the next, so the headings read as breaks in a long list.
+const TAILWIND_GROUP_FOLLOWING = 'mt-1 border-t border-[var(--gk-border-soft)]'
+
+/** Numbers each heading drawn, so every group can name its own heading (`aria-labelledby`). */
+let headingCount = 0
 
 // Share one facet across the completion extensions. The browser viewport alone is too wide
 // for a docked document: a tooltip there can spill into its neighbour and create pane overflow.
@@ -116,6 +151,26 @@ export const refreshOpenPopovers = StateEffect.define<null>()
  * would open one at a caret that happens to sit behind a `#`.
  */
 export const closePopovers = StateEffect.define<null>()
+
+/**
+ * Scroll the list, and nothing else, so the highlighted row shows. `scrollIntoView` also scrolls
+ * ancestors, the document pane among them, so only this list owns highlight scrolling. Called once
+ * CodeMirror has sized and positioned the tooltip, so the first render cannot scroll an off-screen,
+ * unmeasured wrapper into view.
+ *
+ * The first row under a heading brings the heading into view with it, so moving up through the list
+ * shows which group the highlight has entered. The list is the rows' offset parent (`relative`), so
+ * their offsets are measured from its top.
+ */
+function scrollRowIntoView(menuEl: HTMLElement, selected: number | undefined): void {
+    const item = selected === undefined ? null : menuEl.querySelector<HTMLElement>(`[data-index="${selected}"]`)
+    if (!item) return
+    const heading = item.previousElementSibling?.hasAttribute('data-group-label') ? (item.previousElementSibling as HTMLElement) : null
+    const top = (heading ?? item).offsetTop
+    const bottom = item.offsetTop + item.offsetHeight
+    if (top < menuEl.scrollTop) menuEl.scrollTop = top
+    else if (bottom > menuEl.scrollTop + menuEl.clientHeight) menuEl.scrollTop = bottom - menuEl.clientHeight
+}
 
 export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>): Extension {
     const { classPrefix: p } = opts
@@ -217,40 +272,69 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
             const label = opts.label?.(menu)
             if (label) menuEl.setAttribute('aria-label', label)
             menuEl.replaceChildren()
-            const rows = opts.rows(menu)
-            rows.forEach((row, i) => {
-                const item = document.createElement('div')
-                item.className = `${p}__item ${TAILWIND_ITEM}` + (i === menu.selected ? ` ${TAILWIND_ITEM_SELECTED}` : '')
-                item.setAttribute('role', 'option')
-                item.setAttribute('aria-selected', String(i === menu.selected))
-                item.setAttribute('data-index', String(i))
-                for (const [k, v] of Object.entries(row.dataAttrs ?? {})) item.setAttribute(k, v)
+            for (const section of popoverSections(opts.rows(menu))) {
+                const parent = section.group === undefined ? menuEl : renderGroup(section.group, menuEl.childElementCount > 0)
+                section.rows.forEach((row, offset) => parent.appendChild(renderRow(row, section.start + offset, menu.selected)))
+            }
+        }
 
-                if (row.icon) {
-                    const icon = document.createElement('span')
-                    icon.className = `${p}__icon inline-flex w-4 h-4 flex-none text-[var(--gk-text-subtle)]`
-                    setTrustedMarkup(icon, row.icon)
-                    item.appendChild(icon)
-                }
+        /**
+         * A group of rows under `heading`, appended to the list: `role="group"` named by its heading,
+         * which is how a listbox says its options come in sets. The heading itself is no option, so
+         * a screen reader announces it as the group's name when the highlight enters the group.
+         */
+        function renderGroup(heading: string, following: boolean): HTMLElement {
+            const group = document.createElement('div')
+            group.className = `${p}__group` + (following ? ` ${TAILWIND_GROUP_FOLLOWING}` : '')
+            group.setAttribute('role', 'group')
+            const label = document.createElement('div')
+            label.id = `${p}-group-${++headingCount}`
+            label.className = `${p}__group-label ${TAILWIND_GROUP_LABEL}`
+            label.setAttribute('role', 'presentation')
+            label.setAttribute('data-group-label', '')
+            label.textContent = heading
+            group.setAttribute('aria-labelledby', label.id)
+            group.appendChild(label)
+            menuEl.appendChild(group)
+            return group
+        }
 
-                const label = document.createElement('span')
-                label.className = `${p}__label min-w-0 flex-1 truncate`
-                label.textContent = row.label
-                item.appendChild(label)
+        function renderRow(row: PopoverRow, i: number, selected: number): HTMLElement {
+            const item = document.createElement('div')
+            item.className = `${p}__item ${TAILWIND_ITEM}` + (i === selected ? ` ${TAILWIND_ITEM_SELECTED}` : '')
+            item.setAttribute('role', 'option')
+            item.setAttribute('aria-selected', String(i === selected))
+            item.setAttribute('data-index', String(i))
+            for (const [k, v] of Object.entries(row.dataAttrs ?? {})) item.setAttribute(k, v)
 
-                if (row.detail) {
-                    const detail = document.createElement('span')
-                    detail.className = `${p}__detail flex-none text-sm text-[var(--gk-text-muted)]`
-                    detail.textContent = row.detail
-                    item.appendChild(detail)
-                }
-                menuEl.appendChild(item)
-            })
+            if (row.icon) {
+                const icon = document.createElement('span')
+                icon.className = `${p}__icon inline-flex w-4 h-4 flex-none text-[var(--gk-text-subtle)]`
+                setTrustedMarkup(icon, row.icon)
+                item.appendChild(icon)
+            }
+
+            const label = document.createElement('span')
+            label.className = `${p}__label min-w-0 flex-1 truncate`
+            label.textContent = row.label
+            item.appendChild(label)
+
+            if (row.detail) {
+                const detail = document.createElement('span')
+                detail.className = `${p}__detail flex-none text-sm text-[var(--gk-text-muted)]`
+                detail.textContent = row.detail
+                item.appendChild(detail)
+            }
+            return item
         }
 
         // Mousedown (not click) so the editor keeps focus; accept the clicked row.
         menuEl.addEventListener('mousedown', (event) => {
-            const el = (event.target as HTMLElement | null)?.closest('[data-index]')
+            const target = event.target as HTMLElement | null
+            // A press on a heading picks nothing, and must not take the focus from the editor either:
+            // the menu closes when the editor loses it.
+            if (target?.closest('[data-group-label]')) event.preventDefault()
+            const el = target?.closest('[data-index]')
             if (!el) return
             event.preventDefault()
             accept(view, Number(el.getAttribute('data-index')))
@@ -302,15 +386,7 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
                     dom.style.visibility = available < view.defaultLineHeight ? 'hidden' : ''
                 }
 
-                // scrollIntoView also scrolls ancestors, including the document pane. Only this
-                // list owns highlight scrolling. Wait until CM has sized/positioned the tooltip
-                // so the first render cannot scroll an off-screen, unmeasured wrapper into view.
-                const selected = view.state.field(menuField)?.selected
-                const item = selected === undefined ? undefined : menuEl.children[selected] as HTMLElement | undefined
-                if (!item) return
-                const bottom = item.offsetTop + item.offsetHeight
-                if (item.offsetTop < menuEl.scrollTop) menuEl.scrollTop = item.offsetTop
-                else if (bottom > menuEl.scrollTop + menuEl.clientHeight) menuEl.scrollTop = bottom - menuEl.clientHeight
+                scrollRowIntoView(menuEl, view.state.field(menuField)?.selected)
             },
         }
     }

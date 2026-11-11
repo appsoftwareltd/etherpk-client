@@ -45,6 +45,7 @@
         CUSTOM_SERVER_ICON,
         MANAGED_SERVER_ICON,
     } from "./graphs-page-icons";
+    import SyncServerForget from "./SyncServerForget.svelte";
     import type { SyncServerView } from "./sync-server-view.svelte";
 
     let {
@@ -209,43 +210,15 @@
                 >
             </p>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
-            {#if confirmingForget}
-                <span class="text-sm text-neutral-700 dark:text-neutral-300"
-                    >Forget {server.host} on this device?</span
-                >
-                <button
-                    type="button"
-                    data-testid="sync-server-forget-confirm"
-                    disabled={forgetting}
-                    onclick={actions.forget}
-                    class="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-progress pointer-coarse:min-h-11 dark:border-red-500/40 dark:hover:bg-red-950/30"
-                    >{forgetting ? "Forgetting…" : "Forget"}</button
-                >
-                <button
-                    type="button"
-                    onclick={actions.cancelForget}
-                    class={SECONDARY_BUTTON}>Cancel</button
-                >
-            {:else}
-                <button
-                    type="button"
-                    data-testid="sync-server-forget"
-                    onclick={actions.beginForget}
-                    class={SECONDARY_BUTTON}>Forget this server</button
-                >
-            {/if}
-        </div>
-        {#if confirmingForget}
-            <p
-                class="w-full text-sm text-neutral-500 dark:text-neutral-400"
-                data-testid="sync-server-forget-consequence"
-            >
-                {managed
-                    ? "This app signs out on this device and locks your Encryption Keys for it. Your EtherPK account stays signed in elsewhere and its graphs stay as they are. The copies this browser holds stay hidden until you sign in again."
-                    : "This device forgets its address and access token, and locks your Encryption Keys for it. The token stays active until you revoke it on the server, and the copies this browser holds stay hidden until you add it again."}
-            </p>
-        {/if}
+        <SyncServerForget
+            host={server.host}
+            {managed}
+            confirming={confirmingForget}
+            {forgetting}
+            onbegin={actions.beginForget}
+            oncancel={actions.cancelForget}
+            onforget={actions.forget}
+        />
     </div>
 
     <section

@@ -148,14 +148,14 @@ describe('describeSyncFailure', () => {
     })
 
     it('names an invite refusal by its code rather than as a generic conflict', () => {
-        // The server refuses a self-invite and a reinvite of an active member with a code, and
+        // The server refuses a self-invite and a reinvite of an active Player with a code, and
         // "something else changed it first" would send the user to refresh a page that has
         // nothing new on it.
         expect(describeSyncFailure(new SyncApiError('HTTP 409', 409, 'invite_self'), 'send the invite')).toBe(
             'Could not send the invite. That is your own address. You already own this graph, so there is nobody to invite.',
         )
         expect(describeSyncFailure(new SyncApiError('HTTP 409', 409, 'invite_already_member'), 'send the invite')).toBe(
-            'Could not send the invite. They are already a member of this graph.',
+            'Could not send the invite. They are already a Player in this graph.',
         )
     })
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { commandMenuItemsInOrder, createCommandRegistry, createContributionRegistry } from '../../surface'
+import { COMMAND_MENU_GROUPS, commandMenuGroup, commandMenuItemsInOrder, createCommandRegistry, createContributionRegistry } from '../../surface'
 import { registerBacklinksCommands } from './backlinks-commands'
 import { registerBookmarkCommands } from './bookmark-commands'
 import { registerEditorCommands } from './editor-commands'
@@ -35,57 +35,77 @@ function firstPartyRows() {
 }
 
 /**
- * The Command Menu's first-party rows in the order a bare `/` lists them (CONTEXT.md → Command
- * Menu). Each row carries its own `order`, so this is the one place the whole order is written down:
- * the modules register in the workspace's order (GraphWorkspace.svelte), which is not the menu's.
- * A row whose `when` is false at the caret is left out, and the rest keep this order. An
- * extension's rows fall in among these by their own `order`, and the extension's tests say where
- * (the Kanban Board's `Open Kanban` between Copy file path and Copy agent instruction, maps' `Map`
- * straight after Table).
+ * The Command Menu's first-party rows in the order a bare `/` lists them, under its three headings
+ * (CONTEXT.md → Command Menu). Each row carries its own `group` and `order`, so this is the one
+ * place the whole order is written down: the modules register in the workspace's order
+ * (GraphWorkspace.svelte), which is not the menu's. A row whose `when` is false at the caret is
+ * left out, and the rest keep this order. An extension's rows fall in among these by their own
+ * `group` and `order`, and the extension's tests say where (maps' `Map` between Template and Bold,
+ * the Kanban Board's `Open Kanban` after Show older entry).
+ *
+ * Within Insert the rows reached for most come first: a table, today's date, an image or file, a
+ * code block. The rows for the table the caret is in take Table's place there, since Table is not
+ * offered inside one.
  */
 describe('the Command Menu order', () => {
-    it('lists every first-party row in its order, whatever order the modules register in', () => {
-        expect(firstPartyRows().map((item) => item.title)).toEqual([
-            'Search',
-            'Find and replace',
-            'Go to backlinks',
-            'Show older entry',
-            'Today',
-            'Yesterday',
-            'Tomorrow',
-            'Upload asset',
-            'Date Picker',
-            'Lock protected documents',
-            'Unlock protected documents',
-            'Protect this document',
-            'Remove protection from this document',
-            'Bold',
-            'Italic',
-            'Highlight',
-            'Code block',
-            'Template',
-            'Table',
-            'Table: Add column',
-            'Table: Add row',
-            'Table: Format',
-            'Table: Remove row',
-            'Table: Remove column',
-            'Table: Remove rows above',
-            'Table: Remove rows below',
-            'Table: Remove columns right',
-            'Table: Remove columns left',
-            'Copy file path',
-            'Copy agent instruction',
-            'Toggle bookmark',
-            "Move quick notes to today's journal",
-            'Add frontmatter',
-            'Backlinks below documents: hide',
-            'Backlinks below documents: show',
-            'Spell check: turn off',
-            'Spell check: turn on',
-            'Spelling languages',
-            'Reset workspace',
-        ])
+    const grouped = () => {
+        const groups: Record<string, string[]> = {}
+        for (const item of firstPartyRows()) (groups[commandMenuGroup(item)] ??= []).push(item.title)
+        return groups
+    }
+
+    it('lists every first-party row under its heading and in its order, whatever order the modules register in', () => {
+        expect(grouped()).toEqual({
+            Insert: [
+                'Table',
+                'Table: Add column',
+                'Table: Add row',
+                'Table: Format',
+                'Table: Remove row',
+                'Table: Remove column',
+                'Table: Remove rows above',
+                'Table: Remove rows below',
+                'Table: Remove columns right',
+                'Table: Remove columns left',
+                'Today',
+                'Upload asset',
+                'Code block',
+                'Date Picker',
+                'Yesterday',
+                'Tomorrow',
+                'Template',
+                'Bold',
+                'Italic',
+                'Highlight',
+                'Copy file path',
+                'Copy agent instruction',
+                "Move quick notes to today's journal",
+                'Add frontmatter',
+            ],
+            'Go to': ['Search', 'Find and replace', 'Go to backlinks', 'Show older entry', 'Toggle bookmark'],
+            Settings: [
+                'Lock protected documents',
+                'Unlock protected documents',
+                'Protect this document',
+                'Remove protection from this document',
+                'Backlinks below documents: hide',
+                'Backlinks below documents: show',
+                'Spell check: turn off',
+                'Spell check: turn on',
+                'Spelling languages',
+                'Reset workspace',
+            ],
+        })
+    })
+
+    it('lists the groups in the order Insert, Go to, Settings', () => {
+        const groups = firstPartyRows().map((item) => commandMenuGroup(item))
+        expect(groups.filter((group, i) => group !== groups[i - 1])).toEqual([...COMMAND_MENU_GROUPS])
+    })
+
+    // A heading the menu does not have would be placed by the fallback, and a typo would pass unseen.
+    it('names one of the menu’s headings on every first-party row', () => {
+        expect(firstPartyRows().filter((item) => !COMMAND_MENU_GROUPS.some((group) => group === item.group)).map((item) => item.title)).toEqual([])
     })
 
     // The Task Editor's description and comments (ADR 0170) offer only the rows that act on the text:
@@ -94,16 +114,6 @@ describe('the Command Menu order', () => {
     // dialog would be whatever is behind it.
     it('offers these rows in an editor showing part of a document', () => {
         expect(firstPartyRows().filter((item) => item.actsOnText).map((item) => item.title)).toEqual([
-            'Today',
-            'Yesterday',
-            'Tomorrow',
-            'Upload asset',
-            'Date Picker',
-            'Bold',
-            'Italic',
-            'Highlight',
-            'Code block',
-            'Template',
             'Table',
             'Table: Add column',
             'Table: Add row',
@@ -114,8 +124,20 @@ describe('the Command Menu order', () => {
             'Table: Remove rows below',
             'Table: Remove columns right',
             'Table: Remove columns left',
+            'Today',
+            'Upload asset',
+            'Code block',
+            'Date Picker',
+            'Yesterday',
+            'Tomorrow',
+            'Template',
+            'Bold',
+            'Italic',
+            'Highlight',
             'Copy file path',
             'Copy agent instruction',
         ])
+        // Every one of them is under Insert: the heading is the only one such an editor shows.
+        expect(new Set(firstPartyRows().filter((item) => item.actsOnText).map((item) => commandMenuGroup(item)))).toEqual(new Set(['Insert']))
     })
 })

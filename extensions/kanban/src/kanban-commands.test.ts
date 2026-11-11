@@ -4,11 +4,10 @@ import type { GraphSidebarButton } from '@appsoftwareltd/etherpk-extension-api'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { setActiveEditorView } from '#lib/document/active-editor.js'
-import { registerLinkCommands } from '#lib/document/commands/link-commands.js'
 import { menuTargetTask, registerAgentInstructionCommands } from '#lib/document/commands/agent-instruction-commands.js'
 import { conceptPicker } from '#lib/document/view/augmentations/concept-picker.js'
 import { editorDocument } from '#lib/document/view/editor-document.js'
-import { commandMenuDetail, commandMenuItemsInOrder, listCommandMenuItems } from '#lib/surface/command-menu.js'
+import { commandMenuDetail, commandMenuGroup, commandMenuItemsInOrder, listCommandMenuItems } from '#lib/surface/command-menu.js'
 import { listContextMenuItems } from '#lib/surface/context-menu.js'
 import { type BoardActions, type MoveSource, registerBoard } from './board-actions'
 import type { BoardCell } from './board-model'
@@ -351,17 +350,13 @@ describe('the Graph Kanban', () => {
 describe('/kanban', () => {
     const editing = { inTable: false, tableInsertable: true, bodyWritable: true }
 
-    it("sits among the Client's rows between Copy file path and Copy agent instruction", () => {
-        // The whole first-party order is written down in the Client's command-menu-order.test.ts.
-        const { commands, contributions } = setup()
-        registerLinkCommands(commands, contributions)
-        registerAgentInstructionCommands(commands, contributions, {} as never)
-        const titles = commandMenuItemsInOrder(contributions).map((item) => item.title)
-        expect(titles.slice(titles.indexOf('Copy file path'), titles.indexOf('Copy agent instruction') + 1)).toEqual([
-            'Copy file path',
-            'Open Kanban',
-            'Graph Kanban',
-            'Copy agent instruction',
+    it("sits under Go to, after the Client's own rows there and before Toggle bookmark", () => {
+        // The Client's Go to rows run from Search (10) to Show older entry (14), then Toggle bookmark
+        // (152); the whole first-party order is written down in its command-menu-order.test.ts.
+        const rows = commandMenuItemsInOrder(setup().contributions)
+        expect(rows.map((item) => [item.title, commandMenuGroup(item), item.order])).toEqual([
+            ['Open Kanban', 'Go to', 140],
+            ['Graph Kanban', 'Go to', 141],
         ])
     })
 

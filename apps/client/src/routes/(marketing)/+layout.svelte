@@ -15,6 +15,8 @@
         syncServerUrl: data.serverPortalUrl,
         pricingUrl: data.corporatePricingUrl,
         graphsUrl: "/graphs",
+        // This is the app's own origin, so the link is its Graphs page and the menu of graphs below.
+        withinClient: true,
     }));
 </script>
 

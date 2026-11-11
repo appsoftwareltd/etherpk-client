@@ -12,6 +12,7 @@
         subscribeRecoveryCodePrompt,
         type RecoveryCodePrompt,
     } from "../recovery-code-prompt";
+    import { holdsOtherSyncServer } from "../sync-connection";
     import RecoveryCodeDialog from "./RecoveryCodeDialog.svelte";
 
     let prompt = $state<RecoveryCodePrompt>(getRecoveryCodePrompt());
@@ -23,6 +24,9 @@
         Neither arrival has written anything when this renders: a first mint commits on
         confirm, and a regenerate re-wraps on confirm (ADR 0029, amended 2026-09-17). Only a
         regenerate carries a cancel, because only it has a current code worth keeping.
+
+        The connections are read as the prompt arrives: a server cannot be added or forgotten
+        while the dialog is up, since it is modal.
     -->
     <RecoveryCodeDialog
         code={prompt.code}
@@ -30,6 +34,7 @@
         reason={prompt.reason}
         serverOrigin={prompt.serverOrigin}
         account={prompt.account ?? null}
+        otherServerHeld={holdsOtherSyncServer(prompt.serverOrigin)}
         onconfirm={() => void confirmRecoveryCode()}
         oncancel={prompt.cancel ? cancelRecoveryCode : undefined}
     />

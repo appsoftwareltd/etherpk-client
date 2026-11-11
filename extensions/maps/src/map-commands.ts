@@ -85,7 +85,7 @@ export function registerMapCommands(context: Pick<ExtensionContext, 'commands' |
         detail: 'Insert a map of places and routes',
         icon: 'map',
         group: 'Insert',
-        // After Code block (100) and Table (110): the blocks a person puts in a document.
+        // Under Insert, after the Client's Template (105) and before its formatting rows (120 on).
         order: 115,
         keywords: ['place', 'location', 'route', 'gpx', 'pin', 'coordinates'],
         when: (ctx) => ctx.bodyWritable && !ctx.inTable && !ctx.protectedDocument,

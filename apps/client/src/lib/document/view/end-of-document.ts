@@ -1,6 +1,6 @@
 /**
- * The two buttons floating at the foot of a document (ADR 0149, ADR 0168, Editor Content Rules →
- * End of document).
+ * The two buttons in a row at the foot of a document's tab (ADR 0149, ADR 0168, Editor Content
+ * Rules → End of document).
  *
  * Putting the caret where something new should go is fiddly, most of all on a phone, and a line can
  * sit under a code block or a map, where a caret at its end is in the fence's source. So each button
@@ -298,14 +298,15 @@ const takeBackFilter = Prec.high(
 )
 
 /**
- * Room kept below a caret scrolled into view, in CSS pixels: the floating buttons' height and their
- * 1rem inset, with a line to spare, so the line a press starts, and any caret moved near the foot of
- * the pane, sits above the buttons (ADR 0168). The buttons are 2.75rem tall where a finger points.
+ * Room kept below a caret scrolled into view, in CSS pixels. The line a press starts, and any caret
+ * moved near the foot of the pane, then sits a few lines above the buttons' row instead of flush
+ * against it, and a menu that opens at the caret (a completion, the Command Menu) has somewhere to
+ * open below it when the text above fills the pane (ADR 0168).
  */
-const FLOATING_BUTTON_ROOM_PX = 80
+const ROOM_BELOW_CARET_PX = 80
 
-/** Keeps a caret scrolled into view clear of the floating buttons. Given to a tab's editors, not an embedded one. */
-export const floatingButtonRoom: Extension = EditorView.scrollMargins.of(() => ({ bottom: FLOATING_BUTTON_ROOM_PX }))
+/** Keeps a caret scrolled into view clear of the pane's foot. Given to a tab's editors, not an embedded one. */
+export const roomBelowCaret: Extension = EditorView.scrollMargins.of(() => ({ bottom: ROOM_BELOW_CARET_PX }))
 
 /** The untouched-line field and its take-back. Registered with the editor's feature stack. */
 export function endOfDocument(): Extension {

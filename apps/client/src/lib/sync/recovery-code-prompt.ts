@@ -22,7 +22,10 @@ export interface PendingRecoveryCode {
      * both a way out. The dialog's copy follows this.
      */
     arrival: 'first' | 'regenerate' | 'replace'
-    /** Why this appeared now, shown above the code. */
+    /**
+     * What the person needs to know about this arrival: what confirming retires (regenerate and
+     * replace, shown above the code), or one short sentence under the code (first).
+     */
     reason?: string
     /** The Sync Server whose account the code unlocks: the dialog and the saved file name it. */
     serverOrigin: string

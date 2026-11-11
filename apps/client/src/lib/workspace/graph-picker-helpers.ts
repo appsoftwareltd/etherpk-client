@@ -1,5 +1,5 @@
 /** Framework-free application helpers for the graph picker route. */
-import type { SyncAccountSummary, SyncPlanNotice } from '@appsoftwareltd/etherpk-shared'
+import { formatBytes, type SyncAccountSummary, type SyncPlanNotice } from '@appsoftwareltd/etherpk-shared'
 import { fromBase64Url, type GraphKeyring, type KeyVault } from '#lib/crypto/index.js'
 import { pinState, publishedIdentity } from '#lib/sync/pins.js'
 import type { GraphRecord } from '#lib/storage/index.js'
@@ -276,6 +276,75 @@ export function serverGroupVisible(group: {
         group.authState === 'unavailable' ||
         group.authState === 'locked' ||
         (group.authState === 'signed-out' && group.kind === 'custom')
+    )
+}
+
+/** What a synced graph is called while its name cannot be read: the account's keys are locked here. */
+export const LOCKED_GRAPH_NAME = 'Locked graph'
+
+/**
+ * The name on a synced graph's row: the one this device holds for it, else the one read for the
+ * row. While the server's Encryption Keys are locked on this device no name can be read, so a row
+ * with none reads as a locked graph, never as a piece of its id (the id placeholder a row carries
+ * while its name is still being read with the keys unlocked).
+ */
+export function syncedRowName(
+    row: {
+        id: string
+        record: Pick<GraphRecord, 'name'> | null
+        view: Pick<SyncedGraphView, 'name' | 'nameSource'> | null
+    },
+    keysLocked: boolean,
+): string {
+    if (row.record) return row.record.name
+    if (keysLocked && (!row.view || row.view.nameSource === 'placeholder')) return LOCKED_GRAPH_NAME
+    return row.view?.name ?? row.id
+}
+
+/**
+ * What tells one locked graph from another, for the question before deleting or leaving one whose
+ * name cannot be read: the account's role, how much the graph holds and, for its owner, who else
+ * is in it. Only what the server said; a member list that could not be read claims nothing.
+ */
+export function lockedGraphDetails(view: Pick<SyncedGraphView, 'role'> & Partial<Pick<SyncedGraphView, 'storage' | 'members'>>): string[] {
+    const details = [view.role === 'owner' ? 'You own it' : 'You are a Player in it']
+    if (view.storage) details.push(`${formatBytes(view.storage.docBytes)} notes · ${formatBytes(view.storage.assetBytes)} assets`)
+    if (view.role === 'owner' && view.members) {
+        const others = view.members.filter((member) => member.role !== 'owner').map((member) => member.email)
+        if (others.length === 0) details.push('No other members')
+        else {
+            const named = others.slice(0, 3)
+            const rest = others.length - named.length
+            const list = rest > 0 ? `${named.join(', ')} and ${rest} more` : named.length > 1 ? `${named.slice(0, -1).join(', ')} and ${named.at(-1)}` : named[0]
+            details.push(`Shared with ${list}`)
+        }
+    }
+    return details
+}
+
+/**
+ * Whether the Sync tab shows the sign-in and nothing else: this Client offers Managed Sync and the
+ * device has no account yet. That is a device holding no server, or holding only Managed Sync
+ * signed out. Managed Sync being checked for the first time counts while no account was ever
+ * confirmed on it here, so a signed-out device is not shown a server's controls for the moment
+ * the check takes; a device with a confirmed account keeps its sub-tab while it is checked again.
+ * A custom server is added with an address and a token, so holding one always shows the servers.
+ */
+export function syncTabSignInOnly(state: {
+    /** This Client offers Managed Sync. Where it does not, the server form is the way in. */
+    managedOffered: boolean
+    servers: ReadonlyArray<{
+        kind: 'managed' | 'custom'
+        authState: ServerAuthState
+        /** An account was confirmed on this server from this device and not signed out since. */
+        accountKnown: boolean
+    }>
+}): boolean {
+    if (!state.managedOffered) return false
+    return state.servers.every(
+        (server) =>
+            server.kind === 'managed' &&
+            (server.authState === 'signed-out' || (server.authState === 'checking' && !server.accountKnown)),
     )
 }
 

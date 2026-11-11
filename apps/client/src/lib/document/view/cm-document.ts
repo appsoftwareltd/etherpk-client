@@ -12,7 +12,7 @@
  * (`y-codemirror.next`) behind the same `createDocumentEditor` signature.
  */
 
-import { defaultKeymap, historyKeymap } from '@codemirror/commands'
+import { historyKeymap } from '@codemirror/commands'
 import { Annotation, Compartment, EditorState, type Extension, Facet, Prec, Transaction } from '@codemirror/state'
 import { EditorView, ViewPlugin, drawSelection, dropCursor, keymap } from '@codemirror/view'
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next'
@@ -23,6 +23,7 @@ import { getEditorFontSize, onEditorFontSizeChange } from '../editor-font'
 import type { TextChange } from '../types'
 import { codeHighlighting, markdownWithCodeHighlight } from './augmentations/code-highlight'
 import { deleteHeal } from './delete-heal'
+import { editorDefaultKeymap } from './editor-default-keymap'
 import { leaveTidy } from './leave-tidy'
 import { collabEditorHistory, editorHistory, joinableUndoStepField, localHistoryExtension } from './editor-history'
 import { fenceGuard } from './fence-guard'
@@ -209,7 +210,9 @@ export function createDocumentEditor(options: DocumentEditorOptions): DocumentEd
                 // Outliner block-ops (Tab/Enter/move/fold/…) intercept before the
                 // defaults — Dual Mode Editor.md → Keyboard scheme.
                 Prec.high(outlinerKeymap()),
-                keymap.of([...defaultKeymap, ...(collab ? yUndoManagerKeymap : historyKeymap)]),
+                // CodeMirror's defaults without its comment chords: Mod+/ is the Keyboard Shortcuts
+                // card's key and must not write to the document (editor-default-keymap.ts).
+                keymap.of([...editorDefaultKeymap, ...(collab ? yUndoManagerKeymap : historyKeymap)]),
                 markdownWithCodeHighlight(),
                 codeHighlighting(),
                 // Transaction filters run LAST-registered first, so the paste clamp sits after the fence

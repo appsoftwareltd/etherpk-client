@@ -897,7 +897,7 @@
                     {/if}
                 {/key}
                 {#if reader.pageCount > 1 && (reader.preferences.pageByPage || inBar)}
-                    <!-- Over the page, in the style of a document's floating buttons. A person can turn
+                    <!-- Over the page, in the style of a document's floating Lock button. A person can turn
                          the page without finding a key, a swipe or the edge of the screen. On a touch
                          screen or a phone the buttons move out to the edges of the view, near a thumb.
                          Where the toolbar is on the Command Bar the count is the only sign of the page in
@@ -1163,7 +1163,7 @@
         align-items: center;
         pointer-events: none;
     }
-    /* As `EndOfDocument.svelte` draws a document's floating buttons. */
+    /* A floating control's border, surface and lift, as the Lock button over a document has (DocumentView.svelte). */
     .etherpk-pdf-page-progress,
     .etherpk-pdf-reader :global(.pdf-tool.etherpk-pdf-page-edge) {
         pointer-events: auto;

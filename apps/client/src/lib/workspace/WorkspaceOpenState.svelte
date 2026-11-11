@@ -161,7 +161,7 @@
         {#if missing?.kind === 'available'}
             <h2>This graph is on your account but not set up in this browser.</h2>
             <p>
-                The sync server lists you as {missing.role === 'owner' ? 'its owner' : 'a member'}.
+                The sync server lists you as {missing.role === 'owner' ? 'its owner' : 'a Player'}.
                 Setting it up here registers it in this browser and your notes sync down as usual.
                 Nothing is deleted{missing.staleRecord
                     ? ' - the details this browser held for it under another sign-in are replaced.'

@@ -316,6 +316,7 @@
     import AssetView from "#lib/document/view/AssetView.svelte";
     import DeleteAssetDialog from "#lib/document/ui/DeleteAssetDialog.svelte";
     import {
+        addFavourite,
         adoptFavourites,
         forgetDocumentFavourites,
         getFavourites,
@@ -323,6 +324,8 @@
         setFavourites,
         renameFavourite,
     } from "#lib/document/favourites.js";
+    import { browserWelcomeClaims, seedWelcomePage } from "#lib/welcome/welcome-page.js";
+    import { welcomeFirstLayout } from "#lib/welcome/welcome-layout.js";
     import {
         getBookmarks,
         removeBookmarks,
@@ -437,6 +440,7 @@
         hasPermission,
         tryEnsurePermission,
         isOnDisk,
+        isPickerCancel,
         pickGraphDirectory,
         readMirrorFolder,
         setLastGraphId,
@@ -546,6 +550,10 @@
     import RecoveryCodeDialog from "#lib/sync/ui/RecoveryCodeDialog.svelte";
     import UnlockDialog from "#lib/sync/ui/UnlockDialog.svelte";
     import GraphSettingsDialog from "#lib/sync/ui/GraphSettingsDialog.svelte";
+    import InviteDialog from "#lib/sync/ui/InviteDialog.svelte";
+    import { isDemoGraph } from "#lib/demo/demo-graph.js";
+    import { registerShareCommands } from "#lib/sync/share-commands.js";
+    import { readShareAccess, vaultKeyForInvite, type ShareAccess } from "#lib/sync/share-access.js";
     import { headlessClientPackage, type AgentsTabProps } from "#lib/sync/ui/agents-tab.js";
     import { RELEASE_VERSION } from "#lib/release.js";
     import ConfirmDialog from "@appsoftwareltd/etherpk-shared/confirm-dialog";
@@ -1284,6 +1292,16 @@
     /** The account API behind a registry graph, to word a write refusal; null under the dev gate. */
     let serverApi: SyncApi | null = null;
     /**
+     * What sharing this graph needs, once the Sync Server has said this person is its Owner
+     * (share-access.ts). Null for a graph in a folder, for a Player, under the dev gate and until
+     * the answer arrives: Share is then left out of Settings, the tab menu and the Command Menu.
+     */
+    let shareAccess = $state.raw<ShareAccess | null>(null);
+    /** The invite dialog, open over the workspace with the key it seals and pins with. */
+    let shareDialog = $state.raw<{ api: SyncApi; heldKey: Uint8Array; access: ShareAccess } | null>(null);
+    /** A Share already on its way to the dialog, so a second press does not open a second one. */
+    let shareStarting = false;
+    /**
      * The synced graph's sync state for the Sidebar's sync status: the session's activity and why
      * the server refuses writes, worded for this person. The browser's online flag is read when
      * the status is worked out (refreshSyncIndicator).
@@ -1502,6 +1520,8 @@
     let detachBacklinksCommands: (() => void) | undefined;
     let detachJournalCommands: (() => void) | undefined;
     let detachInstallCommands: (() => void) | undefined;
+    /** Takes the Share rows and Command away; does nothing until they are registered. */
+    let detachShareCommands: () => void = () => {};
     let detachTemplateCommands: (() => void) | undefined;
     let detachProtectionCommands: (() => void) | undefined;
     let detachFrontmatterCommands: (() => void) | undefined;
@@ -3049,14 +3069,46 @@
     }
 
     /**
+     * Share this graph: open the invite dialog the Graphs page opens, over the workspace. The
+     * invite is sealed and pinned with the vault key, opened here with the key this device holds
+     * for the graph's server. Without that key (Encryption Keys locked since the graph opened)
+     * the notice says where to unlock them, and nothing is sent.
+     */
+    async function shareGraph() {
+        const api = serverApi;
+        const access = shareAccess;
+        const origin = graphServerOrigin;
+        if (!api || !access || !origin || shareStarting || shareDialog) return;
+        const wrapKey = getVaultWrapKey(origin);
+        if (!wrapKey) {
+            notify("Could not start the invite: your Encryption Keys are locked on this device. Unlock them on the Graphs page, then share again.");
+            return;
+        }
+        const sharedGraphId = graphId;
+        shareStarting = true;
+        try {
+            const heldKey = await vaultKeyForInvite(api, wrapKey, sharedGraphId);
+            // The graph was closed, or another opened, while the keys were read.
+            if (graphId !== sharedGraphId || shareAccess !== access) return;
+            shareDialog = { api, heldKey, access };
+        } catch (error) {
+            notify(describeSyncFailure(error, "start the invite"));
+        } finally {
+            shareStarting = false;
+        }
+    }
+
+    /**
      * The Layout a graph opens with on THIS presenter, for a first open and for Reset workspace
      * alike. A desktop shows both Sidebars from the start; a phone shows one drawer at a time and
-     * the left one first, so its right Sidebar starts collapsed.
+     * the left one first, so its right Sidebar starts collapsed. The demo on a phone starts with
+     * both closed: its journal entry is the tour, and the drawer would cover it.
      */
     function freshLayout() {
         return defaultLayout({
             journalTarget: todayISO(),
             rightSidebarCollapsed: useMobile,
+            leftSidebarCollapsed: useMobile && isDemoGraph(graphId),
         });
     }
 
@@ -3651,6 +3703,12 @@
         if (!result.recoveryCodeJustGenerated)
             void rotateIfDue(api, serverOrigin, openedGraphId, result.deviceKey, attempt);
         offerDevicePasscodeOnce();
+        const ownerRole = ownerRoleFromListing(api.listGraphs(), openedGraphId);
+        // Share is offered once the server says this person is the Owner, on a plan that takes
+        // new Players. In the background, as the role is: nothing waits on it.
+        void readShareAccess(api, ownerRole).then((access) => {
+            if (attempt.isCurrent() && graphId === openedGraphId) shareAccess = access;
+        });
         return {
             relay: connection.relayUrl,
             token,
@@ -3663,7 +3721,7 @@
             memberKey: scope.principalId || undefined,
             // The graph's listing carries this person's role. Read once per open, in the
             // background: an offline open must not wait on it. A failure reads as "not known".
-            ownerRole: ownerRoleFromListing(api.listGraphs(), openedGraphId),
+            ownerRole,
             listMembers: () => api.graphMembers(openedGraphId),
             publishName: createGraphNamePublisher({
                 api,
@@ -3919,6 +3977,8 @@
         graphServerOrigin = null;
         connectionAtOpen = null;
         personalLists = undefined;
+        shareAccess = null;
+        shareDialog = null;
         if (dev && server) return paramsFromGate(server);
         const record = await attempt.wait(
             createIdbGraphRegistry().getGraph(graphId),
@@ -4725,6 +4785,12 @@
                 return !install.installed && !install.installedOnDevice && canInstall(installRoute);
             },
         });
+        // Share this graph: the invite dialog, for the Owner of a synced graph. The rows read
+        // `shareAccess` as each menu opens, since the server's answer arrives after the open.
+        detachShareCommands = registerShareCommands(commandRegistry, contributions, {
+            share: () => void shareGraph(),
+            shareable: () => shareAccess !== null,
+        });
         // `/Template` (ADR 0144): the list is the index's answer, and a picked Template is read
         // through the store's snapshot, which never opens an editor for it.
         detachTemplateCommands = registerTemplateCommands(commandRegistry, contributions, {
@@ -5347,6 +5413,37 @@
     }
 
     /**
+     * A graph created empty on this device gets its Welcome page on its first open (ADR 0183):
+     * written through the open store, so a synced graph's copy is encrypted and synced like any
+     * page, and made a Favourite. `seedWelcomePage` does nothing for every other open. Not
+     * cancellable part-way, since the claim is already given up when the write starts. A failure
+     * leaves the graph without the page and never fails the open.
+     */
+    async function writeWelcomePage(): Promise<boolean> {
+        const open = store;
+        if (!open) return false;
+        try {
+            return await seedWelcomePage({
+                graphId,
+                // This Client's own demo, so a self-hosted Client does not link to another's.
+                demoUrl: new URL("/demo", location.origin).href,
+                claims: browserWelcomeClaims(),
+                documentCount: () => open.listDocuments().length,
+                createPage: (title, body) => open.createPage(title, body),
+                addFavourite,
+            });
+        } catch (error) {
+            console.warn("[welcome] could not write the Welcome page", error);
+            return false;
+        }
+    }
+
+    /** The Layout of the open that wrote the Welcome page; nothing for any other open. */
+    function welcomeLayout(written: boolean): LayoutModel | undefined {
+        return written ? welcomeFirstLayout(freshLayout(), { phone: useMobile }).model : undefined;
+    }
+
+    /**
      * Create the renderer for the current viewport (dockview or mobile) and a
      * controller over it, then restore state. Pass a `model` to carry live state
      * across a presenter swap; omit it on first mount to load from the store.
@@ -5593,12 +5690,17 @@
                 attempt.discard();
                 return;
             }
+            const welcomeWritten = await writeWelcomePage();
+            attempt.checkpoint();
             useMobile = prefersMobileLayout();
             // Access can end while the graph is still opening (a deleted graph's cached copy
             // refused a token): the notice stands, the workspace behind it stays hidden.
             if (!accessLoss) phase = "ready";
             await attempt.wait(tick());
-            await session.transitionPresenter(() => mountPresenter(attempt));
+            // A graph whose Welcome page was just written opens on it, with today's journal the
+            // tab to its right (ADR 0183). Every other open loads the Layout it was left with.
+            const firstLayout = welcomeLayout(welcomeWritten);
+            await session.transitionPresenter(() => mountPresenter(attempt, firstLayout));
             // Svelte has now mounted the requested DocumentView. Keep the temporary claim
             // until cache hydration has at least issued the foreground request; IndexedDB can
             // otherwise finish after a quick index/presenter path and observe no retain at all.
@@ -6443,8 +6545,12 @@
                 let handle: FileSystemDirectoryHandle;
                 try {
                     handle = await window.showDirectoryPicker({ mode: "readwrite" });
-                } catch {
-                    return null; // cancelled
+                } catch (err) {
+                    // Closing the picker is a choice, and nothing is said.
+                    if (isPickerCancel(err)) return null;
+                    // The browser's own message names its API; the publication's row says this.
+                    console.error("Could not choose a publish folder:", err);
+                    throw new Error("Could not open that folder. Try again, or choose a different one.");
                 }
                 // A publish deletes the files it did not write from its folder: never a graph's.
                 // Refused before it is remembered, and shown at the publication's row.
@@ -6851,7 +6957,7 @@
         } catch (err) {
             clearTimeout(checking);
             // Closing the picker without choosing is a decision, not a failure to report.
-            if ((err as Error).name === "AbortError") return;
+            if (isPickerCancel(err)) return;
             notify(`Could not enable mirroring: ${(err as Error).message}`);
         }
     }
@@ -7630,6 +7736,8 @@
         detachJournalCommands = undefined;
         detachInstallCommands?.();
         detachInstallCommands = undefined;
+        detachShareCommands();
+        detachShareCommands = () => {};
         detachTemplateCommands?.();
         detachTemplateCommands = undefined;
         detachProtectionCommands?.();
@@ -8010,6 +8118,21 @@
     <KeyboardShortcutsDialog bindings={keybindingTable.bindings} onclose={() => (shortcutsDialogOpen = false)} />
 {/if}
 
+{#if shareDialog}
+    <InviteDialog
+        api={shareDialog.api}
+        {graphId}
+        graphName={graphDisplayName || undefined}
+        heldKey={shareDialog.heldKey}
+        ownEmail={shareDialog.access.ownEmail}
+        inviteeNeeds={shareDialog.access.inviteeNeeds}
+        onclose={(result) => {
+            shareDialog = null;
+            if (result) notify(`Invite sent to ${result.sentTo}.`);
+        }}
+    />
+{/if}
+
 {#if resetDialogOpen}
     <ConfirmDialog
         open={true}
@@ -8046,6 +8169,14 @@
         {installedSync}
         templates={() => graphIndex?.templates() ?? Promise.resolve([])}
         tab={graphSettingsDialog.tab}
+        onshare={shareAccess
+            ? () => {
+                  // Close Settings first, as the mirror's folder picker does: two stacked
+                  // modals fight over focus and Escape.
+                  closeGraphSettings();
+                  void shareGraph();
+              }
+            : null}
         nameHelp={isServerStore
             ? "Changes the graph name for all members."
             : "Changes the display name only - the folder on disk keeps its name."}
@@ -8227,7 +8358,6 @@
                 void commandRegistry?.execute("help.openShortcuts")}
             onsettings={() => openGraphSettings()}
             ontasks={() => void commandRegistry?.execute("tasks.open")}
-            onreset={() => void commandRegistry?.execute("workspace.reset")}
             mirror={mirrorIndicator()}
             indexing={indexingIconShown}
         />

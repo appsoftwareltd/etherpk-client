@@ -2,8 +2,9 @@
     import TypedWord from "./TypedWord.svelte";
 
     /**
-     * The top of every EtherPK home page: the product's name over the headline whose last word is
-     * typed over by the things EtherPK is for. The Corporate and Client home page and the Sync
+     * The top of every EtherPK home page: the product's name, and the term it abbreviates spelled
+     * out once, over the headline whose last word is typed over by the things EtherPK is for. The
+     * headline calls EtherPK a notes app, the words a first visit knows; "PKMS" is only here. The Corporate and Client home page and the Sync
      * Server's own home page both open with it, so the three origins read as one product. What
      * follows it (a tagline, actions) is each page's own.
      */
@@ -18,7 +19,6 @@
     // must fit on one line of the headline on a phone.
     const headlineWords = [
         "Everything",
-        "Notes",
         "Journalling",
         "Docs",
         "Blogging",
@@ -30,13 +30,19 @@
     ];
 </script>
 
-<p class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-950 dark:text-white">
+<p
+    data-testid="marketing-hero-eyebrow"
+    class="text-balance text-sm font-semibold uppercase tracking-[0.2em] text-neutral-950 dark:text-white"
+>
     Ether Personal Knowledge
+    <span class="mt-1 block font-medium text-neutral-600 dark:text-neutral-300">
+        Personal Knowledge Management System (PKMS)
+    </span>
 </p>
 <h1
     {id}
     class="mx-auto mt-5 max-w-4xl text-balance text-4xl font-semibold leading-[1.1] tracking-tight text-neutral-950 sm:text-6xl dark:text-white"
 >
-    One Markdown PKMS For
+    One Markdown Notes App For
     <TypedWord words={headlineWords} testId="marketing-headline-word" />
 </h1>

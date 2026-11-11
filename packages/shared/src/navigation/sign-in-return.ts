@@ -2,8 +2,9 @@
  * Where a sign-in comes back to. A sign-in returns to the page it started on, query included,
  * so a person who signs in from Pricing is still on Pricing afterwards. A page that only makes
  * sense signed out (the landing page, the sign-in and registration pages, a "you are signed out"
- * notice) returns to the app's signed-in home instead: Corporate's /account, the Sync Server's
- * /dashboard. Every app still passes the result through `safeReturnPath` when it reads it back.
+ * notice) returns to what the app passes instead: the Sync Server's /dashboard, or nothing on
+ * Corporate, where a sign-in that names no page goes on to the Client's Graphs page. Every app
+ * still passes the result through `safeReturnPath` when it reads it back.
  */
 
 /**
@@ -28,7 +29,7 @@ const SIGNED_OUT_ONLY_PATHS = new Set([
     '/auth-error',
 ])
 
-/** The page a sign-in started on `here` returns to, given the app's signed-in home. */
+/** The page a sign-in started on `here` returns to, or `signedInHome` from a signed-out-only page. */
 export function signInReturnPath(here: { pathname: string; search: string }, signedInHome: string): string {
     return SIGNED_OUT_ONLY_PATHS.has(here.pathname) ? signedInHome : here.pathname + here.search
 }

@@ -24,7 +24,7 @@ export const COMMUNITY_DISCORD_URL = 'https://discord.gg/m9vScxQzvp'
 
 export interface ApplicationNavigationItem {
     href: string
-    label: 'Sync+' | 'Sync Server' | 'Graphs' | 'Docs'
+    label: 'Sync+ Pricing' | 'Sync+' | 'Sync Server' | 'Open app' | 'Graphs' | 'Docs'
     current: boolean
 }
 
@@ -37,13 +37,19 @@ export interface ApplicationNavigationOptions {
     managed: boolean
     /**
      * Whether someone is signed in. Signed out on the managed service, the Sync+ link opens the
-     * pricing page instead of the Sync Server, because there is no Sync+ account to open yet.
+     * pricing page instead of the Sync Server, because there is no Sync+ account to open yet,
+     * and is named "Sync+ Pricing" for the page it opens.
      */
     signedIn: boolean
     syncServerUrl?: string | null
     /** Corporate's pricing page, on the managed service. */
     pricingUrl?: string | null
     graphsUrl: string
+    /**
+     * Set on the Client's own pages, where the link is the Graphs page and carries the menu of
+     * the person's graphs, so it is named "Graphs". From any other origin it reads "Open app".
+     */
+    withinClient?: boolean
     /** `sync-server` marks the Sync+ link, whichever page it leads to. */
     current?: 'sync-server' | 'graphs' | null
 }
@@ -63,15 +69,18 @@ export function buildApplicationNavigation(
     if (options.syncServerUrl) {
         // A standalone Server sells nothing, so its link always opens the Server.
         const pricingUrl = options.managed && !options.signedIn ? options.pricingUrl : null
-        items.push({
-            href: pricingUrl || options.syncServerUrl,
-            label: options.managed ? 'Sync+' : 'Sync Server',
-            current: options.current === 'sync-server',
-        })
+        items.push(pricingUrl
+            // Named for the page it opens, so nobody expects the Sync Server behind it.
+            ? { href: pricingUrl, label: 'Sync+ Pricing', current: options.current === 'sync-server' }
+            : {
+                href: options.syncServerUrl,
+                label: options.managed ? 'Sync+' : 'Sync Server',
+                current: options.current === 'sync-server',
+            })
     }
     items.push({
         href: options.graphsUrl,
-        label: 'Graphs',
+        label: options.withinClient ? 'Graphs' : 'Open app',
         current: options.current === 'graphs',
     })
     // Last: it leaves the deployment, and it is never the current page. One site for every

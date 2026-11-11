@@ -136,7 +136,7 @@ export function registerSpellingCommands(commands: CommandRegistry, contribution
             title: 'Spelling languages',
             detail: 'Choose the languages this graph is checked in',
             icon: 'spell-check',
-            group: 'Editor',
+            group: 'Settings',
             order: 190,
             keywords: ['spelling', 'spellcheck', 'dictionary', 'language'],
             command: SPELLING_OPEN_SETTINGS,

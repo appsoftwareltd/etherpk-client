@@ -11,6 +11,9 @@
 
 export const GRAPH_CARD = 'overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-white/10 dark:bg-white/5'
 
+/** A card with no band to clip to its corners, so a menu opened from it can hang below its edge. */
+export const GRAPH_CARD_UNCLIPPED = 'rounded-xl border border-neutral-200 bg-white dark:border-white/10 dark:bg-white/5'
+
 /** The theme's blue ring cannot be seen on a blue band, so a coloured band's ring is its ink. */
 const FOCUS_ON_COLOUR = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--graph-ink)'
 

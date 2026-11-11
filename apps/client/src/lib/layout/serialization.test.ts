@@ -41,6 +41,15 @@ describe('serialization', () => {
         expect(defaultLayout({ rightSidebarCollapsed: false }).model.regions['left-sidebar'].collapsed).toBe(false)
     })
 
+    it('starts the left Sidebar collapsed when asked, for a graph a phone opens on its document', () => {
+        const { model } = defaultLayout({ leftSidebarCollapsed: true })
+        expect(model.regions['left-sidebar'].collapsed).toBe(true)
+        // Its residents are there all the same, behind the drawer's toggle.
+        expect(model.regions['left-sidebar'].panes.flatMap((p) => p.views).map((v) => v.view.kind)).toEqual(['document-tree', 'quick-notes'])
+        // The option is about the left one only.
+        expect(defaultLayout({ leftSidebarCollapsed: true, rightSidebarCollapsed: false }).model.regions['right-sidebar'].collapsed).toBe(false)
+    })
+
     it('round-trips a serialized Layout through parse', () => {
         const layout = defaultLayout({ journalTarget: '2026-06-01' })
         const raw = JSON.parse(JSON.stringify(layout)) as unknown
