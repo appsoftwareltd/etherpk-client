@@ -157,6 +157,12 @@ export interface ServerAssetStore extends AssetStore {
     keptOnDevice(ref: string): Promise<boolean>
     /** Keep the file on this device, or go back to the ordinary budget. Rejects when there is no room. */
     setKeptOnDevice(ref: string, keep: boolean): Promise<void>
+    /**
+     * A person deleted this asset in this session (ADR 0184). If a reference to it comes back, an
+     * undo of that delete, the asset is brought back on the server too: otherwise it would show
+     * from this device's copy while the server removes it at the end of the retention period.
+     */
+    noteDeleted(assetId: string): void
 }
 
 /**
@@ -251,6 +257,8 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): ServerAssetS
     const base = deps.baseUrl.replace(/\/$/, '')
     const newAssetId = deps.newAssetId ?? (() => crypto.randomUUID())
     const objectUrls: string[] = []
+    /** Assets a person deleted in this session, which a reference coming back brings back (ADR 0184). */
+    const deletedThisSession = new Set<string>()
     const keyring = keyringReader(deps.keyring)
     // The dedup secret (ADR 0053) comes from the newest epoch, so it changes only when the graph
     // moves to a new one: derive it lazily, once per epoch - a store that only ever resolves
@@ -321,6 +329,15 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): ServerAssetS
             return null
         }
         return (await res.json()) as { encryptedMetadata: string; downloadUrls: string[] }
+    }
+
+    /** Ask the server to bring a Deleted Asset back (ADR 0184). */
+    async function restoreDeleted(assetId: string): Promise<void> {
+        const res = await f(`${base}/api/v1/sync/assets/${deps.graphId}/${assetId}/restore`, {
+            method: 'POST',
+            headers: await authHeaders(),
+        })
+        if (!res.ok) throw new Error(`asset restore failed: ${res.status}`)
     }
 
     /** Decrypt an asset's metadata under the graph's epoch keys. Rejects when it will not open or parse. */
@@ -789,7 +806,16 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): ServerAssetS
                     : Promise.reject(error),
             ),
 
+        noteDeleted(assetId: string) {
+            deletedThisSession.add(assetId)
+        },
+
         async resolve(ref: string): Promise<ResolvedAsset | null> {
+            const id = assetIdFromRef(ref)
+            if (id && deletedThisSession.delete(id)) {
+                // Best effort: a failure leaves it a Deleted Asset, restorable from All Documents.
+                void restoreDeleted(id).catch(() => deletedThisSession.add(id))
+            }
             const asset = await fetchAssetBytes(ref)
             if (!asset) return null
             const url = URL.createObjectURL(new Blob([asset.bytes as BlobPart], { type: asset.type }))

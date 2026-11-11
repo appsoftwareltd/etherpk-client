@@ -51,6 +51,8 @@ export const DOCUMENT_COPY_FILE_PATH = 'document.copyFilePath'
 export const DOCUMENT_COPY_NAME = 'document.copyName'
 /** Open the Publish dialog for a document: its `public` switch and the publications it belongs to (ADR 0082). */
 export const DOCUMENT_PUBLISH = 'document.publish'
+/** Open a document's [[Version History]] in its own tab (ADR 0184). */
+export const DOCUMENT_VERSION_HISTORY = 'document.versionHistory'
 /**
  * Show a concept's backlinks: the Backlinks View showing it, brought to the front, its pin left
  * as it is (ADR 0088). Beside `backlinks.open` (Alt+B), which reveals the View on whatever it is
@@ -116,6 +118,13 @@ export interface DocumentCommandDeps {
     promptDelete: (concept: string) => void
     /** Open the Publish dialog for a document. Absent where publishing is not offered (a dev harness). */
     promptPublish?: (concept: string) => void
+    /**
+     * Open a document's Version History. Answers false where the graph keeps none: a folder graph,
+     * whose history is its own version control. Absent where there are no tabs.
+     */
+    openVersionHistory?: (concept: string) => boolean
+    /** Whether the open graph keeps Version History, which decides whether the menu offers it. */
+    hasVersionHistory?: () => boolean
     /**
      * Show a concept in the Backlinks View and bring it to the front. The workspace owns what
      * that does to the View's state (`backlinks-preferences.ts`) and the reveal; absent where
@@ -271,6 +280,10 @@ export function registerDocumentCommands(
             const concept = conceptOf(arg)
             if (concept !== '') deps.promptPublish?.(concept)
         }),
+        commands.register(DOCUMENT_VERSION_HISTORY, (arg) => {
+            const concept = conceptOf(arg)
+            if (concept !== '') deps.openVersionHistory?.(concept)
+        }),
         commands.register(DOCUMENT_COPY_FILE_PATH, (arg) => {
             const concept = conceptOf(arg)
             if (concept !== '') deps.copyFilePath?.(concept)
@@ -420,6 +433,13 @@ export function registerDocumentCommands(
             // On the document itself, not on a wikilink: the dialog writes the document's own
             // frontmatter, and a link names a concept that may have no document yet.
             when: (target) => isDocumentTarget(target) && deps.promptPublish !== undefined,
+        }),
+        registerContextMenuItem(contributions, {
+            id: DOCUMENT_VERSION_HISTORY,
+            label: 'Version history',
+            command: DOCUMENT_VERSION_HISTORY,
+            order: 26,
+            when: (target) => isDocumentTarget(target) && deps.hasVersionHistory?.() === true,
         }),
         registerContextMenuItem(contributions, {
             id: DOCUMENT_DELETE,

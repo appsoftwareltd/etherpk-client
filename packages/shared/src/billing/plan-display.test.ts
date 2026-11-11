@@ -8,6 +8,7 @@ import {
     isServerAllowance,
     planLabel,
     planStatusLine,
+    retentionLabel,
 } from './plan-display'
 
 const formatDate = (iso: string) => iso.slice(0, 10)
@@ -15,12 +16,22 @@ const formatDate = (iso: string) => iso.slice(0, 10)
 describe('plan display', () => {
     it('names each plan, and says so when the plan cannot be read', () => {
         expect(planLabel('sync_plus')).toBe('Sync+')
+        expect(planLabel('sync_plus_pro')).toBe('Sync+ Pro')
         expect(planLabel('free')).toBe('Free')
         expect(planLabel('unlimited')).toBe('Unlimited')
         expect(planLabel('fixed')).toBe('Fixed limits')
         expect(planLabel('remote-unavailable')).toBe('Plan status unavailable')
         expect(planLabel('remote-pending')).toBe('Confirming plan…')
         expect(planLabel('team')).toBe('team')
+    })
+
+    it('says how long a tier keeps versions, with the default for a tier that names no period', () => {
+        expect(retentionLabel(30)).toBe('30 days')
+        expect(retentionLabel(1)).toBe('1 day')
+        expect(retentionLabel(365)).toBe('1 year')
+        expect(retentionLabel(730)).toBe('2 years')
+        expect(retentionLabel(0)).toBe('No version history')
+        expect(retentionLabel(undefined)).toBe('30 days')
     })
 
     it('puts the plan and its status on one line', () => {
@@ -41,6 +52,7 @@ describe('plan display', () => {
         expect(isServerAllowance('unlimited')).toBe(true)
         expect(isServerAllowance('fixed')).toBe(true)
         expect(isServerAllowance('sync_plus')).toBe(false)
+        expect(isServerAllowance('sync_plus_pro')).toBe(false)
         expect(isServerAllowance('free')).toBe(false)
         expect(isServerAllowance('remote-unavailable')).toBe(false)
         expect(isServerAllowance('remote-pending')).toBe(false)

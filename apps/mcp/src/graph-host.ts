@@ -103,11 +103,17 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 /**
  * One session's view of the shared graph. Uploads are remembered per session, because a tool
  * refuses to read back an asset the agent did not upload or find in a document, and one agent's
- * uploads say nothing about another's. A session whose `serve` passed --no-semantic gets a graph
+ * uploads say nothing about another's. So are the documents a session has versioned before its
+ * first write to them. A session whose `serve` passed --no-semantic gets a graph
  * with no semantic search, while the same graph builds its store for the sessions that want one.
  */
 export function sessionGraph(graph: HeadlessGraph, options: { noSemantic: boolean }): HeadlessGraph {
-    const view: HeadlessGraph = { ...graph, ...(graph.assets ? { assets: { ...graph.assets, uploaded: new Set<string>() } } : {}) }
+    const view: HeadlessGraph = {
+        ...graph,
+        ...(graph.assets ? { assets: { ...graph.assets, uploaded: new Set<string>() } } : {}),
+        // Each session versions a document before its own first write to it (ADR 0184).
+        ...(graph.versions ? { versions: graph.versions.forSession() } : {}),
+    }
     if (!options.noSemantic) return view
     const off = new Error('Semantic search is off for this agent: serve was started with --no-semantic.')
     return { ...view, semantic: () => Promise.reject(off), semanticOpened: () => Promise.resolve(undefined) }

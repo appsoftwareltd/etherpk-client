@@ -19,10 +19,14 @@
     import { getActiveLayoutController, type ViewRef } from "#lib/layout/index.js";
     import type { FilesystemDocumentStore } from "#lib/storage/index.js";
     import { attachContextMenu, tryGetActiveEventBus, type DocumentContextMenuTarget } from "#lib/surface/index.js";
+    import { workspaceService } from "#lib/workspace/workspace-services.js";
+    import DeletedItemsSection from "./DeletedItemsSection.svelte";
 
     const { view: _view }: { view: ViewRef } = $props();
 
     const store = getActiveDocumentStore() as FilesystemDocumentStore;
+    /** A synced graph's Version History, which keeps what was deleted (ADR 0184). */
+    const versions = workspaceService("versions");
 
     let all = $state.raw<{ concept: string; kind: string }[]>([]);
     let filter = $state("");
@@ -94,4 +98,8 @@
             </li>
         {/each}
     </ul>
+
+    {#if versions}
+        <DeletedItemsSection history={versions} />
+    {/if}
 </div>

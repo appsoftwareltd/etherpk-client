@@ -7,7 +7,7 @@
  * The addresses of the account site (register, Billing, pricing) come from the deployment's
  * configuration through the page's data. Nothing here states a price or a trial's length.
  */
-import type { SyncPlusOfferTerms } from '@appsoftwareltd/etherpk-shared'
+import { syncPlusPricePhrase, type SyncPlusOfferTerms } from '@appsoftwareltd/etherpk-shared'
 import type { ServerAuthState } from './graph-picker-helpers'
 
 /** What pressing a panel's button does. The page runs every kind but `link`, which is an anchor. */
@@ -139,9 +139,9 @@ function blockedReason(servers: readonly ChoiceServer[]): string | null {
 
 type SyncedOffer = Pick<SyncedChoicePanel, 'primary' | 'secondary' | 'plan' | 'reason'>
 
-/** The price as a sentence, such as "Sync+ is (price) a month." */
+/** The price as a sentence, such as "Sync+ is from (price) a month, billed yearly." */
 function priceSentence(offer: SyncPlusOfferTerms, ending = '.'): string {
-    return `Sync+ is ${offer.priceDisplay} a ${offer.billingInterval}${ending}`
+    return `Sync+ is ${syncPlusPricePhrase(offer)}${ending}`
 }
 
 /**

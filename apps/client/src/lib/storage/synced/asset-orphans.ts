@@ -62,6 +62,8 @@ export interface ServerAssetOrphanDeps {
      * on a debounce, so a reference pasted moments ago is otherwise not in its stored text yet.
      */
     settle?: () => Promise<void>
+    /** Each asset a delete removed: an undo that brings a reference back brings the asset back (ADR 0184). */
+    onRemoved?: (assetId: string) => void
 }
 
 export interface ListedAsset {
@@ -218,7 +220,10 @@ export function serverAssetTools(deps: ServerAssetOrphanDeps): GraphAssetTools {
     }
 }
 
-/** Delete the given assets server-side (chunks + metadata). Returns the number deleted. */
+/**
+ * Delete the given assets on the server. Each becomes a Deleted Asset, kept for the graph's
+ * retention period and restorable (ADR 0184). Returns the number deleted.
+ */
 export async function deleteOrphanedServerAssets(
     deps: ServerAssetOrphanDeps,
     ids: string[],
@@ -227,8 +232,10 @@ export async function deleteOrphanedServerAssets(
     let removed = 0
     for (const id of ids) {
         const res = await f(`${base}/api/v1/sync/assets/${deps.graphId}/${id}`, { method: 'DELETE', headers: await headers() })
-        if (res.ok) removed += 1
-        else if (res.status !== 404) throw new Error(`asset delete failed: ${res.status}`)
+        if (res.ok) {
+            removed += 1
+            deps.onRemoved?.(id)
+        } else if (res.status !== 404) throw new Error(`asset delete failed: ${res.status}`)
     }
     return removed
 }

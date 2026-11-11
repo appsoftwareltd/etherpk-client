@@ -424,6 +424,12 @@
               fallback: () => editor?.view ?? null,
               documentOf: (target) => (target as EditorView).state.facet(editorDocument)?.concept ?? null,
               undoKey: isApplePlatform() ? '⌘Z' : 'Ctrl+Z',
+              // A version of the document before a replace-all rewrites it (ADR 0184). Only a synced
+              // graph has Version History.
+              beforeReplaceAll: (target) => {
+                  const concept = (target as EditorView).state.facet(editorDocument)?.concept
+                  if (concept) currentWorkspaceServices()?.versions?.recordBefore(concept, 'before_replace_all')
+              },
           })
         : null
     let find = $state.raw(findController?.snapshot ?? null)
@@ -1597,6 +1603,9 @@
         // A command's text held in a Draft is the person's typing: create the document with it
         // rather than let it go with the View.
         if (draft?.isHolding()) draft.release()
+        // Closing the document keeps the edits still waiting for an idle version (ADR 0184), so
+        // the last of a session's edits are in a version before the next session changes them.
+        currentWorkspaceServices()?.versions?.settle(view.target)
         destroyed = true
         clearRefusal()
         detachRetry?.()

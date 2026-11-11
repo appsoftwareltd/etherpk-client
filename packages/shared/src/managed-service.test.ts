@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
     ENTITLEMENT_AUDIENCE,
+    entitlementLimitsSchema,
     IDENTITY_STATEMENT_AUDIENCE,
     identityStatementSchema,
     isEntitlementSubject,
@@ -84,6 +85,27 @@ describe('managed service contracts', () => {
         const trialing = { ...valid, trialEndsAt: '2026-10-07T10:00:00.000Z' }
         expect(serviceEntitlementSchema.parse(trialing)).toEqual(trialing)
         expect(() => serviceEntitlementSchema.parse({ ...valid, trialEndsAt: '7 October' })).toThrow()
+    })
+
+    it('carries an optional version retention period in days (ADR 0184)', () => {
+        const limits = {
+            ownedGraphs: 3,
+            ownedStorageBytes: 262_144_000,
+            playersPerGraph: 3,
+            assetBytes: 26_214_400,
+            assetChunks: 512,
+        }
+        // Statements issued before the field existed stay valid.
+        expect(entitlementLimitsSchema.parse(limits)).toEqual(limits)
+        expect(entitlementLimitsSchema.parse({ ...limits, versionRetentionDays: 30 }).versionRetentionDays).toBe(30)
+        // Zero keeps nothing.
+        expect(entitlementLimitsSchema.parse({ ...limits, versionRetentionDays: 0 }).versionRetentionDays).toBe(0)
+        expect(() => entitlementLimitsSchema.parse({ ...limits, versionRetentionDays: -1 })).toThrow()
+        expect(() => entitlementLimitsSchema.parse({ ...limits, versionRetentionDays: 1.5 })).toThrow()
+        // Ten years is the most a statement may ask a server to keep.
+        expect(() => entitlementLimitsSchema.parse({ ...limits, versionRetentionDays: 3651 })).toThrow()
+        // The schema stays strict: an unknown limit is still refused.
+        expect(() => entitlementLimitsSchema.parse({ ...limits, versionRetentionHours: 30 })).toThrow()
     })
 
     it('accepts only aggregate, content-free managed usage', () => {

@@ -133,11 +133,16 @@ export interface SyncedPdfServiceDeps extends PdfServiceContext {
     memberKey: string | null
     /** Every current Member, whose private documents go when the PDF goes. */
     memberKeys(): Promise<string[]>
+    /**
+     * Whether the graph keeps a deleted file for a while (ADR 0184). While it does, a deleted PDF's
+     * annotations stay with it, so a restored PDF has them back.
+     */
+    keepsDeletedFiles?: () => Promise<boolean>
     assets(): ServerAssetStore | null
     store(): DocumentStore | null
 }
 
-export function createSyncedPdfStateHost(deps: Pick<SyncedPdfServiceDeps, 'graph' | 'memberKey' | 'memberKeys'>): PdfStateHost {
+export function createSyncedPdfStateHost(deps: Pick<SyncedPdfServiceDeps, 'graph' | 'memberKey' | 'memberKeys' | 'keepsDeletedFiles'>): PdfStateHost {
     const { graph, memberKey } = deps
     return {
         async open(hash) {
@@ -155,6 +160,7 @@ export function createSyncedPdfStateHost(deps: Pick<SyncedPdfServiceDeps, 'graph
             })
         },
         async forget(hash) {
+            if (await deps.keepsDeletedFiles?.()) return
             const keys = new Set(await deps.memberKeys().catch(() => []))
             if (memberKey !== null) keys.add(memberKey)
             for (const key of keys) {

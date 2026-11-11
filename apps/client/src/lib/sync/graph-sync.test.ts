@@ -187,6 +187,30 @@ describe('graph-sync', () => {
         cache.dispose()
     })
 
+    it('tells a local edit from one that arrived from the relay (ADR 0184)', async () => {
+        const relay = createLoopbackRelay()
+        const keyring = createGraphKeyring('g1')
+        const a = await client(relay, keyring)
+        const b = await client(relay, keyring)
+        const heardOnB: Array<[string, boolean]> = []
+        const heardOnA: Array<[string, boolean]> = []
+        a.onDocUpdate((docId, local) => heardOnA.push([docId, local]))
+        b.onDocUpdate((docId, local) => heardOnB.push([docId, local]))
+        const unretain = b.retainDoc(DOC_1)
+        await b.whenReady(DOC_1)
+
+        a.docSync(DOC_1).doc.getText('content').insert(0, '- water the beans')
+        await a.flushAll()
+        await vi.waitFor(() => expect(b.docSync(DOC_1).doc.getText('content').toString()).toBe('- water the beans'))
+
+        expect(heardOnA).toContainEqual([DOC_1, true])
+        expect(heardOnB.filter(([docId]) => docId === DOC_1).every(([, local]) => !local)).toBe(true)
+        expect(heardOnB.some(([docId]) => docId === DOC_1)).toBe(true)
+        unretain()
+        a.dispose()
+        b.dispose()
+    })
+
     it('reference-counts document subscriptions and ignores unretained presence', async () => {
         const sent: Array<Record<string, unknown>> = []
         let receive: (data: string) => void = () => {}

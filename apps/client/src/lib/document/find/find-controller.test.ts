@@ -225,6 +225,19 @@ describe('replacing', () => {
         expect(t.editor.text()).toBe('Garden Yard Garden')
     })
 
+    it('asks for a version of the document just before a replace-all writes, and not for a single replace (ADR 0184)', async () => {
+        const t = target('|- water the beans\n- pick the beans')
+        const seen: string[] = []
+        const find = controller({ beforeReplaceAll: (at) => seen.push(at.state.doc.toString()) })
+        find.open(t, { replace: true })
+        find.setSearch('beans')
+        find.setReplace('peas')
+        await find.replaceOne()
+        expect(seen).toEqual([])
+        await find.replaceAll()
+        expect(seen).toEqual(['- water the peas\n- pick the beans'])
+    })
+
     it('replaces all in one undo step and says how many', async () => {
         const t = target('|- water the beans\n- pick the beans')
         const find = controller()

@@ -5,6 +5,7 @@
  */
 
 import { formatBytes } from '../format/format-bytes'
+import { DEFAULT_VERSION_RETENTION_DAYS } from '../version-history'
 
 /** A limit at or above this is no limit: a Sync Server with no plans sets every allowance to it. */
 export const UNLIMITED_ALLOWANCE = Number.MAX_SAFE_INTEGER
@@ -34,6 +35,8 @@ export function planLabel(plan: string): string {
     switch (plan) {
         case 'sync_plus':
             return 'Sync+'
+        case 'sync_plus_pro':
+            return 'Sync+ Pro'
         case 'free':
             return 'Free'
         case 'unlimited':
@@ -97,6 +100,17 @@ export function entitlementStatusLabel(state: EntitlementState, formatDate: (iso
 export function planStatusLine(state: EntitlementState & { plan: string }, formatDate: (iso: string) => string): string {
     if (state.plan === PLAN_PENDING) return planLabel(state.plan)
     return `${planLabel(state.plan)} · ${entitlementStatusLabel(state, formatDate)}`
+}
+
+/**
+ * How long a tier keeps Document Versions and deleted items, in words: "30 days", "1 year",
+ * "No version history". A tier that names no period gets the Sync Server's default.
+ */
+export function retentionLabel(days: number | undefined): string {
+    const period = days ?? DEFAULT_VERSION_RETENTION_DAYS
+    if (period === 0) return 'No version history'
+    if (period % 365 === 0) return period === 365 ? '1 year' : `${period / 365} years`
+    return `${period} ${period === 1 ? 'day' : 'days'}`
 }
 
 /** An allowance: "Unlimited" where there is none, else a size or a count. */

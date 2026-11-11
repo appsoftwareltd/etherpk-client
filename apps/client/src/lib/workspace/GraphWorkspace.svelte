@@ -315,6 +315,7 @@
     import { copyImageToClipboard } from "#lib/document/view/clipboard-image.js";
     import AssetView from "#lib/document/view/AssetView.svelte";
     import DeleteAssetDialog from "#lib/document/ui/DeleteAssetDialog.svelte";
+    import VersionHistoryView from "#lib/document/view/VersionHistoryView.svelte";
     import {
         addFavourite,
         adoptFavourites,
@@ -471,6 +472,9 @@
         type ServerDocumentStore,
     } from "#lib/storage/synced/server-document-store.js";
     import { createServerAssetStore, type ServerAssetStore } from "#lib/storage/synced/server-asset-store.js";
+    import { openGraphVersions, type GraphVersions } from "#lib/sync/version-history/graph-versions.js";
+    import type { VersionHistory } from "#lib/sync/version-history/version-history.js";
+    import { indexedDbVersionOutbox } from "#lib/sync/version-history/version-outbox.js";
     import { activeFile, noteFileInFront } from "#lib/document/file-in-front.js";
     import { openAssetCopies } from "#lib/storage/synced/asset-copies.js";
     import {
@@ -716,6 +720,8 @@
         root: string;
         /** Optional asset-API base URL - lets e2e drive the real encrypted-asset flow. */
         http?: string;
+        /** Dev/e2e only: the idle wait before a Document Version (ADR 0184). */
+        versionIdleMs?: number;
     }
 
     let {
@@ -1352,7 +1358,7 @@
     let listMirrorAssetIds: (() => Promise<string[]>) | null = null;
     // Storage Footprint fetch (ADR 0033) - real server path only; null elsewhere.
     let fetchGraphStorage:
-        | (() => Promise<{ docBytes: number; assetBytes: number }>)
+        | (() => Promise<{ docBytes: number; assetBytes: number; versionBytes?: number; deletedAssetBytes?: number }>)
         | null = null;
     // Filesystem backend: the adapter + current settings back the settings dialog's save.
     let fsAdapter: ReturnType<typeof createWebFsDirectoryAdapter> | undefined;
@@ -1458,7 +1464,7 @@
     let graphSettingsDialog = $state<{
         name: string;
         settings: GraphSettings;
-        storage: { docBytes: number; assetBytes: number } | null;
+        storage: { docBytes: number; assetBytes: number; versionBytes?: number; deletedAssetBytes?: number } | null;
         /**
          * The tab the entry names, kept in step by the effect on settingsTab while the modal
          * is open. Carried here rather than read straight off settingsTab in the template,
@@ -1494,6 +1500,14 @@
     let assetStore: AssetStore | undefined;
     /** The synced graph's asset store, which also sends what it queued with no network (ADR 0143). */
     let serverAssetStore: ServerAssetStore | undefined;
+    /**
+     * The open synced graph's [[Version History]] (ADR 0184): the recorder the store calls before a
+     * delete, a rename or a merge, and the history the views read. Undefined until the graph's HTTP
+     * API is known, and on a Filesystem graph: a store write before then makes no version.
+     */
+    let graphVersions = $state.raw<GraphVersions | undefined>(undefined);
+    /** Whether this account owns the open synced graph, once the Sync Server has said. */
+    let graphOwner = $state(false);
     let graphIndex: RemoteGraphIndex | undefined;
     /** Temporary foreground claim bridging graph open to the real DocumentView retain. */
     let releasePreloadedDocument: (() => void) | undefined;
@@ -1788,6 +1802,7 @@
             graph,
             memberKey,
             memberKeys: async () => ((await members?.()) ?? []).map((member) => member.userId),
+            keepsDeletedFiles,
             assets: () => (assetStore as ServerAssetStore | undefined) ?? null,
             store: () => store ?? null,
         });
@@ -1803,7 +1818,19 @@
             graph,
             memberKey: personalLists?.memberKey ?? null,
             memberKeys: async () => ((await members?.()) ?? []).map((member) => member.userId),
+            keepsDeletedFiles,
         });
+    }
+
+    /**
+     * Whether this synced graph keeps a deleted file for a while (ADR 0184), so a PDF's or EBook's
+     * private state stays with it. Unknown counts as yes: a leftover private document costs a little
+     * storage, where state removed too early is a person's annotations lost.
+     */
+    async function keepsDeletedFiles(): Promise<boolean> {
+        const versions = graphVersions;
+        if (!versions) return false;
+        return versions.history.policy().then((policy) => policy.retentionDays > 0, () => true);
     }
 
     async function protectedUsageOf(needles: readonly string[]): Promise<ProtectedAssetUsage> {
@@ -2154,10 +2181,25 @@
             await (
                 store as { compactDocument?: (target: string) => Promise<void> }
             ).compactDocument?.(concept);
-            notify(`${concept} is protected. It is no longer searchable.`);
+            await announceProtected(concept);
         } catch (e) {
             notify(`Could not protect ${concept}: ${(e as Error).message}`);
         }
+    }
+
+    /**
+     * Say a document is protected, once its earlier versions are gone (ADR 0184): they hold its text
+     * under the Graph Key alone, which every member can read. A removal that fails is said too.
+     */
+    async function announceProtected(concept: string): Promise<void> {
+        const versions = graphVersions;
+        const docId = versions ? (store as ServerDocumentStore).documentIdOf(concept) : undefined;
+        const removed = docId && versions ? await versions.history.documentProtected(docId).then(() => true, () => false) : true;
+        notify(
+            removed
+                ? `${concept} is protected. It is no longer searchable.`
+                : `${concept} is protected. Its earlier versions could not be removed just now: remove them from its version history once you are back online.`,
+        );
     }
 
     /** Remove protection: decrypt back to ordinary readable markdown. Needs the key. */
@@ -2186,6 +2228,8 @@
             const current = doc.getText();
             const plaintext = await protection.service.readDocument(current);
             const next = unprotectDocumentText(current, plaintext);
+            // A version of it as it was, protected (ADR 0184).
+            graphVersions?.history.recordBefore(concept, "before_unprotect");
             doc.applyChange(
                 { from: 0, to: current.length, insert: next },
                 "external",
@@ -2250,6 +2294,27 @@
         references: number | null;
         busy: boolean;
     } | null>(null);
+    /**
+     * How long this synced graph keeps a deleted document or file (ADR 0184), for the delete
+     * confirmations: undefined on a Filesystem graph, `unknown` until the Sync Server has said.
+     */
+    let graphKeptDays = $state<number | "unknown" | undefined>(undefined);
+
+    /** Read the period again as a delete is confirmed: the Owner's plan may have changed it. */
+    function refreshKeptDays(): void {
+        const versions = graphVersions;
+        if (!versions) {
+            graphKeptDays = undefined;
+            return;
+        }
+        if (graphKeptDays === undefined) graphKeptDays = "unknown";
+        void versions.history.policy().then(
+            (policy) => {
+                if (graphVersions === versions) graphKeptDays = policy.retentionDays;
+            },
+            () => {},
+        );
+    }
     /** A delete refused because a publication includes the document: which publications, for the dialog. */
     let deletingIncluded = $state<{ concept: string; publications: string[] } | null>(null);
 
@@ -2861,6 +2926,7 @@
         // Straight from the index - no need to plan a rename just to count links. The index
         // answers from a worker now, so the count arrives a beat after the dialog.
         deleting = { concept, references: 0, busy: false };
+        refreshKeptDays();
         const references =
             (await documentMutations.referenceCount(concept)) ?? 0;
         if (deleting?.concept === concept)
@@ -3011,6 +3077,18 @@
         readingPositions?.flush();
         taskFilter?.flush();
         backlinksPreferences?.flush();
+        // Edits still waiting for an idle version are kept now (ADR 0184): the text is read here,
+        // and the sealed version waits in the outbox until the graph next opens if need be.
+        graphVersions?.recorder.settle();
+    }
+
+    /**
+     * Leaving the page (another tab or app, or a phone's home screen) keeps the edits still
+     * waiting for an idle version. `visibilitychange` comes before `pagehide` and is the last event
+     * a phone reliably sends, so the text is read while the page can still finish sealing it.
+     */
+    function keepVersionsWhenHidden() {
+        if (document.visibilityState === "hidden") graphVersions?.recorder.settle();
     }
 
     /**
@@ -3154,6 +3232,15 @@
         component: AllDocumentsView,
         naturalRegion: "main",
         title: () => "All documents",
+    });
+    // A document's [[Version History]] (ADR 0184), addressed by the document's name like its tab.
+    registry.register({
+        kind: "version-history",
+        component: VersionHistoryView,
+        naturalRegion: "main",
+        title: (view) => `History: ${view.target}`,
+        // A rename re-keys it, as it does the document's own tab.
+        conceptTarget: true,
     });
     // An [[Asset]] in its own tab. The target is the asset's identity, so one Asset is one
     // tab; the title strips the id segment and the View retitles once the real name resolves.
@@ -3966,7 +4053,52 @@
         currentMembers = params.listMembers;
         return createServerDocumentStore(serverGraph, {
             onResurrected: noteResurrection,
+            recordVersion: (docId, reason, snapshot) =>
+                void graphVersions?.recorder.record(docId, reason, { snapshot }).catch((error: unknown) =>
+                    console.warn("[versions] could not make a version", error),
+                ),
         });
+    }
+
+    /**
+     * Version History for the synced graph being opened (ADR 0184): versions before deletes,
+     * renames and merges, idle versions after edits, and the history the views read. Published with
+     * the other services, which replace them wholesale.
+     */
+    function openVersionHistory(
+        params: ResolvedServerParams,
+        assets: ServerAssetStore,
+        serverStore: ServerDocumentStore,
+        attempt: GraphOpenAttempt,
+    ): void {
+        const idleMs = dev ? server?.versionIdleMs : undefined;
+        const versions = openGraphVersions({
+            graphId,
+            graph: serverGraph!,
+            keyring: params.keyring,
+            baseUrl: params.httpBaseUrl!,
+            syncToken: params.token,
+            outbox: indexedDbVersionOutbox(),
+            store: serverStore,
+            idleMs,
+            assetName: (assetId) => assets.currentName(assetId),
+            onRefused: (error) => console.warn("[versions] the Sync Server refused a version", error.code, error.quotaCode),
+        });
+        graphVersions = versions;
+        attempt.own(() => {
+            versions.dispose();
+            if (graphVersions === versions) graphVersions = undefined;
+        });
+        // Only the Owner removes all of a graph's history, so Graph Settings offers it to them alone.
+        graphOwner = false;
+        void params.ownerRole?.then((owner) => {
+            if (attempt.isCurrent()) graphOwner = owner === true;
+        });
+    }
+
+    /** The open graph's Version History for the workspace services: none on a Filesystem graph. */
+    function versionHistoryService(): VersionHistory | undefined {
+        return graphVersions?.history;
     }
 
     /** Is this a Server-backed graph? The dev gate, or a registry record with backend 'server'. */
@@ -4381,6 +4513,8 @@
                     keyring: useServer.keyring,
                     readProtected: readProtectedText,
                     settle: settlePendingWrites,
+                    // An undo that brings a deleted file's reference back brings the file back (ADR 0184).
+                    onRemoved: (assetId: string) => serverAssets.noteDeleted(assetId),
                 };
                 assetTools = serverAssetTools(orphanDeps);
                 listMirrorAssetIds = () =>
@@ -4401,6 +4535,7 @@
                     );
                     session.own(() => clearInterval(sweepTimer));
                 }
+                openVersionHistory(useServer, serverAssets, s as ServerDocumentStore, attempt);
                 const storageUrl = `${useServer.httpBaseUrl.replace(/\/$/, "")}/api/v1/sync/graphs/${graphId}/storage`;
                 fetchGraphStorage = async () => {
                     const res = await fetch(storageUrl, {
@@ -4411,6 +4546,8 @@
                     return (await res.json()) as {
                         docBytes: number;
                         assetBytes: number;
+                        versionBytes?: number;
+                        deletedAssetBytes?: number;
                     };
                 };
             }
@@ -4827,6 +4964,13 @@
                 promptRename: (concept) => startRename(concept),
                 promptDelete: (concept) => startDelete(concept),
                 promptPublish: (concept) => void startPublishDocument(concept),
+                // A document's Version History in its own tab (ADR 0184); synced graphs only.
+                hasVersionHistory: () => graphVersions !== undefined,
+                openVersionHistory: (concept) => {
+                    if (!graphVersions || !controller) return false;
+                    controller.openView({ kind: "version-history", target: concept });
+                    return true;
+                },
                 viewFavourites,
                 // Show Backlinks: tell the store what to show (the pin is left as it is, ADR
                 // 0088), then reveal the View. The store first, so a View the reveal mounts (a
@@ -5031,6 +5175,7 @@
                 },
                 promptDelete: (prompt) =>
                     new Promise<AssetDeleteChoice>((resolve) => {
+                        refreshKeptDays();
                         deletingAsset = {
                             prompt,
                             decide: (choice) => {
@@ -5253,6 +5398,7 @@
             // a file that is plaintext at rest in OPFS.
             store: protectedStore ?? s,
             assets: assetStore,
+            versions: versionHistoryService(),
             pdf: createPdfService(),
             ebook: createEbookService(),
             index: graphIndex,
@@ -6821,6 +6967,12 @@
         if (tab === "mirror") void refreshExportTab();
     }
 
+    /** Read the storage figures again while Graph Settings is open: its history was removed. */
+    async function refreshGraphSettingsStorage(): Promise<void> {
+        const storage = await fetchGraphStorage?.().catch(() => null);
+        if (graphSettingsDialog && storage) graphSettingsDialog = { ...graphSettingsDialog, storage };
+    }
+
     /**
      * Save from the Graph Settings dialog. Synced: name + settings go to the encrypted
      * meta map (ADR 0031). Filesystem: settings go to etherpk/settings.json and the name
@@ -7639,6 +7791,7 @@
 
     async function disposeWorkspaceResources() {
         window.removeEventListener("pagehide", flushPersistence);
+        document.removeEventListener("visibilitychange", keepVersionsWhenHidden);
         stopWatch?.();
         flushPersistence();
         clearPendingRestores();
@@ -7790,6 +7943,7 @@
             };
         }
         window.addEventListener("pagehide", flushPersistence);
+        document.addEventListener("visibilitychange", keepVersionsWhenHidden);
         session.own(disposeWorkspaceResources);
         // A bookmark that arrives from another device for a page protected here goes too.
         session.own(subscribeBookmarks(() => protectedBookmarks.schedule()));
@@ -8083,7 +8237,7 @@
     <ConfirmDialog
         open={true}
         title="Delete this document?"
-        message={deleteDocumentMessage(deleting.concept, deleting.references)}
+        message={deleteDocumentMessage(deleting.concept, deleting.references, graphKeptDays)}
         confirmLabel="Delete"
         destructive={true}
         onconfirm={() => void confirmDelete()}
@@ -8106,6 +8260,7 @@
 {#if deletingAsset}
     <DeleteAssetDialog
         prompt={deletingAsset.prompt}
+        keptDays={graphKeptDays}
         onchoose={(choice) => deletingAsset?.decide(choice)}
         onopendocument={(concept) => {
             deletingAsset?.decide("cancel");
@@ -8159,6 +8314,9 @@
         name={graphSettingsDialog.name}
         settings={graphSettingsDialog.settings}
         storageInfo={graphSettingsDialog.storage}
+        versionHistory={graphVersions?.history ?? null}
+        {graphOwner}
+        onstoragechanged={() => void refreshGraphSettingsStorage()}
         {indexPersisted}
         {indexPersistenceBlocked}
         indexProgress={indexed}

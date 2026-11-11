@@ -1163,3 +1163,189 @@ describe('ServerDocumentStore against a relay that is slow to answer', () => {
         await s.dispose()
     })
 })
+
+describe('Document Versions before operations (ADR 0184)', () => {
+    async function versionedStore() {
+        const relay = createLoopbackRelay()
+        const cache = await openGraphCache(`versions-${++cacheSeq}`)
+        const graph = createGraphSync({
+            graphId: 'g-versions',
+            rootDocId: ROOT,
+            keyring: createGraphKeyring('g-versions'),
+            relayUrl: 'ws://loopback/sync',
+            token: fixedSyncToken('t'),
+            cache,
+            connect: relay.connect,
+            debounceMs: 5,
+        })
+        const recorded: { docId: string; reason: string; text: string; title?: string }[] = []
+        // Read inside the callback, which only runs once the store exists.
+        const s: ReturnType<typeof createServerDocumentStore> = createServerDocumentStore(graph, {
+            readyTimeoutMs: 100,
+            recordVersion: (docId, reason, snapshot) => {
+                const taken = snapshot ?? s.versionSnapshot(docId)
+                recorded.push({ docId, reason, text: taken?.text ?? '<none>', title: taken?.identity.title })
+            },
+        })
+        await s.scan()
+        return { s, recorded }
+    }
+
+    it('records a document as it was, with its identity, before deleting it', async () => {
+        const { s, recorded } = await versionedStore()
+        await s.createPage('Garden', '- water the beans')
+        const docId = s.documentIdOf('Garden')!
+        await s.deleteDocument('Garden')
+        expect(recorded).toEqual([{ docId, reason: 'before_delete', text: '- water the beans', title: 'Garden' }])
+        expect(s.versionSnapshot(docId)).toBeNull()
+    })
+
+    it('records each document a rename changes, once, before it changes', async () => {
+        const { s, recorded } = await versionedStore()
+        await s.createPage('Garden', '- water the beans')
+        await s.createPage('Kitchen', '- see [[Garden]] for herbs')
+        await s.createPage('Hallway', '- nothing linked here')
+        await s.renamePage('Garden', 'Plot', { strategy: 'rewrite' })
+        const reasons = new Set(recorded.map((r) => r.reason))
+        expect(reasons).toEqual(new Set(['before_rename']))
+        const byTitle = Object.fromEntries(recorded.map((r) => [r.title, r.text]))
+        expect(byTitle).toEqual({ Garden: '- water the beans', Kitchen: '- see [[Garden]] for herbs' })
+    })
+
+    it('records both documents of a rename that merges, before the survivor gains the other’s text', async () => {
+        const { s, recorded } = await versionedStore()
+        await s.createPage('Garden', '- water the beans')
+        await s.createPage('Plot', '- dig the bed')
+        await s.renamePage('Garden', 'Plot', { strategy: 'alias' })
+        expect(s.documentIdOf('Garden')).toBe(s.documentIdOf('Plot'))
+        const byTitle = Object.fromEntries(recorded.map((r) => [r.title, r.text]))
+        expect(byTitle).toEqual({ Garden: '- water the beans', Plot: '- dig the bed' })
+    })
+
+    it('reads no version of a document it does not know', async () => {
+        const { s } = await versionedStore()
+        expect(s.versionSnapshot('00000000-0000-4000-8000-0000000000aa')).toBeNull()
+    })
+})
+
+describe('restoring a Document Version (ADR 0184)', () => {
+    async function versionedStore() {
+        const relay = createLoopbackRelay()
+        const cache = await openGraphCache(`restore-${++cacheSeq}`)
+        const graph = createGraphSync({
+            graphId: 'g-restore',
+            rootDocId: ROOT,
+            keyring: createGraphKeyring('g-restore'),
+            relayUrl: 'ws://loopback/sync',
+            token: fixedSyncToken('t'),
+            cache,
+            connect: relay.connect,
+            debounceMs: 5,
+        })
+        const recorded: { reason: string; text: string }[] = []
+        // Read inside the callback, which only runs once the store exists.
+        const s: ReturnType<typeof createServerDocumentStore> = createServerDocumentStore(graph, {
+            readyTimeoutMs: 100,
+            recordVersion: (docId, reason, snapshot) => recorded.push({ reason, text: (snapshot ?? s.versionSnapshot(docId))?.text ?? '<none>' }),
+        })
+        await s.scan()
+        return { s, graph, recorded }
+    }
+
+    it('sets a live document to the version’s text, making a version of what it held first', async () => {
+        const { s, recorded } = await versionedStore()
+        await s.createPage('Garden', '- water the beans')
+        const docId = s.documentIdOf('Garden')!
+        const doc = s.open('Garden')
+        doc.applyChange({ from: 0, to: doc.getText().length, insert: '- dig the bed' })
+
+        const outcome = await s.restoreVersion(docId, { text: '- water the beans', identity: { kind: 'page', title: 'Garden', aliases: [] } })
+        expect(outcome).toEqual({ kind: 'restored', concept: 'Garden' })
+        expect(s.open('Garden').getText()).toBe('- water the beans')
+        expect(recorded).toEqual([{ reason: 'before_restore', text: '- dig the bed' }])
+    })
+
+    it('keeps a renamed document’s current name when an older version is restored', async () => {
+        const { s } = await versionedStore()
+        await s.createPage('Garden', '- water the beans')
+        const docId = s.documentIdOf('Garden')!
+        await s.renamePage('Garden', 'Plot', { strategy: 'rewrite' })
+        const outcome = await s.restoreVersion(docId, { text: '- water the beans', identity: { kind: 'page', title: 'Garden', aliases: [] } })
+        expect(outcome).toEqual({ kind: 'restored', concept: 'Plot' })
+        expect(s.documentIdOf('Plot')).toBe(docId)
+        expect(s.documentIdOf('Garden')).toBeUndefined()
+    })
+
+    /** Two devices, so a test can wait until a delete has reached the relay as a person would. */
+    async function devices() {
+        const { device, eventually, textOf } = await import('./sync-device-fixture')
+        const relay = createLoopbackRelay()
+        const keyring = createGraphKeyring(`g-restore-${++cacheSeq}`)
+        return { a: await device(relay, keyring), b: await device(relay, keyring), eventually, textOf }
+    }
+
+    it('brings a deleted document back with its name, aliases and kind', async () => {
+        const { a, b, eventually, textOf } = await devices()
+        await a.store.createPage('Garden', '- water the beans')
+        const docId = a.store.documentIdOf('Garden')!
+        await a.store.deleteDocument('Garden')
+        await eventually(() => expect(b.store.listIdentities().some((d) => d.docId === docId)).toBe(false))
+
+        const outcome = await a.store.restoreVersion(docId, { text: '- water the beans', identity: { kind: 'page', title: 'Garden', aliases: ['Allotment'] } })
+        expect(outcome).toEqual({ kind: 'restored', concept: 'Garden' })
+        expect(a.store.documentIdOf('Garden')).toBe(docId)
+        expect(a.store.documentIdOf('Allotment')).toBe(docId)
+        await eventually(async () => expect(await textOf(b, 'Garden')).toContain('- water the beans'))
+    })
+
+    it('asks for a new name when the deleted document’s name has been taken, then restores under it', async () => {
+        const { a, b, eventually, textOf } = await devices()
+        await a.store.createPage('Garden', '- water the beans')
+        const docId = a.store.documentIdOf('Garden')!
+        await a.store.deleteDocument('Garden')
+        await eventually(() => expect(b.store.listIdentities().some((d) => d.docId === docId)).toBe(false))
+        await a.store.createPage('Garden', '- a new garden')
+        const version = { text: '- water the beans', identity: { kind: 'page' as const, title: 'Garden', aliases: [] } }
+
+        expect(await a.store.restoreVersion(docId, version)).toEqual({ kind: 'name-taken', name: 'Garden' })
+        expect(await a.store.restoreVersion(docId, version, { name: 'Old Garden' })).toEqual({ kind: 'restored', concept: 'Old Garden' })
+        expect(a.store.documentIdOf('Old Garden')).toBe(docId)
+        await eventually(async () => {
+            expect(await textOf(b, 'Garden')).toBe('- a new garden')
+            expect(await textOf(b, 'Old Garden')).toContain('- water the beans')
+        })
+    })
+
+    it('brings a deleted document back on every device, after another device has deleted it', async () => {
+        const { device, eventually, textOf } = await import('./sync-device-fixture')
+        const relay = createLoopbackRelay()
+        const keyring = createGraphKeyring('g-restore-two')
+        const a = await device(relay, keyring)
+        const b = await device(relay, keyring)
+        await a.store.createPage('Garden', '- water the beans')
+        const docId = a.store.documentIdOf('Garden')!
+        await eventually(async () => expect(await textOf(b, 'Garden')).toBe('- water the beans'))
+
+        // Deleted on B; A, which had it, hears of the delete.
+        await b.store.deleteDocument('Garden')
+        await eventually(() => expect(a.store.documentIdOf('Garden')).toBeUndefined())
+
+        const outcome = await a.store.restoreVersion(docId, { text: '- water the beans', identity: { kind: 'page', title: 'Garden', aliases: [] } })
+        expect(outcome).toEqual({ kind: 'restored', concept: 'Garden' })
+        await eventually(async () => {
+            expect(b.store.documentIdOf('Garden')).toBe(docId)
+            expect(await textOf(b, 'Garden')).toBe('- water the beans')
+        })
+    })
+
+    it('restores a deleted journal entry as the day it was', async () => {
+        const { a, b, eventually } = await devices()
+        await a.store.createJournal('2026-11-01', '- picked apples')
+        const docId = a.store.documentIdOf('2026-11-01')!
+        await a.store.deleteDocument('2026-11-01')
+        await eventually(() => expect(b.store.listIdentities().some((d) => d.docId === docId)).toBe(false))
+        const outcome = await a.store.restoreVersion(docId, { text: '- picked apples', identity: { kind: 'journal', date: '2026-11-01', aliases: [] } })
+        expect(outcome).toEqual({ kind: 'restored', concept: '2026-11-01' })
+        expect(a.store.listDocuments().find((d) => d.concept === '2026-11-01')?.kind).toBe('journal')
+    })
+})

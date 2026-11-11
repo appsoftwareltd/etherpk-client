@@ -5,8 +5,9 @@
      * It shows one of two things, decided entirely by the plan it is handed — it makes no
      * judgement of its own:
      *
-     * - **The last reference.** Removing it destroys the bytes for good, so the primary action
-     *   says so and is styled destructively. When protected documents went unchecked (locked, or
+     * - **The last reference.** Removing it deletes the file: for good on a Filesystem graph, and
+     *   for the retention period on a synced one (ADR 0184), which the message says. The primary
+     *   action is styled destructively. When protected documents went unchecked (locked, or
      *   their text could not be read), a warning says so above the button, and the delete is still
      *   offered.
      * - **Anything else.** The bytes are staying. The dialog says why, names the documents
@@ -20,16 +21,20 @@
     import Dialog from "@appsoftwareltd/etherpk-shared/dialog";
 
     import type { AssetDeleteChoice, AssetDeletePrompt } from "../commands/asset-commands";
+    import { deleteOutcomeSentence } from "#lib/sync/version-history/kept-copy.js";
 
     let {
         prompt,
         onchoose,
         onopendocument,
+        keptDays,
     }: {
         prompt: AssetDeletePrompt;
         onchoose: (choice: AssetDeleteChoice) => void;
         /** Open a document holding one of the other references. */
         onopendocument: (concept: string) => void;
+        /** How long a synced graph keeps a deleted file (ADR 0184); absent on a Filesystem graph. */
+        keptDays?: number | "unknown";
     } = $props();
 
     const plan = $derived(prompt.plan);
@@ -80,7 +85,7 @@
         {#if plan.deleteBytes}
             <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="delete-asset-message">
                 {#if !uncheckedWarning}This is the only place it is used.{/if} Deleting removes it from this document
-                and deletes the file itself. This cannot be undone.
+                and deletes the file itself. {deleteOutcomeSentence(keptDays)}
             </p>
             {#if uncheckedWarning}
                 <p
@@ -131,7 +136,7 @@
                 type="button"
                 data-testid="delete-asset-confirm"
                 class="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-500"
-                onclick={() => onchoose("delete")}>Delete permanently</button
+                onclick={() => onchoose("delete")}>{keptDays === undefined || keptDays === 0 ? "Delete permanently" : "Delete"}</button
             >
         {/if}
     {/snippet}

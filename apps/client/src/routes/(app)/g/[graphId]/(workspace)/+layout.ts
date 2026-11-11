@@ -35,6 +35,9 @@ export const load: LayoutLoad = ({ params, url }) => ({
                   // encrypted-asset flow (begin/complete/get + presigned chunk transfer)
                   // against a test fixture. Absent → assets stay off under the gate.
                   http: url.searchParams.get('http') ?? undefined,
+                  // How long a document goes without an edit before an idle Document Version
+                  // (ADR 0184): 30 s in the app, shortened so e2e need not wait it out.
+                  versionIdleMs: Number(url.searchParams.get('versionIdleMs')) || undefined,
               }
             : undefined,
 })

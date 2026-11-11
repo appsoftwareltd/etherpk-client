@@ -29,6 +29,7 @@
  *   refusal says what to run.
  */
 
+import { reasonLabel } from '#lib/sync/version-history/version-history-copy.js'
 import {
     backlinkSources,
     capText,
@@ -114,6 +115,8 @@ export type ToolErrorCode =
     | 'name_taken'
     /** This process has no asset storage for the graph. */
     | 'assets_unavailable'
+    /** The graph keeps no Version History: a folder, or a synced graph opened without its HTTP API (ADR 0184). */
+    | 'versions_unavailable'
     /** The server declined the upload on policy (a quota); the message carries its code. */
     | 'asset_refused'
     /** No document the agent can read references the asset, or the graph does not hold it. */
@@ -480,11 +483,16 @@ function protectedDocument(asked: string): ToolError {
     )
 }
 
-/** The document an agent asked to change, with its text, refusing a hidden one as protected. */
+/**
+ * The document an agent asked to change, with its text, refusing a hidden one as protected. On a
+ * synced graph the session's first write to a document waits for a version of it (ADR 0184), so a
+ * person can restore what it held before the agent's edit.
+ */
 async function requireWritable(graph: HeadlessGraph, asked: string): Promise<{ identity: HeadlessDocument; text: string }> {
     const identity = requireIdentity(graph, asked)
     const text = await liveText(graph, identity)
     if (isHidden(hiddenKeys(graph), identity) || holdsEncryptedText(text)) throw protectedDocument(asked)
+    await graph.versions?.beforeAgentWrite(identity.concept)
     return { identity, text }
 }
 
@@ -539,6 +547,75 @@ export async function readDocument(graph: HeadlessGraph, concept: string): Promi
         frontmatter: agentFrontmatter(graph.store.openRaw(identity.concept).getText()),
         truncated: capped.truncated,
     }
+}
+
+export interface VersionSummary {
+    version: string
+    createdAt: string
+    /** What made it, in words: "Edited", "Before a rename", "Before an agent's edit". */
+    madeBy: string
+}
+
+export interface ListVersionsResult {
+    concept: string
+    versions: VersionSummary[]
+    /** How many days the graph keeps versions. */
+    keptDays: number
+}
+
+function requireVersions(graph: HeadlessGraph): NonNullable<HeadlessGraph['versions']> {
+    if (!graph.versions) {
+        throw new ToolError(
+            'versions_unavailable',
+            graph.backend.kind === 'folder'
+                ? 'A folder graph keeps no version history in EtherPK: its history is whatever version control the folder has.'
+                : 'This graph was opened without the Sync Server\'s HTTP API, so its version history cannot be read here.',
+        )
+    }
+    return graph.versions
+}
+
+/** A document's earlier versions, newest first (ADR 0184). Restoring one is done by a person in EtherPK. */
+export async function listVersions(graph: HeadlessGraph, concept: string): Promise<ListVersionsResult> {
+    await graph.store.refresh()
+    const versions = requireVersions(graph)
+    const { identity } = await requireReadable(graph, concept)
+    const listed = await versions.list(identity.concept)
+    if (!listed) throw notFound(concept)
+    return {
+        concept: identity.concept,
+        versions: listed.versions.map((v) => ({ version: v.versionId, createdAt: v.createdAt, madeBy: reasonLabel(v.reason) })),
+        keptDays: listed.policy.retentionDays,
+    }
+}
+
+export interface ReadVersionResult {
+    concept: string
+    version: string
+    /** The document's name when the version was made, which a rename since may have changed. */
+    nameThen: string
+    /** The whole text the document held then, frontmatter included. */
+    text: string
+    truncated: boolean
+}
+
+/** One earlier version's text (ADR 0184). */
+export async function readVersion(graph: HeadlessGraph, concept: string, version: string): Promise<ReadVersionResult> {
+    await graph.store.refresh()
+    const versions = requireVersions(graph)
+    const { identity } = await requireReadable(graph, concept)
+    let read
+    try {
+        read = await versions.read(identity.concept, version)
+    } catch (error) {
+        if ((error as { status?: number }).status === 404) throw new ToolError('not_found', `"${identity.concept}" has no version "${version}". list_versions names its versions.`)
+        throw error
+    }
+    if (!read) throw notFound(concept)
+    if (holdsEncryptedText(read.text)) throw protectedDocument(concept)
+    const capped = capText(read.text, READ_TEXT_CAP)
+    const nameThen = read.identity.kind === 'journal' ? (read.identity.date ?? identity.concept) : (read.identity.title ?? identity.concept)
+    return { concept: identity.concept, version, nameThen, text: capped.text, truncated: capped.truncated }
 }
 
 export type SearchOutput =

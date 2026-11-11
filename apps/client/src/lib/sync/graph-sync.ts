@@ -13,7 +13,7 @@ import { sanitizePdfBookmarks, type PdfBookmark, type PdfBookmarksChange } from 
 import { derivePdfStateIdSecret, pdfStateDocId } from '#lib/document/pdf/state-doc-id.js'
 import { performanceRecorder } from '#lib/diagnostics/performance.js'
 import { SYNC_PROTOCOL_LIMITS, type QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
-import { CACHE_SEED, createDocSync, type DocSync } from './doc-sync'
+import { CACHE_SEED, RECREATED, REMOTE, SUPPRESSED, createDocSync, type DocSync } from './doc-sync'
 import type { GraphCache } from './local-cache'
 import {
     SyncProtocolMismatchError,
@@ -422,8 +422,10 @@ export interface GraphSync {
     /** Resolves once the ROOT doc's current catch-up reaches its terminal relay page. */
     rootCaughtUp(): Promise<void>
     /** Fires whenever ANY document's content (Y.Doc) changes — local or remote. The docId is
-     *  the graph-root id for registry changes, else the content doc id. */
-    onDocUpdate(listener: (docId: string) => void): () => void
+     *  the graph-root id for registry changes, else the content doc id. `local` is true for a
+     *  change made on this device (an edit, or the store's own write), false for one that
+     *  arrived from the relay or is the engine's own lifecycle bookkeeping. */
+    onDocUpdate(listener: (docId: string, local: boolean) => void): () => void
     ready(): Promise<void>
     /**
      * Resolves when ONE doc's engine has seeded from the [[Local Cache]] (creating the
@@ -956,7 +958,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
           })
         : undefined
     const presenceDetach = new Map<string, () => void>()
-    const docUpdateListeners = new Set<(docId: string) => void>()
+    const docUpdateListeners = new Set<(docId: string, local: boolean) => void>()
     // ack carries only outboxId (no docId); remember which doc issued each append so an
     // ack routes back to the right engine.
     const ackRoute = new Map<string, string>()
@@ -1492,7 +1494,8 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                 // Rehydrating the already-indexed IndexedDB snapshot on every hard refresh
                 // is not a content change. Genuine relay updates use REMOTE and still flow.
                 if (origin === CACHE_SEED) return
-                for (const l of docUpdateListeners) l(docId)
+                const local = origin !== REMOTE && origin !== SUPPRESSED && origin !== RECREATED
+                for (const l of docUpdateListeners) l(docId, local)
             })
             activate(docId, e)
         }

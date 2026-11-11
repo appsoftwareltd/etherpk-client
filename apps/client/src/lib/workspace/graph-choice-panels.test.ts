@@ -161,7 +161,7 @@ describe('the Synced Graph panel on Managed Sync', () => {
 
 describe("the Synced Graph panel with the account site's terms", () => {
     // Made-up figures: the real ones are the account site's to state.
-    const TERMS = { billingEnabled: true, priceDisplay: '¤12.34', billingInterval: 'month', trialDays: 9 } as const
+    const TERMS = { billingEnabled: true, monthlyPriceDisplay: '¤12.34', billedYearly: false, priceIsLowest: false, trialDays: 9 } as const
 
     it('states the price and the trial, signed out and for an account without Sync+', () => {
         for (const servers of [[], [FREE]]) {
@@ -171,9 +171,9 @@ describe("the Synced Graph panel with the account site's terms", () => {
         }
     })
 
-    it('says a yearly price by the year', () => {
-        const { synced } = graphChoicePanels(input({ ...CORPORATE, offer: { ...TERMS, billingInterval: 'year' } }))
-        expect(synced.plan?.text).toBe('Sync+ is ¤12.34 a year after a 9-day free trial.')
+    it('says the lowest of several prices as "from", and a yearly one as billed yearly', () => {
+        const { synced } = graphChoicePanels(input({ ...CORPORATE, offer: { ...TERMS, billedYearly: true, priceIsLowest: true } }))
+        expect(synced.plan?.text).toBe('Sync+ is from ¤12.34 a month, billed yearly after a 9-day free trial.')
     })
 
     it('names no trial where there is none, and the button says Get Sync+', () => {

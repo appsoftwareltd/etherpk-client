@@ -22,6 +22,8 @@ export interface SyncedEbookServiceDeps {
     memberKey: string | null
     /** Every current Member, whose private documents go when the EBook goes. */
     memberKeys(): Promise<string[]>
+    /** Whether the graph keeps a deleted file for a while (ADR 0184): its highlights stay with it. */
+    keepsDeletedFiles?: () => Promise<boolean>
 }
 
 /**
@@ -46,6 +48,7 @@ export function createSyncedEbookStateHost(deps: SyncedEbookServiceDeps): EbookS
             })
         },
         async forget(hash) {
+            if (await deps.keepsDeletedFiles?.()) return
             const keys = new Set(await deps.memberKeys().catch(() => []))
             if (memberKey !== null) keys.add(memberKey)
             for (const key of keys) {

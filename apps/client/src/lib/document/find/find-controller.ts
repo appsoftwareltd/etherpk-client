@@ -84,6 +84,11 @@ export interface FindControllerDeps {
     undoKey: string
     /** How long a wait runs before the box says what it is waiting for, so a fast one never flashes. */
     busyDelayMs?: number
+    /**
+     * A replace-all is about to write: make a [[Document Version]] of the document as it stands
+     * (ADR 0184). Called synchronously, just before the write.
+     */
+    beforeReplaceAll?: (target: FindTarget) => void
 }
 
 /** The note after a replace that renamed: what Ctrl+Z restores, and what it does not (ADR 0124). */
@@ -480,6 +485,7 @@ export class FindController {
             }
             applied = { plan, at }
             if (plan.replaced === 0) return true
+            if (scope === 'all') this.#deps.beforeReplaceAll?.(target)
             const before = target.state.doc
             target.dispatch(replaceTransaction(target.state, plan))
             return target.state.doc !== before

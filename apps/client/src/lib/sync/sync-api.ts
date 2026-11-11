@@ -25,6 +25,10 @@ export interface SyncApiDeps {
 export interface GraphStorageFigures {
     docBytes: number
     assetBytes: number
+    /** Document Versions kept (ADR 0184); absent from a server that keeps none. */
+    versionBytes?: number
+    /** Deleted Assets kept (ADR 0184); absent from a server that keeps none. */
+    deletedAssetBytes?: number
 }
 
 export interface ServerGraphRecord {

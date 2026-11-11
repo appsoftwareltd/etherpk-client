@@ -8,6 +8,9 @@ export const ENTITLEMENT_READ_SCOPE = 'entitlements:read'
 export const MANAGED_USAGE_SCOPE = 'managed-usage:read'
 export const ENTITLEMENT_SUBJECT_CLAIM = 'https://etherpk.com/claims/entitlement-subject'
 
+/** The longest version retention period a statement or a server setting may ask for: ten years. */
+export const MAX_VERSION_RETENTION_DAYS = 3650
+
 /** The `billing-account:<id>` prefix every entitlement subject carries. */
 export const ENTITLEMENT_SUBJECT_PREFIX = 'billing-account:'
 
@@ -61,6 +64,13 @@ export const entitlementLimitsSchema = z.strictObject({
     playersPerGraph: z.int().nonnegative(),
     assetBytes: z.int().nonnegative(),
     assetChunks: z.int().nonnegative(),
+    /**
+     * How many days a synced graph keeps its Document Versions, Deleted Documents and Deleted
+     * Assets (ADR 0184); 0 keeps none. Optional so that a statement issued without it stays
+     * readable: the Sync Server applies its own default when it is absent. An issuer sends it
+     * only to a Sync Server whose schema knows it, because the schema is strict.
+     */
+    versionRetentionDays: z.int().min(0).max(MAX_VERSION_RETENTION_DAYS).optional(),
 })
 
 export type EntitlementLimits = z.infer<typeof entitlementLimitsSchema>

@@ -5,7 +5,7 @@ type Fetch = typeof fetch
 
 const ORIGIN = 'https://www.example.com'
 // Made-up figures: no deployment's price belongs in this repository's Client.
-const TERMS = { billingEnabled: true, priceDisplay: '¤12.34', billingInterval: 'month', trialDays: 9 }
+const TERMS = { billingEnabled: true, monthlyPriceDisplay: '¤12.34', billedYearly: false, priceIsLowest: false, trialDays: 9 }
 
 const answering = (body: unknown, init: ResponseInit = {}) =>
     vi.fn<Fetch>(async () => new Response(typeof body === 'string' ? body : JSON.stringify(body), init))
@@ -23,7 +23,7 @@ describe('reading the Sync+ terms from the account site', () => {
     it.each([
         ['an error status', answering(TERMS, { status: 503 })],
         ['a body that is not JSON', answering('<!doctype html>')],
-        ['a body of another shape', answering({ ...TERMS, priceDisplay: '' })],
+        ['a body of another shape', answering({ ...TERMS, monthlyPriceDisplay: '' })],
         ['an oversized body', answering({ ...TERMS, padding: 'x'.repeat(5000) })],
         ['a failed request', vi.fn<Fetch>(async () => { throw new TypeError('fetch failed') })],
     ])('reads %s as not known', async (_name, fetch) => {

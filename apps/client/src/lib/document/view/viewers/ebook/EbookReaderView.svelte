@@ -31,6 +31,7 @@
     import { iconSvg } from "#lib/surface/icons.js";
     import { hideAppHeaderOnPhone } from "#lib/workspace/app-header.svelte.js";
     import { currentWorkspaceServices, workspaceService } from "#lib/workspace/workspace-services.js";
+    import { deleteFileQuestion, keptDaysOf } from "#lib/sync/version-history/kept-copy.js";
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
     import { createSubscriber, MediaQuery } from "svelte/reactivity";
 
@@ -65,6 +66,8 @@
     let renameValue = $state("");
     let renameError = $state("");
     let deleteOpen = $state(false);
+    /** How long the graph keeps a deleted file (ADR 0184), read as the confirmation opens. */
+    let deleteKeptDays = $state<number | "unknown" | undefined>(undefined);
     let deleteBusy = $state(false);
     let deleteMessage = $state("");
     let toast = $state("");
@@ -414,6 +417,8 @@
         moreOpen = false;
         deleteMessage = "";
         deleteOpen = true;
+        deleteKeptDays = workspaceService("versions") ? "unknown" : undefined;
+        void keptDaysOf(workspaceService("versions")).then((days) => (deleteKeptDays = days));
     }
 
     /** After the bytes: a failure here leaves a little private state behind, never a missing EBook whose highlights were deleted first. */
@@ -700,7 +705,7 @@
         {#if deleteOpen}
             <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2" role="alert" data-testid="ebook-delete-confirm">
                 <p class="min-w-40 flex-1 text-sm text-(--gk-text-default)">
-                    Delete {displayName}, permanently{reader.highlights.length > 0 ? `, with your ${reader.highlights.length} highlight${reader.highlights.length === 1 ? "" : "s"}` : ""}? This cannot be undone.
+                    {deleteFileQuestion(displayName, reader.highlights.length > 0 ? `${reader.highlights.length} highlight${reader.highlights.length === 1 ? "" : "s"}` : null, deleteKeptDays)}
                 </p>
                 <button type="button" class="rounded-lg bg-red-700 px-3 py-1 text-sm font-medium text-white disabled:opacity-60" disabled={deleteBusy} onclick={confirmDelete} data-testid="ebook-delete-submit">Delete</button>
                 <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => (deleteOpen = false)}>Cancel</button>

@@ -20,6 +20,7 @@ import type { DocumentStore } from '#lib/document/types.js'
 import type { EpisodeEnd } from '#lib/document/view/augmentations/frontmatter-episode.js'
 import type { AssetStore } from '#lib/storage/fs/asset-store.js'
 import type { SyncApi } from '#lib/sync/sync-api.js'
+import type { VersionHistory } from '#lib/sync/version-history/version-history.js'
 import type { SyncIndicator, SyncStatusAction } from '#lib/sync/sync-indicator.js'
 import type { GraphSettings } from '#lib/storage/fs/graph-settings.js'
 import type { CommandRegistry } from '#lib/surface/command-registry.js'
@@ -163,6 +164,11 @@ export interface WorkspaceServices {
     assets?: AssetStore
     index?: RemoteGraphIndex
     settings?: GraphSettings
+    /**
+     * The open synced graph's [[Version History]] (ADR 0184). Absent on a Filesystem graph, and on a
+     * synced graph opened without the Sync Server's HTTP API.
+     */
+    versions?: VersionHistory
     /** The open graph's PDF state and the file operations that differ by backend. */
     pdf?: PdfGraphService
     /** The open graph's state for EBooks. Deleting, renaming and keeping a file go through `pdf`. */

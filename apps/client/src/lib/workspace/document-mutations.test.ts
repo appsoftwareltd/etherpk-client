@@ -94,6 +94,20 @@ describe('workspace document mutations', () => {
         )
     })
 
+    it('says how long a synced graph keeps a deleted document, and that it cannot be undone where it keeps none (ADR 0184)', () => {
+        expect(deleteDocumentMessage('Notes', null, 30)).toBe(
+            '"Notes" will be removed. Nothing links to it. Any member can restore it from All Documents for 30 days.',
+        )
+        expect(deleteDocumentMessage('Notes', null, 1)).toBe(
+            '"Notes" will be removed. Nothing links to it. Any member can restore it from All Documents for 1 day.',
+        )
+        expect(deleteDocumentMessage('Notes', null, 0)).toBe('"Notes" will be removed. Nothing links to it. This cannot be undone.')
+        // Synced, while the period is still being read.
+        expect(deleteDocumentMessage('Notes', null, 'unknown')).toBe(
+            '"Notes" will be removed. Nothing links to it. Any member can restore it from All Documents for a while.',
+        )
+    })
+
     it('keeps rename outcome summaries explicit', () => {
         expect(renameDocumentSummary(result)).toBe(
             'Renamed to "New", 1 scoped document renamed, 1 merged, 2 documents updated, aliases updated in 1 document.',

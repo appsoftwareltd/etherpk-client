@@ -35,6 +35,8 @@ import type {
 } from '#lib/document/backlinks/live-index.js'
 import { createBreather } from '#lib/activity/breathe.js'
 import type { GraphSync, RegistryEntry } from '#lib/sync/graph-sync.js'
+import type { VersionReason } from '@appsoftwareltd/etherpk-shared'
+import type { VersionSnapshot } from '#lib/sync/version-history/version-recorder.js'
 import { CACHE_SEED, REMOTE, SUPPRESSED, contentBlocked } from '#lib/sync/doc-sync.js'
 import { type TextSplice, countWikilinkTargets, wikilinkScopeSplices } from '#lib/document/wikilink/rename.js'
 import { documentProtection } from '#lib/document/protection/cipher-fence.js'
@@ -62,6 +64,12 @@ export interface ServerDocumentStoreOptions {
      * whoever deleted it.
      */
     onResurrected?: (concept: string) => void
+    /**
+     * Make a [[Document Version]] of a document before an operation changes it (ADR 0184). Called
+     * synchronously, just before the write, so the version holds the text as it was. `snapshot` is
+     * given where the store had to read the text first; otherwise the callee reads it now.
+     */
+    recordVersion?: (docId: string, reason: VersionReason, snapshot?: VersionSnapshot) => void
 }
 
 /**
@@ -117,6 +125,12 @@ export interface DocumentText {
      */
     settled: boolean
 }
+
+/** What {@link ServerDocumentStore.restoreVersion} did. */
+export type RestoreVersionOutcome =
+    | { kind: 'restored'; concept: string }
+    | { kind: 'name-taken'; name: string }
+    | { kind: 'unconfirmed' }
 
 /** Structural mirror of FilesystemDocumentStore (documented in document/types.ts). */
 export interface ServerDocumentStore {
@@ -215,8 +229,27 @@ export interface ServerDocumentStore {
     planRename(from: string, to: string, referencingDocuments?: number): Promise<RenamePlan>
     /** Apply a rename: the document, its scoped concepts, and any merges (ADR 0037, 0038). */
     renamePage(from: string, to: string, options: RenameOptions): Promise<RenameResult>
-    /** Delete a document. Immediate and irreversible (ADR 0039). */
+    /**
+     * Delete a document (ADR 0039). A [[Document Version]] of it is made first (ADR 0184), from
+     * which any Member can restore it for the retention period.
+     */
     deleteDocument(concept: string): Promise<void>
+    /**
+     * A document's text and identity as they stand now, for a [[Document Version]] (ADR 0184).
+     * Null when it has no registry entry or has not loaded yet: a version of an empty seed would
+     * record a document as empty.
+     */
+    versionSnapshot(docId: string): VersionSnapshot | null
+    /**
+     * Set a document to a [[Document Version]]'s text (ADR 0184), as one edit every device receives.
+     *
+     * A live document keeps its current name and aliases, and a version of what it held is made
+     * first. A [[Deleted Document]] comes back under the same id with the version's identity, or as
+     * a page called `options.name`; when another document has taken a name it needs, nothing is
+     * written and the answer is `name-taken`. `unconfirmed`: the document could not be brought
+     * current in time, so nothing was written.
+     */
+    restoreVersion(docId: string, version: VersionSnapshot, options?: { name?: string; timeoutMs?: number }): Promise<RestoreVersionOutcome>
     /**
      * Drop deleted content from a document's Local Cache row. After protecting a document the
      * row otherwise keeps the pre-protection body for the document's lifetime, readable from
@@ -263,11 +296,23 @@ function conceptOf(entry: RegistryEntry): string {
     return entry.kind === 'journal' ? (entry.date ?? '') : (entry.title ?? '')
 }
 
+/** A registry entry as a version records it. */
+export function versionIdentityOf(entry: RegistryEntry): VersionSnapshot['identity'] {
+    return {
+        kind: entry.kind,
+        ...(entry.title !== undefined ? { title: entry.title } : {}),
+        ...(entry.date !== undefined ? { date: entry.date } : {}),
+        aliases: Array.isArray(entry.aliases) ? [...entry.aliases] : [],
+    }
+}
+
 
 export function createServerDocumentStore(
     graph: GraphSync,
     options: ServerDocumentStoreOptions,
 ): ServerDocumentStore {
+    /** The store's options, by a name that a rename's own `options` parameter does not hide. */
+    const storeOptions = options
     const registry = graph.registry()
     /** Engines created between yields while snapshotting — small enough to keep frames free. */
     const ENGINE_BATCH = 100
@@ -279,6 +324,8 @@ export function createServerDocumentStore(
      * pages, short enough that a slow relay does not hold up a person who is typing.
      */
     const CREATE_CONFIRM_MS = 5000
+    /** How long a delete waits to read a document nobody has open, for its version (ADR 0184). */
+    const DELETE_VERSION_READ_MS = 5000
     const breathe = createBreather()
 
     const changeListeners = new Set<StoreChangeListener>()
@@ -609,6 +656,88 @@ export function createServerDocumentStore(
      * document without a block keeps none. The caller has brought the text current first, or the
      * block would be written above a block still on its way.
      */
+    /** What a restore writes to: the live document as it is, or a deleted one's returning entry. */
+    function restoreTarget(docId: string, identity: VersionSnapshot['identity'], name?: string): { live: boolean; entry: RegistryEntry } | { taken: string } {
+        const live = registry.get(docId)
+        if (live) return { live: true, entry: live }
+        const returning = returningEntry(docId, identity, name)
+        return 'taken' in returning ? returning : { live: false, entry: returning.entry }
+    }
+
+    /**
+     * Whether the document can be restored now: brought current, and, for a deleted one, known
+     * here to be deleted. A deleted document's text is empty, which the relay confirms only online.
+     */
+    async function readyToRestore(docId: string, live: boolean, unconfirmed: boolean, timeoutMs: number): Promise<boolean> {
+        if (unconfirmed && (live || !graph.isConnected())) return false
+        return live || untilDeleted(docId, timeoutMs)
+    }
+
+    /** Write a restore and answer the document's name: a live one is versioned first, a deleted one named again. */
+    function writeRestore(docId: string, target: { live: boolean; entry: RegistryEntry }, text: string): string {
+        if (target.live) storeOptions.recordVersion?.(docId, 'before_restore')
+        else registry.set(docId, target.entry)
+        replaceWholeText(docId, text)
+        // The version's block may name the document as it was. The registry is the document's
+        // identity, so the block is written to match it rather than read as a proposal to rename
+        // it back (ADR 0061).
+        writeBackIdentity(docId)
+        return conceptOf(registry.get(docId) ?? target.entry)
+    }
+
+    /** One version of each document an operation is about to change (ADR 0184). */
+    function versionEach(docIds: readonly string[], reason: VersionReason): void {
+        for (const docId of docIds) storeOptions.recordVersion?.(docId, reason)
+    }
+
+    /**
+     * The registry entry a [[Deleted Document]] comes back under (ADR 0184): its version's identity,
+     * or a page called `name`. Answers the name another document now holds instead, when it is
+     * taken. An alias another document answers to is left off: the document is reachable by its name.
+     */
+    function returningEntry(docId: string, identity: VersionSnapshot['identity'], name?: string): { entry: RegistryEntry } | { taken: string } {
+        const entry: RegistryEntry = name !== undefined ? { kind: 'page', title: name.trim() } : { kind: identity.kind }
+        if (name === undefined && identity.title !== undefined) entry.title = identity.title
+        if (name === undefined && identity.date !== undefined) entry.date = identity.date
+        const concept = conceptOf(entry)
+        const holder = docIdFor(concept)
+        if (holder && holder !== docId) return { taken: concept }
+        if (name !== undefined) return { entry }
+        const free = identity.aliases.filter((alias) => [undefined, docId].includes(docIdFor(alias)))
+        const aliases = normaliseAliases(free, concept)
+        return { entry: aliases.length > 0 ? { ...entry, aliases } : entry }
+    }
+
+    /**
+     * Wait until this device knows a document is deleted, asking the relay again, up to
+     * `timeoutMs`. A restored document's text goes to the relay as its next generation (ADR 0043),
+     * which this device sends only once it knows of the delete: an engine that caught up before
+     * another device deleted the document still believes it active, and its write would be refused
+     * as stale and dropped. A delete made here moments ago is still on its way to the relay.
+     */
+    async function untilDeleted(docId: string, timeoutMs: number): Promise<boolean> {
+        const engine = graph.docSync(docId)
+        const deadline = Date.now() + timeoutMs
+        while (engine.lifecycle() !== 'deleted' && Date.now() < deadline) {
+            if (engine.lifecycle() !== 'deleting') engine.resync()
+            await reachedWithin(engine.caughtUp(), Math.max(0, deadline - Date.now()))
+            if (engine.lifecycle() !== 'deleted') await new Promise((resolve) => setTimeout(resolve, 50))
+        }
+        return engine.lifecycle() === 'deleted'
+    }
+
+    /**
+     * Set a document's whole text in one transaction under the store's origin, which no undo
+     * manager tracks: a restore is undone by restoring the version made before it.
+     */
+    function replaceWholeText(docId: string, text: string): void {
+        const ytext = graph.docSync(docId).doc.getText('content')
+        ytext.doc!.transact(() => {
+            if (ytext.length > 0) ytext.delete(0, ytext.length)
+            ytext.insert(0, text)
+        }, STORE)
+    }
+
     function writeBackIdentity(docId: string): void {
         const entry = registry.get(docId)
         if (!entry) return
@@ -1205,6 +1334,9 @@ export function createServerDocumentStore(
                 // twice.
                 const firstText = texts[0]
                 const addition = mergedText(['', ...texts.slice(1)])
+                // Every document of the Merge, before it changes: the first gains the others' text
+                // and the others are deleted (ADR 0184).
+                versionEach(docIds, 'before_rename')
                 if (addition !== '' && !firstText.endsWith(addition)) {
                     const merged = mergedText(texts)
                     const ytext = graph.docSync(first).doc.getText('content')
@@ -1395,6 +1527,29 @@ export function createServerDocumentStore(
             }
         },
 
+        versionSnapshot(docId: string): VersionSnapshot | null {
+            const entry = registry.get(docId)
+            if (!entry) return null
+            const engine = graph.docSync(docId)
+            if (engine.lifecycle() === 'seeding') return null
+            return { text: engine.doc.getText('content').toString(), identity: versionIdentityOf(entry) }
+        },
+
+        async restoreVersion(docId, version, restoreOptions): Promise<RestoreVersionOutcome> {
+            const target = restoreTarget(docId, version.identity, restoreOptions?.name)
+            if ('taken' in target) return { kind: 'name-taken', name: target.taken }
+            const timeoutMs = restoreOptions?.timeoutMs ?? COLD_CONTENT_TIMEOUT_MS
+            const materialised = await materialise([docId], timeoutMs)
+            try {
+                if (!(await readyToRestore(docId, target.live, materialised.unconfirmed.length > 0, timeoutMs))) {
+                    return { kind: 'unconfirmed' }
+                }
+                return { kind: 'restored', concept: writeRestore(docId, target, version.text) }
+            } finally {
+                materialised.release()
+            }
+        },
+
         /**
          * Delete a document (ADR 0039): the registry entry goes AND the stored content is
          * removed server-side, so [[Storage Footprint]] drops immediately rather than waiting
@@ -1403,6 +1558,16 @@ export function createServerDocumentStore(
         async deleteDocument(concept: string): Promise<void> {
             const docId = docIdFor(concept)
             if (!docId) return // already gone; deleting twice is not an error
+            if (options.recordVersion) {
+                // The document may be one nobody here has open, so its text is read the way an
+                // export reads it: brought current from the relay, or believed from the Local Cache
+                // offline. A text that cannot be confirmed makes no version rather than an empty one.
+                const entry = registry.get(docId)
+                const read = (await this.readTexts([docId], { timeoutMs: DELETE_VERSION_READ_MS })).get(docId)
+                if (entry && read?.settled) {
+                    options.recordVersion(docId, 'before_delete', { text: read.text, identity: versionIdentityOf(entry) })
+                }
+            }
             creationClaims.delete(docId)
             // The ordered content lifecycle transition is durable before the encrypted root
             // registry changes. A delayed old-generation append can no longer recreate rows.
@@ -1562,6 +1727,13 @@ export function createServerDocumentStore(
      * (ADR 0038).
      */
     function applyRename(plan: RenamePlan, options: RenameOptions, readable: readonly string[]): RenameResult {
+        // One version per document the rename changes, made just before its first write (ADR 0184).
+        const versioned = new Set<string>()
+        const versionBefore = (docId: string) => {
+            if (versioned.has(docId)) return
+            versioned.add(docId)
+            storeOptions.recordVersion?.(docId, 'before_rename')
+        }
         for (const step of renameSteps(plan)) {
             // A pageless concept, or a renamed alias: only links and aliases move (ADR 0064, and
             // ADR 0065 amended 2026-10-04). Asked of the plan, since `docIdFor` would resolve an
@@ -1595,6 +1767,8 @@ export function createServerDocumentStore(
                     { body: survivor.toString(), aliases: survivorEntry?.aliases ?? [] },
                     { body: absorbedBody, aliases },
                 )
+                versionBefore(targetId)
+                versionBefore(docId)
                 survivor.doc!.transact(() => {
                     survivor.delete(0, survivor.length)
                     survivor.insert(0, merged.body)
@@ -1610,6 +1784,7 @@ export function createServerDocumentStore(
                 continue
             }
 
+            versionBefore(docId)
             // A page renamed onto one of its own aliases: the alias becomes the title and
             // is no longer an alias.
             const next: RegistryEntry = { ...entry, title: step.to }
@@ -1649,6 +1824,7 @@ export function createServerDocumentStore(
                 if (splices.length > 0) edits.push({ id, splices })
             }
             for (const edit of edits) {
+                versionBefore(edit.id)
                 const ytext = graph.docSync(edit.id).doc.getText('content')
                 ytext.doc!.transact(() => {
                     for (let i = edit.splices.length - 1; i >= 0; i--) {

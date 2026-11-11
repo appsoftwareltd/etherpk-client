@@ -11,7 +11,17 @@
      */
     import type { GraphAssetTools, OrphanScan } from "#lib/storage/fs/asset-orphans.js";
 
-    let { assetTools }: { assetTools: GraphAssetTools } = $props();
+    let {
+        assetTools,
+        keptDeleted = false,
+    }: {
+        assetTools: GraphAssetTools;
+        /**
+         * The graph keeps a deleted file for a while (a synced graph, ADR 0184): a deleted orphan
+         * can be restored from All Documents, so the delete is not called permanent.
+         */
+        keptDeleted?: boolean;
+    } = $props();
 
     let scanning = $state(false);
     let scanResult = $state<OrphanScan | null>(null);
@@ -126,11 +136,11 @@
                 disabled={deleting}
                 data-testid="orphan-delete"
                 class="rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-40 {deleteArmed ? 'bg-red-600 text-white hover:bg-red-500' : 'border border-red-300 dark:border-red-900 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40'}"
-            >{deleting ? "Deleting…" : deleteArmed ? `Really delete ${scanResult.orphans.length} assets permanently?` : `Delete ${scanResult.orphans.length} orphaned ${scanResult.orphans.length === 1 ? "asset" : "assets"}`}</button>
+            >{deleting ? "Deleting…" : deleteArmed ? `Really delete ${scanResult.orphans.length} assets${keptDeleted ? "" : " permanently"}?` : `Delete ${scanResult.orphans.length} orphaned ${scanResult.orphans.length === 1 ? "asset" : "assets"}`}</button>
         {/if}
     {/if}
     {#if deletedCount !== null}
-        <p class="text-sm text-neutral-600 dark:text-neutral-300" data-testid="orphan-deleted">Deleted {deletedCount} {deletedCount === 1 ? "asset" : "assets"}.</p>
+        <p class="text-sm text-neutral-600 dark:text-neutral-300" data-testid="orphan-deleted">Deleted {deletedCount} {deletedCount === 1 ? "asset" : "assets"}.{keptDeleted ? " Any member can restore them from All Documents for the time this graph keeps deleted files." : ""}</p>
     {/if}
     {#if error}<p class="text-sm text-red-600" data-testid="orphan-error">{error}</p>{/if}
 </div>

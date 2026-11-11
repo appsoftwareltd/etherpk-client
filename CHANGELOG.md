@@ -5,6 +5,32 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.22.0 - 2026-11-11
+
+### Client
+
+- **Version history on synced graphs.** A synced graph keeps earlier versions of each page and journal entry: one
+  when you pause after editing (at most every ten minutes), when you close the document or leave EtherPK, and
+  before a delete, a rename, **Replace all**, removing protection or a restore. Right-click a document's tab and
+  choose **Version history** to see what each version changed, read it in full, and **Restore this version**.
+  Restoring keeps a version of what it replaces, so it can be undone the same way.
+- **Deleted documents and files can be restored.** Deleting a page, a journal entry or a file on a synced graph keeps
+  it for the time the Sync Server keeps versions, 30 days unless it says otherwise. **All Documents** has a
+  **Deleted documents and files** section to restore one or remove it for good. A restored PDF keeps its
+  annotations. Undoing the delete of a picture brings the file back too. The delete confirmations say how long
+  it is kept, and **Graph Settings** > **Maintenance** shows how much the history holds. The graph's owner can
+  remove all of it there.
+- The Graphs page quotes the managed service's lowest Sync+ price by the month ("from US$4.00 a
+  month, billed yearly"), and the account card names the tier of Sync+ the account is on.
+- The home page no longer has the line "Personal Knowledge Management System (PKMS)" under the
+  EtherPK name.
+
+### Headless Client
+
+- **Document versions for agents.** On a synced graph, an agent's first edit to a document in a session keeps a
+  version of it first. The new tools `list_versions` and `read_version` show a document's earlier versions. An agent
+  cannot restore one: a person does that in EtherPK.
+
 ## 0.21.0 - 2026-11-11
 
 ### Client

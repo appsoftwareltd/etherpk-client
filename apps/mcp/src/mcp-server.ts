@@ -31,6 +31,8 @@ import {
     planRename,
     readAsset,
     readDocument,
+    readVersion,
+    listVersions,
     readDocuments,
     readTask,
     rename,
@@ -159,6 +161,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
                 'Publishing: list_publications shows the publications this graph defines (a publication is a page whose frontmatter defines it - its outline is the site navigation) and the public documents none takes. A document is on a site when its frontmatter has public: true and names the publication in publications. create_publication and update_publication change the settings, and publish writes the site into the publish folder the user set for it on this machine with the etherpk-mcp publish command (the tool cannot choose a folder) and returns the report. publish with dryRun: true renders and reports without writing and needs no folder: run it after editing a publication\'s pages and fix what it names. Diagrams need a browser the user installs once with "diagrams setup".',
                 "Themes: a publication's look is a theme - Mustache templates, a stylesheet, a script and a manifest. list_themes shows the bundled ones (read-only) and the graph's own. read_theme writes a theme's files to a folder on this machine to read and edit. customise_publication_theme copies a publication's bundled theme into the graph and points the publication at the copy (create_theme copies any theme). write_theme_file, delete_theme_file and import_theme_folder change a graph theme. preview_theme renders a theme to a folder (with screenshots when a browser is set up) to check before publish. For a snippet such as an analytics script, an include slot (update_publication includes, e.g. head) filled by a page may be lighter than a theme copy.",
                 'Images and files are assets: upload_asset adds a file from this machine and returns the markdown to paste into a document. To put an image in a drawing, add a line to its excalidraw.drawing fence with the reference, width and height upload_asset returns: {"type":"image","customData":{"asset":"<reference>"},"x":0,"y":0,"width":<width>,"height":<height>}. A shape added after it draws above it. Add lines only, and never edit or reorder the lines there. read_asset writes an asset to a local file you can open, and list_assets shows the assets documents reference. An asset is available only where a document you can read references it (or you uploaded it this session). read_asset, read_theme and preview_theme write under the graph\'s downloads directory and return the path - name a folder relative to it, never elsewhere.',
+                'On a synced graph, your first edit to a document in a session keeps a version of it first. list_versions and read_version show a document\'s earlier versions. You cannot restore one: a person restores a version, or a deleted document or file, in EtherPK.',
                 'The user documentation is at https://docs.etherpk.com.',
             ].join('\n'),
         },
@@ -188,6 +191,26 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
             inputSchema: { concept },
         },
         async (args) => run((graph) => readDocument(graph, args.concept)),
+    )
+
+    server.registerTool(
+        'list_versions',
+        {
+            title: 'List a document\'s versions',
+            description: 'A synced document\'s earlier versions, newest first, each with when it was made and what made it ("Edited", "Before a rename", "Before an agent\'s edit"), and how many days the graph keeps them. Your first edit to a document in a session is preceded by a version of it. You cannot restore a version: tell the person, who restores it from the document\'s Version history in EtherPK.',
+            inputSchema: { concept },
+        },
+        async (args) => run((graph) => listVersions(graph, args.concept)),
+    )
+
+    server.registerTool(
+        'read_version',
+        {
+            title: 'Read a document version',
+            description: 'The whole text a synced document held at one earlier version (list_versions names them), frontmatter included, and the name it had then. Read-only: a person restores a version in EtherPK.',
+            inputSchema: { concept, version: z.string().uuid().describe('A version id from list_versions.') },
+        },
+        async (args) => run((graph) => readVersion(graph, args.concept, args.version)),
     )
 
     server.registerTool(

@@ -42,6 +42,9 @@ import type { AssetStore } from '#lib/storage/fs/asset-store.js'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createGraphSync, type SyncAccessLoss, type TransportSocket } from '#lib/sync/graph-sync.js'
+import { openGraphVersions, type GraphVersions } from '#lib/sync/version-history/graph-versions.js'
+import { memoryVersionOutbox } from '#lib/sync/version-history/version-outbox.js'
+import { headlessVersions, type HeadlessVersions } from './headless-versions'
 import { openGraphCache } from '#lib/sync/local-cache.js'
 import { PRESENCE_PALETTE } from '#lib/sync/presence-identity.js'
 import type { SyncTokenSource } from '#lib/sync/sync-token.js'
@@ -197,6 +200,11 @@ export interface HeadlessGraph {
     readonly index: RemoteGraphIndex
     /** The graph's assets behind the tools' seam; absent when the backend has no asset storage configured. */
     readonly assets?: HeadlessAssets
+    /**
+     * The synced graph's [[Version History]] (ADR 0184); absent on a folder, which keeps none, and
+     * on a synced graph opened without the Sync Server's HTTP API.
+     */
+    readonly versions?: HeadlessVersions
     /** Where the documents live, for `graph_info`: a synced graph on a server, or a folder. */
     readonly backend: HeadlessBackend
     /** What a publish reads: every document's materialised text, and the graph's own themes. */
@@ -261,6 +269,7 @@ export interface HeadlessGraphParts {
     store: HeadlessDocuments
     index: RemoteGraphIndex
     assets?: HeadlessAssets
+    versions?: HeadlessVersions
     backend: HeadlessBackend
     publishing: HeadlessPublishing
     themes: HeadlessThemes
@@ -350,6 +359,7 @@ export function assembleHeadlessGraph(parts: HeadlessGraphParts): HeadlessGraph 
         store: parts.store,
         index,
         assets: parts.assets,
+        versions: parts.versions,
         backend: parts.backend,
         publishing: parts.publishing,
         themes: parts.themes,
@@ -404,7 +414,12 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
     })
     // Before anything waits on the relay, so the first connection and any drop during the open are heard.
     const connection = followConnection(sync, { onChange: deps.onConnectionChange })
-    const store = createServerDocumentStore(sync, { readyTimeoutMs: deps.readyTimeoutMs })
+    // Versions before a delete, a rename or a merge (ADR 0184), once the Sync Server's HTTP API is known.
+    let graphVersions: GraphVersions | undefined
+    const store = createServerDocumentStore(sync, {
+        readyTimeoutMs: deps.readyTimeoutMs,
+        recordVersion: (docId, reason, snapshot) => void graphVersions?.recorder.record(docId, reason, { snapshot }).catch((error: unknown) => deps.onError?.(error instanceof Error ? error : new Error(String(error)))),
+    })
     try {
         await store.scan()
         const index = createRemoteGraphIndex(store, inlineTransport(indexHost ?? memoryDbHost()), { graphId: deps.graphId })
@@ -489,9 +504,27 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
             }
         }
 
+        // The Sync Server's HTTP API carries Version History; a test that hands in its own asset
+        // store has none.
+        if (deps.assets && !('store' in deps.assets)) {
+            graphVersions = openGraphVersions({
+                graphId: deps.graphId,
+                graph: sync,
+                keyring: deps.keyring,
+                baseUrl: deps.assets.baseUrl,
+                syncToken: deps.token,
+                outbox: memoryVersionOutbox(),
+                store,
+                fetch: deps.assets.fetch,
+                onRefused: (error) => deps.onError?.(new Error(`The Sync Server refused a document version: ${error.message}`)),
+            })
+        }
+        const versions = graphVersions ? headlessVersions(graphVersions, (concept) => store.documentIdOf(concept)) : undefined
+
         return assembleHeadlessGraph({
             graphId: deps.graphId,
             name: sync.getMeta().name ?? deps.graphId,
+            versions,
             accessLoss: () => sync.accessLoss(),
             connection: () => connection.current(),
             store: documents,
@@ -525,6 +558,8 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
             persistBackend: deps.persistDir ? () => persistLocalCache(deps.persistDir!, cacheName) : undefined,
             onChange: (schedule) => sync.onDocUpdate(schedule),
             async settle(schedulePersist) {
+                // Versions made before a delete or a rename go with the edit they preceded.
+                await versions?.flush()
                 await sync.flushAll()
                 const result = await sync.awaitAcked({ stallMs: 10_000 })
                 schedulePersist()
@@ -547,6 +582,7 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
                 }
             },
             async disposeBackend() {
+                graphVersions?.dispose()
                 follower.dispose()
                 await store.dispose()
                 cache.dispose()

@@ -41,6 +41,8 @@
     } from "#lib/storage/fs/graph-settings.js";
     import type { GraphAssetTools } from "#lib/storage/fs/asset-orphans.js";
     import OrphanAssetsSection from "#lib/storage/ui/OrphanAssetsSection.svelte";
+    import VersionHistorySettings from "./VersionHistorySettings.svelte";
+    import type { VersionHistory } from "#lib/sync/version-history/version-history.js";
     import FormattingSection from "#lib/document/formatting/ui/FormattingSection.svelte";
     import DuplicateNamesSection from "./DuplicateNamesSection.svelte";
     import type { DuplicateNamesSession } from "./duplicate-names-session.svelte";
@@ -70,6 +72,9 @@
         settings,
         assetTools = null,
         storageInfo = null,
+        versionHistory = null,
+        graphOwner = false,
+        onstoragechanged,
         indexPersisted = null,
         indexPersistenceBlocked = undefined,
         indexProgress = null,
@@ -100,7 +105,13 @@
         /** Orphaned-asset scan/cleanup; null hides the section (dialog opened outside an open graph). */
         assetTools?: GraphAssetTools | null;
         /** Storage Footprint figures (synced graphs, ADR 0033); null hides the line. */
-        storageInfo?: { docBytes: number; assetBytes: number } | null;
+        storageInfo?: { docBytes: number; assetBytes: number; versionBytes?: number; deletedAssetBytes?: number } | null;
+        /** The open synced graph's Version History (ADR 0184); null where there is none. */
+        versionHistory?: VersionHistory | null;
+        /** Whether this account owns the graph: only the Owner removes all of its history. */
+        graphOwner?: boolean;
+        /** What the graph keeps changed (history removed): read the storage figures again. */
+        onstoragechanged?: () => void;
         /**
          * Whether this browser can keep the [[Derived Index]] between visits (ADR 0041 §4).
          * Null hides the line; false is where the once-per-device notice sends anyone who
@@ -186,7 +197,7 @@
 
     /** The Storage tools exist only inside an open graph; the /graphs picker opens this dialog too. */
     const showStorage = $derived(
-        assetTools !== null || storageInfo !== null || indexPersisted !== null,
+        assetTools !== null || storageInfo !== null || indexPersisted !== null || versionHistory !== null,
     );
     const showTools = $derived(showStorage || formatting !== null || duplicateNames !== null);
 
@@ -1269,6 +1280,16 @@
                 shrinks when history is compacted.
             </p>
         {/if}
+        {#if versionHistory}
+            <VersionHistorySettings
+                history={versionHistory}
+                keptBytes={storageInfo && storageInfo.versionBytes !== undefined
+                    ? storageInfo.versionBytes + (storageInfo.deletedAssetBytes ?? 0)
+                    : null}
+                owner={graphOwner}
+                onremoved={onstoragechanged}
+            />
+        {/if}
         {#if indexPersisted !== null}
             <p
                 class="text-sm text-neutral-500 dark:text-neutral-400"
@@ -1324,7 +1345,7 @@
             </div>
         {/if}
         {#if assetTools}
-            <OrphanAssetsSection {assetTools} />
+            <OrphanAssetsSection {assetTools} keptDeleted={versionHistory !== null} />
         {/if}
     </div>
 {/snippet}

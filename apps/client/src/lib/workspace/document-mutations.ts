@@ -11,6 +11,7 @@
  * as a [[Kanban Board]] (ADR 0113) or a [[Map View]] (ADR 0118). State an extension keeps under a
  * concept's name follows through the `concept:renamed` Event, reported before the Views move.
  */
+import { deleteOutcomeSentence } from '#lib/sync/version-history/kept-copy.js'
 import type { RenameLinkStrategy, RenameOptions, RenamePlan, RenameResult } from '#lib/storage/rename.js'
 import { renameSteps } from '#lib/storage/rename.js'
 import { type DbBacklinkGroup, referencedInBody } from '#lib/document/index-db.js'
@@ -195,13 +196,16 @@ export interface DocumentMutationDependencies {
     conceptRenamed?(from: string, to: string): void
 }
 
-/** The exact confirmation copy for a destructive document removal. */
-export function deleteDocumentMessage(concept: string, references: number | null): string {
+/**
+ * The exact confirmation copy for a document removal. `keptDays` is how long a synced graph keeps
+ * a [[Deleted Document]] (ADR 0184): absent on a Filesystem graph, `unknown` while it is being read.
+ */
+export function deleteDocumentMessage(concept: string, references: number | null, keptDays?: number | 'unknown'): string {
     const links =
         references === null || references === 0
             ? 'Nothing links to it.'
             : `${references} ${references === 1 ? 'document links' : 'documents link'} to it - those links will show as not-yet-created.`
-    return `"${concept}" will be removed. ${links} This cannot be undone.`
+    return `"${concept}" will be removed. ${links} ${deleteOutcomeSentence(keptDays)}`
 }
 
 /**
