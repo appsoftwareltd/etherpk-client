@@ -5,6 +5,10 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.25.0 - 2026-11-12
+
+No changes to the Client or the Headless Client.
+
 ## 0.24.0 - 2026-11-12
 
 - **The home page is shorter.** The line under the headline reads "Fast, Private, Secure Knowledge

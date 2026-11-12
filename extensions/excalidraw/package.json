@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-extension-excalidraw",
-    "version": "0.24.0",
+    "version": "0.25.0",
     "license": "Elastic-2.0",
     "description": "Excalidraw drawings in EtherPK documents, kept as data in the document: edited in place, in a tab or filling the window, shown as a picture on phones and published sites.",
     "private": true,
