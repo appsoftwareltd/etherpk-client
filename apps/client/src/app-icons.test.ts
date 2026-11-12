@@ -67,20 +67,36 @@ function cornersAndCentre({ width, height, alphaAt }: Pixels) {
 
 describe('app icons', () => {
     // A desktop launcher (GNOME, Windows, macOS) shows a `purpose: any` icon as drawn, with no
-    // mask, so a full-bleed square shows as a square with sharp corners. These icons carry their
-    // own rounded tile on a transparent canvas instead.
+    // mask, so a full-bleed square shows as a square with sharp corners. These icons are the same
+    // full-bleed white tile with only its corners rounded off: they fill the canvas, so they sit at
+    // the same size as other apps' icons, and Android can still cut one to a circle without any
+    // edge or transparent margin showing inside it.
     const launcherIcons = manifest.icons.filter((icon) => (icon.purpose ?? 'any').split(' ').includes('any'))
 
     it('declares a 192px and a 512px launcher icon', () => {
         expect(launcherIcons.map((icon) => icon.sizes).sort()).toEqual(['192x192', '512x512'])
     })
 
-    it.each(launcherIcons.map((icon) => [icon.src, icon] as const))('%s is a rounded tile: clear corners, opaque middle', (_src, icon) => {
+    it.each(launcherIcons.map((icon) => [icon.src, icon] as const))('%s has clear corners and is opaque everywhere else', (_src, icon) => {
         const pixels = decodePng(fromStatic(icon.src.replace(/^\//, '')))
-        expect(`${pixels.width}x${pixels.height}`).toBe(icon.sizes)
+        const { width, height, alphaAt } = pixels
+        expect(`${width}x${height}`).toBe(icon.sizes)
         const { corners, centre } = cornersAndCentre(pixels)
         expect(corners).toEqual([0, 0, 0, 0])
         expect(centre).toBe(255)
+        // The tile reaches every edge: no margin, so the icon is not drawn smaller than its neighbours.
+        const midEdges = [alphaAt(width >> 1, 0), alphaAt(width >> 1, height - 1), alphaAt(0, height >> 1), alphaAt(width - 1, height >> 1)]
+        expect(midEdges).toEqual([255, 255, 255, 255])
+        // Every pixel of the inscribed circle is opaque, so a circular crop shows no edge at all.
+        const radius = width / 2
+        let transparentInCircle = 0
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const inside = Math.hypot(x + 0.5 - radius, y + 0.5 - radius) < radius - 1
+                if (inside && alphaAt(x, y) !== 255) transparentInCircle++
+            }
+        }
+        expect(transparentInCircle).toBe(0)
     })
 
     // Android cuts a maskable icon to its own shape, and iOS rounds the apple-touch-icon itself and

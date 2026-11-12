@@ -22,7 +22,7 @@ import { openGraphCache } from './local-cache'
 export interface ShareNames {
     /** Every page, journal day and alias the graph's registry names, for wikilink completion. */
     concepts: ConceptCandidate[]
-    /** The concepts to offer under "File under", in the person's Favourites order. */
+    /** The concepts to offer under "Link to Favourite", in the person's Favourites order. */
     fileUnder: string[]
     /** The graph's default display size for a picture, as a document's upload would write it. */
     imageSize?: string

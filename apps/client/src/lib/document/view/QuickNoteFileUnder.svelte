@@ -24,7 +24,7 @@
 
 {#if choices.length > 0}
     <div data-testid={testid}>
-        <p id={labelId} class="mb-1.5 text-sm font-medium text-(--gk-text-muted)">File under</p>
+        <p id={labelId} class="mb-1.5 text-sm font-medium text-(--gk-text-muted)">Link to Favourite</p>
         <div role="group" aria-labelledby={labelId} class="-mx-1 flex gap-2 overflow-x-auto px-1 py-1">
             {#each choices as choice (choice)}
                 <button

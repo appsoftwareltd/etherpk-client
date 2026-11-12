@@ -12,15 +12,19 @@ starts at 0.9.3.
 - **Quick notes take links, files and a place to go.** The box in Quick notes has a `[[ ]]` button
   that wraps the selected text in a wikilink or inserts an empty one, and typing inside `[[`
   lists your pages. A paperclip button attaches a photo, a PDF or any other file, and you can
-  paste or drop one. **File under** lists your favourite pages: pick one and the note moves to the
+  paste or drop one. **Link to Favourite** lists your favourite pages: pick one and the note moves to the
   journal nested under that page's link. Deleting a quick note deletes its file when nothing else
   uses it.
 - **Share a photo or a file to EtherPK.** The installed app on Android and ChromeOS takes files
   from the share sheet as well as text and links. The share page shows the picture or the file
-  name, and has the same link button and **File under** row. On a synced graph that is unlocked
+  name, and has the same link button and **Link to Favourite** row. On a synced graph that is unlocked
   on the device the file is saved on the device at once and uploaded after. If you leave before
   the upload ends, it is sent the next time EtherPK starts on that device. An app installed
   before this release takes files once the browser has refreshed it.
+- **Fixes.**
+  - The installed app's icon is full size again in desktop launchers, with slightly rounded
+    corners and no shadow, and shows no square edge when Android crops it to a circle. An app
+    installed before this keeps its old icon until it is installed again.
 
 ## 0.25.0 - 2026-11-12
 

@@ -329,7 +329,7 @@
     </ul>
 
     {#if !readonly}
-        <div class="flex items-center gap-1.5 border-t border-(--gk-border-soft) px-1.5 py-1">
+        <div class="flex flex-wrap items-center gap-1.5 border-t border-(--gk-border-soft) px-1.5 py-1.5">
             <button
                 type="button"
                 onclick={link}
@@ -337,9 +337,10 @@
                 data-testid="{testid}-link"
                 aria-label="Link to a page"
                 title="Link to a page"
-                class="rounded-md px-2 py-1 font-mono text-sm font-semibold text-(--gk-text-default) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                class="inline-flex items-center gap-1.5 rounded-md border border-(--gk-border-strong) bg-(--gk-surface-1) px-2.5 py-1 text-sm font-medium text-(--gk-text-default) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-h-11"
             >
-                [[ ]]
+                <span class="font-mono font-semibold" aria-hidden="true">[[ ]]</span>
+                Link
             </button>
             {#if onaddfiles}
                 <button
@@ -348,11 +349,12 @@
                     data-testid="{testid}-attach"
                     aria-label="Attach a file"
                     title="Attach a file"
-                    class="rounded-md px-2 py-1 text-(--gk-text-default) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                    class="inline-flex items-center gap-1.5 rounded-md border border-(--gk-border-strong) bg-(--gk-surface-1) px-2.5 py-1 text-sm font-medium text-(--gk-text-default) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-h-11"
                 >
-                    <svg class="mx-auto size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <svg class="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
                     </svg>
+                    Attach
                 </button>
                 <input bind:this={picker} type="file" multiple hidden onchange={onPicked} data-testid="{testid}-picker" />
             {/if}
