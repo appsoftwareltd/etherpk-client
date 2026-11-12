@@ -2,9 +2,9 @@
     import { onMount } from "svelte";
 
     /**
-     * The landing page's screenshots of the app: the demo graph in four views, one at a time, in a
-     * carousel that moves on by itself. It opens on the editor, because writing is what a first
-     * visit comes for, and the Graph View comes last. It follows the WAI-ARIA tabbed carousel pattern: a row of
+     * The landing page's screenshots of the app, one at a time, in a carousel that moves on by
+     * itself. It opens on the editor, because writing is what a first visit comes for, and the
+     * Graph View comes last. It follows the WAI-ARIA tabbed carousel pattern: a row of
      * tabs names each screenshot, and a button before them starts and stops the turns (WCAG 2.2.2
      * asks for one on anything that moves for more than five seconds).
      *
@@ -17,20 +17,21 @@
      * Every screenshot has the same pixel size, declared on each image so the page reserves the
      * space before the bytes arrive. They are stacked in one grid cell and fade into one another,
      * so the frame never changes size. Each app serves the files from `static/marketing/`, which
-     * `pnpm marketing:images` fills.
+     * `pnpm marketing:images` fills (resources/marketing/README.md says where each comes from).
      */
 
     type Screenshot = {
         id: string;
-        /** The tab's label. One short word, so the four tabs fit on one row on a phone. */
+        /** The tab's label. Short: on a phone the tabs wrap onto two rows, and longer ones make three. */
         label: string;
         src: string;
         alt: string;
         caption: string;
     };
 
-    // The pixel size every screenshot is shot at (scripts/marketing-screenshot.mjs and
-    // scripts/readme-screenshots.mjs: a 1655x935 window at device scale 1.4).
+    // The pixel size every screenshot is shot at (scripts/marketing-screenshot.mjs,
+    // scripts/readme-screenshots.mjs and scripts/marketing-carousel-screenshots.mjs: a 1655x935
+    // window at device scale 1.4).
     const WIDTH = 2317;
     const HEIGHT = 1309;
 
@@ -59,6 +60,30 @@
             alt: "The EtherPK Client in the dark theme, showing a Kanban board of the tasks about the Monstera page, gathered from journal entries and pages across the demo graph into Open, Doing and Waiting columns grouped by priority. The chosen task is shown in its journal entry below the board.",
             caption:
                 "A Kanban board of the tasks about one page, gathered from across the graph.",
+        },
+        {
+            id: "agents",
+            label: "Agent Integration",
+            src: "/marketing/agent-integration-dark.webp",
+            alt: "Claude Code in a terminal window in front of the EtherPK Client in the dark theme. Behind it, EtherPK's task editor shows a task from a Kanban board in the Test lane, with its three subtasks ticked. In the terminal, Claude Code reports the watering intervals it read from a chart attached to the task, then writes them into the project's data file.",
+            caption:
+                "Hand a task to Claude Code from its card: it reads the task over MCP, does the work and ticks it off.",
+        },
+        {
+            id: "reading",
+            label: "Reading",
+            src: "/marketing/pdf-reader-dark.webp",
+            alt: "The EtherPK Client in the dark theme, showing a PDF from the demo graph in the PDF reader: a houseplant handbook open at its Monstera page, with a red loop drawn round the plant and a note beside it. The Annotations panel on the right lists the highlights, the drawing and the note.",
+            caption:
+                "The PDF reader: highlight, draw and leave notes on a PDF in your graph. EBooks open in a reader of their own.",
+        },
+        {
+            id: "drawing",
+            label: "Drawing",
+            src: "/marketing/drawing-dark.webp",
+            alt: "The EtherPK Client in the dark theme, showing an Excalidraw drawing open in a tab of its own: a hand-drawn windowsill plan with an east window, three plants in ovals, arrows for the morning sun and a shelf below, under Excalidraw's toolbar.",
+            caption:
+                "Excalidraw drawings, kept in the page they belong to and opened in a tab of their own to edit.",
         },
         {
             id: "maps",
@@ -291,11 +316,13 @@
             {/if}
         </button>
 
-        <!-- One tab stop for the row: the chosen tab. The arrow keys, Home and End choose among them. -->
+        <!-- One tab stop for the row: the chosen tab. The arrow keys, Home and End choose among them.
+             On a phone the row wraps, so its corners are those of a pill one row high (20px) rather
+             than rounded-full, which would turn two rows into a lozenge. -->
         <div
             role="tablist"
             aria-label="Screenshots"
-            class="inline-flex items-center gap-0.5 rounded-full bg-neutral-950/5 p-1 ring-1 ring-neutral-950/5 ring-inset dark:bg-white/5 dark:ring-white/10"
+            class="flex min-w-0 flex-wrap items-center justify-center gap-0.5 rounded-[1.25rem] bg-neutral-950/5 p-1 ring-1 ring-neutral-950/5 ring-inset dark:bg-white/5 dark:ring-white/10"
         >
             {#each SCREENSHOTS as shot, index (shot.id)}
                 <button
@@ -306,7 +333,7 @@
                     aria-selected={index === current}
                     tabindex={index === current ? 0 : -1}
                     class={[
-                        "relative h-8 overflow-hidden rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 sm:px-4 dark:focus-visible:outline-white",
+                        "relative h-8 overflow-hidden whitespace-nowrap rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 sm:px-4 dark:focus-visible:outline-white",
                         index === current
                             ? "bg-white text-neutral-950 shadow-sm dark:bg-white/15 dark:text-white"
                             : "text-neutral-600 hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-white",

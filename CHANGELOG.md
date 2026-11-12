@@ -5,6 +5,19 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.24.0 - 2026-11-12
+
+- **The home page is shorter.** The line under the headline reads "Fast, Private, Secure Knowledge
+  Management". The screenshots add Agent Integration (Claude Code working on a task from a Kanban
+  board), Reading (the PDF reader) and Drawing (an Excalidraw drawing), and the list of what EtherPK
+  offers adds the PDF and EBook reader and document versioning. The long feature list and the two
+  panels comparing local and synced use are gone. On a self-hosted Client, the note under the
+  buttons links the team's Sync Server.
+
+## 0.23.0 - 2026-11-11
+
+No changes to the Client or the Headless Client.
+
 ## 0.22.0 - 2026-11-11
 
 ### Client

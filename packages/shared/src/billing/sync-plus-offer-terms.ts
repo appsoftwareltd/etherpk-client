@@ -44,7 +44,7 @@ export function parseSyncPlusOfferTerms(value: unknown): SyncPlusOfferTerms | nu
 }
 
 /**
- * The price as a phrase: "from US$4.00 a month, billed yearly". The same words on the Client's
+ * The price as a phrase: "from $4.00 a month, billed yearly". The same words on the Client's
  * Graphs page and anywhere else the terms are quoted.
  */
 export function syncPlusPricePhrase(terms: Pick<SyncPlusOfferTerms, 'monthlyPriceDisplay' | 'billedYearly' | 'priceIsLowest'>): string {
