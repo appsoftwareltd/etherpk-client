@@ -29,7 +29,6 @@
     import { afterNavigate, goto } from "$app/navigation";
     import { isDemoGraph } from "#lib/demo/demo-graph.js";
     import { NoteFileError, storeNoteFiles } from "#lib/document/quick-note-file-store.js";
-    import { noteTextWithFiles } from "#lib/document/quick-note-files.js";
     import { MAX_QUICK_NOTE_LENGTH } from "#lib/document/quick-notes.js";
     import { landShareDirectly, routeShare, shareFileStore, shareNamesFor, type ShareRoute } from "#lib/document/share-landing.js";
     import {
@@ -37,6 +36,7 @@
         orderShareTargets,
         peekPendingShare,
         shareNoteText,
+        shareNoteTextWithFiles,
         stashPendingShare,
     } from "#lib/document/share-target.js";
     import QuickNoteBox from "#lib/document/view/QuickNoteBox.svelte";
@@ -411,7 +411,7 @@
         const current = () => mine === attempt;
         const store = files.length > 0 ? shareFileStore(route) : null;
         const saved = store ? await storeNoteFiles(files, store) : [];
-        const noteText = shareNoteText(noteTextWithFiles(typed, saved, names.imageSize), task) ?? "";
+        const noteText = shareNoteTextWithFiles(typed, saved, task, names.imageSize);
         const uploads = sendStored(store, files.length);
         cancelSyncWait = new AbortController();
         const note = { id: crypto.randomUUID(), text: noteText, createdAt: arrived.createdAt, ...(filed ? { under: filed } : {}) };

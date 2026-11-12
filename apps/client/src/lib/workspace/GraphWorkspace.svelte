@@ -141,9 +141,8 @@
         setQuickNotes,
     } from "#lib/document/quick-notes.js";
     import { deleteFilesOfDiscardedNotes } from "#lib/document/quick-note-file-cleanup.js";
-    import { type PendingShare, peekPendingShare, shareNoteText, takePendingShare } from "#lib/document/share-target.js";
+    import { type PendingShare, peekPendingShare, shareNoteTextWithFiles, takePendingShare } from "#lib/document/share-target.js";
     import { storeNoteFiles } from "#lib/document/quick-note-file-store.js";
-    import { noteTextWithFiles } from "#lib/document/quick-note-files.js";
     import { forgetSharedFiles, readSharedFiles } from "#lib/share/shared-files.js";
     import { defaultMaxImageDisplaySize } from "#lib/document/view/asset-upload.js";
     import {
@@ -5966,14 +5965,14 @@
     }
 
     /**
-     * Store a share's files in the open graph and write their references after its text. The
-     * checkbox of a task goes in front of the finished text: for files alone that is the first
-     * reference. The copy the files waited as is removed once the graph holds them.
+     * Store a share's files in the open graph and write their references after its text. A
+     * task's checkbox goes on its text, or on its first file's name when it is files alone
+     * (`shareNoteTextWithFiles`). The copy the files waited as is removed once the graph holds them.
      */
     async function shareTextWithStoredFiles(share: PendingShare, filesId: string): Promise<string> {
         const saved = await storeNoteFiles(await readSharedFiles(filesId), assetStore!);
         await forgetSharedFiles(filesId).catch(() => {});
-        return shareNoteText(noteTextWithFiles(share.text, saved, defaultMaxImageDisplaySize()), share.task === true) ?? "";
+        return shareNoteTextWithFiles(share.text, saved, share.task === true, defaultMaxImageDisplaySize());
     }
 
     async function runBuild() {

@@ -25,7 +25,7 @@
 {#if choices.length > 0}
     <div data-testid={testid}>
         <p id={labelId} class="mb-1.5 text-sm font-medium text-(--gk-text-muted)">Link to Favourite</p>
-        <div role="group" aria-labelledby={labelId} class="-mx-1 flex gap-2 overflow-x-auto px-1 py-1">
+        <div role="group" aria-labelledby={labelId} class="favourites-row -mx-1 flex gap-2 overflow-x-auto px-1 pt-1 pb-3">
             {#each choices as choice (choice)}
                 <button
                     type="button"
@@ -47,3 +47,11 @@
         </div>
     </div>
 {/if}
+
+<style>
+    /* A thin thumb on nothing: the default bar draws a track and end arrows under the row. */
+    .favourites-row {
+        scrollbar-width: thin;
+        scrollbar-color: var(--gk-border-strong) transparent;
+    }
+</style>

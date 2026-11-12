@@ -9,6 +9,7 @@ import {
     orderShareTargets,
     peekPendingShare,
     shareNoteText,
+    shareNoteTextWithFiles,
     stashPendingShare,
     takePendingShare,
 } from './share-target'
@@ -271,5 +272,31 @@ describe('shareNoteText: what Add puts in the Quick Note', () => {
 
     it('leaves a checkbox the user typed alone when the box is not ticked', () => {
         expect(shareNoteText('[ ] water the beans', false)).toBe('[ ] water the beans')
+    })
+})
+
+describe('shareNoteTextWithFiles: the note a share with files becomes', () => {
+    const photo = { ref: '../assets/receipt.1a2b3c4d.webp', stem: 'receipt', isImage: true }
+    const report = { ref: '../assets/report.5e6f7a8b.pdf', stem: 'report', isImage: false }
+
+    it('writes each file on a line of its own after the text', () => {
+        expect(shareNoteTextWithFiles('corner shop', [photo, report], false)).toBe(
+            'corner shop\n![receipt](../assets/receipt.1a2b3c4d.webp)\n[report](../assets/report.5e6f7a8b.pdf)',
+        )
+    })
+
+    it('puts the checkbox of a task on the text, with the files below', () => {
+        expect(shareNoteTextWithFiles('corner shop', [photo], true)).toBe('[ ] corner shop\n![receipt](../assets/receipt.1a2b3c4d.webp)')
+    })
+
+    it("names a task of files alone after its first file, so the file's line stays a line of its own", () => {
+        expect(shareNoteTextWithFiles('  ', [photo, report], true, '800')).toBe(
+            '[ ] receipt\n![receipt|800](../assets/receipt.1a2b3c4d.webp)\n[report](../assets/report.5e6f7a8b.pdf)',
+        )
+    })
+
+    it('is the files alone when nothing was written and it is no task, and nothing with neither', () => {
+        expect(shareNoteTextWithFiles('', [photo], false)).toBe('![receipt](../assets/receipt.1a2b3c4d.webp)')
+        expect(shareNoteTextWithFiles(' ', [], true)).toBe('')
     })
 })

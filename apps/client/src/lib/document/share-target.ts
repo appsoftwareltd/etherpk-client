@@ -22,6 +22,7 @@
 import type { GraphRecord } from '#lib/storage/graph-registry.js'
 
 import { MARKDOWN_LINK, linkGroups } from './markdown-link-target'
+import { type NoteFile, noteTextWithFiles } from './quick-note-files'
 import { MAX_QUICK_NOTE_LENGTH, sanitizeUnder } from './quick-notes'
 import { isOpenableUrl } from './view/augmentations/markdown-link-core'
 
@@ -147,6 +148,17 @@ export function shareNoteText(text: string, asTask: boolean): string | null {
     return asTask && !LEADING_CHECKBOX.test(trimmed) ? `[ ] ${trimmed}` : trimmed
 }
 
+/**
+ * The [[Quick Note]] a share with files becomes (ADR 0186): the text Add would write, then each
+ * stored file's reference on a line of its own. A task of files alone has no text for its
+ * checkbox, and a checkbox in front of a reference would make that line no longer a file's line,
+ * so the task is named after its first file and the references follow it.
+ */
+export function shareNoteTextWithFiles(text: string, files: readonly NoteFile[], asTask: boolean, imageSize?: string): string {
+    const written = text.trim() === '' && asTask && files.length > 0 ? files[0].stem : text
+    return noteTextWithFiles(shareNoteText(written, asTask) ?? '', files, imageSize)
+}
+
 export interface ShareTargetOrder {
     /** The device-local last-opened pointer (last-graph.ts), or null. */
     lastGraphId: string | null
@@ -185,9 +197,9 @@ export interface PendingShare {
      */
     filesId?: string
     /**
-     * With `filesId`: the note is to be a task. The checkbox goes in front of the finished text,
-     * and for a share of files alone that is the first file's reference, which is not known until
-     * the file is stored. A share without files carries its checkbox in `text` already.
+     * With `filesId`: the note is to be a task. The checkbox goes on the text, or for a share
+     * of files alone on the first file's name ({@link shareNoteTextWithFiles}), once the files are
+     * stored. A share without files carries its checkbox in `text` already.
      */
     task?: boolean
 }

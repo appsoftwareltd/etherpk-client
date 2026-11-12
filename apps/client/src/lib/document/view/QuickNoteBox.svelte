@@ -340,7 +340,6 @@
                 class="inline-flex items-center gap-1.5 rounded-md border border-(--gk-border-strong) bg-(--gk-surface-1) px-2.5 py-1 text-sm font-medium text-(--gk-text-default) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-h-11"
             >
                 <span class="font-mono font-semibold" aria-hidden="true">[[ ]]</span>
-                Link
             </button>
             {#if onaddfiles}
                 <button
