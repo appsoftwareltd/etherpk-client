@@ -182,7 +182,7 @@
             case "saved":
                 return "Saved on this device. Syncing…";
             case "synced":
-                return "Synced to every device.";
+                return "Synced. Your other devices get it when they next connect.";
             case "unsynced":
                 // A refusal is the Sync Server's own words about a file (too large, no storage left).
                 return landing.refusal

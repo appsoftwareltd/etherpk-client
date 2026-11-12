@@ -1298,7 +1298,7 @@
                 {indexPersisted
                     ? "Search index: kept between visits, so this graph reopens quickly."
                     : indexPersistenceBlocked === "held"
-                      ? "Search index: temporarily kept in memory because another window or tab holds its stored index. It will reconnect automatically."
+                      ? "Search index: temporarily kept in memory because another window or browser tab holds its stored index. It will reconnect automatically."
                       : "Search index: rebuilt each visit because this browser can't store it, so large graphs take longer to open."}
             </p>
         {/if}

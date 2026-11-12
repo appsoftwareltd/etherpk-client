@@ -1003,7 +1003,6 @@
                       target: view.target,
                       today: todayISO(),
                       draft: draft !== undefined,
-                      coarsePointer: matchMedia('(pointer: coarse)').matches,
                   })
                 : null,
         )

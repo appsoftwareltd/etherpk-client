@@ -301,7 +301,7 @@
             bind:value={text}
             testid="quick-notes-input"
             label="New quick note"
-            placeholder="Jot something down…"
+            placeholder="Create a quick note…"
             describedBy="quick-notes-hint"
             maxlength={MAX_QUICK_NOTE_LENGTH}
             concepts={() => getActiveGraphIndex()?.allConcepts() ?? []}

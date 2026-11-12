@@ -39,4 +39,4 @@ export const INDEX_NOT_PERSISTED_MESSAGE =
  * thing they can do.
  */
 export const INDEX_POOL_HELD_MESSAGE =
-    "Another window or tab is holding this graph's stored search index, so this one is using a temporary copy. Close other EtherPK windows for this graph and it will reconnect to the stored index by itself. Your notes are unaffected."
+    "Another window or browser tab is holding this graph's stored search index, so this one is using a temporary copy. Close other EtherPK windows for this graph and it will reconnect to the stored index by itself. Your notes are unaffected."

@@ -14,17 +14,13 @@ export interface PlaceholderContext {
     today: string
     /** Whether the document is a [[Draft]]: a concept with no page yet. */
     draft: boolean
-    /** A touch screen, whose keyboard rises only once the editor is tapped. */
-    coarsePointer: boolean
 }
 
-export function placeholderText({ target, today, draft, coarsePointer }: PlaceholderContext): string | null {
-    // A touch screen's keyboard is down until the editor is tapped, so "Type" would ask for a key
-    // nobody can see.
-    const verb = coarsePointer ? 'Tap' : 'Type'
+export function placeholderText({ target, today, draft }: PlaceholderContext): string | null {
+    // The same words on a touch screen as with a keyboard: one hint to learn, on every device.
     if (isJournalConcept(target)) {
-        return `${verb} to create ${target === today ? "today's entry" : "this day's entry"}`
+        return `Type to create ${target === today ? "today's entry" : "this day's entry"}`
     }
-    if (draft) return `${verb} to create ${target}`
+    if (draft) return `Type to create ${target}`
     return null
 }

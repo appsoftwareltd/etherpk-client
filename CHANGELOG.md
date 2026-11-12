@@ -26,6 +26,9 @@ starts at 0.9.3.
     corners and no shadow, and shows no square edge when Android crops it to a circle. An app
     installed before this keeps its old icon until it is installed again.
   - An installed app takes a changed icon or share target with the update that changes it.
+  - A file in a quick note that has not arrived from another device yet shows when it does, with
+    no reload.
+  - An empty journal day or new page says "Type to create…" on a phone as on a desktop.
 
 ## 0.25.0 - 2026-11-12
 
