@@ -14,7 +14,8 @@ starts at 0.9.3.
   lists your pages. A paperclip button attaches a photo, a PDF or any other file, and you can
   paste or drop one. **Link to Favourite** lists your favourite pages: pick one and the note moves to the
   journal nested under that page's link. Deleting a quick note deletes its file when nothing else
-  uses it.
+  uses it. **Add as task** puts a checkbox on the note, and once the notes have moved
+  **Open today's journal** takes you to the entry and back to the graph's sidebar tab.
 - **Share a photo or a file to EtherPK.** The installed app on Android and ChromeOS takes files
   from the share sheet as well as text and links. The share page shows the picture or the file
   name, and has the same link button and **Link to Favourite** row. On a synced graph that is unlocked

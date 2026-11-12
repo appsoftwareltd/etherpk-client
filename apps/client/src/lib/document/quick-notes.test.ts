@@ -19,6 +19,8 @@ import {
     subscribeQuickNoteDraft,
     subscribeQuickNotes,
     unionQuickNotes,
+    markQuickNotesMoved,
+    quickNotesWereMoved,
 } from './quick-notes'
 
 const note = (id: string, createdAt: number, text = id): QuickNote => ({ id, text, createdAt })
@@ -171,6 +173,27 @@ describe('quick notes', () => {
         resetQuickNotes()
         expect(getQuickNoteDraft()).toBe('')
         expect(getQuickNotes()).toEqual([])
+    })
+})
+
+describe('notes that went to the journal', () => {
+    it('says so once the move took them, until a note is added', async () => {
+        expect(quickNotesWereMoved()).toBe(false)
+        const note = await addQuickNote('milk')
+        await removeQuickNotes([note!.id])
+        // Deleted, not moved: the list is empty for another reason.
+        expect(quickNotesWereMoved()).toBe(false)
+
+        markQuickNotesMoved()
+        expect(quickNotesWereMoved()).toBe(true)
+        await addQuickNote('eggs')
+        expect(quickNotesWereMoved()).toBe(false)
+    })
+
+    it('forgets it when the graph closes', () => {
+        markQuickNotesMoved()
+        resetQuickNotes()
+        expect(quickNotesWereMoved()).toBe(false)
     })
 })
 

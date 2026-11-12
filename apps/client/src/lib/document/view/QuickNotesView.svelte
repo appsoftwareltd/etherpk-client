@@ -24,22 +24,24 @@
 
     import { tryGetActiveAssetStore } from "../active-asset-store";
     import { getActiveGraphIndex } from "../backlinks";
-    import { QUICK_NOTES_MOVE } from "../commands/quick-notes-commands";
+    import { QUICK_NOTES_MOVE, QUICK_NOTES_OPEN_JOURNAL } from "../commands/quick-notes-commands";
     import { subscribeFavourites } from "../favourites";
     import { NoteFileError, storeNoteFiles } from "../quick-note-file-store";
-    import { noteTextWithFiles, quickNoteParts } from "../quick-note-files";
+    import { quickNoteParts } from "../quick-note-files";
     import { fileUnderChoices } from "../quick-note-filing";
     import {
         MAX_QUICK_NOTE_LENGTH,
         addQuickNote,
         discardQuickNotes,
         getQuickNoteDraft,
+        quickNotesWereMoved,
         type QuickNote,
         setQuickNoteDraft,
         subscribeQuickNoteDraft,
         subscribeQuickNotes,
         takeQuickNoteFocusRequest,
     } from "../quick-notes";
+    import { shareNoteTextWithFiles } from "../share-target";
     import { defaultMaxImageDisplaySize } from "./asset-upload";
     import QuickNoteAsset from "./QuickNoteAsset.svelte";
     import QuickNoteBox from "./QuickNoteBox.svelte";
@@ -58,6 +60,10 @@
     let fileUnder = $state.raw<string[]>([]);
     /** The one chosen for the note in the box, or none. */
     let under = $state<string | null>(null);
+    /** Whether the note in the box is added as a [[Task]]. Unchecked again after each add. */
+    let asTask = $state(false);
+    /** The notes went to the journal, so the empty list offers the way to them (`quickNotesWereMoved`). */
+    let moved = $state(quickNotesWereMoved());
     /** Notes whose files are still being stored: the count shows under the box. */
     let storing = $state(0);
     /** Why the last add did not happen, shown under the box until the next one. */
@@ -83,6 +89,7 @@
      * without one. Read once at mount, like the graph sidebar's settings command.
      */
     const hasMoveCommand = tryGetActiveCommandRegistry()?.has(QUICK_NOTES_MOVE) ?? false;
+    const hasOpenJournalCommand = tryGetActiveCommandRegistry()?.has(QUICK_NOTES_OPEN_JOURNAL) ?? false;
 
     // The local time the note was written, in the reader's locale. The day is what tells
     // them which `[[date]]` block it will land under, so it is always shown; the year only
@@ -116,6 +123,7 @@
         setQuickNoteDraft("");
         pending.clear();
         under = null;
+        asTask = false;
         addError = "";
         box?.focus();
     }
@@ -138,12 +146,16 @@
         const submitted = text;
         const files = pending.take();
         const filed = under;
+        const task = asTask;
         text = "";
         under = null;
+        asTask = false;
+        moved = false;
         addError = "";
         setQuickNoteDraft("");
         try {
-            const noteText = files.length === 0 ? submitted : await withFiles(submitted, files);
+            // A task's checkbox is the note's own text, as on the share page (`shareNoteText`).
+            const noteText = files.length === 0 ? shareNoteTextWithFiles(submitted, [], task) : await withFiles(submitted, files, task);
             const added = await addQuickNote(noteText, { under: filed });
             announcement = added ? "Note added" : "";
         } catch (err) {
@@ -154,6 +166,7 @@
                 setQuickNoteDraft(submitted);
                 pending.add(files);
                 under = filed;
+                asTask = task;
             }
             const stored = err instanceof NoteFileError ? err.stored.map((asset) => asset.name) : [];
             addError =
@@ -169,13 +182,13 @@
      * Store the files and write their references after the text. The box is already clear, so a
      * line under it says files are being stored: a photo takes a moment to re-encode.
      */
-    async function withFiles(submitted: string, files: File[]): Promise<string> {
+    async function withFiles(submitted: string, files: File[], task: boolean): Promise<string> {
         const store = tryGetActiveAssetStore();
         if (!store) throw new Error("this graph cannot store files.");
         storing += 1;
         try {
             const saved = await storeNoteFiles(files, store);
-            return noteTextWithFiles(submitted, saved, defaultMaxImageDisplaySize());
+            return shareNoteTextWithFiles(submitted, saved, task, defaultMaxImageDisplaySize());
         } finally {
             storing -= 1;
         }
@@ -209,9 +222,16 @@
         try {
             // The Command reports its own outcome (a notice either way) and opens the entry.
             await tryGetActiveCommandRegistry()?.execute(QUICK_NOTES_MOVE);
+            // A refused move leaves the notes here and says why in a notice.
+            moved = quickNotesWereMoved();
         } finally {
             moving = false;
         }
+    }
+
+    /** Out of Quick notes: today's entry, with the graph's tab in front of this one. */
+    function openJournal() {
+        void tryGetActiveCommandRegistry()?.execute(QUICK_NOTES_OPEN_JOURNAL);
     }
 
     /** How long a reveal is given to paint the tab before the caret stops trying to land. */
@@ -233,7 +253,12 @@
 
     const unsubscribers: (() => void)[] = [];
     onMount(() => {
-        unsubscribers.push(subscribeQuickNotes((next) => (notes = next)));
+        unsubscribers.push(
+            subscribeQuickNotes((next) => {
+                notes = next;
+                moved = quickNotesWereMoved();
+            }),
+        );
         unsubscribers.push(subscribeFavourites((favourites) => (fileUnder = fileUnderChoices(favourites))));
         // Text put in the box from outside: a shared text whose write was refused (ADR 0087).
         // The module has already merged it after whatever the box held; this is the whole draft.
@@ -329,11 +354,15 @@
                 type="button"
                 data-testid="quick-notes-clear"
                 onclick={clear}
-                disabled={text === "" && pending.count === 0 && under === null}
+                disabled={text === "" && pending.count === 0 && under === null && !asTask}
                 class="rounded-md px-2 py-1 text-sm text-(--gk-text-muted) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent pointer-coarse:min-h-11"
             >
                 Clear
             </button>
+            <label class="ml-auto flex cursor-pointer items-center gap-2 [-webkit-tap-highlight-color:transparent] pointer-coarse:min-h-11">
+                <input type="checkbox" bind:checked={asTask} data-testid="quick-notes-task" class="size-4 shrink-0 accent-(--gk-accent)" />
+                <span class="text-sm text-(--gk-text-default)">Add as task</span>
+            </label>
             <button
                 type="button"
                 data-testid="quick-notes-add"
@@ -354,9 +383,24 @@
 
     <!-- ── The notes, newest first ────────────────────────────────────────────── -->
     {#if count === 0}
-        <p class="px-2 py-4 text-center text-sm text-(--gk-text-muted)" data-testid="quick-notes-empty">
-            No quick notes yet. Anything you add here waits until you move it to today's journal.
-        </p>
+        {#if moved && hasOpenJournalCommand}
+            <!-- The notes are in today's entry: one press leaves this tab for it. -->
+            <div class="flex flex-col items-center gap-2 px-2 py-4" data-testid="quick-notes-moved">
+                <p class="text-center text-sm text-(--gk-text-muted)">Your notes are in today's journal.</p>
+                <button
+                    type="button"
+                    data-testid="quick-notes-open-journal"
+                    onclick={openJournal}
+                    class="rounded-md border border-(--gk-border-strong) bg-(--gk-surface-1) px-3 py-1 text-sm font-medium text-(--gk-text-default) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-h-11"
+                >
+                    Open today's journal
+                </button>
+            </div>
+        {:else}
+            <p class="px-2 py-4 text-center text-sm text-(--gk-text-muted)" data-testid="quick-notes-empty">
+                No quick notes yet. Anything you add here waits until you move it to today's journal.
+            </p>
+        {/if}
     {:else}
         <ul class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto" data-testid="quick-notes-list" aria-label="Quick notes">
             {#each notes as note (note.id)}

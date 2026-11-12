@@ -182,6 +182,7 @@ export async function addQuickNote(text: string, options: AddQuickNoteOptions = 
     const note = filedUnder({ id: newId(), text: trimmed, createdAt: options.createdAt ?? Date.now() }, options.under)
     const previous = list
     list = [...list, note]
+    movedToJournal = false
     emit()
     try {
         await persist?.add(note)
@@ -267,7 +268,24 @@ export function subscribeQuickNoteDraft(listener: (text: string) => void): () =>
 }
 
 /** Graph close / test seam. */
+/**
+ * Whether the list is empty because its notes went to the journal on this device, since the
+ * graph opened and with nothing added after: what lets the Quick Notes View offer the way to
+ * the entry. Kept here, not in the View, which a phone unmounts when the move shows the entry.
+ */
+let movedToJournal = false
+
+/** The move to the journal took the notes (`moveQuickNotesToJournal`). */
+export function markQuickNotesMoved(): void {
+    movedToJournal = true
+}
+
+export function quickNotesWereMoved(): boolean {
+    return movedToJournal && list.length === 0
+}
+
 export function resetQuickNotes(): void {
+    movedToJournal = false
     list = []
     persist = null
     onDiscard = null

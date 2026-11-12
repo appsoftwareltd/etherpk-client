@@ -127,6 +127,7 @@
     } from "#lib/document/commands/clipboard-text.js";
     import {
         QUICK_NOTES_OPEN,
+        QUICK_NOTES_OPEN_JOURNAL,
         registerQuickNotesCommands,
     } from "#lib/document/commands/quick-notes-commands.js";
     import {
@@ -4928,6 +4929,13 @@
             if (!mounted) requestQuickNoteFocus();
             revealResident(controller, RESIDENTS.quickNotes);
             if (mounted) bus?.emit("quick-notes:focus", {});
+        });
+        // Out of Quick notes once they have moved: the graph's tab in front, then today's entry
+        // with the caret in it. The entry is opened last, so on a phone it is what shows.
+        commandRegistry.register(QUICK_NOTES_OPEN_JOURNAL, () => {
+            if (!controller) return;
+            revealResident(controller, RESIDENTS.graph);
+            openJournalDay(todayISO());
         });
         // The Settings modal, for a surface with no cog of its own. The desktop toolbar carries
         // one; the mobile presenter's chrome does not, so on a phone the Sidebar offers Settings

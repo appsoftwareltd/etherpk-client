@@ -15,13 +15,19 @@ import {
 
 import { formatISODate, todayISO } from '../calendar/month-grid-core'
 import { canCreateDocuments, type DocumentCreatingStore, whenDocumentText } from '../draft'
-import { getQuickNotes, removeQuickNotes } from '../quick-notes'
+import { getQuickNotes, markQuickNotesMoved, removeQuickNotes } from '../quick-notes'
 import { journalSeparator, quickNotesAsJournalBlocks } from '../quick-notes-journal'
 import type { DocumentStore } from '../types'
 
 export const QUICK_NOTES_MOVE = 'quickNotes.moveToJournal'
 /** Focuses the resident and its box; registered by the workspace, which owns the Layout. */
 export const QUICK_NOTES_OPEN = 'quickNotes.open'
+/**
+ * Opens today's journal entry and brings the graph's own tab to the front of the left Sidebar:
+ * where the Quick Notes View sends the person once their notes have moved. Registered by the
+ * workspace, which owns the Layout.
+ */
+export const QUICK_NOTES_OPEN_JOURNAL = 'quickNotes.openJournal'
 
 export interface MoveQuickNotesOptions {
     /** The day the notes land in. Read at the moment of the move, never cached (a tab lives for days). */
@@ -79,6 +85,7 @@ export async function moveQuickNotesToJournal(
     }
 
     await removeQuickNotes(notes.map((n) => n.id))
+    markQuickNotesMoved()
     return { moved: notes.length, concept }
 }
 
