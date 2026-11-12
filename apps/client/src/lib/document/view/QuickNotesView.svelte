@@ -349,6 +349,11 @@
         {#if addError}
             <p class="text-sm text-(--gk-text-danger)" role="alert" data-testid="quick-notes-add-error">{addError}</p>
         {/if}
+        <!-- On a row of its own above Add: beside it the three controls crowd a narrow drawer. -->
+        <label class="flex w-fit cursor-pointer items-center gap-2 self-end [-webkit-tap-highlight-color:transparent] pointer-coarse:min-h-11">
+            <input type="checkbox" bind:checked={asTask} data-testid="quick-notes-task" class="size-4 shrink-0 accent-(--gk-accent)" />
+            <span class="text-sm text-(--gk-text-default)">Add as task</span>
+        </label>
         <div class="flex items-center justify-between gap-2">
             <button
                 type="button"
@@ -359,10 +364,6 @@
             >
                 Clear
             </button>
-            <label class="ml-auto flex cursor-pointer items-center gap-2 [-webkit-tap-highlight-color:transparent] pointer-coarse:min-h-11">
-                <input type="checkbox" bind:checked={asTask} data-testid="quick-notes-task" class="size-4 shrink-0 accent-(--gk-accent)" />
-                <span class="text-sm text-(--gk-text-default)">Add as task</span>
-            </label>
             <button
                 type="button"
                 data-testid="quick-notes-add"
