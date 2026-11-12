@@ -25,6 +25,7 @@ starts at 0.9.3.
   - The installed app's icon is full size again in desktop launchers, with slightly rounded
     corners and no shadow, and shows no square edge when Android crops it to a circle. An app
     installed before this keeps its old icon until it is installed again.
+  - An installed app takes a changed icon or share target with the update that changes it.
 
 ## 0.25.0 - 2026-11-12
 

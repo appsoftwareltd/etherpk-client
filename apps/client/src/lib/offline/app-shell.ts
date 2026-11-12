@@ -41,6 +41,18 @@ export function isAppPagePath(pathname: string): boolean {
     return pathname === '/' || pathname === '/graphs' || pathname === '/share' || /^\/g\/[^/]+(\/.*)?$/.test(pathname)
 }
 
+/** The static files the app needs to look like itself; the rest (the demo graph, marketing images) stay on the server. */
+const SHELL_FILES = new Set(['/favicon.ico', '/favicon.svg', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/site.webmanifest'])
+
+/**
+ * One of the static files the worker caches with a version. Its name carries no hash, so two
+ * versions can ship different contents at the same address: the worker fetches it again for
+ * each version and never copies an earlier version's.
+ */
+export function isShellFile(pathname: string): boolean {
+    return SHELL_FILES.has(pathname)
+}
+
 /** A build file whose name carries its hash, so a cached copy is always the right one. */
 export function isImmutableAppFile(pathname: string): boolean {
     return pathname.startsWith('/_app/immutable/')

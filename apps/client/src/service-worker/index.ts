@@ -36,6 +36,7 @@ import {
     extensionFileStatus,
     isAppPagePath,
     isImmutableAppFile,
+    isShellFile,
     isWorkerScript,
     referencedAppFiles,
     shellMatchesBuild,
@@ -51,8 +52,6 @@ const DEV = immutable.length === 0
 const APP_CACHE = appCacheName(version)
 /** How long an app page may take before the shell is served in its place. */
 const PAGE_DEADLINE_MS = 5_000
-/** The static files the app needs to look like itself; the rest (the demo graph, marketing images) stay on the server. */
-const SHELL_FILES = new Set(['/favicon.ico', '/favicon.svg', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/site.webmanifest'])
 /**
  * A `$app/manifest` path as the path the browser requests. The manifest's paths are relative to the
  * base path, and the Client has none.
@@ -61,7 +60,7 @@ const fromRoot = (path: string) => `/${path}`
 /** Every file this version answers for from its cache, by path. */
 const APP_FILES = new Set([
     ...immutable.map((file) => fromRoot(file.path)),
-    ...assets.map((file) => fromRoot(file.path)).filter((path) => SHELL_FILES.has(path)),
+    ...assets.map((file) => fromRoot(file.path)).filter(isShellFile),
 ])
 /** The files cached when this version installs, and those cached only once a page fetches them. */
 const { atInstall: INSTALL_FILES, onDemand: ON_DEMAND_FILES } = splitAppFiles(APP_FILES)
@@ -118,6 +117,10 @@ async function cacheFiles(cache: Cache, files: string[]): Promise<void> {
     const pending = [...files]
     const worker = async () => {
         for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
+            if (isShellFile(file)) {
+                await cacheShellFile(cache, file)
+                continue
+            }
             if (await cache.match(file)) continue
             const earlier = await caches.match(file)
             if (earlier) {
@@ -130,6 +133,23 @@ async function cacheFiles(cache: Cache, files: string[]): Promise<void> {
         }
     }
     await Promise.all(Array.from({ length: 6 }, worker))
+}
+
+/**
+ * Put this version's copy of a shell file in `cache`. Its name carries no hash, so an earlier
+ * version's copy may hold other contents (the manifest gains a share target, an icon is redrawn)
+ * and is used only when the file cannot be fetched. `no-cache` has the browser check with the
+ * server instead of answering from its own cache.
+ */
+async function cacheShellFile(cache: Cache, file: string): Promise<void> {
+    const response = await fetch(file, { cache: 'no-cache' }).catch(() => undefined)
+    if (response?.ok) {
+        await cache.put(file, response)
+        return
+    }
+    const earlier = await caches.match(file)
+    if (!earlier) throw new Error(`could not cache ${file}`)
+    await cache.put(file, earlier)
 }
 
 /**

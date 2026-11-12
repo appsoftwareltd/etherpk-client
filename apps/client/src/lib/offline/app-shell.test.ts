@@ -5,6 +5,7 @@ import {
     extensionFileStatus,
     isAppPagePath,
     isImmutableAppFile,
+    isShellFile,
     isOnDemandAppFile,
     isWorkerScript,
     referencedAppFiles,
@@ -41,6 +42,17 @@ describe('isImmutableAppFile and isWorkerScript', () => {
         expect(isWorkerScript('/_app/immutable/chunks/DnDT9Xmr.js')).toBe(false)
         const script = 'e?c(`sqlite3.wasm`):new URL(`/_app/immutable/workers/assets/sqlite3-BVKGSWc-.wasm`,``+self.location.href)'
         expect(referencedAppFiles(script)).toEqual(['/_app/immutable/workers/assets/sqlite3-BVKGSWc-.wasm'])
+    })
+})
+
+describe('isShellFile', () => {
+    it('names the static files whose address stays the same when their contents change', () => {
+        expect(isShellFile('/site.webmanifest')).toBe(true)
+        expect(isShellFile('/icon-192.png')).toBe(true)
+    })
+
+    it('leaves out a build file, whose name carries its hash', () => {
+        expect(isShellFile('/_app/immutable/chunks/abc123.js')).toBe(false)
     })
 })
 
