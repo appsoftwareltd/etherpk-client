@@ -22,7 +22,7 @@
 import type { GraphRecord } from '#lib/storage/graph-registry.js'
 
 import { MARKDOWN_LINK, linkGroups } from './markdown-link-target'
-import { MAX_QUICK_NOTE_LENGTH } from './quick-notes'
+import { MAX_QUICK_NOTE_LENGTH, sanitizeUnder } from './quick-notes'
 import { isOpenableUrl } from './view/augmentations/markdown-link-core'
 
 /** What the share sheet hands over, as the manifest's `params` name them. Any field may be missing. */
@@ -176,6 +176,20 @@ export interface PendingShare {
     createdAt: number
     /** Whether the text was cut, so the picker can say so again if it has to be shown again. */
     truncated: boolean
+    /** The concept the user chose to file the note under, when they chose one. */
+    under?: string
+    /**
+     * Where the share's files wait (`shared-files.ts`), when it has any that are not stored yet.
+     * The workspace stores them in the graph and writes their references after the text, so a
+     * share of files alone has no text here.
+     */
+    filesId?: string
+    /**
+     * With `filesId`: the note is to be a task. The checkbox goes in front of the finished text,
+     * and for a share of files alone that is the first file's reference, which is not known until
+     * the file is stored. A share without files carries its checkbox in `text` already.
+     */
+    task?: boolean
 }
 
 const PENDING_SHARE_KEY = 'etherpk-pending-share'
@@ -189,6 +203,22 @@ function sessionStorageOrNull(): Storage | null {
     }
 }
 
+/** The fields a share may carry beside its text: where it is filed, and its files (ADR 0186). */
+function pendingExtras({ under, filesId, task }: Record<string, unknown>): Pick<PendingShare, 'under' | 'filesId' | 'task'> {
+    const filed = sanitizeUnder(under)
+    const files = typeof filesId === 'string' && filesId !== '' ? filesId : undefined
+    return {
+        ...(filed ? { under: filed } : {}),
+        ...(files ? { filesId: files } : {}),
+        ...(files && task === true ? { task: true } : {}),
+    }
+}
+
+/** A share of files alone has no text; a share with neither text nor files is nothing. */
+function isShareContent(text: unknown, extras: Pick<PendingShare, 'filesId'>): text is string {
+    return typeof text === 'string' && (text.trim() !== '' || extras.filesId !== undefined)
+}
+
 function readPendingShare(storage: Storage | null): PendingShare | null {
     try {
         const raw = storage?.getItem(PENDING_SHARE_KEY)
@@ -197,9 +227,10 @@ function readPendingShare(storage: Storage | null): PendingShare | null {
         if (typeof parsed !== 'object' || parsed === null) return null
         const { graphId, text, createdAt, truncated } = parsed as Record<string, unknown>
         if (typeof graphId !== 'string' || graphId === '') return null
-        if (typeof text !== 'string' || text.trim() === '') return null
+        const extras = pendingExtras(parsed as Record<string, unknown>)
+        if (!isShareContent(text, extras)) return null
         if (typeof createdAt !== 'number' || !Number.isFinite(createdAt)) return null
-        return { graphId, text, createdAt, truncated: truncated === true }
+        return { graphId, text, createdAt, truncated: truncated === true, ...extras }
     } catch {
         return null
     }

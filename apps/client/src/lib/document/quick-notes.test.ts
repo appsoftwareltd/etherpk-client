@@ -10,7 +10,9 @@ import {
     removeQuickNotes,
     requestQuickNoteFocus,
     resetQuickNotes,
+    discardQuickNotes,
     sanitizeQuickNotes,
+    setQuickNoteDiscardHandler,
     takeQuickNoteFocusRequest,
     setQuickNoteDraft,
     setQuickNotes,
@@ -58,6 +60,41 @@ describe('quick notes', () => {
         const added = await addQuickNote('Shared earlier', { createdAt: 1_600_000_000_000 })
         expect(added?.createdAt).toBe(1_600_000_000_000)
         expect(persist.add).toHaveBeenCalledWith(added)
+    })
+
+    it('files a note under a concept, and under nothing for a name that is not one line of text', async () => {
+        const persist = persistSpy()
+        setQuickNotes([], persist)
+        expect((await addQuickNote('beans', { under: ' Shopping ' }))?.under).toBe('Shopping')
+        expect(await addQuickNote('bread', { under: '  ' })).not.toHaveProperty('under')
+        expect(await addQuickNote('milk', { under: 'two\nlines' })).not.toHaveProperty('under')
+        expect(await addQuickNote('eggs', { under: null })).not.toHaveProperty('under')
+    })
+
+    it('keeps the concept of a stored note and drops one that is not a name', () => {
+        const stored = sanitizeQuickNotes([
+            { id: 'a', text: 'beans', createdAt: 1, under: 'Shopping' },
+            { id: 'b', text: 'bread', createdAt: 2, under: 7 },
+            { id: 'c', text: 'milk', createdAt: 3 },
+        ])
+        expect(stored).toEqual([
+            { id: 'a', text: 'beans', createdAt: 1, under: 'Shopping' },
+            { id: 'b', text: 'bread', createdAt: 2 },
+            { id: 'c', text: 'milk', createdAt: 3 },
+        ])
+    })
+
+    it('tells the graph which notes were discarded, and says nothing for a plain removal', async () => {
+        setQuickNotes([], persistSpy())
+        const kept = await addQuickNote('beans')
+        const thrown = await addQuickNote('bread')
+        const heard: string[][] = []
+        setQuickNoteDiscardHandler((notes) => heard.push(notes.map((n) => n.text)))
+        await removeQuickNotes([kept!.id])
+        expect(heard).toEqual([])
+        await discardQuickNotes([thrown!.id, 'no-such-note'])
+        expect(heard).toEqual([['bread']])
+        expect(getQuickNotes()).toEqual([])
     })
 
     it('refuses a blank note without touching the backend', async () => {

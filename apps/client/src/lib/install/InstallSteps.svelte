@@ -56,7 +56,7 @@
         <p class="text-(--gk-text-muted)">
             Installed, EtherPK opens in its own window from your home screen, Dock or taskbar, and starts with no
             network. Your browser is also less likely to clear EtherPK data from this device.{#if sharesFromOtherApps}
-                It also appears on the share sheet, so you can share text and links from other apps into Quick notes.{/if}
+                It also appears on the share sheet, so you can share text, links and files from other apps into Quick notes.{/if}
         </p>
     {/if}
 </div>

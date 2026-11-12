@@ -312,7 +312,12 @@ export function createAssetStore(adapter: DirectoryAdapter): AssetStore {
             const key = contentKey(hash, ext)
             // Already here under some name: reference that file. The new name still supplies the
             // markdown label, so the reference reads as the user's own while the bytes are shared.
-            const existing = index.get(key)
+            // The index is this store's memory of the folder, and a file can leave the folder
+            // without it: the orphan scan, a trashed reference and a discarded Quick Note delete
+            // through the adapter. A name the folder no longer holds is written again, or the
+            // reference would point at nothing.
+            const held = index.get(key)
+            const existing = held !== undefined && (await adapter.exists('assets', held)) ? held : undefined
             const fileName = existing ?? assetFileName(name, hash)
             if (!existing) {
                 await adapter.writeBinary('assets', fileName, bytes)

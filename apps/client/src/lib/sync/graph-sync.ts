@@ -279,6 +279,12 @@ export interface GraphSync {
      */
     quickNotesOf(memberKey: string): QuickNotesList
     /**
+     * The text of every [[Quick Note]] the root doc holds: the shared list and every member's
+     * own. For matching only: a note can reference an [[Asset]] (ADR 0186), so a count of an
+     * asset's references has to read them all, and none of another member's text is shown.
+     */
+    allQuickNoteTexts(): string[]
+    /**
      * One member's [[Favourite]]s: the root doc's top-level `favourites:<memberKey>` Y.Array of
      * concept names and View entries (ADR 0169), in Sidebar order (ADR 0159). Top-level for the
      * reason bookmarks are.
@@ -610,6 +616,17 @@ function memberListName(name: string): { kind: MemberListKind; memberKey: string
     return { kind: kind as MemberListKind, memberKey: name.slice(colon + 1) }
 }
 
+/** The text of every Quick Note in a root document: the shared `quickNotes` array and each `quickNotes:<member>`. */
+export function quickNoteTextsIn(doc: Y.Doc): string[] {
+    const texts: string[] = []
+    for (const name of [...doc.share.keys()]) {
+        if (name !== 'quickNotes' && memberListName(name)?.kind !== 'quickNotes') continue
+        // A type that arrived from a peer is a bare AbstractType until it is asked for by name.
+        for (const note of sanitizeQuickNotes(doc.getArray<unknown>(name).toArray())) texts.push(note.text)
+    }
+    return texts
+}
+
 /** An empty member key would name one list every member shares: the opposite of a per-person list. */
 function requireMemberKey(memberKey: string, what: string): void {
     if (memberKey === '') throw new Error(`${what}: a member key is required`)
@@ -855,7 +872,8 @@ function quickNotesOver(doc: Y.Doc, array: Y.Array<unknown>): QuickNotesList {
     return {
         list: () => sanitizeQuickNotes(array.toArray()),
         add(note) {
-            array.push([{ id: note.id, text: note.text, createdAt: note.createdAt }])
+            // `under` only when the note has one, so an unfiled note's element is unchanged.
+            array.push([{ id: note.id, text: note.text, createdAt: note.createdAt, ...(note.under ? { under: note.under } : {}) }])
         },
         remove(ids) {
             // Highest index first, in one transaction, so earlier deletions do not shift
@@ -2033,6 +2051,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             return () => metaMap.unobserve(listener)
         },
         quickNotes: () => quickNotesOver(root.doc, quickNotesArray),
+        allQuickNoteTexts: () => quickNoteTextsIn(root.doc),
         quickNotesOf(memberKey) {
             requireMemberKey(memberKey, 'quickNotesOf')
             return quickNotesOver(root.doc, root.doc.getArray<unknown>(`quickNotes:${memberKey}`))

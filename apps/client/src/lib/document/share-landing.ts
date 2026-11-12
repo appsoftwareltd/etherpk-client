@@ -25,7 +25,11 @@ import {
     type QuickNoteSessionDeps,
     type QuickNoteSessionHooks,
 } from '#lib/sync/quick-note-session.js'
+import { openAssetCopies } from '#lib/storage/synced/asset-copies.js'
+import { type ServerAssetStore, createServerAssetStore } from '#lib/storage/synced/server-asset-store.js'
+import { NO_SHARE_NAMES, type ShareNames, readShareNames } from '#lib/sync/share-names.js'
 import { heldGraphKeyring, resolveSyncedGraphConnection, type SyncedGraphConnection } from '#lib/sync/synced-graph-access.js'
+import { isVaultUnlocked } from '#lib/sync/vault-session.js'
 
 import type { QuickNote } from './quick-notes'
 
@@ -103,6 +107,55 @@ export async function routeShare(graph: GraphRecord, deps: Pick<ShareLandingDeps
     } catch (err) {
         return failure(err)
     }
+}
+
+/**
+ * The names the page may show for `graph` before anything is pressed (ADR 0186): the pages a
+ * `[[` completes to and the concepts a note can be filed under. Only for a synced graph whose
+ * vault this device has unlocked, read from this device's copy with no network call, so they
+ * are on screen with the rest of the form. A folder graph and a graph locked here show none.
+ */
+export async function shareNamesFor(graph: GraphRecord, deps: ShareNamesDeps = productionNamesDeps): Promise<ShareNames> {
+    const held = syncedRoot(graph)
+    if (!held) return NO_SHARE_NAMES
+    try {
+        if (!deps.unlocked(held.origin)) return NO_SHARE_NAMES
+        return await deps.read(graph.id, held.rootDocId, graph.serverScope?.principalId)
+    } catch {
+        // Names are a convenience. A copy that will not read leaves the share as it was before them.
+        return NO_SHARE_NAMES
+    }
+}
+
+/** The server a synced graph's record names and its root document, or null for a record with neither. */
+function syncedRoot(graph: GraphRecord): { origin: string; rootDocId: string } | null {
+    if (graph.backend !== 'server') return null
+    const origin = graph.serverScope?.serverOrigin
+    const rootDocId = (graph.handle as { rootDocId?: unknown } | null)?.rootDocId
+    return origin && typeof rootDocId === 'string' && rootDocId !== '' ? { origin, rootDocId } : null
+}
+
+export interface ShareNamesDeps {
+    unlocked: (serverOrigin: string) => boolean
+    read: (graphId: string, rootDocId: string, memberKey: string | undefined) => Promise<ShareNames>
+}
+
+const productionNamesDeps: ShareNamesDeps = { unlocked: isVaultUnlocked, read: readShareNames }
+
+/**
+ * The store a direct share's files go into: the graph's own asset store, told to keep every
+ * file on this device before any network call (`queueFirst`), so Add is as quick offline as
+ * online and what is still to send survives the page. `uploadQueued` then sends them.
+ */
+export function shareFileStore(route: DirectShareRoute): ServerAssetStore {
+    return createServerAssetStore({
+        graphId: route.graphId,
+        keyring: route.keyring,
+        baseUrl: route.connection.serverBaseUrl,
+        syncToken: route.connection.token,
+        copies: openAssetCopies(),
+        queueFirst: true,
+    })
 }
 
 /** What the caller hears and controls: `onSaved`, and a signal that ends the sync wait early. */

@@ -47,6 +47,13 @@
         // Catch the browser's one-shot install offer now (or adopt the one `app.html` held), so
         // every Install entry can show it later: an installed app is what earns persistent
         // storage on a phone (the workspace layout asks for it).
+        // A file shared to Quick notes is kept on the device and uploaded after, and the person
+        // may have left before it went (ADR 0186). Whatever is still waiting is sent as the app
+        // starts, on any page, once the page has settled. Loaded on demand: most starts have none.
+        const sendWaitingUploads = () =>
+            void import("#lib/storage/synced/queued-uploads-device.js").then((uploads) => uploads.sendQueuedUploadsAtStart()).catch(() => {});
+        if ("requestIdleCallback" in window) requestIdleCallback(sendWaitingUploads, { timeout: 10_000 });
+        else setTimeout(sendWaitingUploads, 3_000);
         const stopWatching = watchAppInstall();
         welcomeInstalledApp();
         // The manifest's `launch_handler` focuses the open window for a new launch instead of

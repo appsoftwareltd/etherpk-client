@@ -831,7 +831,7 @@ describe('ServerAssetStore with copies on this device (ADR 0143)', () => {
         })
     })
 
-    function storeOver(fetchImpl: typeof fetch, copies: AssetCopies, extra: { online?: () => boolean } = {}) {
+    function storeOver(fetchImpl: typeof fetch, copies: AssetCopies, extra: { online?: () => boolean; queueFirst?: boolean } = {}) {
         let id = 0
         return createServerAssetStore({
             graphId,
@@ -894,6 +894,19 @@ describe('ServerAssetStore with copies on this device (ADR 0143)', () => {
         const saved = await storeOver(counting, openAssetCopies(), { online: () => false }).save({ name: 'garden.png', bytes: garden(), type: 'image/png' })
         expect(saved.queued).toBe(true)
         expect(calls).toEqual([])
+    })
+
+    it('queues every file without asking the network when told to queue first, and sends it when asked', async () => {
+        const copies = openAssetCopies()
+        const backend = fakeBackend()
+        const store = storeOver(backend.fetchImpl, copies, { queueFirst: true })
+
+        const saved = await store.save({ name: 'garden.png', bytes: garden(), type: 'image/png' })
+
+        expect(saved.queued).toBe(true)
+        expect(backend.begins).toEqual([])
+        expect(await store.uploadQueued()).toEqual({ sent: 1, waiting: 0 })
+        expect(backend.begins).toEqual([{ assetId: assetIdFromRef(saved.ref), dedupToken: undefined }])
     })
 
     it('uploads what was queued once the server can be reached, under the id the document already names, with no reuse token', async () => {

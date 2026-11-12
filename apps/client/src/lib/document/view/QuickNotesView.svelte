@@ -10,6 +10,11 @@
      * through the shared store (`quick-notes.ts`), which the workspace has wired to whichever
      * backend it opened; the move goes through its [[Command]], so a refusal reaches the user
      * the same way from the button, the Command Menu and a keybinding.
+     *
+     * The box is `QuickNoteBox`, the one the [[Share Target]]'s page uses (ADR 0186): it links
+     * to a page, takes files, and a note can be filed under one of the person's [[Favourite]]s.
+     * A file is stored as an [[Asset]] when the note is added, and its reference is a line of
+     * the note's text.
      */
     import { onDestroy, onMount } from "svelte";
     import InstallOffer from "#lib/install/InstallOffer.svelte";
@@ -17,32 +22,55 @@
     import type { ViewRef } from "#lib/layout/index.js";
     import { tryGetActiveCommandRegistry, tryGetActiveEventBus } from "#lib/surface/index.js";
 
+    import { tryGetActiveAssetStore } from "../active-asset-store";
+    import { getActiveGraphIndex } from "../backlinks";
     import { QUICK_NOTES_MOVE } from "../commands/quick-notes-commands";
+    import { subscribeFavourites } from "../favourites";
+    import { NoteFileError, storeNoteFiles } from "../quick-note-file-store";
+    import { noteTextWithFiles, quickNoteParts } from "../quick-note-files";
+    import { fileUnderChoices } from "../quick-note-filing";
     import {
         MAX_QUICK_NOTE_LENGTH,
         addQuickNote,
+        discardQuickNotes,
         getQuickNoteDraft,
         type QuickNote,
-        removeQuickNotes,
         setQuickNoteDraft,
         subscribeQuickNoteDraft,
         subscribeQuickNotes,
         takeQuickNoteFocusRequest,
     } from "../quick-notes";
+    import { defaultMaxImageDisplaySize } from "./asset-upload";
+    import QuickNoteAsset from "./QuickNoteAsset.svelte";
+    import QuickNoteBox from "./QuickNoteBox.svelte";
+    import QuickNoteFileUnder from "./QuickNoteFileUnder.svelte";
+    import { PendingNoteFiles } from "./quick-note-pending-files.svelte";
 
     const { view: _view }: { view: ViewRef } = $props();
 
     let notes = $state.raw<QuickNote[]>([]);
     /** The box's text. Seeded from the per-graph draft so leaving the tab keeps it. */
     let text = $state(getQuickNoteDraft());
-    let textarea = $state<HTMLTextAreaElement | undefined>();
+    let box = $state<QuickNoteBox | undefined>();
+    /** Files chosen for the note in the box, stored when it is added. */
+    const pending = new PendingNoteFiles();
+    /** The concepts a note can be filed under: the person's Favourites, in their order. */
+    let fileUnder = $state.raw<string[]>([]);
+    /** The one chosen for the note in the box, or none. */
+    let under = $state<string | null>(null);
+    /** Notes whose files are still being stored: the count shows under the box. */
+    let storing = $state(0);
+    /** Why the last add did not happen, shown under the box until the next one. */
+    let addError = $state("");
     let moving = $state(false);
     /** Ids whose delete is in flight, so a row cannot be deleted twice while its write lands. */
     let deleting = $state.raw<ReadonlySet<string>>(new Set());
     /** What the last action did, for the screen reader; visible things confirm in place. */
     let announcement = $state("");
 
-    const canAdd = $derived(text.trim() !== "");
+    const canAdd = $derived(text.trim() !== "" || pending.count > 0);
+    /** A graph with no store for files (the dev harness) takes none. */
+    const takesFiles = tryGetActiveAssetStore() !== null;
     const count = $derived(notes.length);
     /**
      * `maxlength` cuts a long paste without a word, so the count appears as the box nears the
@@ -86,7 +114,10 @@
     function clear() {
         text = "";
         setQuickNoteDraft("");
-        textarea?.focus();
+        pending.clear();
+        under = null;
+        addError = "";
+        box?.focus();
     }
 
     /**
@@ -105,35 +136,63 @@
     async function add() {
         if (!canAdd) return;
         const submitted = text;
+        const files = pending.take();
+        const filed = under;
         text = "";
+        under = null;
+        addError = "";
         setQuickNoteDraft("");
         try {
-            const added = await addQuickNote(submitted);
+            const noteText = files.length === 0 ? submitted : await withFiles(submitted, files);
+            const added = await addQuickNote(noteText, { under: filed });
             announcement = added ? "Note added" : "";
         } catch (err) {
-            if (text === "") {
+            // The text and the files come back into an empty box only: a box the user has since
+            // typed into is theirs. A file already stored is named, since nothing references it.
+            if (text === "" && pending.count === 0) {
                 text = submitted;
                 setQuickNoteDraft(submitted);
+                pending.add(files);
+                under = filed;
             }
-            announcement = `Could not add the note: ${(err as Error).message}`;
+            const stored = err instanceof NoteFileError ? err.stored.map((asset) => asset.name) : [];
+            addError =
+                `Could not add the note: ${(err as Error).message}` +
+                (stored.length > 0 ? ` ${stored.join(", ")} was stored and is not in any note.` : "");
+            announcement = addError;
         } finally {
-            textarea?.focus();
+            box?.focus();
+        }
+    }
+
+    /**
+     * Store the files and write their references after the text. The box is already clear, so a
+     * line under it says files are being stored: a photo takes a moment to re-encode.
+     */
+    async function withFiles(submitted: string, files: File[]): Promise<string> {
+        const store = tryGetActiveAssetStore();
+        if (!store) throw new Error("this graph cannot store files.");
+        storing += 1;
+        try {
+            const saved = await storeNoteFiles(files, store);
+            return noteTextWithFiles(submitted, saved, defaultMaxImageDisplaySize());
+        } finally {
+            storing -= 1;
         }
     }
 
     /** Enter adds, Shift+Enter breaks a line - the outliner's own convention, so it needs no learning. */
-    function onKeydown(event: KeyboardEvent) {
-        if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
-            event.preventDefault();
-            void add();
-        }
+    function onKey(event: KeyboardEvent): boolean {
+        if (event.key !== "Enter" || event.shiftKey) return false;
+        void add();
+        return true;
     }
 
     async function remove(note: QuickNote) {
         if (deleting.has(note.id)) return;
         deleting = new Set([...deleting, note.id]);
         try {
-            await removeQuickNotes([note.id]);
+            await discardQuickNotes([note.id]);
             announcement = "Note deleted";
         } catch (err) {
             announcement = `Could not delete the note: ${(err as Error).message}`;
@@ -166,16 +225,16 @@
      * count runs out before the tab has painted, and the caret never lands.
      */
     function focusBox(deadline = performance.now() + FOCUS_RETRY_MS) {
-        const box = textarea;
         if (!box) return;
         box.focus();
-        if (document.activeElement === box || performance.now() >= deadline) return;
+        if (document.activeElement?.getAttribute("data-testid") === "quick-notes-input" || performance.now() >= deadline) return;
         requestAnimationFrame(() => focusBox(deadline));
     }
 
     const unsubscribers: (() => void)[] = [];
     onMount(() => {
         unsubscribers.push(subscribeQuickNotes((next) => (notes = next)));
+        unsubscribers.push(subscribeFavourites((favourites) => (fileUnder = fileUnderChoices(favourites))));
         // Text put in the box from outside: a shared text whose write was refused (ADR 0087).
         // The module has already merged it after whatever the box held; this is the whole draft.
         unsubscribers.push(
@@ -195,6 +254,7 @@
         }
     });
     onDestroy(() => {
+        pending.clear();
         for (const off of unsubscribers) off();
     });
 </script>
@@ -236,32 +296,40 @@
 
     <!-- ── Input ──────────────────────────────────────────────────────────────── -->
     <div class="flex flex-col gap-1.5">
-        <textarea
-            bind:this={textarea}
+        <QuickNoteBox
+            bind:this={box}
             bind:value={text}
-            oninput={onInput}
-            onkeydown={onKeydown}
-            data-testid="quick-notes-input"
-            aria-label="New quick note"
-            aria-describedby="quick-notes-hint"
+            testid="quick-notes-input"
+            label="New quick note"
             placeholder="Jot something down…"
-            rows="3"
+            describedBy="quick-notes-hint"
             maxlength={MAX_QUICK_NOTE_LENGTH}
-            spellcheck="false"
-            class="w-full resize-y rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-sm text-(--gk-text-strong) placeholder:text-(--gk-text-subtle) focus:border-(--gk-border-strong) focus:outline-none"
-        ></textarea>
+            concepts={() => getActiveGraphIndex()?.allConcepts() ?? []}
+            files={pending.shown}
+            onaddfiles={takesFiles ? (files) => pending.add(files) : undefined}
+            onremovefile={(id) => pending.remove(id)}
+            oninput={onInput}
+            onkey={onKey}
+        />
         <span id="quick-notes-hint" class="sr-only">Enter adds the note, Shift+Enter starts a new line.</span>
         {#if nearCap}
             <p class="text-sm text-(--gk-text-muted)" data-testid="quick-notes-length" role="status">
                 {text.length.toLocaleString()} / {MAX_QUICK_NOTE_LENGTH.toLocaleString()} characters
             </p>
         {/if}
+        <QuickNoteFileUnder choices={fileUnder} bind:selected={under} testid="quick-notes-under" />
+        {#if storing > 0}
+            <p class="text-sm text-(--gk-text-muted)" role="status" data-testid="quick-notes-storing">Storing files…</p>
+        {/if}
+        {#if addError}
+            <p class="text-sm text-(--gk-text-danger)" role="alert" data-testid="quick-notes-add-error">{addError}</p>
+        {/if}
         <div class="flex items-center justify-between gap-2">
             <button
                 type="button"
                 data-testid="quick-notes-clear"
                 onclick={clear}
-                disabled={text === ""}
+                disabled={text === "" && pending.count === 0 && under === null}
                 class="rounded-md px-2 py-1 text-sm text-(--gk-text-muted) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent pointer-coarse:min-h-11"
             >
                 Clear
@@ -281,7 +349,7 @@
     <!-- Sharing from other apps lands here, and needs the installed app (Android and ChromeOS). -->
     <InstallOffer
         moment="quick-notes"
-        text="Install EtherPK to share text and links from other apps into Quick notes."
+        text="Install EtherPK to share text, links and files from other apps into Quick notes."
     />
 
     <!-- ── The notes, newest first ────────────────────────────────────────────── -->
@@ -297,7 +365,20 @@
                     data-testid="quick-notes-row"
                     data-note-id={note.id}
                 >
-                    <p class="text-sm whitespace-pre-wrap break-words text-(--gk-text-strong)" data-testid="quick-notes-text">{note.text}</p>
+                    {#if note.under}
+                        <p class="mb-1 text-sm text-(--gk-text-muted)" data-testid="quick-notes-filed">
+                            Under <span class="font-medium text-(--gk-text-default)">{note.under}</span>
+                        </p>
+                    {/if}
+                    <div class="flex flex-col gap-1.5">
+                        {#each quickNoteParts(note.text) as part, index (index)}
+                            {#if part.kind === "text"}
+                                <p class="text-sm whitespace-pre-wrap break-words text-(--gk-text-strong)" data-testid="quick-notes-text">{part.text}</p>
+                            {:else}
+                                <QuickNoteAsset url={part.url} kind={part.kind} alt={part.kind === "image" ? part.alt : ""} />
+                            {/if}
+                        {/each}
+                    </div>
                     <div class="mt-1 flex items-center justify-between gap-2">
                         <time
                             datetime={new Date(note.createdAt).toISOString()}

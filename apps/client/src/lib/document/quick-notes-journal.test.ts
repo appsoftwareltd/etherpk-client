@@ -41,6 +41,46 @@ describe('quick notes as journal blocks', () => {
         expect(taskDone(text.split('\n')[1])).toBe(false)
     })
 
+    it('nests a note filed under a concept beneath one bullet linking that concept', () => {
+        const filed = { ...note('1', 'beans', '2026-09-17', 1), under: 'Shopping' }
+        const text = quickNotesAsJournalBlocks([filed], dayOf)
+        expect(text).toBe(['- [[2026-09-17]]', '  - [[Shopping]]', '    - beans', ''].join('\n'))
+    })
+
+    it('gathers a day\'s notes for one concept under one bullet, placed where the first of them was written', () => {
+        const notes = [
+            note('1', 'a loose note', '2026-09-17', 1),
+            { ...note('2', 'beans', '2026-09-17', 2), under: 'Shopping' },
+            note('3', 'another loose note', '2026-09-17', 3),
+            { ...note('4', 'bread\nfrom the corner', '2026-09-17', 4), under: 'shopping' },
+            { ...note('5', 'water the beans', '2026-09-17', 5), under: 'Garden' },
+        ]
+        expect(quickNotesAsJournalBlocks(notes, dayOf)).toBe(
+            [
+                '- [[2026-09-17]]',
+                '  - a loose note',
+                '  - [[Shopping]]',
+                '    - beans',
+                '    - bread',
+                '      from the corner',
+                '  - another loose note',
+                '  - [[Garden]]',
+                '    - water the beans',
+                '',
+            ].join('\n'),
+        )
+    })
+
+    it('starts a concept bullet again on another day', () => {
+        const notes = [
+            { ...note('1', 'beans', '2026-09-16', 1), under: 'Shopping' },
+            { ...note('2', 'bread', '2026-09-17', 1), under: 'Shopping' },
+        ]
+        expect(quickNotesAsJournalBlocks(notes, dayOf)).toBe(
+            ['- [[2026-09-16]]', '  - [[Shopping]]', '    - beans', '- [[2026-09-17]]', '  - [[Shopping]]', '    - bread', ''].join('\n'),
+        )
+    })
+
     it('writes nothing for no notes', () => {
         expect(quickNotesAsJournalBlocks([], dayOf)).toBe('')
     })

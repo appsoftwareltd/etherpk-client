@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { type AssetByteReadiness, type ProtectedAssetUsage, assetUsageNeedles, planAssetDelete, protectedAssetUsage } from './asset-delete'
+import { type AssetByteReadiness, type ProtectedAssetUsage, assetUsageNeedles, planAssetDelete, protectedAssetUsage, quickNoteReferences } from './asset-delete'
 import type { AssetUsage } from './index-db'
 
 const doc = (concept: string, references = 1) => ({ concept, kind: 'page' as const, references })
@@ -27,6 +27,22 @@ describe('planAssetDelete', () => {
         const plan = await planAssetDelete({ usage: async () => usage(0), readiness: async () => ready })
 
         expect(plan.deleteBytes).toBe(true)
+    })
+
+    it('keeps the bytes of a file a quick note references, and says how many notes do', async () => {
+        const plan = await planAssetDelete({
+            usage: async () => usage(1, doc('Alpha')),
+            readiness: async () => ready,
+            quickNoteReferences: () => 1,
+        })
+
+        expect(plan).toEqual({ deleteBytes: false, blockedBy: 'used-elsewhere', references: 2, quickNotes: 1, documents: [doc('Alpha')] })
+    })
+
+    it('counts a note once however often it names the file, by either spelling of its identity', () => {
+        const needles = assetUsageNeedles('my file.a1b2c3d4.pdf')
+        const notes = ['[a](../assets/my%20file.a1b2c3d4.pdf) and again ../assets/my%20file.a1b2c3d4.pdf', 'no file here', 'raw ../assets/my file.a1b2c3d4.pdf']
+        expect(quickNoteReferences(notes, needles)).toBe(2)
     })
 
     it('keeps the bytes and names the other documents when used elsewhere', async () => {

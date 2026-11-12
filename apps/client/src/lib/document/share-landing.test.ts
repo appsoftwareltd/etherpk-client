@@ -5,7 +5,7 @@ import type { GraphRecord } from '#lib/storage/graph-registry.js'
 import type { QuickNoteSessionDeps } from '#lib/sync/quick-note-session.js'
 import type { SyncedGraphConnection } from '#lib/sync/synced-graph-access.js'
 
-import { landShareDirectly, routeShare, type DirectShareRoute, type ShareLandingDeps } from './share-landing'
+import { landShareDirectly, routeShare, shareNamesFor, type DirectShareRoute, type ShareLandingDeps } from './share-landing'
 
 const note = { id: 'n1', text: 'Ring the dentist', createdAt: 1_700_000_000_000 }
 const keyring: GraphKeyring = { graphId: 'g1', epochs: [{ epochId: 1, key: new Uint8Array(32) }] }
@@ -138,5 +138,36 @@ describe('landShareDirectly: the direct write over a resolved route', () => {
             },
         })
         expect(await landShareDirectly(direct, note, savedThenFailed)).toEqual({ kind: 'added', synced: false })
+    })
+})
+
+describe('shareNamesFor: the names the page may show before anything is pressed', () => {
+    const names = { concepts: [], fileUnder: ['Shopping'] }
+    const reads: unknown[][] = []
+    const namesDeps = (unlocked: boolean) => ({
+        unlocked: () => unlocked,
+        read: async (...args: unknown[]) => {
+            reads.push(args)
+            return names
+        },
+    })
+
+    it("reads a synced graph's names from this device when its vault is unlocked here, for the record's member", async () => {
+        reads.length = 0
+        expect(await shareNamesFor(scoped, namesDeps(true))).toBe(names)
+        expect(reads).toEqual([['g1', 'root-1', 'member-1']])
+    })
+
+    it('shows none for a graph locked here, a folder graph, or a record with no server', async () => {
+        reads.length = 0
+        expect(await shareNamesFor(scoped, namesDeps(false))).toEqual({ concepts: [], fileUnder: [] })
+        expect(await shareNamesFor(folder, namesDeps(true))).toEqual({ concepts: [], fileUnder: [] })
+        expect(await shareNamesFor(synced, namesDeps(true))).toEqual({ concepts: [], fileUnder: [] })
+        expect(reads).toEqual([])
+    })
+
+    it('shows none when the copy on this device will not read', async () => {
+        const failing = { unlocked: () => true, read: async () => Promise.reject(new Error('storage is unavailable')) }
+        expect(await shareNamesFor(scoped, failing)).toEqual({ concepts: [], fileUnder: [] })
     })
 })

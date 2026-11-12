@@ -21,6 +21,7 @@ import type { ProtectedTextReader } from '#lib/document/protection/protected-tex
 
 import { assetHashFromName, assetNameFromRef } from './asset-store'
 import type { DirectoryAdapter, Subdir } from './directory-adapter'
+import { readQuickNotes } from './quick-notes-file'
 
 /** One orphan candidate. `id` is what `deleteOrphanedAssets` consumes; `label` is for display. */
 export interface OrphanedAsset {
@@ -164,11 +165,15 @@ export async function scanOrphanedAssets(adapter: DirectoryAdapter, options: Fil
         }
     }
 
+    // A Quick Note can hold a reference (ADR 0186), and `etherpk/quick-notes.json` is no document.
+    const documents = stored.length
+    for (const note of await readQuickNotes(adapter)) stored.push(note.text)
+
     const { texts, unreadableProtected } = await referenceTexts(stored, options.readProtected)
     const candidates = assets.filter(({ name }) => !isReferenced(texts, name)).map(({ name }) => ({ id: name, label: name, ...(assetHashFromName(name) ? { contentHash: assetHashFromName(name)!.hash } : {}) }))
     return orphanScanOf(candidates, {
         totalAssets: assets.length,
-        scannedDocuments: stored.length,
+        scannedDocuments: documents,
         unreadableProtected,
         unlockable: options.readProtected !== undefined,
     })

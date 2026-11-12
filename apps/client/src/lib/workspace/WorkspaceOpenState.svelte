@@ -115,7 +115,7 @@
 {#snippet shareWaits()}
     {#if shareWaiting}
         <p data-testid="share-waiting" class="notice__share">
-            The text you shared will go into Quick notes once the graph opens.
+            What you shared will go into Quick notes once the graph opens.
         </p>
     {/if}
 {/snippet}
@@ -123,7 +123,7 @@
 {#snippet shareStranded()}
     {#if shareWaiting}
         <p data-testid="share-waiting" class="notice__share">
-            The text you shared is still waiting. <a href="/share" data-testid="share-choose-another">Choose another graph</a>
+            What you shared is still waiting. <a href="/share" data-testid="share-choose-another">Choose another graph</a>
         </p>
     {/if}
 {/snippet}
@@ -136,7 +136,7 @@
         {#if shareLanded}
             <p data-testid="share-landed" class="notice__share">Added to Quick notes.</p>
         {:else if shareWaiting}
-            <p data-testid="share-waiting" class="notice__share">Adding the text you shared to Quick notes…</p>
+            <p data-testid="share-waiting" class="notice__share">Adding what you shared to Quick notes…</p>
         {/if}
         {#if loadingStep !== 'opening' && indexed}
             <div class="notice__count">

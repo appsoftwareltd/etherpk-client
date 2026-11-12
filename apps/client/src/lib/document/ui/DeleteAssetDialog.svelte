@@ -45,7 +45,10 @@
     const reason = $derived.by(() => {
         switch (plan.blockedBy) {
             case "used-elsewhere":
-                return `This file is used in ${plan.references} places, so it cannot be deleted yet. You can remove it from here, and it stays where it is used.`;
+                return (
+                    `This file is used in ${plan.references} places, so it cannot be deleted yet. You can remove it from here, and it stays where it is used.` +
+                    (plan.quickNotes ? ` ${plan.quickNotes === 1 ? "One of them is a quick note." : `${plan.quickNotes} of them are quick notes.`}` : "")
+                );
             case "index-building":
                 return "This graph is still being indexed, so we cannot yet tell whether anything else uses this file. You can remove it from here now, and delete it once indexing finishes.";
             case "offline":

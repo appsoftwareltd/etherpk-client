@@ -57,6 +57,11 @@ export interface AssetDeletePlan {
      */
     lockedProtected?: number
     unreadProtected?: number
+    /**
+     * [[Quick Note]]s holding a reference, present only when there are some (ADR 0186). They are
+     * counted in `references` and are in no document, so `documents` does not name them.
+     */
+    quickNotes?: number
 }
 
 /**
@@ -89,6 +94,16 @@ export interface AssetDeleteInputs {
      * which removes it. None for a delete from a PDF's tab, where every reference stays behind.
      */
     ownReferences?: 0 | 1
+    /**
+     * How many [[Quick Note]]s reference the asset. The index holds no Quick Note, so the graph
+     * answers from the notes it holds (`quickNoteReferences`). Absent, none are counted.
+     */
+    quickNoteReferences?: () => number
+}
+
+/** How many of `noteTexts` hold a reference to the asset `needles` name: one per note, however often it is written. */
+export function quickNoteReferences(noteTexts: readonly string[], needles: readonly string[]): number {
+    return noteTexts.filter((text) => needles.some((needle) => text.includes(needle))).length
 }
 
 /**
@@ -97,13 +112,25 @@ export interface AssetDeleteInputs {
  * index's debounce — and in both cases the count says the same thing that matters here: no
  * OTHER document holds this asset.
  */
+type FoundUsage = Pick<AssetDeletePlan, 'documents' | 'references' | 'lockedProtected' | 'unreadProtected' | 'quickNotes'>
+
+/** The index's count with the Quick Notes' added: a note is a reference no document holds. */
+function countedWithNotes(usage: AssetUsage, quickNotes: (() => number) | undefined): FoundUsage {
+    const inNotes = quickNotes?.() ?? 0
+    return {
+        documents: usage.documents,
+        references: usage.references + inNotes,
+        ...(inNotes > 0 ? { quickNotes: inNotes } : {}),
+    }
+}
+
 export async function planAssetDelete(inputs: AssetDeleteInputs): Promise<AssetDeletePlan> {
     const usage = await inputs.usage()
     if (!usage) return { deleteBytes: false, blockedBy: 'index-building', documents: [], references: 0 }
 
-    let found: Pick<AssetDeletePlan, 'documents' | 'references' | 'lockedProtected' | 'unreadProtected'> = { documents: usage.documents, references: usage.references }
+    let found = countedWithNotes(usage, inputs.quickNoteReferences)
     const allowed = inputs.ownReferences ?? 1
-    if (usage.references > allowed) return { deleteBytes: false, blockedBy: 'used-elsewhere', ...found }
+    if (found.references > allowed) return { deleteBytes: false, blockedBy: 'used-elsewhere', ...found }
 
     if (inputs.protectedUsage) {
         const hidden = await inputs.protectedUsage()
@@ -112,6 +139,7 @@ export async function planAssetDelete(inputs: AssetDeleteInputs): Promise<AssetD
         // document's own plaintext holds the one being removed. What was read counts even when
         // other documents went unchecked: a known reference refuses the delete outright.
         found = {
+            ...found,
             documents: [...found.documents, ...hidden.documents],
             references: found.references + hidden.references,
             ...(hidden.locked > 0 ? { lockedProtected: hidden.locked } : {}),

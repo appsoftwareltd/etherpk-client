@@ -23,6 +23,13 @@ export interface QuickNote {
     text: string
     /** The UTC instant the note was written, epoch milliseconds. */
     createdAt: number
+    /**
+     * The concept the note is filed under, one of the person's [[Favourite]]s when it was chosen
+     * (ADR 0186). The move to the journal nests the note under a bullet linking it. A field and
+     * not part of the text, because a note written as `[[Name]] text` does not nest and a
+     * picture renders only as a line's whole content. Absent for a note filed under nothing.
+     */
+    under?: string
 }
 
 export interface QuickNotesPersist {
@@ -58,10 +65,27 @@ export function sanitizeQuickNotes(raw: unknown): QuickNote[] {
         if (typeof text !== 'string' || text.trim() === '') continue
         if (typeof createdAt !== 'number' || !Number.isFinite(createdAt)) continue
         seen.add(id)
-        out.push({ id, text: text.trim(), createdAt })
+        out.push(filedUnder({ id, text: text.trim(), createdAt }, (entry as Record<string, unknown>).under))
         if (out.length >= MAX_QUICK_NOTES) break
     }
     return out
+}
+
+/**
+ * A concept name a note can be filed under, or undefined: one line of text, trimmed. Anything
+ * else (a list from a newer client, a hand-edited file) files the note under nothing, which
+ * still moves it.
+ */
+export function sanitizeUnder(raw: unknown): string | undefined {
+    if (typeof raw !== 'string') return undefined
+    const name = raw.trim()
+    return name === '' || /[\r\n]/.test(name) ? undefined : name
+}
+
+/** `note` filed under `under` when that is a concept name, and under nothing otherwise. */
+function filedUnder(note: QuickNote, under: unknown): QuickNote {
+    const filed = sanitizeUnder(under)
+    return filed ? { ...note, under: filed } : note
 }
 
 /** `existing` plus every `incoming` note whose id it does not hold: the [[Import]] merge. */
@@ -72,6 +96,7 @@ export function unionQuickNotes(existing: readonly QuickNote[], incoming: readon
 
 let list: QuickNote[] = []
 let persist: QuickNotesPersist | null = null
+let onDiscard: ((notes: readonly QuickNote[]) => void) | null = null
 /** Unsent text in the View's box: held per graph so leaving the tab and coming back keeps it. */
 let draft = ''
 /**
@@ -98,7 +123,9 @@ function sameList(a: readonly QuickNote[], b: readonly QuickNote[]): boolean {
     if (a.length !== b.length) return false
     const sa = sorted(a)
     const sb = sorted(b)
-    return sa.every((n, i) => n.id === sb[i].id && n.text === sb[i].text && n.createdAt === sb[i].createdAt)
+    return sa.every(
+        (n, i) => n.id === sb[i].id && n.text === sb[i].text && n.createdAt === sb[i].createdAt && n.under === sb[i].under,
+    )
 }
 
 /** Adopt the open graph's notes and the way to save them. Called on graph open. */
@@ -140,6 +167,8 @@ export interface AddQuickNoteOptions {
      * waited behind an unlock prompt was written when it was shared, and lands under that day.
      */
     createdAt?: number
+    /** The concept to file the note under ({@link QuickNote.under}). */
+    under?: string | null
 }
 
 /**
@@ -150,7 +179,7 @@ export interface AddQuickNoteOptions {
 export async function addQuickNote(text: string, options: AddQuickNoteOptions = {}): Promise<QuickNote | null> {
     const trimmed = text.trim()
     if (trimmed === '') return null
-    const note: QuickNote = { id: newId(), text: trimmed, createdAt: options.createdAt ?? Date.now() }
+    const note = filedUnder({ id: newId(), text: trimmed, createdAt: options.createdAt ?? Date.now() }, options.under)
     const previous = list
     list = [...list, note]
     emit()
@@ -180,6 +209,23 @@ export async function removeQuickNotes(ids: readonly string[]): Promise<void> {
         emit()
         throw err
     }
+}
+
+/**
+ * Delete notes the person threw away, as opposed to notes the move to the journal took: the same
+ * removal, and then the graph is told which went, so it can delete a file that only one of them
+ * referenced (ADR 0186). The move does not call this: its notes' references are in the journal.
+ */
+export async function discardQuickNotes(ids: readonly string[]): Promise<void> {
+    const gone = new Set(ids)
+    const discarded = list.filter((n) => gone.has(n.id))
+    await removeQuickNotes(ids)
+    if (discarded.length > 0) onDiscard?.(discarded)
+}
+
+/** Hear which notes were discarded. The workspace sets it for the open graph; null clears it. */
+export function setQuickNoteDiscardHandler(handler: ((notes: readonly QuickNote[]) => void) | null): void {
+    onDiscard = handler
 }
 
 /** Ask the next QuickNotesView to mount to take focus. */
@@ -224,6 +270,7 @@ export function subscribeQuickNoteDraft(listener: (text: string) => void): () =>
 export function resetQuickNotes(): void {
     list = []
     persist = null
+    onDiscard = null
     draft = ''
     focusOnMount = false
     emit()

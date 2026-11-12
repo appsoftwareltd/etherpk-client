@@ -3,7 +3,7 @@
  * renaming and keeping a PDF, which differ by backend. Plain TypeScript over injected parts, so the
  * rules test without a workspace.
  */
-import { assetUsageNeedles, planAssetDelete, type ProtectedAssetUsage } from '#lib/document/asset-delete.js'
+import { assetUsageNeedles, planAssetDelete, type ProtectedAssetUsage, quickNoteReferences } from '#lib/document/asset-delete.js'
 import { whenDocumentText } from '#lib/document/draft.js'
 import type { AssetUsage } from '#lib/document/index-db.js'
 import { createFilePdfStateHost } from '#lib/document/pdf/file-pdf-state.js'
@@ -28,6 +28,8 @@ export interface PdfServiceContext {
     /** The index's answer, or null while it is building. */
     usage(needles: readonly string[]): Promise<AssetUsage | null>
     protectedUsage(needles: readonly string[]): Promise<ProtectedAssetUsage>
+    /** The text of every [[Quick Note]] the graph holds: a note can reference a file (ADR 0186). */
+    quickNoteTexts?(): readonly string[]
     /** The Asset has gone: its Favourite, its Recent, its PDF Bookmarks and its tab go with it. */
     assetGone(target: string, hash: string): void
     /** The Asset has a new identity or name: its Favourite, its Recent and its tab follow. */
@@ -47,12 +49,13 @@ async function deleteAsset(context: PdfServiceContext, state: PdfStateHost, targ
         protectedUsage: () => context.protectedUsage(needles),
         readiness: () => tools.readyToDeleteBytes(),
         ownReferences: 0,
+        quickNoteReferences: () => quickNoteReferences(context.quickNoteTexts?.() ?? [], needles),
     })
     if (plan.lockedProtected || plan.unreadProtected) {
         return { deleted: false, reason: 'not-ready', message: 'Unlock your Protected Documents first: a link inside one would be left broken.' }
     }
     if (!plan.deleteBytes) {
-        if (plan.blockedBy === 'used-elsewhere') return { deleted: false, reason: 'linked', documents: plan.documents.map((d) => d.concept) }
+        if (plan.blockedBy === 'used-elsewhere') return { deleted: false, reason: 'linked', documents: [...plan.documents.map((d) => d.concept), ...(plan.quickNotes ? ['Quick notes'] : [])] }
         return { deleted: false, reason: 'not-ready', message: refusalMessage(plan.blockedBy) }
     }
     await tools.remove([id])

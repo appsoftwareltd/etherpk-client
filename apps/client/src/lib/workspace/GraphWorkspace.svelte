@@ -131,13 +131,21 @@
     } from "#lib/document/commands/quick-notes-commands.js";
     import {
         addQuickNote,
+        getQuickNotes,
+        type QuickNote,
+        setQuickNoteDiscardHandler,
         adoptQuickNotes,
         offerQuickNoteDraft,
         requestQuickNoteFocus,
         resetQuickNotes,
         setQuickNotes,
     } from "#lib/document/quick-notes.js";
-    import { peekPendingShare, takePendingShare } from "#lib/document/share-target.js";
+    import { deleteFilesOfDiscardedNotes } from "#lib/document/quick-note-file-cleanup.js";
+    import { type PendingShare, peekPendingShare, shareNoteText, takePendingShare } from "#lib/document/share-target.js";
+    import { storeNoteFiles } from "#lib/document/quick-note-file-store.js";
+    import { noteTextWithFiles } from "#lib/document/quick-note-files.js";
+    import { forgetSharedFiles, readSharedFiles } from "#lib/share/shared-files.js";
+    import { defaultMaxImageDisplaySize } from "#lib/document/view/asset-upload.js";
     import {
         registerSpellingCommands,
         SPELLING_OPEN_SETTINGS,
@@ -1767,6 +1775,7 @@
             tools: () => assetTools,
             usage: async (needles) => (!graphIndex || graphIndex.isBuilding() ? null : graphIndex.assetUsage(needles)),
             protectedUsage: protectedUsageOf,
+            quickNoteTexts: allQuickNoteTexts,
             assetGone: (target, hash) => {
                 void removePdfBookmarksOf(hash).catch(() => {});
                 void removeEbookBookmarksOf(hash).catch(() => {});
@@ -1831,6 +1840,34 @@
         const versions = graphVersions;
         if (!versions) return false;
         return versions.history.policy().then((policy) => policy.retentionDays > 0, () => true);
+    }
+
+    /**
+     * The text of every [[Quick Note]] the open graph holds. A note can reference a file (ADR
+     * 0186), so whatever counts a file's references reads these beside the index. On a synced
+     * graph that is every member's notes, read for matching and shown to nobody.
+     */
+    function allQuickNoteTexts(): string[] {
+        return serverGraph ? serverGraph.allQuickNoteTexts() : getQuickNotes().map((note) => note.text);
+    }
+
+    /**
+     * A discarded Quick Note's files go with it when nothing else references them
+     * (quick-note-file-cleanup.ts). Set beside `setQuickNotes`, and cleared by `resetQuickNotes`.
+     */
+    function deleteDiscardedNoteFiles(notes: readonly QuickNote[]): void {
+        void deleteFilesOfDiscardedNotes(
+            notes.map((note) => note.text),
+            {
+                tools: assetTools,
+                usage: async (needles) => (!graphIndex || graphIndex.isBuilding() ? null : graphIndex.assetUsage(needles)),
+                protectedUsage: protectedUsageOf,
+                noteTexts: allQuickNoteTexts,
+            },
+        ).catch((error: unknown) => {
+            // The note is gone either way. A file left behind is found by the orphan scan.
+            console.warn("[quick-notes] could not delete a discarded note's file", error);
+        });
     }
 
     async function protectedUsageOf(needles: readonly string[]): Promise<ProtectedAssetUsage> {
@@ -4297,6 +4334,7 @@
                     await writeQuickNotes(adapter, fsQuickNotes);
                 },
             });
+            setQuickNoteDiscardHandler(deleteDiscardedNoteFiles);
             // [[Bookmark]]s: etherpk/bookmarks.json (ADR 0159). A folder belongs to one browser, so
             // its list is the person's list, written whole from the list each change produces. A
             // file that is there but cannot be read opens with no bookmarks and refuses every
@@ -4345,6 +4383,8 @@
             // The Asset store shares the graph's directory adapter (uploads land in assets/).
             assetStore = createAssetStore(adapter);
             attempt.own(() => assetStore?.dispose());
+            // A share that carries files waited for this store.
+            await landPendingShare();
             // Graph Settings (etherpk/settings.json) — a snapshot read once.
             currentFsSettings = await attempt.wait(readGraphSettings(adapter));
             setGraphAccent(graphId, currentFsSettings.toolbarColor);
@@ -4437,6 +4477,7 @@
                 add: async (note) => quickNotesApi.add(note),
                 remove: async (ids) => quickNotesApi.remove(ids),
             });
+            setQuickNoteDiscardHandler(deleteDiscardedNoteFiles);
             attempt.own(
                 quickNotesApi.observe(() => adoptQuickNotes(quickNotesApi.list())),
             );
@@ -4496,6 +4537,8 @@
                 });
                 assetStore = serverAssets;
                 serverAssetStore = serverAssets;
+                // A share that carries files waited for this store.
+                await landPendingShare();
                 attempt.own(() => {
                     serverAssets.dispose();
                     if (serverAssetStore === serverAssets) serverAssetStore = undefined;
@@ -5148,6 +5191,7 @@
                 tools: () => assetTools,
                 index: () => graphIndex ?? null,
                 protectedUsage: protectedUsageOf,
+                quickNoteTexts: allQuickNoteTexts,
                 download: downloadResolvedAsset,
                 copyImage: copyImageToClipboard,
                 openAsset: (assetId, ref, line, concept) => {
@@ -5890,18 +5934,46 @@
      * twice; a refused write puts the text in the box as unsent text, the same fallback a typed
      * note gets, and the notice says why.
      */
+    /**
+     * Add the waiting share to Quick notes. A share with files (ADR 0186) waits for the graph's
+     * asset store, which is built a little later in the open than the notes are wired: the early
+     * call leaves it stashed and the call after the store exists lands it. Its files are stored
+     * first and their references written after the text, as the Quick Notes View does. A share
+     * of text lands on the early call, as it always has.
+     */
     async function landPendingShare(): Promise<void> {
+        const waiting = peekPendingShare();
+        if (waiting?.graphId === graphId && waiting.filesId && !assetStore) return;
         const share = takePendingShare(graphId);
         shareWaiting = false;
         if (!share) return;
         try {
-            await addQuickNote(share.text, { createdAt: share.createdAt });
+            const text = share.filesId ? await shareTextWithStoredFiles(share, share.filesId) : share.text;
+            await addQuickNote(text, { createdAt: share.createdAt, under: share.under });
             shareLanded = true;
         } catch (err) {
-            offerQuickNoteDraft(share.text);
-            notify(`Could not add the shared text to Quick notes, so it is in the box for you to add later: ${(err as Error).message}`);
+            notify(keepShareThatFailed(share, err as Error));
         }
         revealQuickNotesOnMount = true;
+    }
+
+    /** A share that could not be added: its text goes into the box, and the notice says what happened. */
+    function keepShareThatFailed(share: PendingShare, error: Error): string {
+        const kept = share.text.trim() !== "";
+        if (kept) offerQuickNoteDraft(share.text);
+        if (!share.filesId) return `Could not add the shared text to Quick notes, so it is in the box for you to add later: ${error.message}`;
+        return `Could not add what you shared to Quick notes: ${error.message}${kept ? " The text is in the box for you to add later." : ""}`;
+    }
+
+    /**
+     * Store a share's files in the open graph and write their references after its text. The
+     * checkbox of a task goes in front of the finished text: for files alone that is the first
+     * reference. The copy the files waited as is removed once the graph holds them.
+     */
+    async function shareTextWithStoredFiles(share: PendingShare, filesId: string): Promise<string> {
+        const saved = await storeNoteFiles(await readSharedFiles(filesId), assetStore!);
+        await forgetSharedFiles(filesId).catch(() => {});
+        return shareNoteText(noteTextWithFiles(share.text, saved, defaultMaxImageDisplaySize()), share.task === true) ?? "";
     }
 
     async function runBuild() {

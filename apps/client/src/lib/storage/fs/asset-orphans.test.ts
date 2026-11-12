@@ -7,6 +7,7 @@ import { protectedTextReader } from '#lib/document/protection/protected-text-rea
 
 import { deleteOrphanedAssets, scanOrphanedAssets } from './asset-orphans'
 import { createMemoryDirectoryAdapter } from './memory-adapter'
+import { writeQuickNotes } from './quick-notes-file'
 
 /** A graph's protection, unlocked, with cheap Argon2id: the cost parameters are proven elsewhere. */
 async function unlockedProtection() {
@@ -36,6 +37,20 @@ async function seededAdapter() {
 }
 
 describe('scanOrphanedAssets (filesystem)', () => {
+    it('counts a file a quick note references as used, and does not count the notes as documents', async () => {
+        const adapter = createMemoryDirectoryAdapter({ now: () => 0 })
+        await adapter.ensureSkeleton()
+        await adapter.writeBinary('assets', 'receipt.33333333.webp', bytes(3))
+        await adapter.writeBinary('assets', 'unused.44444444.png', bytes(4))
+        await adapter.write('pages', 'Garden.md', '- beans\n')
+        await writeQuickNotes(adapter, [{ id: 'n1', text: 'corner shop\n![receipt](../assets/receipt.33333333.webp)', createdAt: 1 }])
+
+        const scan = await scanOrphanedAssets(adapter)
+
+        expect(scan.orphans.map((orphan) => orphan.id)).toEqual(['unused.44444444.png'])
+        expect(scan.scannedDocuments).toBe(1)
+    })
+
     it('finds only assets referenced by no document, encoded refs included', async () => {
         const adapter = await seededAdapter()
         const scan = await scanOrphanedAssets(adapter)

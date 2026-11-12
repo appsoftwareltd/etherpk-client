@@ -31,7 +31,7 @@ import type { LightboxImage } from '#lib/components/lightbox/lightbox-image.js'
 import { type AssetStore, displayNameForRef, isImageAssetRef, type ResolvedAsset } from '#lib/storage/fs/asset-store.js'
 import type { GraphAssetTools } from '#lib/storage/fs/asset-orphans.js'
 
-import { type AssetDeletePlan, type ProtectedAssetUsage, assetUsageNeedles, planAssetDelete } from '../asset-delete'
+import { type AssetDeletePlan, type ProtectedAssetUsage, assetUsageNeedles, planAssetDelete, quickNoteReferences } from '../asset-delete'
 import { removeAssetReference } from '../view/asset-remove'
 import type { RemoteGraphIndex } from '../index-worker/client'
 
@@ -64,6 +64,8 @@ export interface AssetCommandDeps {
      * always supplies it; absent, protected documents are not consulted.
      */
     protectedUsage?: (needles: readonly string[]) => Promise<ProtectedAssetUsage>
+    /** The text of every [[Quick Note]] the graph holds: a note can reference a file (ADR 0186). */
+    quickNoteTexts?: () => readonly string[]
     /** Hand a resolved asset to the browser as a download. */
     download: (url: string, fileName: string) => void
     /**
@@ -199,6 +201,7 @@ export function registerAssetCommands(
             usage: async () => (!index || index.isBuilding() ? null : index.assetUsage(needles)),
             ...(protectedUsage ? { protectedUsage: () => protectedUsage(needles) } : {}),
             readiness: () => tools.readyToDeleteBytes(),
+            quickNoteReferences: () => quickNoteReferences(deps.quickNoteTexts?.() ?? [], needles),
         })
 
         // The name is only for the prompt. A file that cannot be fetched just now, or that arrived

@@ -160,6 +160,22 @@ describe('the pending share: what waits between the picker and the add', () => {
         expect(peekPendingShare(storage)).toBeNull()
     })
 
+    it('carries where the files of a share wait, and a share of files alone has no text', () => {
+        const storage = memoryStorage()
+        stashPendingShare({ ...share, text: '', filesId: 'f1', task: true }, storage)
+        expect(peekPendingShare(storage)).toEqual({ ...share, text: '', filesId: 'f1', task: true })
+        stashPendingShare({ ...share, text: '' }, storage)
+        expect(peekPendingShare(storage)).toBeNull()
+    })
+
+    it('carries the concept the note is filed under, and drops one that is not a name', () => {
+        const storage = memoryStorage()
+        stashPendingShare({ ...share, under: 'Shopping' }, storage)
+        expect(peekPendingShare(storage)?.under).toBe('Shopping')
+        stashPendingShare({ ...share, under: 'two\nlines' }, storage)
+        expect(peekPendingShare(storage)).not.toHaveProperty('under')
+    })
+
     it('is not taken by another graph, so a wrong workspace cannot swallow it', () => {
         const storage = memoryStorage()
         stashPendingShare(share, storage)

@@ -209,6 +209,14 @@ export interface ServerAssetStoreDeps {
     copies?: AssetCopies
     /** Whether the browser reports a network. `navigator.onLine` by default; false is reliable, true is not. */
     online?: () => boolean
+    /**
+     * Seal every saved file and queue it on this device without asking the Sync Server first,
+     * then leave the sending to `uploadQueued` (ADR 0186). For the [[Share Target]]'s page, where
+     * the person may leave the moment the note is saved: the file is safe before any network
+     * call, and what is still to send survives the page. Needs `copies`. A file saved this way
+     * carries no dedup token, as any queued upload does not.
+     */
+    queueFirst?: boolean
 }
 
 function kebabStem(name: string): string {
@@ -249,6 +257,21 @@ export function assetIdFromRef(ref: string): string | null {
     const file = (ref.split(/[?#]/)[0].split('/').pop() ?? ref)
     const m = /(?:^|\.)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\.[^.]+)?$/.exec(file)
     return m ? m[1] : null
+}
+
+/**
+ * Run `send` while no other tab, page or worker of this browser is sending the same graph's
+ * queue. More than one of them can hold a store for one graph (an open workspace, the Share
+ * Target's page, the app as it starts), and two senders would upload each file twice. One that
+ * finds the queue being sent reports nothing sent and nothing waiting: the sender that holds
+ * the lock says what happened. Without Web Locks (a test, an old browser) it runs.
+ */
+async function oneSenderAtATime(graphId: string, send: () => Promise<QueuedUploads>): Promise<QueuedUploads> {
+    const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
+    if (!locks) return send()
+    return locks.request(`etherpk-queued-uploads:${graphId}`, { ifAvailable: true }, (lock) =>
+        lock ? send() : { sent: 0, waiting: 0 },
+    ) as Promise<QueuedUploads>
 }
 
 export function createServerAssetStore(deps: ServerAssetStoreDeps): ServerAssetStore {
@@ -621,6 +644,8 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): ServerAssetS
         return { sent, waiting: 0 }
     }
     let sending: Promise<QueuedUploads> | null = null
+    /** A save is kept on this device with no network call: told to (`queueFirst`), or offline. */
+    const queuesWithoutAsking = () => deps.copies !== undefined && (deps.queueFirst === true || !online())
 
     return {
         async save({ name, bytes, type }, onBytes): Promise<SavedAsset> {
@@ -683,7 +708,7 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): ServerAssetS
                 report(bytes.length - reported)
                 return { ...saved(assetId, false), queued: true }
             }
-            if (deps.copies && !online()) return queue()
+            if (queuesWithoutAsking()) return queue()
 
             // Within-graph reuse (ADR 0053): a blinded token of the content hash travels with
             // the begin call. The server can index it but not invert it, so it answers "these
@@ -790,7 +815,7 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): ServerAssetS
         },
 
         uploadQueued() {
-            sending ??= sendQueued().finally(() => {
+            sending ??= oneSenderAtATime(deps.graphId, sendQueued).finally(() => {
                 sending = null
             })
             return sending

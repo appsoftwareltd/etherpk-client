@@ -143,6 +143,10 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
         stored.push(engine.doc.getText('content').toString())
     }
 
+    // A Quick Note can hold a reference (ADR 0186), and a note is in no document: every
+    // member's notes are read from the root document, for matching only.
+    stored.push(...deps.graph.allQuickNoteTexts())
+
     const { texts, unreadableProtected } = await referenceTexts(stored, deps.readProtected)
     const unused = assets.filter((a) => !isReferenced(texts, a.assetId))
     const hashes = new Map<string, string>()

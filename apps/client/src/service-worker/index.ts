@@ -1,5 +1,5 @@
 /**
- * The Client's service worker (ADR 0142). It does four things:
+ * The Client's service worker (ADR 0142). It does five things:
  *
  * 1. **Starts the app with no network.** Each version's files (the build's hashed files and the
  *    icons and manifest) are cached when the worker installs, and served from that cache. A few
@@ -12,6 +12,8 @@
  *    a release taken out of the directory is still refused, and kept for use offline.
  * 3. **Hosts the Theme editor's preview** (ADR 0082), unchanged from before.
  * 4. **Keeps the page an EBook reads in** (ADR 0181), so an EBook kept on the device opens with no network.
+ * 5. **Receives a share** (ADR 0186). The share target is a form post. The worker keeps the files
+ *    it carries on the device and sends the window to the share page's address.
  *
  * Every other request is not answered here at all: no `respondWith`, so the browser handles it
  * exactly as if there were no worker. `respondWith(fetch(request))` is NOT a pass-through. It
@@ -40,6 +42,8 @@ import {
     splitAppFiles,
 } from '#lib/offline/app-shell.js'
 import { EBOOK_FRAME_PATH } from '#lib/document/ebook/ebook-frame-policy.js'
+import { SHARE_FILES_DROPPED, shareAddress, sharedFilesOf } from '#lib/share/share-post.js'
+import { keepSharedFiles } from '#lib/share/shared-files.js'
 
 // SvelteKit documents `immutable` as empty in development. `import.meta.env.DEV` is not usable
 // here: SvelteKit's build of this worker compiles it to true.
@@ -362,6 +366,35 @@ async function preview(url: URL): Promise<Response> {
 }
 
 /* ------------------------------------------------------------------------------------------- */
+/* A share from the device's share sheet (ADR 0186).                                           */
+/* ------------------------------------------------------------------------------------------- */
+
+/**
+ * The share target is a form post, the only flavour that carries files. The worker keeps the
+ * files on the device and sends the window to the share page's address, which names them. It
+ * answers with no network, so a photo shared on a train still reaches the page. Files that
+ * cannot be kept (storage full or refused) are dropped and the address says so: the text still
+ * arrives.
+ */
+async function postedShare(request: Request): Promise<Response> {
+    let form: FormData
+    try {
+        form = await request.formData()
+    } catch {
+        return Response.redirect('/share', 303)
+    }
+    const files = sharedFilesOf(form)
+    let kept: string | null = null
+    if (files.length > 0) {
+        kept = await keepSharedFiles(files).catch((error: unknown) => {
+            console.warn('[sw] could not keep the shared files', error)
+            return SHARE_FILES_DROPPED
+        })
+    }
+    return Response.redirect(shareAddress(form, kept), 303)
+}
+
+/* ------------------------------------------------------------------------------------------- */
 /* Which requests this worker answers. Anything not named here is left to the browser.          */
 /* ------------------------------------------------------------------------------------------- */
 
@@ -371,6 +404,10 @@ sw.addEventListener('fetch', (event) => {
     if (url.origin !== sw.location.origin) return
     if (url.pathname.startsWith(PREVIEW_PREFIX)) {
         event.respondWith(preview(url))
+        return
+    }
+    if (request.method === 'POST' && url.pathname === '/share') {
+        event.respondWith(postedShare(request))
         return
     }
     if (request.method !== 'GET' || DEV) return

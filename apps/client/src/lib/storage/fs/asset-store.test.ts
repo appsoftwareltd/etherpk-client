@@ -199,6 +199,18 @@ describe('createAssetStore.save content-only de-duplication', () => {
         expect((await adapter.list('assets')).length).toBe(2)
     })
 
+    it('stores the bytes again when the file was deleted from the folder since it was saved', async () => {
+        const adapter = createMemoryDirectoryAdapter({ now: clock() })
+        const store = createAssetStore(adapter)
+        const first = await store.save({ name: 'Chart.png', bytes: bytes('pixels'), type: 'image/png' })
+        await adapter.remove('assets', first.name)
+
+        const again = await store.save({ name: 'Chart.png', bytes: bytes('pixels'), type: 'image/png' })
+
+        expect(again.reused).toBeUndefined()
+        expect((await adapter.list('assets')).map((entry) => entry.name)).toEqual([again.name])
+    })
+
     it('finds assets already on disk from an earlier session', async () => {
         const adapter = createMemoryDirectoryAdapter({ now: clock() })
         const seed = createAssetStore(adapter)
