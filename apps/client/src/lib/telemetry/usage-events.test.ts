@@ -25,20 +25,23 @@ function harness(overrides: { target?: TelemetryTarget | null; allowed?: () => b
 }
 
 describe('telemetryTarget', () => {
-    it("is EtherPK's server when the deployment says nothing and a website id is built in", () => {
-        expect(telemetryTarget({ url: undefined, websiteId: undefined, dev: false, builtInWebsiteId: WEBSITE })).toEqual({
-            url: `${DEFAULT_TELEMETRY_URL}/api/batch`,
-            websiteId: WEBSITE,
-        })
-    })
-
-    it('is off when the deployment sets the address empty', () => {
+    it('is off when the deployment does not set an address, or sets it empty', () => {
+        expect(telemetryTarget({ url: undefined, websiteId: undefined, dev: false, builtInWebsiteId: WEBSITE })).toBeNull()
+        expect(telemetryTarget({ url: undefined, websiteId: WEBSITE, dev: false, builtInWebsiteId: WEBSITE })).toBeNull()
         expect(telemetryTarget({ url: '', websiteId: undefined, dev: false, builtInWebsiteId: WEBSITE })).toBeNull()
         expect(telemetryTarget({ url: '  ', websiteId: WEBSITE, dev: false, builtInWebsiteId: WEBSITE })).toBeNull()
     })
 
-    it('is off in development unless an address is set', () => {
-        expect(telemetryTarget({ url: undefined, websiteId: undefined, dev: true, builtInWebsiteId: WEBSITE })).toBeNull()
+    it("files events under the Client's built-in website id when the address is EtherPK's server", () => {
+        expect(telemetryTarget({ url: DEFAULT_TELEMETRY_URL, websiteId: undefined, dev: false, builtInWebsiteId: WEBSITE })).toEqual({
+            url: `${DEFAULT_TELEMETRY_URL}/api/batch`,
+            websiteId: WEBSITE,
+        })
+        expect(telemetryTarget({ url: `${DEFAULT_TELEMETRY_URL}/`, websiteId: '', dev: false, builtInWebsiteId: WEBSITE })?.websiteId).toBe(WEBSITE)
+    })
+
+    it("does not use the built-in website id in development, where a spec or developer names their own", () => {
+        expect(telemetryTarget({ url: DEFAULT_TELEMETRY_URL, websiteId: undefined, dev: true, builtInWebsiteId: WEBSITE })).toBeNull()
         expect(telemetryTarget({ url: 'https://stats.example.com', websiteId: WEBSITE, dev: true, builtInWebsiteId: null })).toEqual(target)
     })
 
@@ -50,7 +53,7 @@ describe('telemetryTarget', () => {
     })
 
     it('is off without a usable website id or address, never an error', () => {
-        expect(telemetryTarget({ url: undefined, websiteId: undefined, dev: false, builtInWebsiteId: null })).toBeNull()
+        expect(telemetryTarget({ url: DEFAULT_TELEMETRY_URL, websiteId: undefined, dev: false, builtInWebsiteId: null })).toBeNull()
         // Another server does not get EtherPK's website id.
         expect(telemetryTarget({ url: 'https://stats.example.com', websiteId: undefined, dev: false, builtInWebsiteId: WEBSITE })).toBeNull()
         expect(telemetryTarget({ url: 'https://stats.example.com', websiteId: 'not-an-id', dev: false, builtInWebsiteId: null })).toBeNull()

@@ -5,6 +5,15 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.28.0 - 2026-11-13
+
+### Client
+
+- **Usage statistics are off unless the deployment turns them on.** A Client sends them only when
+  `PUBLIC_TELEMETRY_URL` is set: to `https://analytics.appsoftware.com` to send them to EtherPK,
+  or to your own Umami server together with `PUBLIC_TELEMETRY_WEBSITE_ID`. In 0.27.0 a Client that
+  left the setting unset sent them to EtherPK.
+
 ## 0.27.0 - 2026-11-13
 
 ### Client
