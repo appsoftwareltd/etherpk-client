@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addCspSource } from './csp-header'
+import { addCspSource, setCspDirective } from './csp-header'
 
 describe('addCspSource', () => {
     const policy = "default-src 'self'; script-src 'self' 'nonce-abc' sha256-xyz; connect-src 'self' blob:; img-src 'self'"
@@ -25,5 +25,19 @@ describe('addCspSource', () => {
     it('does not list a source twice', () => {
         const once = addCspSource(policy, ['script-src'], 'https://a.example')
         expect(addCspSource(once, ['script-src'], 'https://a.example')).toBe(once)
+    })
+})
+
+describe('setCspDirective', () => {
+    const policy = "default-src 'self'; frame-ancestors 'none'; img-src 'self'"
+
+    it('replaces the directive\'s sources, so a source never sits beside \'none\'', () => {
+        expect(setCspDirective(policy, 'frame-ancestors', ['https://analytics.example.com'])).toBe(
+            "default-src 'self'; frame-ancestors https://analytics.example.com; img-src 'self'",
+        )
+    })
+
+    it('adds the directive where the policy has none', () => {
+        expect(setCspDirective("default-src 'self'", 'frame-ancestors', ["'self'"])).toBe("default-src 'self'; frame-ancestors 'self'")
     })
 })

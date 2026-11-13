@@ -17,3 +17,19 @@ export function addCspSource(policy: string, directiveNames: readonly string[], 
         .filter((directive) => directive.length > 0)
         .join('; ')
 }
+
+/**
+ * Set a directive's sources outright, adding the directive where the policy has none. For a
+ * directive whose built-in value is `'none'`, which a source added beside it would not override.
+ */
+export function setCspDirective(policy: string, directiveName: string, sources: readonly string[]): string {
+    const replacement = [directiveName, ...sources].join(' ')
+    const directives = policy
+        .split(';')
+        .map((directive) => directive.trim())
+        .filter((directive) => directive.length > 0)
+    const index = directives.findIndex((directive) => directive.split(/\s+/)[0] === directiveName)
+    if (index === -1) directives.push(replacement)
+    else directives[index] = replacement
+    return directives.join('; ')
+}
