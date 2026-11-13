@@ -1,6 +1,6 @@
 <script lang="ts">
     /**
-     * The one **Settings and Extensions** modal, in three areas: **Settings**, in up to seven
+     * The one **Settings and Extensions** modal, in three areas: **Settings**, in up to eight
      * section tabs (below), **Extensions**, an area of its own because what extensions offer
      * there will grow (ADR 0121), and **Install**, installing EtherPK on this device. The address
      * names a section, `extensions` or `install` (`tab`), so every entry point and the browser's
@@ -18,6 +18,8 @@
      *   no room for and which showed "Mirroring" with nothing to say where or what that meant.
      * - **Publish** — the graph's [[Publication]]s, their themes and includes, and where each is
      *   published on this device (ADR 0082).
+     * - **Privacy** — whether the Client sends usage statistics, and what they hold (ADR 0187).
+     *   The person's own setting, so the tab is offered outside an open graph too.
      * - **Maintenance** — rebuild the index, scan for orphaned assets, read the storage footprint,
      *   and scan for formatting issues (ADR 0109), with a diff to approve for each fix.
      *
@@ -50,6 +52,8 @@
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import ProtectionSettingsTab from "#lib/document/protection/ui/ProtectionSettingsTab.svelte";
     import SpellingSettingsTab from "#lib/document/spelling/ui/SpellingSettingsTab.svelte";
+    import PrivacySettingsTab from "#lib/telemetry/ui/PrivacySettingsTab.svelte";
+    import { usageStatistics } from "#lib/telemetry/usage-statistics-device.js";
     import ExtensionsSettingsTab from "#lib/extensions/ExtensionsSettingsTab.svelte";
     import type { ExtensionDirectory } from "#lib/extensions/directory.js";
     import type { InstalledSync } from "#lib/extensions/installed-sync.js";
@@ -184,13 +188,13 @@
          * so the Publish chord or a history step can move an open dialog to another tab.
          * Omitted, or not offered for this graph, lands on General.
          */
-        tab?: "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance";
+        tab?: "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "privacy" | "extensions" | "install" | "maintenance";
         /**
          * The tab the dialog is on changed: the user picked one (click or arrow keys), or the
          * tab asked for is not offered on this graph and it opened on General instead. The
          * workspace remembers it and keeps the address honest.
          */
-        onchangetab?: (tab: "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance") => void;
+        onchangetab?: (tab: "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "privacy" | "extensions" | "install" | "maintenance") => void;
         onsave: (result: { name: string; settings: GraphSettings; folderPath?: string }) => void;
         onclose: () => void;
     } = $props();
@@ -220,7 +224,7 @@
         }
     }
 
-    type Tab = "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance";
+    type Tab = "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "privacy" | "extensions" | "install" | "maintenance";
     const tabs = $derived(
         [
             { id: "general" as const, label: "General", shown: true },
@@ -238,6 +242,9 @@
             },
             { id: "agents" as const, label: "Agents", shown: agents !== null },
             { id: "publish" as const, label: "Publish", shown: publish !== null },
+            // The person's, not the graph's, so it is offered outside an open graph too. Hidden
+            // where the deployment sends no usage statistics: there would be nothing to set.
+            { id: "privacy" as const, label: "Privacy", shown: usageStatistics().available },
             {
                 id: "maintenance" as const,
                 label: "Maintenance",
@@ -305,10 +312,13 @@
     // workspace can remember General and correct an address that named the other one.
     onMount(() => {
         if (activeTab !== tab) onchangetab?.(activeTab);
+        // The tab it opened on is shown too (ADR 0187); a pick after this is counted in selectTab.
+        usageStatistics().record({ name: `settings.${activeTab}` });
     });
 
     /** A tab the user chose, as opposed to the one the dialog was asked to be on. */
     function selectTab(next: Tab) {
+        usageStatistics().record({ name: `settings.${next}` });
         if (!isAreaTab(next)) lastSection = next;
         activeTab = next;
         onchangetab?.(next);
@@ -615,6 +625,9 @@
                 <SpellingSettingsTab {...spelling} />
             {:else if activeTab === "protection" && protection}
                 <ProtectionSettingsTab {...protection} />
+            {:else if activeTab === "privacy"}
+                <!-- Applies at once and is the person's own: nothing for Save to apply. -->
+                <PrivacySettingsTab />
             {:else if activeTab === "extensions" && extensions}
                 <!-- Each switch applies at once and is per device: nothing for Save to apply. -->
                 <ExtensionsSettingsTab host={extensions} directory={extensionDirectory} {installedSync} />

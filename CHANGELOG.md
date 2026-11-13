@@ -5,6 +5,18 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.27.0 - 2026-11-13
+
+### Client
+
+- **Usage statistics.** The Client sends EtherPK usage statistics about once a minute: that it
+  was opened, the kind of graph, and the names of the commands, tabs and Settings tabs used, such
+  as `command.tasks.open`. It sends no notes, page names, file names, searches or accounts, and
+  keeps no identifier. A notice says so before anything is sent, and **Settings** > **Privacy**
+  lists every event, shows what was sent, and turns them off. A browser that sends Global Privacy
+  Control reports nothing. To turn them off for a whole deployment, set `PUBLIC_TELEMETRY_URL` to
+  an empty value.
+
 ## 0.26.0 - 2026-11-13
 
 ### Client

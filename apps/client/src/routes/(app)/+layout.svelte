@@ -13,6 +13,8 @@
     import { suppressBrowserChords } from "#lib/surface/index.js";
     import { startPersonSettingsSync } from "#lib/person-settings/person-settings-sync.js";
     import { appHeaderHiddenOnPhone } from "#lib/workspace/app-header.svelte.js";
+    import { startUsageStatistics } from "#lib/telemetry/usage-statistics-device.js";
+    import { isDemoPath } from "#lib/telemetry/workspace-usage.js";
 
     let { data, children } = $props();
 
@@ -23,6 +25,14 @@
 
     // The person's settings follow them through their account (ADR 0134) while the Client runs.
     $effect(() => startPersonSettingsSync());
+
+    // Usage statistics (ADR 0187) start with the app: the notice the first time, the open after
+    // that. Not on the demo, which a visitor from the home page opens before they have an app to
+    // be told about: it starts when they leave the demo for a page of the app, and nothing is
+    // counted while they are back in it.
+    $effect(() => {
+        if (!isDemoPath(page.url.pathname)) startUsageStatistics();
+    });
 
     const navItems = $derived(buildApplicationNavigation({
         managed: data.managedService,

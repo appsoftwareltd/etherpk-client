@@ -67,6 +67,12 @@ export interface LayoutControllerOptions {
      * renderer's `onGeometryChange`). Not fired during {@link LayoutController.restore}.
      */
     onChange?: () => void
+    /**
+     * Called with each View opened or brought forward through {@link LayoutController.openView}:
+     * how usage statistics count which Views are used. Not called by `restore`, nor for a tab the
+     * person selects in the renderer. What it throws is ignored.
+     */
+    onViewOpened?: (view: ViewRef) => void
 }
 
 const REGION_FOR_SIDE: Record<SidebarSide, Region> = {
@@ -75,7 +81,7 @@ const REGION_FOR_SIDE: Record<SidebarSide, Region> = {
 }
 
 export function createLayoutController(options: LayoutControllerOptions): LayoutController {
-    const { renderer, registry, onSidebarToggle, onChange } = options
+    const { renderer, registry, onSidebarToggle, onChange, onViewOpened } = options
     const makeDefault = options.defaultLayoutFactory ?? (() => defaultLayout())
 
     // Canonical state. Starts empty; the app calls restore() to populate it.
@@ -360,6 +366,11 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
 
     function openView(view: ViewRef, opts: OpenViewOptions = {}): PaneHandle {
         reconcile()
+        try {
+            onViewOpened?.(view)
+        } catch {
+            // A listener's failure is not the open's.
+        }
         const key = viewKey(view)
         const activate = opts.activate ?? true
 

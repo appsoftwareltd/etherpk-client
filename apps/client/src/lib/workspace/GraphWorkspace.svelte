@@ -389,7 +389,6 @@
         type ContextMenuTarget,
         type EventBus,
         attachKeybindings,
-        createCommandRegistry,
         createContributionRegistry,
         createEventBus,
     } from "#lib/surface/index.js";
@@ -564,6 +563,8 @@
     import GraphSettingsDialog from "#lib/sync/ui/GraphSettingsDialog.svelte";
     import InviteDialog from "#lib/sync/ui/InviteDialog.svelte";
     import { isDemoGraph } from "#lib/demo/demo-graph.js";
+    import { createWorkspaceUsage } from "#lib/telemetry/workspace-usage.js";
+    import { usageStatistics } from "#lib/telemetry/usage-statistics-device.js";
     import { registerShareCommands } from "#lib/sync/share-commands.js";
     import { readShareAccess, vaultKeyForInvite, type ShareAccess } from "#lib/sync/share-access.js";
     import { headlessClientPackage, type AgentsTabProps } from "#lib/sync/ui/agents-tab.js";
@@ -1529,6 +1530,12 @@
     let detachActiveForProtection: (() => void) | undefined;
     let detachActiveForBacklinks: (() => void) | undefined;
     let commandRegistry: CommandRegistry | undefined;
+    // What this workspace reports to usage statistics (ADR 0187). The Built-in Extensions' ids
+    // are reported as they are; another extension's are not.
+    const workspaceUsage = createWorkspaceUsage(
+        usageStatistics(),
+        new Set(builtInCatalogue.extensions.map((entry) => entry.id)),
+    );
     let detachKeybindings: (() => void) | undefined;
     let detachEditorCommands: (() => void) | undefined;
     let detachLinkCommands: (() => void) | undefined;
@@ -4845,7 +4852,16 @@
         // The Command registry + app-level keybindings (extension surface, step 4).
         // The registry's genuine first indirect consumer; editor block-ops stay
         // CM-native. Handlers read `controller` lazily — it is created in mountPresenter.
-        commandRegistry = createCommandRegistry();
+        // Usage statistics (ADR 0187): the graph that opened, and every Command run. Extensions
+        // register through `workspaceUsage.extensionCommands`, so theirs are told apart.
+        commandRegistry = workspaceUsage.commands;
+        workspaceUsage.graphOpened({
+            graphId,
+            synced: isServerStore,
+            folder: fsFolderName !== undefined,
+            pages: currentGraphIndex.allConcepts().length,
+            openMs: performance.now() - openStarted,
+        });
         // Each Sidebar toggle brings its resident back first if it has been closed (residents.ts):
         // a chord that expanded an empty Sidebar was the only way to lose a View for good.
         commandRegistry.register("layout.toggleSidebar", () => {
@@ -5062,7 +5078,7 @@
         // inline one (see `useGraphIndex`).
         const indexClosed = () => Promise.reject(new Error("The graph's index is not open."));
         // Both are set by now; held as constants so the extensions' contexts keep them.
-        const extensionCommands = commandRegistry;
+        const extensionCommands = workspaceUsage.extensionCommands;
         const extensionEvents = bus;
         // The Built-in Extensions (ADR 0121) start in this graph, each with a context scoped to it.
         // A compiled-in one starts before the presenter mounts, so a restored Layout finds its Views
@@ -5707,6 +5723,7 @@
         controller = createLayoutController({
             renderer,
             registry,
+            onViewOpened: (view) => workspaceUsage.viewOpened(view),
             onChange: () => {
                 scheduleSave(); // persist open / close / focus / collapse
                 if (!suppressNav) navEngine?.sync();

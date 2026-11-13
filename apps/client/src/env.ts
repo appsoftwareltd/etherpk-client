@@ -31,6 +31,9 @@ export const variables = defineEnvVars({
     EXTENSION_CACHE_DIR: optional,
 
     PUBLIC_DICTIONARY_URL: optionalPublic,
+    // Usage statistics (ADR 0187): the collector, and the website id it files events under.
+    PUBLIC_TELEMETRY_URL: optionalPublic,
+    PUBLIC_TELEMETRY_WEBSITE_ID: optionalPublic,
     PUBLIC_TERMS_URL: optionalPublic,
     PUBLIC_PRIVACY_URL: optionalPublic,
 

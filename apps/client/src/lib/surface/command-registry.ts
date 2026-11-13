@@ -25,7 +25,15 @@ export function isRegisterableCommandId(id: string): boolean {
     return id.length > 0 && !id.includes(ID_SEPARATOR)
 }
 
-export function createCommandRegistry(): CommandRegistry {
+export interface CommandRegistryOptions {
+    /**
+     * Told the id of each Command as it is run, before its handler: how usage statistics count
+     * which Commands are used. Never given the argument, and what it throws is ignored.
+     */
+    onExecute?: (id: string) => void
+}
+
+export function createCommandRegistry(options: CommandRegistryOptions = {}): CommandRegistry {
     const handlers = new Map<string, CommandHandler>()
     return {
         register(id, handler) {
@@ -41,6 +49,11 @@ export function createCommandRegistry(): CommandRegistry {
         async execute(id, arg) {
             const handler = handlers.get(id)
             if (!handler) throw new Error(`No command registered for "${id}".`)
+            try {
+                options.onExecute?.(id)
+            } catch {
+                // A listener's failure is not the Command's.
+            }
             return handler(arg)
         },
         has: (id) => handlers.has(id),

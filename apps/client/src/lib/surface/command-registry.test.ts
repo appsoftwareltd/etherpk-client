@@ -54,4 +54,23 @@ describe('command registry', () => {
         await expect(reg.execute('boom')).rejects.toThrow('kaboom')
         expect(await reg.execute('fine')).toBe('ok')
     })
+
+    it('tells a listener the id of each command run, and never its argument', async () => {
+        const seen: unknown[][] = []
+        const reg = createCommandRegistry({ onExecute: (...args) => seen.push(args) })
+        reg.register('document.open', (arg) => `opened ${arg}`)
+        expect(await reg.execute('document.open', 'Garden')).toBe('opened Garden')
+        await expect(reg.execute('nope.missing')).rejects.toThrow(/No command/)
+        expect(seen).toEqual([['document.open']])
+    })
+
+    it('runs the command whatever the listener throws', async () => {
+        const reg = createCommandRegistry({
+            onExecute: () => {
+                throw new Error('listener')
+            },
+        })
+        reg.register('tasks.open', () => 'ok')
+        expect(await reg.execute('tasks.open')).toBe('ok')
+    })
 })
