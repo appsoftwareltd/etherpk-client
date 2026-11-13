@@ -148,16 +148,6 @@ describe('telemetry', () => {
         expect(names()).toEqual([])
     })
 
-    it('keeps what it sent for the Privacy tab, and says when it sends', () => {
-        const { telemetry } = harness()
-        let heard = 0
-        telemetry.subscribe(() => heard++)
-        telemetry.record({ name: 'settings.privacy' })
-        telemetry.flush()
-        expect(heard).toBe(1)
-        expect(telemetry.sent().map((event) => event.name)).toEqual(['settings.privacy'])
-    })
-
     it('never throws into the feature that reported, whatever sending does', () => {
         const telemetry = createTelemetry({
             target,

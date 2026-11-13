@@ -5,6 +5,19 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.30.0 - 2026-11-13
+
+### Client
+
+- **The usage statistics switch is at the bottom of Settings > General.** It links to the
+  deployment's privacy page (`PUBLIC_PRIVACY_URL` on a self-hosted Client) for what is sent. The
+  separate **Privacy** tab, with its list of events and of what was sent, is gone: it made the
+  Settings tabs wrap onto a second line on a desktop.
+
+## 0.29.0 - 2026-11-13
+
+No changes to the Client or the Headless Client themselves.
+
 ## 0.28.0 - 2026-11-13
 
 ### Client
@@ -54,7 +67,7 @@ starts at 0.9.3.
 
 ## 0.25.0 - 2026-11-12
 
-No changes to the Client or the Headless Client.
+No changes to the Client or the Headless Client themselves.
 
 ## 0.24.0 - 2026-11-12
 
@@ -67,7 +80,7 @@ No changes to the Client or the Headless Client.
 
 ## 0.23.0 - 2026-11-11
 
-No changes to the Client or the Headless Client.
+No changes to the Client or the Headless Client themselves.
 
 ## 0.22.0 - 2026-11-11
 

@@ -4,7 +4,7 @@
  * Each entry declares a family of event names, when it is sent, and each property with the
  * values it may take. `checkUsageEvent` refuses anything the catalogue does not declare, and the
  * telemetry queue runs it on every event, so a change elsewhere cannot send a field or a value
- * this file does not name. The Privacy tab renders its "What is sent" list from this file.
+ * this file does not name.
  *
  * Nothing here holds what a person wrote: an event name is built from a Command id, a View kind or
  * a Settings tab, all constants in code, and checked against a plain dotted shape. A value is one
@@ -18,11 +18,11 @@
 type PropertyRule = readonly string[] | 'version' | 'error-class'
 
 export interface CatalogueEntry {
-    /** The name as the Privacy tab shows it, with a placeholder for the variable part. */
+    /** The name as a reader sees it, with a placeholder for the variable part. */
     label: string
     /** The names this entry covers. */
     pattern: RegExp
-    /** When it is sent, in a sentence the Privacy tab shows. */
+    /** When it is sent, in a sentence. */
     when: string
     properties: Record<string, { rule: PropertyRule; meaning: string }>
 }

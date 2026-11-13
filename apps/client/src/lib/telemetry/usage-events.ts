@@ -26,8 +26,6 @@ export const BUILT_IN_TELEMETRY_WEBSITE_ID: string | null = '665df204-0128-46c0-
 
 export const MAX_BATCH = 50
 export const PER_NAME_CAP = 20
-/** How many sent events the Privacy tab can show. */
-export const SENT_LOG_LIMIT = 200
 
 const WEBSITE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -81,8 +79,8 @@ function websiteIdFor(url: string, settings: TelemetrySettings): string | null {
     return settings.builtInWebsiteId === undefined ? BUILT_IN_TELEMETRY_WEBSITE_ID : settings.builtInWebsiteId
 }
 
-/** An event as it was queued and sent, for the Privacy tab's list. */
-export interface SentEvent extends UsageEvent {
+/** An event as it waits in the queue. */
+interface QueuedEvent extends UsageEvent {
     /** Milliseconds since 1970. */
     at: number
 }
@@ -106,20 +104,14 @@ export interface Telemetry {
     flush(): void
     /** Send what is queued and start a new window for {@link PER_NAME_CAP}. */
     tick(): void
-    /** The events sent from this page, oldest first, the last {@link SENT_LOG_LIMIT}. */
-    sent(): readonly SentEvent[]
-    /** Called after each batch is sent. */
-    subscribe(listener: () => void): () => void
 }
 
 export function createTelemetry(deps: TelemetryDependencies): Telemetry {
     const { target } = deps
-    let queue: SentEvent[] = []
+    let queue: QueuedEvent[] = []
     let counts = new Map<string, number>()
-    let log: SentEvent[] = []
-    const listeners = new Set<() => void>()
 
-    function post(to: TelemetryTarget, batch: SentEvent[]): void {
+    function post(to: TelemetryTarget, batch: QueuedEvent[]): void {
         const body = batch.map(({ name, data, at }) => ({
             type: 'event',
             payload: {
@@ -146,8 +138,6 @@ export function createTelemetry(deps: TelemetryDependencies): Telemetry {
         // Turned off since these were queued: they are dropped, not sent.
         if (!deps.allowed()) return
         post(target, batch)
-        log = [...log, ...batch].slice(-SENT_LOG_LIMIT)
-        for (const listener of listeners) listener()
     }
 
     function record(event: UsageEvent): void {
@@ -171,11 +161,6 @@ export function createTelemetry(deps: TelemetryDependencies): Telemetry {
         tick() {
             flush()
             counts = new Map()
-        },
-        sent: () => log,
-        subscribe(listener) {
-            listeners.add(listener)
-            return () => void listeners.delete(listener)
         },
     }
 }

@@ -20,7 +20,7 @@ import type { NoticeInput } from '#lib/activity/notices.js'
 import type { PersonSettings } from '#lib/person-settings/person-settings.js'
 
 import type { UsageEvent } from './usage-catalogue'
-import { createTelemetry, type SentEvent, type TelemetryDependencies } from './usage-events'
+import { createTelemetry, type TelemetryDependencies } from './usage-events'
 
 /** The person's setting. Its only kept value is `off`. */
 export const USAGE_STATISTICS_SETTING = 'usage-statistics'
@@ -67,10 +67,6 @@ export interface UsageStatistics {
     flush(): void
     /** Send what is queued: the timer. */
     tick(): void
-    /** What this page has sent, for the Privacy tab. */
-    sent(): readonly SentEvent[]
-    /** Called after each batch is sent. */
-    subscribeSent(listener: () => void): () => void
 }
 
 export function createUsageStatistics(deps: UsageStatisticsDependencies): UsageStatistics {
@@ -96,7 +92,7 @@ export function createUsageStatistics(deps: UsageStatisticsDependencies): UsageS
             dismissal: 'manual',
             title: 'Usage statistics',
             text: "EtherPK counts how its features are used, to decide what to work on. It sends the app's version and the names of the commands, tabs and settings you use. It does not send your notes, page names, searches or account.",
-            footnote: 'Counting starts the next time you open EtherPK. Settings, under Privacy, lists what is sent and turns it off.',
+            footnote: 'Counting starts the next time you open EtherPK. Settings, under General, turns it off.',
             actions: [
                 {
                     label: 'Turn off',
@@ -107,7 +103,7 @@ export function createUsageStatistics(deps: UsageStatisticsDependencies): UsageS
                         deps.showNotice({
                             id: USAGE_STATISTICS_NOTICE,
                             tone: 'info',
-                            text: 'Usage statistics are off. Settings, under Privacy, turns them on again.',
+                            text: 'Usage statistics are off. Settings, under General, turns them on again.',
                         })
                     },
                 },
@@ -150,7 +146,5 @@ export function createUsageStatistics(deps: UsageStatisticsDependencies): UsageS
         },
         flush: () => telemetry.flush(),
         tick: () => telemetry.tick(),
-        sent: () => telemetry.sent(),
-        subscribeSent: (listener) => telemetry.subscribe(listener),
     }
 }

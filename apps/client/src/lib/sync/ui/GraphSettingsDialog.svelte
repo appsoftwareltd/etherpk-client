@@ -9,7 +9,9 @@
      * - **General** — the graph name and the shared [[Graph Settings]] (ADR 0031). Both live in
      *   the encrypted root-doc meta map: the name is canonical (any member may rename — it renames
      *   for everyone), the settings are graph-scoped, mirroring the filesystem settings page. The
-     *   graph id is shown because names are user-chosen and not unique.
+     *   graph id is shown because names are user-chosen and not unique. At its foot, where the
+     *   deployment counts usage statistics, the person's own switch for them (ADR 0187), which
+     *   applies at once rather than on Save.
      * - **Spelling** — whether this device checks spelling, the graph's Spelling Languages on this
      *   device, and its shared Graph Dictionary (ADR 0095). Applied as changed, like the next tab.
      * - **Protected Documents** — the per-device lock timings and this device's key affordances.
@@ -18,8 +20,6 @@
      *   no room for and which showed "Mirroring" with nothing to say where or what that meant.
      * - **Publish** — the graph's [[Publication]]s, their themes and includes, and where each is
      *   published on this device (ADR 0082).
-     * - **Privacy** — whether the Client sends usage statistics, and what they hold (ADR 0187).
-     *   The person's own setting, so the tab is offered outside an open graph too.
      * - **Maintenance** — rebuild the index, scan for orphaned assets, read the storage footprint,
      *   and scan for formatting issues (ADR 0109), with a diff to approve for each fix.
      *
@@ -52,7 +52,7 @@
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import ProtectionSettingsTab from "#lib/document/protection/ui/ProtectionSettingsTab.svelte";
     import SpellingSettingsTab from "#lib/document/spelling/ui/SpellingSettingsTab.svelte";
-    import PrivacySettingsTab from "#lib/telemetry/ui/PrivacySettingsTab.svelte";
+    import UsageStatisticsSetting from "#lib/telemetry/ui/UsageStatisticsSetting.svelte";
     import { usageStatistics } from "#lib/telemetry/usage-statistics-device.js";
     import ExtensionsSettingsTab from "#lib/extensions/ExtensionsSettingsTab.svelte";
     import type { ExtensionDirectory } from "#lib/extensions/directory.js";
@@ -188,13 +188,13 @@
          * so the Publish chord or a history step can move an open dialog to another tab.
          * Omitted, or not offered for this graph, lands on General.
          */
-        tab?: "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "privacy" | "extensions" | "install" | "maintenance";
+        tab?: "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance";
         /**
          * The tab the dialog is on changed: the user picked one (click or arrow keys), or the
          * tab asked for is not offered on this graph and it opened on General instead. The
          * workspace remembers it and keeps the address honest.
          */
-        onchangetab?: (tab: "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "privacy" | "extensions" | "install" | "maintenance") => void;
+        onchangetab?: (tab: "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance") => void;
         onsave: (result: { name: string; settings: GraphSettings; folderPath?: string }) => void;
         onclose: () => void;
     } = $props();
@@ -224,7 +224,7 @@
         }
     }
 
-    type Tab = "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "privacy" | "extensions" | "install" | "maintenance";
+    type Tab = "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance";
     const tabs = $derived(
         [
             { id: "general" as const, label: "General", shown: true },
@@ -242,9 +242,6 @@
             },
             { id: "agents" as const, label: "Agents", shown: agents !== null },
             { id: "publish" as const, label: "Publish", shown: publish !== null },
-            // The person's, not the graph's, so it is offered outside an open graph too. Hidden
-            // where the deployment sends no usage statistics: there would be nothing to set.
-            { id: "privacy" as const, label: "Privacy", shown: usageStatistics().available },
             {
                 id: "maintenance" as const,
                 label: "Maintenance",
@@ -625,9 +622,6 @@
                 <SpellingSettingsTab {...spelling} />
             {:else if activeTab === "protection" && protection}
                 <ProtectionSettingsTab {...protection} />
-            {:else if activeTab === "privacy"}
-                <!-- Applies at once and is the person's own: nothing for Save to apply. -->
-                <PrivacySettingsTab />
             {:else if activeTab === "extensions" && extensions}
                 <!-- Each switch applies at once and is per device: nothing for Save to apply. -->
                 <ExtensionsSettingsTab host={extensions} directory={extensionDirectory} {installedSync} />
@@ -1238,6 +1232,11 @@
                         class="font-mono select-all">{graphId}</code
                     >
                 </p>
+                {#if usageStatistics().available}
+                    <!-- The person's own and applied at once: nothing for Save to commit. Absent
+                         where the deployment counts nothing. -->
+                    <UsageStatisticsSetting />
+                {/if}
                 {#if error}<p
                         class="text-sm text-red-600"
                         data-testid="graph-settings-error"

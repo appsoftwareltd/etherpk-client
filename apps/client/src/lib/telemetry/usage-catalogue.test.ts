@@ -29,7 +29,7 @@ describe('checkUsageEvent', () => {
         expect(checkUsageEvent({ name: 'error', data: { kind: 'Cannot read Garden' } })).toBe(false)
     })
 
-    it('describes every entry for the Privacy tab', () => {
+    it('describes every entry in words', () => {
         for (const entry of USAGE_CATALOGUE) {
             expect(entry.when).not.toBe('')
             for (const property of Object.values(entry.properties)) expect(property.meaning).not.toBe('')
