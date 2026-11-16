@@ -163,6 +163,13 @@ describe('parseSearchQuery: Property Filters (ADR 0107)', () => {
         expect(parseSearchQuery('status:"in prog', keys).filters).toEqual([{ key: 'status', value: 'in prog', prefix: false, negated: false }])
     })
 
+    it('keeps the input’s trailing whitespace out of a value with a stray quote', () => {
+        const input = 'Status:"in progress" status:done"\t'
+        const { filters, terms } = parseSearchQuery(input, new Set(['status']))
+        expect(filters[1]).toEqual({ key: 'status', value: 'done"', prefix: false, negated: false })
+        expect(parseSearchQuery(removeSearchTerm(input, terms[0]), new Set(['status'])).filters).toEqual([filters[1]])
+    })
+
     it('records where each filter sits, so a chip can remove it', () => {
         const input = 'alpha public:true beta'
         const { terms } = parseSearchQuery(input, keys)

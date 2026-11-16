@@ -114,9 +114,22 @@ export function collabEditorHistory(undoManager: Pick<Y.UndoManager, 'undoStack'
         if (!found) throw new Error(`y-codemirror.next binds no ${key}`)
         return found
     }
+    // The manager's undo reaches the editor as a change to the Y.Text, marked as the sync's and so
+    // looking like a peer's. The flag says it is the person's own step (outline-folds.ts opens a
+    // fold whose hidden text an undo changes, and never one a peer's edit changes).
+    const step =
+        (run: Command): Command =>
+        (view) => {
+            historyStep = true
+            try {
+                return run(view)
+            } finally {
+                historyStep = false
+            }
+        }
     return {
-        undo: binding('Mod-z'),
-        redo: binding('Mod-y'),
+        undo: step(binding('Mod-z')),
+        redo: step(binding('Mod-y')),
         undoDepth: () => undoManager.undoStack.length,
         redoDepth: () => undoManager.redoStack.length,
         // The manager merges a change into the last stack item only within its capture window; opening
@@ -135,6 +148,13 @@ export function collabEditorHistory(undoManager: Pick<Y.UndoManager, 'undoStack'
             }
         },
     }
+}
+
+let historyStep = false
+
+/** Whether the collaborative history is running an undo or a redo right now (it is synchronous). */
+export function historyStepRunning(): boolean {
+    return historyStep
 }
 
 /** Undo the last step of whichever history the view holds; what Mod-z does. */

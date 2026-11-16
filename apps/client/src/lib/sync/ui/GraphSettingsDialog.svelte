@@ -60,7 +60,7 @@
     import type { ExtensionHost } from "#lib/extensions/host.js";
     import type { SpellingTabProps } from "#lib/document/spelling/ui/spelling-tab.js";
     import type { ProtectionTabProps } from "#lib/document/protection/ui/protection-tab.js";
-    import type { MirrorTabProps } from "./mirror-tab";
+    import { describeExportEstimate, type MirrorTabProps } from "./mirror-tab";
     import type { TemplateEntry } from "#lib/document/index-db.js";
     import type { PublishTabProps } from "./publish-tab";
     import PublishSettingsTab from "./PublishSettingsTab.svelte";
@@ -884,16 +884,7 @@
                                 are downloaded from it, so an export can't run
                                 right now. Try again once you are connected.
                             {:else}
-                                {exportGraph.estimate.documents}
-                                {exportGraph.estimate.documents === 1
-                                    ? "document"
-                                    : "documents"} and {exportGraph.estimate
-                                    .assets}
-                                {exportGraph.estimate.assets === 1
-                                    ? "attachment"
-                                    : "attachments"}, about {formatBytes(
-                                    exportGraph.estimate.bytes,
-                                )}.
+                                {describeExportEstimate(exportGraph.estimate)}
                                 {#if !exportGraph.savePicker}
                                     The archive is built on this device first,
                                     then downloaded.

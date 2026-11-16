@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { findTables } from './markdown-table'
+import { cellDisplaySource, findTables } from './markdown-table'
 
 describe('findTables', () => {
     it('returns nothing when there is no table', () => {
@@ -34,6 +34,20 @@ describe('findTables', () => {
         const [t] = findTables('a | b\n--- | ---\n1 | 2')
         expect(t.header).toEqual(['a', 'b'])
         expect(t.rows).toEqual([['1', '2']])
+    })
+
+    it('keeps an escaped pipe in its cell: `\\|` is a literal pipe, as in GFM, not a column', () => {
+        const [t] = findTables('| Key | Means |\n| --- | --- |\n| a \\| b | either |\n| \\| | a pipe\\|')
+        expect(t.header).toEqual(['Key', 'Means'])
+        expect(t.rows).toEqual([
+            ['a \\| b', 'either'],
+            ['\\|', 'a pipe\\|'],
+        ])
+    })
+
+    it('shows an escaped pipe in the grid as a pipe', () => {
+        expect(cellDisplaySource('a \\| b')).toBe('a | b')
+        expect(cellDisplaySource('[[Garden]]')).toBe('[[Garden]]')
     })
 
     it("skips an outliner bullet marker on the header line: the `-` is structure, not a cell", () => {

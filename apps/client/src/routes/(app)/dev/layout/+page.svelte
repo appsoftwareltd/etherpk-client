@@ -22,7 +22,6 @@
         type LayoutRenderer,
         type LayoutStore,
         type OpenMode,
-        type PaneHandle,
         type Region,
         type ViewRef,
     } from '#lib/layout/index.js'
@@ -76,7 +75,13 @@
     let serialized = $state('{}')
     let activeLabel = $state('—')
 
-    const handles = new Map<string, PaneHandle>()
+    /**
+     * The panel ids of the Views opened from this bar: the ones "close active" may close. Ids, not
+     * the handles `openView` returns: a handle closes through the controller that made it, and a
+     * presenter switch replaces the controller and destroys its renderer, so a kept handle closed
+     * the View in a dockview that was gone ("invalid location") and left it open on screen.
+     */
+    const opened = new Set<string>()
 
     const onSidebarToggle = (side: 'left' | 'right', collapsed: boolean) => {
         // Controller owns visibility; mirror it into the chrome settings cookie.
@@ -100,14 +105,14 @@
     function openTracked(view: ViewRef, opts: { region?: Region; mode?: OpenMode; forceNew?: boolean } = {}) {
         if (!controller) return
         const h = controller.openView(view, opts)
-        handles.set(h.panelId, h)
+        opened.add(h.panelId)
         refresh()
     }
 
     function closeActive() {
         if (!controller) return
         const active = controller.serialize().model.activePanelId
-        if (active && handles.has(active)) withRefresh(() => handles.get(active)!.close())
+        if (active && opened.has(active)) withRefresh(() => controller?.closePanel(active))
     }
 
     /** Wait until an element has a real laid-out size (a few frames at most). */
@@ -121,15 +126,21 @@
         const initial = model ? { version: LAYOUT_VERSION, model } : await store!.load(GRAPH_ID)
         if (useMobile) {
             const { createMobileRenderer } = await import('#lib/layout/renderers/mobile-renderer.svelte.js')
+            // A switch back to desktop while the import loaded builds its own presenter.
+            if (!useMobile) return
             mobileRenderer = createMobileRenderer(registry)
             renderer = mobileRenderer
         } else {
             const { createDockviewRenderer } = await import('#lib/layout/renderers/dockview-adapter.js')
+            // A switch to the phone presenter while the import loaded took the container away,
+            // and builds its own presenter.
+            if (useMobile || !container) return
             mobileRenderer = undefined
             // dockview computes split proportions from the container's size, so it
             // must be laid out before we create and populate it — otherwise the
             // sidebars' pixel widths are applied against a zero-size container.
-            await waitForSize(container!)
+            await waitForSize(container)
+            if (useMobile) return
             renderer = createDockviewRenderer({
                 container: container!,
                 registry,
@@ -221,7 +232,7 @@
                 title="Clear stored layout and return to the default"
                 onclick={() =>
                     withRefresh(() => {
-                        handles.clear()
+                        opened.clear()
                         resetDevViewStats()
                         void store?.clear(GRAPH_ID)
                         controller?.restore(null)

@@ -213,7 +213,10 @@ const LONG_PRESS_SLOP_PX = 10
 function contextMenuHandlers(options: WikilinkAugmentationOptions): Extension {
     let timer: ReturnType<typeof setTimeout> | undefined
     let start: { x: number; y: number } | null = null
+    /** A touch press raised the menu: the mousedown and click its release generates are swallowed. */
     let fired = false
+    /** The press under way is a finger's. A mouse's right-click is followed by no click to swallow. */
+    let touch = false
     const clear = () => {
         if (timer) clearTimeout(timer)
         timer = undefined
@@ -228,17 +231,21 @@ function contextMenuHandlers(options: WikilinkAugmentationOptions): Extension {
             if (!concept || !options.onContextMenu) return false
             event.preventDefault()
             // A platform that raises contextmenu for a touch hold (Android) gets one menu, not
-            // one from here and one from the timer; the click that follows is swallowed too.
+            // one from here and one from the timer; the click that follows is swallowed too. A
+            // mouse's right-click has no click to follow, so it must not arm the swallow: the
+            // next plain click on a link would be eaten, and only the one after would open it.
             clear()
-            fired = true
+            if (touch) fired = true
             options.onContextMenu(concept, event.clientX, event.clientY)
             return true
         },
         pointerdown(event) {
-            if (event.pointerType !== 'touch' || !options.onContextMenu) return false
+            // A new press is a new gesture: nothing of the last one is left to swallow.
+            fired = false
+            touch = event.pointerType === 'touch'
+            if (!touch || !options.onContextMenu) return false
             const concept = conceptAt(event)
             if (!concept) return false
-            fired = false
             start = { x: event.clientX, y: event.clientY }
             const { clientX, clientY } = event
             timer = setTimeout(() => {

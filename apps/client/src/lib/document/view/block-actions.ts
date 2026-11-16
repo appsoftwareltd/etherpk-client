@@ -106,7 +106,10 @@ export function caretSpec(state: EditorState, line: number, where: 'start' | 'en
 export function structureSpec(state: EditorState, line: number, command: StateCommand): TransactionSpec | null {
     const caret = caretSpec(state, line, 'start')
     if (!caret) return null
-    const placed = state.update(caret).state
+    // Unfiltered: only the caret is placed. Tidy on leave is a filter, and a caret that leaves a line
+    // it would tidy (trailing spaces, a task's tags out of order) made a document the command's
+    // changes were then worked out against, which did not fit this one: the row threw and did nothing.
+    const placed = state.update({ ...caret, filter: false }).state
     let result: Transaction | null = null
     command({ state: placed, dispatch: (tr) => (result = tr) })
     const tr = result as Transaction | null

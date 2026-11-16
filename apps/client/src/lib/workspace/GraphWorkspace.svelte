@@ -535,7 +535,6 @@
     import type { ExportTabProps } from "#lib/sync/ui/mirror-tab.js";
     import { describeDeviceStorage } from "#lib/storage/storage-persistence.js";
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
-    import { portableFileStem } from "#lib/document/wikilink/index.js";
     import {
         claimLockWhenFree,
         crossTabLocksAvailable,
@@ -724,6 +723,7 @@
         graphAccentFor,
         setGraphAccent,
     } from "./graph-accent.svelte";
+    import { graphExportStem } from "./export-stem";
     import { sidebarTabTitle } from "./sidebar-tab-title";
 
     /** Dev/e2e Server Backend gate (Phase 3): injected relay + raw graph key. */
@@ -7561,10 +7561,9 @@
 
     /** The archive's top-level folder: the graph's name as a local graph would name its folder. */
     function exportStem(): string {
-        return (
-            portableFileStem(
-                serverGraph?.getMeta().name || graphDisplayName || "",
-            ) || "EtherPK Graph"
+        return graphExportStem(
+            serverGraph?.getMeta().name || graphDisplayName,
+            graphId,
         );
     }
 

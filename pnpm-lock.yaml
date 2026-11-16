@@ -30,6 +30,9 @@ importers:
 
   .:
     devDependencies:
+      '@antithesishq/bombadil':
+        specifier: 0.7.10
+        version: 0.7.10
       '@eslint/js':
         specifier: ^9.39.5
         version: 9.39.5
@@ -825,6 +828,10 @@ importers:
         version: 8.3.5(@types/node@25.6.0)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.15)(yaml@2.9.1)
 
 packages:
+
+  '@antithesishq/bombadil@0.7.10':
+    resolution: {integrity: sha512-71aLKQBB3GNDBQZXU6MCKbt99dl9I+/pjg0EfGD9eCKXDIqpKPXD2rFH6yCJude37RGtnKq6hZFfZhuTp+Tykg==}
+    hasBin: true
 
   '@ai-sdk/anthropic@4.0.76':
     resolution: {integrity: sha512-3sKHzUTs53rt396ulT4ghSEHVH4krWTHKVqBlA5Vr271l4jeFwI5z1P1WRFrrjwb0OWDADJv2MVSy1pF5/z5Vg==}
@@ -5695,6 +5702,8 @@ packages:
         optional: true
 
 snapshots:
+
+  '@antithesishq/bombadil@0.7.10': {}
 
   '@ai-sdk/anthropic@4.0.76(zod@4.6.7)':
     dependencies:

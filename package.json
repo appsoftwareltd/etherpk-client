@@ -15,6 +15,7 @@
         "test:ci": "pnpm -r --workspace-concurrency=1 test"
     },
     "devDependencies": {
+        "@antithesishq/bombadil": "0.7.10",
         "@eslint/js": "^9.39.5",
         "@modelcontextprotocol/sdk": "^1.32.0",
         "@playwright/test": "^1.59.1",

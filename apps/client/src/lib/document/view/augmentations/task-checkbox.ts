@@ -21,7 +21,7 @@ import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate
 import { lineIndent, markerLength } from '../../outliner'
 import { lineWriteChanges, nestedTaskWrites } from '../../task-cascade'
 import { toggleTaskLine } from '../../task-tags'
-import { isInCode } from '../../wikilink/code-ranges'
+import { indexFencedLines } from '../../index-derive'
 import { analysisFor } from '../analysis/editor-analysis'
 
 /**
@@ -57,6 +57,24 @@ function checkboxRange(lineText: string, lineFrom: number): { from: number; to: 
     return { from, to: from + marker[1].length }
 }
 
+/** The index's answer to "is this line fenced", once for each version of the document's lines. */
+const fencedByLines = new WeakMap<readonly string[], (line: number) => boolean>()
+
+/**
+ * Whether 0-based line `index` is fenced as the [[Derived Index]] reads it (`indexFencedLines`), so
+ * that a `- [ ]` there is sample text and no task. The checkbox follows the index, not the
+ * CommonMark parse, so it shows exactly where the [[Tasks View]] lists a task: a fence still being
+ * typed, with no closer yet, is text to both.
+ */
+function fencedForIndex(lines: readonly string[], index: number): boolean {
+    let fenced = fencedByLines.get(lines)
+    if (!fenced) {
+        fenced = indexFencedLines(lines)
+        fencedByLines.set(lines, fenced)
+    }
+    return fenced(index)
+}
+
 function buildCheckboxes(view: EditorView): DecorationSet {
     const { state } = view
     const analysis = analysisFor(state)
@@ -71,11 +89,11 @@ function buildCheckboxes(view: EditorView): DecorationSet {
             if (!seen.has(line.from)) {
                 seen.add(line.from)
                 const range = checkboxRange(line.text, line.from)
-                // A `- [ ]` inside a fence is sample text, not a task — the derived index
-                // excludes it too, so a clickable checkbox there would toggle something the
-                // [[Tasks View]] will never show.
+                // A `- [ ]` inside a fence is sample text, not a task: the derived index
+                // excludes it, so a clickable checkbox there would toggle something the
+                // [[Tasks View]] will never show. The index's own reading decides (fencedForIndex).
                 // ...and one inside the [[Frontmatter]] is YAML, for the same reason (ADR 0061).
-                if (range && line.from > analysis.frontmatterEnd && !isInCode(analysis.codeRanges, range.from, range.to)) {
+                if (range && line.from > analysis.frontmatterEnd && !fencedForIndex(analysis.lines, line.number - 1)) {
                     const done = state.sliceDoc(range.from + 1, range.from + 2).toLowerCase() === 'x'
                     decos.push((done ? checkboxDone : checkbox).range(range.from, range.to))
                 }
@@ -96,7 +114,7 @@ export function checkboxClick(state: EditorState, pos: number): TransactionSpec 
     const range = checkboxRange(line.text, line.from)
     if (!range || pos < range.from || pos > range.to) return null
     const analysis = analysisFor(state)
-    if (line.from <= analysis.frontmatterEnd || isInCode(analysis.codeRanges, range.from, range.to)) return null
+    if (line.from <= analysis.frontmatterEnd || fencedForIndex(analysis.lines, line.number - 1)) return null
 
     const next = toggleTaskLine(line.text, line.text[range.from - line.from + 1] === ' ')
     if (next === null) return null
@@ -192,6 +210,10 @@ export function taskCheckboxAugmentation(): Extension {
             // beats a `color` on the outer mark. The doubled class raises specificity above
             // that single generated class whatever order the stylesheets end up in.
             '.cm-task-checkbox.cm-task-checkbox *': { color: 'transparent' },
+            // A task below a fence with no closer yet keeps its checkbox, as the index lists it, while the
+            // CommonMark parse still reads the line as code: code-highlight.ts gives such a line's spans
+            // the line's colour with `!important`, which would show the `[ ]` through the box.
+            '.cm-line.gk-fence-incomplete .cm-task-checkbox, .cm-line.gk-fence-incomplete .cm-task-checkbox *': { color: 'transparent !important' },
             '.cm-task-checkbox:hover': { borderColor: 'var(--gk-accent, #2563eb)' },
             '.cm-task-checkbox--done': {
                 background: 'var(--gk-accent, #2563eb)',

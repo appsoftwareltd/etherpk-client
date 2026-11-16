@@ -102,10 +102,18 @@ export function planReplace(state: EditorState, query: FindQuery, matches: reado
     }
 }
 
-/** The one transaction that applies `plan`, marked as a replace (`find-edit.ts`). */
-export function replaceTransaction(state: EditorState, plan: ReplacePlan): Transaction {
+/**
+ * The one transaction that applies `plan`, marked as a replace (`find-edit.ts`).
+ *
+ * With `collapseSelection` the selection becomes a caret where it began. A Replace all asks for it
+ * while the selection is the one find put on the current match: carried through the change it
+ * would cover the text that replaced the match, and read as a match still found when none is.
+ */
+export function replaceTransaction(state: EditorState, plan: ReplacePlan, options: { collapseSelection?: boolean } = {}): Transaction {
+    const changes = state.changes(plan.changes)
     return state.update({
-        changes: plan.changes,
+        changes,
+        selection: options.collapseSelection ? { anchor: changes.mapPos(state.selection.main.from, -1) } : undefined,
         userEvent: plan.scope === 'all' ? FIND_REPLACE_ALL_EVENT : FIND_REPLACE_EVENT,
         scrollIntoView: plan.scope === 'one',
     })

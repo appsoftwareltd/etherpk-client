@@ -252,6 +252,35 @@ describe('replacing', () => {
         expect(t.editor.text()).toBe('- water the beans\n- pick the beans')
     })
 
+    it('leaves a caret after Replace all, not the selection find had put on the current match', async () => {
+        // Carried through the replace, that selection would cover the first "peas": a highlight
+        // that reads as a match beside a count that says there are none.
+        const t = target('|- water the beans\n- pick the beans')
+        const find = controller()
+        find.open(t, { replace: true })
+        find.setSearch('beans')
+        expect(selected(t)).toBe('beans')
+        find.setReplace('peas')
+        await find.replaceAll()
+        expect(find.snapshot.matches).toEqual([])
+        expect(selected(t)).toBe('')
+        expect(t.state.selection.main.head).toBe('- water the '.length)
+        // Undo puts back the text and the match, which is found and selected again.
+        undo(t.editor)
+        expect(t.editor.text()).toBe('- water the beans\n- pick the beans')
+    })
+
+    it('keeps a selection the user made themselves through Replace all', async () => {
+        const t = target('|- water the beans\n- pick the beans')
+        const find = controller()
+        find.open(t, { replace: true })
+        find.setSearch('beans')
+        find.setReplace('peas')
+        t.dispatch({ selection: { anchor: 2, head: 7 }, userEvent: 'select.pointer' })
+        await find.replaceAll()
+        expect(selected(t)).toBe('water')
+    })
+
     it("says why a single replace leaves one of the page's names", async () => {
         const t = target('---\ntitle: |Garden\n---\nGarden')
         const find = controller()

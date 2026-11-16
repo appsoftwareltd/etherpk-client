@@ -674,9 +674,14 @@ export function blockBodyEnd(lines: string[], owner: number, blocks: FencedBlock
     return last
 }
 
-/** Shift lines by `delta` columns, never below column 0; blank lines keep only their (shifted) indent. */
+/**
+ * Shift lines by `delta` columns, never below column 0; blank lines keep only their (shifted) indent.
+ * Spaces go in at the line's start and its first characters come off it, so the indentation left is
+ * the line's own as written: a code line's tab past its fence column stays a tab. Written out again
+ * as spaces, one for each character, a tab-indented code line lost its indentation.
+ */
 export function shiftLines(lines: string[], delta: number): string[] {
-    return lines.map((line) => ' '.repeat(Math.max(0, lineIndent(line) + delta)) + line.trimStart())
+    return lines.map((line) => (delta >= 0 ? ' '.repeat(delta) + line : line.slice(Math.min(-delta, lineIndent(line)))))
 }
 
 /** The root of the tree bullet `i` belongs to: its topmost ancestor within the group, or `i` itself. */

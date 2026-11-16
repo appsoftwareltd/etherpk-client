@@ -21,7 +21,8 @@
  *   they are the block's own paragraph breaks. Fenced code inside the block is opaque and untouched.
  * - **A prose line** (owned by no bullet): trailing whitespace removed; a whitespace-only line
  *   becomes empty; leading whitespace of fewer than four spaces removed — CommonMark reads up to
- *   three as insignificant and four or more as an indented code block, which is kept.
+ *   three as insignificant and four or more as an indented code block, which is kept. A fence line
+ *   keeps its leading spaces, which decide what it pairs with.
  * - **A task's stray [[Task Tag]]s**: a Task Tag written as its own word later in a task's bullet
  *   line, outside code, links, URLs and inline maths, moves into the leading run, a priority or date
  *   set as the `#` helper sets it but never cleared, and a state tag setting the task's status with
@@ -47,7 +48,7 @@ import { type ChangeSpec, EditorState, type Extension, MapMode, type Text, Trans
 
 import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
-import { fencedBlocks } from '../fenced-code'
+import { fencedBlocks, fenceLineInfo } from '../fenced-code'
 import { nestedTaskWrites } from '../task-cascade'
 import { applyStrayTaskTags } from '../task-tags'
 import { blockBodyEnd, branchRange, bulletContent, contentColumn, formOneOpeners, isBulletLine, lineIndent, markerLength, opaqueLineFlags, ownerBulletIndex, trimLineEnd } from '../outliner'
@@ -145,11 +146,16 @@ export function tidiedAfterChildren(lines: string[], owner: number): { from: num
     return out
 }
 
-/** The prose line tidied, or null when it is already tidy. */
+/**
+ * The prose line tidied, or null when it is already tidy. A fence line keeps its leading spaces: a
+ * fence pairs by its column, so one moved to the margin pairs with the next block's opener there,
+ * and the block is drawn as text from then on. Moving the caret is no edit of a fence.
+ */
 export function tidiedProse(line: string): string | null {
     if (line.trim() === '') return line === '' ? null : ''
     const indent = lineIndent(line)
-    const next = trimLineEnd(indent < 4 && !line.slice(0, indent).includes('\t') ? line.slice(indent) : line)
+    const strips = indent < 4 && !line.slice(0, indent).includes('\t') && !fenceLineInfo(line)
+    const next = trimLineEnd(strips ? line.slice(indent) : line)
     return next === line ? null : next
 }
 

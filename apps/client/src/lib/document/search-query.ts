@@ -234,15 +234,22 @@ export function parseSearchQuery(input: string, knownKeys: ReadonlySet<string>):
     return { words: withoutRanges(input, cut), filters, terms }
 }
 
-/** The filter for a value as typed, or null when there is no value yet. */
-function filterValue(key: string, raw: string, negated: boolean): PropertyFilter | null {
+/**
+ * The filter for a value as typed, or null when there is no value yet.
+ *
+ * The value is trimmed. A token only holds whitespace after a quote, and an unclosed one runs to
+ * the end of the input (`status:done" ` while typing), so without this the value would carry the
+ * input's trailing whitespace, and lose it when taking another filter out trimmed the input.
+ */
+function filterValue(key: string, typed: string, negated: boolean): PropertyFilter | null {
+    const raw = typed.trim()
     if (raw === '*') return { key, value: null, prefix: false, negated }
     if (raw.startsWith('"')) {
         const close = raw.indexOf('"', 1)
         const value = (close === -1 ? raw.slice(1) : raw.slice(1, close)).trim()
         return value === '' ? null : { key, value, prefix: false, negated }
     }
-    if (raw.length > 1 && raw.endsWith('*')) return { key, value: raw.slice(0, -1), prefix: true, negated }
+    if (raw.length > 1 && raw.endsWith('*')) return { key, value: raw.slice(0, -1).trimEnd(), prefix: true, negated }
     return raw === '' ? null : { key, value: raw, prefix: false, negated }
 }
 

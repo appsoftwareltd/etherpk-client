@@ -904,6 +904,12 @@ table('Mod+Enter is the one deliberate exit', [
     // can close a frontmatter block. The exit is refused where it would change which lines are code
     // or frontmatter, as leaving the list is.
     { rule: 'refused where the fence it carries out would pair with another fence at the margin', precedent: 'EtherPK', before: '- |```py\ntext\n```\ncode\n```', key: 'Mod-Enter', after: '- |```py\ntext\n```\ncode\n```' },
+    // A block carried out whole lands as a block or not at all: under a longer fence with no closer at
+    // the margin it would be that fence's content, "a shorter same-column fence is literal content".
+    { rule: 'refused where the code block it carries out would land as the content of a longer fence with no closer at the margin', precedent: 'EtherPK', before: '````\n- a\n  |soft\n  ```\n  x\n  ```\n- b', key: 'Mod-Enter', after: '````\n- a\n  |soft\n  ```\n  x\n  ```\n- b' },
+    { rule: '…with the block’s own length above it there is nothing to refuse: the text leaves, the block carried out whole', precedent: 'EtherPK', before: '- z\n- a\n  |soft\n  ```\n  x\n  ```', key: 'Mod-Enter', after: '- z\n- a\n|soft\n```\nx\n```' },
+    // A code line's own indentation is the code's: a tab past the fence column leaves as a tab.
+    { rule: 'a block carried out keeps a code line’s tab', precedent: 'CommonMark', before: '- a\n  |soft\n  ```\n  \treturn 1\n  ```', key: 'Mod-Enter', after: '- a\n|soft\n```\n\treturn 1\n```' },
     { rule: 'refused where the rule it carries out would close a frontmatter block', precedent: 'EtherPK', before: '---\ntitle: T\n- |---\nbody', key: 'Mod-Enter', after: '---\ntitle: T\n- |---\nbody' },
     { rule: '…from a continuation too', precedent: 'EtherPK', before: '---\ntitle: T\n- a\n  |---\nbody', key: 'Mod-Enter', after: '---\ntitle: T\n- a\n  |---\nbody' },
     // Spaces before the carried fence or rule are dropped, so it reaches the margin and is judged there.
@@ -2036,7 +2042,50 @@ table('fence creation and completion (ADR 0018)', [
     { rule: 'a shorter fence line inside a longer block is content: Enter is the in-block newline', precedent: 'CommonMark', before: '````\n```|\nx\n````', key: 'Enter', after: '````\n```\n|\nx\n````' },
     { rule: 'a longer fence never closes a shorter opener: the opener above a ```` block still completes on its own', precedent: 'EtherPK', before: '```|\n````\nx\n````', key: 'Enter', after: '```\n|\n```\n````\nx\n````' },
     { rule: 'Enter on the opener of a ``` block followed by a ```` block opens its first content line, never a second closer', precedent: 'EtherPK', before: '```|\nx\n```\n\n````\ny\n````', key: 'Enter', after: '```\n|\nx\n```\n\n````\ny\n````' },
+    // A three-backtick sample at a four-backtick block's own column is the block's content. With the
+    // opener set aside the sample pairs as a block of its own, which is no sign that the opener is fresh.
+    { rule: 'Enter on the opener of a ```` block holding a ``` sample at its column opens its first content line, never a second closer', precedent: 'CommonMark', before: '````|\n```js\nreturn 1\n```\n````', key: 'Enter', after: '````\n|\n```js\nreturn 1\n```\n````' },
+    { rule: '…in a bullet’s block too', precedent: 'CommonMark', before: '- a\n  ````|\n  ```js\n  return 1\n  ```\n  ````', key: 'Enter', after: '- a\n  ````\n  |\n  ```js\n  return 1\n  ```\n  ````' },
+    { rule: 'a new ```` opener above such a block completes on its own; the block below keeps its fences', precedent: 'EtherPK', before: '````|\n````\n```js\nreturn 1\n```\n````', key: 'Enter', after: '````\n|\n````\n````\n```js\nreturn 1\n```\n````' },
 ])
+
+// A typed opener is held as text until it pairs without taking a block's fence. The check reads the
+// fences that pair, so the opener's own new closer, which pairs with the block below while the opener
+// is set aside, does not keep it held, and a stray fence elsewhere says nothing about it.
+describe('a completed opener is drawn as a block, a stray fence elsewhere notwithstanding (EtherPK)', () => {
+    /** Type `opener` at the caret a character at a time, press Enter, and give the blocks the editor draws. */
+    const completed = (before: string, opener: string) => {
+        const editor = editorFixture(before)
+        for (const ch of opener) editor.type(ch)
+        editor.key('Enter')
+        return { text: editor.fixture(), blocks: analysisFor(editor.state).fencedBlocks.map((b) => `${b.start}-${b.end}`).sort() }
+    }
+
+    it('a prose opener typed directly above a prose block, with a stray under a bullet below', () => {
+        expect(completed('|\n- water the beans\n  ```\n```\n```', '```')).toEqual({ text: '```\n|\n```\n- water the beans\n  ```\n```\n```', blocks: ['0-2', '5-6'] })
+    })
+
+    it('…and above a four-backtick block that holds a three-backtick sample at its column', () => {
+        expect(completed('|\n````\n```js\nreturn 1\n```\n````\n- water the beans\n  ```', '````')).toEqual({
+            text: '````\n|\n````\n````\n```js\nreturn 1\n```\n````\n- water the beans\n  ```',
+            blocks: ['0-2', '3-7'],
+        })
+    })
+
+    it('the closer Enter writes is never the fence held: an opener typed over a stray, above a four-backtick block', () => {
+        expect(completed('|\n```\n````\n```js\nreturn 1\n```\n````', '````')).toEqual({
+            text: '````\n|\n````\n```\n````\n```js\nreturn 1\n```\n````',
+            blocks: ['0-2', '4-8'],
+        })
+    })
+
+    it('an opener that takes the fence of the block below is still held as text until Enter completes it', () => {
+        const editor = editorFixture('|\n```\nx\n```\n- water the beans\n  ```')
+        for (const ch of '```') editor.type(ch)
+        expect(analysisFor(editor.state).pendingFence).toBe(0)
+        expect(analysisFor(editor.state).fencedBlocks).toEqual([{ start: 1, end: 3, fenceColumn: 0 }])
+    })
+})
 
 table('keys inside a block', [
     { rule: 'Enter in content is a newline clamped to the fence column', precedent: 'EtherPK', before: '- ```\n  foo|\n  ```', key: 'Enter', after: '- ```\n  foo\n  |\n  ```' },
@@ -2058,6 +2107,13 @@ table('keys inside a block', [
     { rule: 'Shift+Tab on a form-1 fence line outdents the bullet branch', precedent: 'EtherPK', before: '- a\n  - ```|\n    foo\n    ```', key: 'Shift-Tab', after: '- a\n- ```|\n  foo\n  ```' },
     { rule: 'Shift+Tab removes code indentation down to the fence column', precedent: 'VS Code', before: '- ```\n    foo|\n  ```', key: 'Shift-Tab', after: '- ```\n  foo|\n  ```' },
     { rule: 'Shift+Tab never crosses left of the fence column', precedent: 'EtherPK', before: '- ```\n  foo|\n  ```', key: 'Shift-Tab', after: '- ```\n  foo|\n  ```' },
+    // Code pasted from a tab-indented file keeps its tabs. Shift+Tab takes the spaces Tab put in, or
+    // one tab where there is no space: never a tab and a space together, nor a space of the structure.
+    { rule: 'Tab after a code line’s tab puts its spaces there', precedent: 'VS Code', before: '```\n\t|return 1\n```', key: 'Tab', after: '```\n\t  |return 1\n```' },
+    { rule: 'Shift+Tab takes those spaces back, never the tab with one of them', precedent: 'VS Code', before: '```\n\t  |return 1\n```', key: 'Shift-Tab', after: '```\n\t|return 1\n```' },
+    { rule: 'Shift+Tab on code indented with a tab alone takes the tab, one level', precedent: 'VS Code', before: '```\n\t|return 1\n```', key: 'Shift-Tab', after: '```\n|return 1\n```' },
+    { rule: '…in a bullet’s block the tab, never a space left of the fence column', precedent: 'EtherPK', before: '- a\n  ```\n  \t|return 1\n  ```', key: 'Shift-Tab', after: '- a\n  ```\n  |return 1\n  ```' },
+    { rule: 'Shift+Tab over selected tab-indented lines takes the spaces Tab put before the tab', precedent: 'VS Code', before: '- a\n  ```\n    «\tx\n    \ty»\n  ```', key: 'Shift-Tab', after: '- a\n  ```\n  «\tx\n  \ty»\n  ```' },
     // A fence line of a bullet's block is the bullet's structure: a block never indents on its own, so
     // Tab and Shift+Tab there act on the owning branch, fence and all (Logseq: the block is the unit).
     { rule: 'Tab on a form-2 fence line nests the owning bullet’s branch, fence and all: a block never indents on its own', precedent: 'Logseq', before: '- z\n- a\n  ```|\n  x\n  ```', key: 'Tab', after: '- z\n  - a\n    ```|\n    x\n    ```' },
@@ -2100,6 +2156,13 @@ table('keys inside a block', [
     { rule: 'Ctrl+Backspace at the clamp of a bullet’s block never deletes its fence’s indent', precedent: 'EtherPK', before: '- a\n  |```\n  x\n  ```\n- b', key: 'Mod-Backspace', after: '- a\n  |```\n  x\n  ```\n- b' },
     { rule: 'Ctrl+Delete at the end of a closer never joins the next line onto it', precedent: 'Logseq', before: '- a\n  ```\n  x\n  ```|\n- b', key: 'Mod-Delete', after: '- a\n  ```\n  x\n  ```|\n- b' },
     { rule: 'Ctrl+Delete at the end of the last code line never joins the closer up', precedent: 'Logseq', before: '```\nfoo|\n```', key: 'Mod-Delete', after: '```\nfoo|\n```' },
+    // The guard takes the joined spaces off the closer again, and the caret keeps its place on it.
+    { rule: 'Ctrl+Delete at the end of a closer over the empty soft line after it leaves the caret at the closer’s end', precedent: 'EtherPK', before: '- a\n  ```\n  ```|\n  ', key: 'Mod-Delete', after: '- a\n  ```\n  ```|' },
+    // A sample's fence at the block's own column is a code line: its indent comes back, as any code line's does.
+    { rule: 'Ctrl+Backspace at the clamp of a sample’s fence line at the block’s own column never takes its indent', precedent: 'EtherPK', before: '- a\n  ````\n  ```js\n  x\n  |```\n  ````', key: 'Mod-Backspace', after: '- a\n  ````\n  ```js\n  x\n  |```\n  ````' },
+    // A range inside one block's code is a plain delete, never an outline heal.
+    { rule: 'Delete over a range of code starting on an empty line written without the fence column’s spaces keeps the block', precedent: 'EtherPK', before: '- a\n  - b\n    ```\n«\n    return »1\n    ```', key: 'Delete', after: '- a\n  - b\n    ```\n    |1\n    ```' },
+    { rule: '…with Ctrl+Delete too', precedent: 'EtherPK', before: '- a\n  - b\n    ```\n«\n    return »1\n    ```', key: 'Mod-Delete', after: '- a\n  - b\n    ```\n    |1\n    ```' },
     { rule: 'Ctrl+Backspace inside an info string deletes the word, as in any text', precedent: 'VS Code', before: '```js|\nx\n```', key: 'Mod-Backspace', after: '```|\nx\n```' },
     { rule: 'Ctrl+Backspace after the backticks deletes them, as a block is dissolved on purpose', precedent: 'EtherPK', before: '```|\nx\n```', key: 'Mod-Backspace', after: '|\nx\n```' },
     { rule: 'a selection from the end of a line into the next line’s fence indent is refused', precedent: 'EtherPK', before: 'p«\n » ```\n  x\n  ```', key: 'Delete', after: 'p«\n » ```\n  x\n  ```' },
@@ -2223,6 +2286,13 @@ table('keys on an empty code line written without the fence column’s spaces', 
 
 // Rows the typed table cannot hold: its key splits on spaces, and undo is a second step.
 describe('typing inside a block: a space, and undo', () => {
+    it('a space typed at a closer’s fence column is taken back, the caret left on the column (EtherPK)', () => {
+        // The guard snaps the nudged closer back; replacing the whole line carried the caret to column 0.
+        const editor = editorFixture('- a\n  ```\n  |```')
+        editor.type(' ')
+        expect(editor.fixture()).toBe('- a\n  ```\n  |```')
+    })
+
     it('a space typed on an empty line leaves it blank, so it stays as typed (EtherPK)', () => {
         const editor = editorFixture('- ```\n  foo\n|\n  ```')
         editor.type(' ')

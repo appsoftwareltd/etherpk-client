@@ -189,6 +189,21 @@ function htmlSinkRules(message) {
     ]
 }
 
+/**
+ * "Today" read once and kept (AGENTS.md, Time-dependent state): a tab stays open for days, so a
+ * component or module that holds `todayISO()` from when it loaded shows yesterday's date after
+ * midnight. Reading it inside a function, an effect or a `$derived.by` body is the fix.
+ */
+const CACHED_TODAY_MESSAGE = 'Call todayISO() at the moment of use, not once when the component or module loads: tabs stay open for days.'
+const CACHED_TODAY = [
+    'SvelteScriptElement > VariableDeclaration > VariableDeclarator > CallExpression[callee.name="todayISO"]',
+    'SvelteScriptElement > VariableDeclaration > VariableDeclarator > CallExpression > CallExpression[callee.name="todayISO"]',
+    'Program > VariableDeclaration > VariableDeclarator > CallExpression[callee.name="todayISO"]',
+    'Program > ExportNamedDeclaration > VariableDeclaration > VariableDeclarator > CallExpression[callee.name="todayISO"]',
+    'PropertyDefinition > CallExpression[callee.name="todayISO"]',
+    'PropertyDefinition > CallExpression > CallExpression[callee.name="todayISO"]',
+].map((selector) => ({ selector, message: CACHED_TODAY_MESSAGE }))
+
 /** `rule`, a `no-restricted-imports` setting, with `patterns` refused as well. */
 function withPatterns(rule, ...patterns) {
     const [level, options] = rule
@@ -297,6 +312,7 @@ export default tseslint.config(
                             parseFromString: 'Use parseInertHtml from $lib/security/trusted-types (Trusted Types, ADR 0130).',
                         })[sink] ?? 'Write markup through $lib/security/trusted-types (Trusted Types, ADR 0130).',
                 ),
+                ...CACHED_TODAY,
             ],
         },
     },
@@ -318,6 +334,7 @@ export default tseslint.config(
                     selector: 'CallExpression[callee.property.name="createPolicy"]',
                     message: 'An extension creates no Trusted Types policy (ADR 0130).',
                 },
+                ...CACHED_TODAY,
             ],
         },
     },

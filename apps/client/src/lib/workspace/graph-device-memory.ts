@@ -18,7 +18,7 @@ import { discardIndexPool } from '#lib/document/index-pool-discard.js'
 import { localProtectionKey } from '#lib/document/protection/protection-store.js'
 import { SPELLING_LANGUAGES_KEY_PREFIX } from '#lib/document/spelling/languages.js'
 import { TASK_FILTER_KEY_PREFIX } from '#lib/document/task-filter-store.js'
-import { foldMemoryKey } from '#lib/document/view/augmentations/fold-memory.js'
+import { foldMemoryKey, foldMemoryKeysIn } from '#lib/document/view/augmentations/fold-memory.js'
 import { imageFootprintsKey } from '#lib/document/view/augmentations/image-footprints.js'
 import { LOCAL_LAYOUT_KEY_PREFIX } from '#lib/layout/store.js'
 import { READING_POSITIONS_KEY_PREFIX } from '#lib/navigation/reading-positions.js'
@@ -111,6 +111,8 @@ export async function forgetGraphOnDevice(
 export function forgetGraphDeviceMemory(graphId: string, storage: Storage | undefined = globalThis.localStorage): void {
     try {
         for (const key of graphDeviceMemoryKeys(graphId)) storage?.removeItem(key)
+        // The folds have a key for each document, under the graph's (fold-memory.ts).
+        if (storage) for (const key of foldMemoryKeysIn(storage, graphId)) storage.removeItem(key)
     } catch {
         /* storage blocked */
     }

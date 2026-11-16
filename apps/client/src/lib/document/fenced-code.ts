@@ -193,6 +193,26 @@ export function codeLineText(line: string, fenceColumn: number): string {
     return indent >= fenceColumn ? line.slice(fenceColumn) : line.trimStart()
 }
 
+/**
+ * The columns an outdent of `unit` takes from a code line, or null when the code has no indentation
+ * of its own past the fence column. Indentation of spaces alone loses them from the line's start.
+ * Where it holds a tab (code pasted from a tab-indented file keeps its tabs), the spaces nearest the
+ * code go, which are the ones Tab put there, and indentation with no space at all loses one tab, a
+ * level of its own. Counting characters from the line's start instead took a tab and a space
+ * together, or a space of the structure left of the fence column, after which the tab read as the
+ * block's indentation and the code's was lost.
+ */
+export function codeOutdentRange(line: string, fenceColumn: number, unit: number): { from: number; to: number } | null {
+    const indent = line.length - line.trimStart().length
+    if (indent <= fenceColumn) return null
+    const own = line.slice(fenceColumn, indent)
+    if (!own.includes('\t')) return { from: 0, to: Math.min(unit, own.length) }
+    const spaces = / +(?=[^ ]*$)/.exec(own) // the last run of spaces
+    if (!spaces) return { from: indent - 1, to: indent }
+    const end = fenceColumn + spaces.index + spaces[0].length
+    return { from: end - Math.min(unit, spaces[0].length), to: end }
+}
+
 /** A fence line with its backtick/tilde run defanged (indent and bullet marker kept), so a re-scan
  *  pairs the other fences as if this one were plain text. */
 export function defangFence(line: string): string {
@@ -219,7 +239,8 @@ export function defangFence(line: string): string {
  * instead whether any block *starts inside* the candidate's conflated the two (live, 2026-09-11: Enter
  * on the opener of a complete block grew a second closer whenever an equal block followed).
  * Blocks starting above the candidate are left out of the tally: a stray opener up there adopting the
- * candidate's closer says nothing about the candidate. `pending` — the analysis's freshly typed,
+ * candidate's closer says nothing about the candidate, and so are blocks of another column or run
+ * length, which the candidate can never pair with. `pending` — the analysis's freshly typed,
  * still unclosed fence — is set aside the same way, as every other fence consumer does, and is itself
  * unterminated by definition.
  */
@@ -234,9 +255,17 @@ export function isUnterminatedOpener(lines: readonly string[], index: number, pe
     // A line of a code sample is code, even where the deeper fences below it pair with it as a block
     // of the sample's own. `find` above can return that inner block, so the block around it is asked for.
     if (paired.some((b) => b.start < index && index < b.end)) return false
-    const without = fencedBlocks(scanned.map((l, i) => (i === index ? defangFence(l) : l)))
-    const tally = (blocks: readonly FencedBlockRange[], from: number) => blocks.filter((b) => b.start >= from).length
-    return tally(without, index + 1) >= tally(paired, index)
+    const withoutLines = scanned.map((l, i) => (i === index ? defangFence(l) : l))
+    const without = fencedBlocks(withoutLines)
+    // Only blocks of the candidate's own kind are tallied: opened at its column by a run of its length.
+    // Those are the only fences it can pair with, so the only pairs that setting it aside can re-pair.
+    // A shorter fence at its column is content while it is open and pairs once it is set aside (a
+    // three-backtick sample in a four-backtick block), and a longer one below a stray holds shorter
+    // blocks the other way round; counting either read a complete sample block's opener as fresh.
+    const own = fenceLineInfo(scanned[index])!
+    const tally = (lines: readonly string[], blocks: readonly FencedBlockRange[], from: number) =>
+        blocks.filter((b) => b.start >= from && b.fenceColumn === own.col && fenceLineInfo(lines[b.start])?.len === own.len).length
+    return tally(withoutLines, without, index + 1) >= tally(scanned, paired, index)
 }
 
 /** Parse a line as a fence opener; null if it is not a clean opener. Leading indent is ignored. */

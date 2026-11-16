@@ -31,12 +31,36 @@ export interface MarkdownTable {
     rows: string[][]
 }
 
-/** Split a table row into trimmed cells, dropping the optional leading/trailing pipes. */
+/**
+ * The offsets of the pipes in `line` that divide cells. A pipe after a backslash (`\|`) is a
+ * literal pipe in the cell's text, as in GFM, and divides nothing. The one reading of a row's
+ * pipes: the cells here, and the caret's column and a cell's offset in markdown-table-edit.ts.
+ */
+export function cellPipes(line: string): number[] {
+    const pipes: number[] = []
+    for (let i = 0; i < line.length; i++) if (line[i] === '|' && line[i - 1] !== '\\') pipes.push(i)
+    return pipes
+}
+
+/**
+ * Split a table row into trimmed cells, dropping the optional leading/trailing pipes. A cell keeps
+ * its source, so an escaped pipe stays `\|` and is written back as it was read.
+ */
 function splitCells(line: string): string[] {
-    let s = line.trim()
-    if (s.startsWith('|')) s = s.slice(1)
-    if (s.endsWith('|')) s = s.slice(0, -1)
-    return s.split('|').map((c) => c.trim())
+    const s = line.trim()
+    const pipes = cellPipes(s)
+    // The dividers and both ends of the row; an opening or closing pipe leaves an empty end cell.
+    const edges = [-1, ...pipes, s.length]
+    const cells = edges.slice(1).map((edge, i) => s.slice(edges[i] + 1, edge).trim())
+    if (pipes[0] === 0) cells.shift()
+    // A row that is one pipe has opened and not closed.
+    if (s.length > 1 && pipes.at(-1) === s.length - 1) cells.pop()
+    return cells
+}
+
+/** What a cell's source shows in the grid: its text with each escaped pipe read as the pipe it stands for. */
+export function cellDisplaySource(cell: string): string {
+    return cell.replaceAll('\\|', '|')
 }
 
 /** A line carrying markdown image syntax `![alt](url)` — never a table header, even with a `|` in the alt. */

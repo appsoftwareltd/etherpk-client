@@ -68,6 +68,34 @@ describe('fence guard, a nudged closer beside other fences', () => {
     })
 })
 
+// The tolerant scan pairs any two fences of one length up to three columns apart. Only an edit that
+// wrote or moved the lower one left a closer to snap back.
+describe('fence guard, two stray fences the edit did not touch', () => {
+    it('leaves both where they are when a character is typed between them', () => {
+        const editor = editorFixture('```\n- water the beans|\n ```')
+        editor.type('x')
+        expect(editor.fixture()).toBe('```\n- water the beansx|\n ```')
+    })
+
+    it('leaves both where they are when text is pasted into a bullet’s block between them', () => {
+        const editor = editorFixture('````\n- a\n  ```\n  x|\n  ```\n  ````')
+        editor.paste('one\ntwo')
+        expect(editor.fixture()).toBe('````\n- a\n  ```\n  xone\n  two|\n  ```\n  ````')
+    })
+
+    it('still snaps back a closer typed a column right of an opener that had none', () => {
+        const editor = editorFixture('- ```\n  a\n   ``|')
+        editor.type('`')
+        expect(editor.text()).toBe('- ```\n  a\n  ```')
+    })
+
+    it('keeps the caret on the fence column when a space typed there nudges the closer', () => {
+        const editor = editorFixture('- a\n  ```\n  |```')
+        editor.type(' ')
+        expect(editor.fixture()).toBe('- a\n  ```\n  |```')
+    })
+})
+
 describe('fence guard, keystroke by keystroke', () => {
     it('does not drag a nested block\'s opener left while a closer is being typed above it', () => {
         const editor = editorFixture('- a\n  ```\n  |\n  - b\n    - c\n  - d\n    ```\n    x\n    ```\n- e')

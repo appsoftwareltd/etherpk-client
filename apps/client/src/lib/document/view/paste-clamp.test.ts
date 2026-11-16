@@ -29,6 +29,11 @@ describe('clampPastedText', () => {
     it('leaves single-line and prose (clamp 0) pastes untouched', () => {
         expect(clampPastedText('a', 4)).toBe('a')
         expect(clampPastedText('a\nb', 0)).toBe('a\nb')
+        expect(clampPastedText('  a\n  b', 0)).toBe('  a\n  b')
+    })
+
+    it('strips the common indent at clamp 0 too when the text lands in code: a block whose fence is at column 0', () => {
+        expect(clampPastedText('  a\n    b', 0, true)).toBe('a\n  b')
     })
 })
 
@@ -42,6 +47,11 @@ describe('healPastedBullets', () => {
 describe('paste into a fenced block or prose: the clamp', () => {
     it('keeps a multi-line paste inside a bullet’s fenced block', () => {
         expect(paste('- ```\n  |\n  ```', 'one\ntwo\nthree')).toBe('- ```\n  one\n  two\n  three|\n  ```')
+    })
+
+    it('strips the fragment’s common indentation in a prose block, as in a bullet’s block', () => {
+        expect(paste('```\n|return 1\n```', '    if x:\n      return 2')).toBe('```\nif x:\n  return 2|return 1\n```')
+        expect(paste('- a\n  ```\n  |return 1\n  ```', '    if x:\n      return 2')).toBe('- a\n  ```\n  if x:\n    return 2|return 1\n  ```')
     })
 
     it('keeps a paste with column-0 links inside a nested fenced block', () => {

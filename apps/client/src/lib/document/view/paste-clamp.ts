@@ -98,9 +98,13 @@ export const PLAIN_PASTE_USER_EVENT = 'input.paste.plain'
  */
 export const TEMPLATE_PASTE_USER_EVENT = 'input.paste.template'
 
-/** Re-indent a pasted fragment for a target whose clamp is `clamp` columns. */
-export function clampPastedText(text: string, clamp: number): string {
-    if (clamp === 0 || !text.includes('\n')) return text
+/**
+ * Re-indent a pasted fragment for a target whose clamp is `clamp` columns. At a clamp of 0 the text
+ * is prose's and stays as pasted, unless it lands `inCode`: a block whose fence sits at column 0
+ * takes the fragment as a bullet's block does, its common indentation stripped.
+ */
+export function clampPastedText(text: string, clamp: number, inCode = false): string {
+    if ((clamp === 0 && !inCode) || !text.includes('\n')) return text
     const lines = text.split('\n')
     const indents = lines.filter((line) => line.trim() !== '').map((line) => line.length - line.trimStart().length)
     const common = indents.length ? Math.min(...indents) : 0
@@ -733,7 +737,7 @@ export function pasteClamp(): Extension {
         const clamp = block ? block.fenceColumn : isBulletLine(line.text) ? contentColumn(line.text) : clampColumn(lines, index)
         // Code and YAML keep their trailing spaces; prose loses them, as tidy on leave would take them.
         const pasted = opaque[index] ? text : trimmed(text)
-        let insert = pad + clampPastedText(pasted, clamp)
+        let insert = pad + clampPastedText(pasted, clamp, block !== undefined)
         if (clamp === 0 && !opaque[index] && line.text.slice(0, from - line.from).trim() === '') {
             // Starting a prose line (a clean line, or the start of one): the fragment's indentation is
             // where it was copied from, not where it lands. Code and YAML keep theirs.

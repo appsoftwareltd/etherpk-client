@@ -48,7 +48,7 @@ import {
     shiftLines,
     treeRootIndex,
 } from '../outliner'
-import { buildFenceCompletion, type FencedBlockRange, fencedBlocks, fencedBlocksAtLine, fenceLineInfo, tidiedFenceLine } from '../fenced-code'
+import { buildFenceCompletion, codeOutdentRange, type FencedBlockRange, fencedBlocks, fencedBlocksAtLine, fenceLineInfo, tidiedFenceLine } from '../fenced-code'
 import { INDENT, INDENT_UNIT } from '../indent-unit'
 import { deletionBreaksFence } from './fence-guard'
 import { minimalReplacement } from './minimal-replacement'
@@ -57,6 +57,7 @@ import { lineWriteChanges, nestedTaskWrites } from '../task-cascade'
 import { toggleBold, toggleHighlight, toggleItalic } from './wrap-selection'
 import { isBlockSelection, rangeBlockOwner, selectedBranches, shrinkBlockSelectionDown, shrinkBlockSelectionUp, snappedBlockSelection } from './block-select'
 import { analysisFor } from './analysis/editor-analysis'
+import { anchoredMove } from './anchored-move'
 import { caretContext, type FencedBlock, fencedBlockAt, lineInFrontmatter, outermostFencedBlockAt, unterminatedFenceOpenerAt } from './outliner-context'
 import { blockSelectionTaskLines, bulletToggleable, taskToggleable, toggledBullet } from './task-toggleable'
 
@@ -78,7 +79,8 @@ function dispatch(target: Target, spec: TransactionSpec): void {
  * structure. Every fenced block whose two fence lines it keeps still pairs them, no two kept fence lines
  * newly pair, and no kept line changes between code, frontmatter and neither (`opaqueLineFlags`). A line
  * is kept when its start and end map through the change onto one line; a line deleted, replaced or
- * carried away (a branch move, Ctrl+Enter) is judged by what it leaves behind, where a re-pairing shows. A line whose text is a fence or a `---` can pair with
+ * carried away (a branch move, Ctrl+Enter) is judged by what it leaves behind, where a re-pairing shows, and
+ * a block carried away whole must land as a block. A line whose text is a fence or a `---` can pair with
  * another fence, or close a frontmatter block, once a key moves it, joins it onto another line or
  * carries it out to the margin, and inside a code sample an inner pair can dissolve with every line
  * still code: the pair check sees that, the line check alone would not.
@@ -106,12 +108,14 @@ function keepsStructure(state: EditorState, tr: Transaction): boolean {
     const pair = (start: number, end: number) => `${start}:${end}`
     const pairedAfter = new Set(afterBlocks.map((block) => pair(block.start, block.end)))
     const pairedBefore = new Set(beforeBlocks.map((block) => pair(block.start, block.end)))
+    let carried = 0
     for (const block of beforeBlocks) {
         const start = kept[block.start]
         const end = kept[block.end]
         // A block carried away whole is judged where it lands; one fence kept without the other is broken.
         if (start === null || end === null) {
             if (start !== end) return false
+            carried += 1
             continue
         }
         if (!pairedAfter.has(pair(start, end))) return false
@@ -120,12 +124,17 @@ function keepsStructure(state: EditorState, tr: Transaction): boolean {
     kept.forEach((m, n) => {
         if (m !== null) origin.set(m, n)
     })
-    return afterBlocks.every((block) => {
+    let landed = 0
+    const paired = afterBlocks.every((block) => {
         const start = origin.get(block.start)
         const end = origin.get(block.end)
+        if (start === undefined && end === undefined) landed += 1
         // A fence the change wrote or carried here pairs as it may; two kept ones must have paired before.
         return start === undefined || end === undefined || pairedBefore.has(pair(start, end))
     })
+    // Every block carried away whole lands as a block. Carried out to the margin below a longer fence
+    // with no closer, its fences are that fence's content and pair with nothing: the block was lost.
+    return paired && landed >= carried
 }
 
 /**
@@ -524,6 +533,30 @@ const completeFence: StateCommand = (view) => {
     return true
 }
 
+/**
+ * Enter or Shift+Enter with the caret inside the backticks or info string of a fence line that is in
+ * no complete block (an opener with no closer yet, or a stray fence): the caret moves to the line's
+ * end and the key runs on from there, so the fence is never split. Enter on an opener with no closer
+ * then completes it ({@link completeFence}), as at its end. A fence line of a block is enterInCode's
+ * and shiftEnterInCode's, which act at its end the same way, and a fence-like line inside a block is
+ * code, where Enter is the code's newline.
+ */
+const caretToLoneFenceEnd: StateCommand = (view) => {
+    const { state } = view
+    const sel = state.selection.main
+    if (!sel.empty || isBlockSelection(state)) return false
+    const line = state.doc.lineAt(sel.head)
+    const fence = fenceLineInfo(line.text)
+    if (!fence) return false
+    const runStart = line.from + fence.col
+    if (sel.head <= runStart || sel.head >= line.from + line.text.trimEnd().length) return false
+    const index = line.number - 1
+    if (analysisFor(state).fencedBlocks.some((b) => index >= b.start && index <= b.end)) return false
+    view.dispatch(state.update({ selection: { anchor: line.to }, userEvent: 'select' }))
+    // Not handled: the rest of the chain runs with the caret at the line's end.
+    return false
+}
+
 /** The lead for a fresh line opened AFTER a block's closing fence: a sibling bullet marker when the
  *  block lives in a bullet (the opener itself for form-1, else the owning bullet above the opener),
  *  otherwise `''` — a column-0 prose line.
@@ -685,6 +718,18 @@ function selectionLeavesBlock(view: Target, block: FencedBlock): boolean {
 }
 
 /**
+ * Whether 1-based lines `first`..`last` hold one fence of a block nested in `block` (an inner pair
+ * of a code sample) without its partner.
+ */
+function splitsInnerPair(view: Target, block: FencedBlock, first: number, last: number): boolean {
+    const { state } = view
+    const outerStart = state.doc.lineAt(block.from).number - 1
+    const outerEnd = state.doc.lineAt(block.to).number - 1
+    const holds = (index: number) => index >= first - 1 && index <= last - 1
+    return analysisFor(state).fencedBlocks.some((b) => b.start > outerStart && b.end < outerEnd && holds(b.start) !== holds(b.end))
+}
+
+/**
  * Tab / Shift+Tab over code (VS Code): at a caret, Tab inserts the indent where the caret is and
  * Shift+Tab removes one from the line; over a selection, every line it touches indents or outdents
  * and the selection stays on its text. Never replaces the selection, and never left of the fence
@@ -704,14 +749,18 @@ function indentCodeLines(view: Target, block: FencedBlock, delta: number): void 
         return
     }
     const { first, last } = selectedLines(view)
+    // A range holding one fence of an inner pair without its partner is refused whole, by Tab and
+    // Shift+Tab alike: moving the lines around the fence would change what the pair holds, and
+    // moving the fence would stop it pairing.
+    if (splitsInnerPair(view, block, first, last)) return
     const changes: ChangeSpec[] = []
     for (let n = first; n <= last; n++) {
         const line = state.doc.line(n)
         if (delta > 0) {
             changes.push({ from: line.from, insert: ' '.repeat(delta) })
         } else {
-            const removable = Math.max(0, Math.min(-delta, lineIndent(line.text) - block.fenceColumn))
-            if (removable > 0) changes.push({ from: line.from, to: line.from + removable })
+            const take = codeOutdentRange(line.text, block.fenceColumn, -delta)
+            if (take) changes.push({ from: line.from + take.from, to: line.from + take.to })
         }
     }
     if (changes.length === 0) return
@@ -1094,12 +1143,37 @@ const deleteMergeNext: StateCommand = (view) => {
 }
 
 /**
+ * Backspace/Delete over a selection that lies on the code lines of one fenced block, between its
+ * fences: the plain delete, which the fence pad holds to the fence column. Code is not an outline.
+ * Healed as one ({@link healRangeDelete}), a range starting on an empty code line written without the
+ * column's spaces left the code at column 0, where it ended the block, and the heal then re-indented
+ * the closer and the lines around the block. A range that would break an inner pair's fence is left
+ * to the heal, which refuses it.
+ */
+const deleteRangeInCode: StateCommand = (view) => {
+    const { state } = view
+    const sel = state.selection.main
+    if (state.selection.ranges.length !== 1 || sel.empty) return false
+    const first = state.doc.lineAt(sel.from)
+    const last = state.doc.lineAt(sel.to)
+    if (first.number === last.number) return false // within one line: the ordinary delete
+    const block = outermostFencedBlockAt(state, sel.from)
+    if (!block || first.from <= block.from || last.to >= block.to) return false
+    if (deletionBreaksFence(state, sel.from, sel.to)) return false
+    view.dispatch(state.update(state.replaceSelection(''), { userEvent: 'delete.selection' }))
+    return true
+}
+
+/** Backspace/Delete over a selection: inside one block's code the plain delete, else the outline's heal. */
+const rangeDeleteHeal: StateCommand = (view) => deleteRangeInCode(view) || healRangeDelete(view)
+
+/**
  * Backspace/Delete over a MULTI-LINE selection (ADR 0021): after the raw deletion, heal the outliner
  * structure so the delete can't leave orphaned blocks or a blank-line artifact — remove a whitespace-only
  * line formed at the join, and re-indent any block that jumped more than one level below its new parent.
  * Single-line selections (and carets) fall through to the defaults / the caret-specific commands.
  */
-const rangeDeleteHeal: StateCommand = (view) => {
+const healRangeDelete: StateCommand = (view) => {
     const { state } = view
     if (state.selection.ranges.length !== 1) return false // leave multi-cursor to the default
     const sel = state.selection.main
@@ -1421,8 +1495,26 @@ function moveBranch(view: Target, dir: 'up' | 'down'): boolean {
     if (!edit) return true // group boundary — consume, don't move the caret
     const from = offsetOfLine(view, edit.fromLine)
     const to = view.state.doc.line(edit.toLine + 1).to
-    dispatchKeeping(view, { changes: { from, to, insert: edit.text }, selection: { anchor: from + edit.caretOffset }, userEvent: 'move' })
+    // The moved branch stays in the document and the lines it passes go round it (anchored-move.ts), so
+    // a word a peer types into it at the same moment stays in it and its fold and bookmarks map through.
+    const branch = branchRange(lines, root, [...analysisFor(view.state).fencedBlocks])
+    const anchored = anchoredMove(lines, edit.fromLine, edit.toLine, edit.text, branch.start, branch.end)
+    const replace: TransactionSpec = { changes: { from, to, insert: edit.text }, selection: { anchor: from + edit.caretOffset }, userEvent: 'move' }
+    dispatchMove(view, replace, anchored)
     return true
+}
+
+/**
+ * Dispatch a branch move as `anchored` changes where they leave the very text `replace` does, and as
+ * the replace otherwise: the filters (the fence guard) judge a change by its shape, and may answer
+ * line-at-a-time re-indentation of a fence differently from the replace.
+ */
+function dispatchMove(view: Target, replace: TransactionSpec, anchored: ChangeSpec[] | null): void {
+    if (anchored) {
+        const tr = view.state.update({ ...replace, changes: anchored })
+        if (tr.newDoc.eq(view.state.update(replace).newDoc) && keepsStructure(view.state, tr)) return view.dispatch(tr)
+    }
+    dispatchKeeping(view, replace)
 }
 
 /** Move the caret's branch up one visual row within its group (Command-shaped for reuse). */
@@ -1562,6 +1654,8 @@ export function outlinerBindings(): readonly KeyBinding[] {
         { key: 'Tab', run: indentBranch },
         { key: 'Shift-Tab', run: shiftTabInCode },
         { key: 'Shift-Tab', run: outdentBranch },
+        // First, so that every Enter below sees a caret inside a lone fence's backticks at the line's end.
+        { key: 'Enter', run: caretToLoneFenceEnd },
         // Before every other Enter: at the end of a folded bullet's text the new bullet goes below the fold.
         { key: 'Enter', run: enterAtFold },
         { key: 'Enter', run: completeFence },
@@ -1603,6 +1697,7 @@ export function outlinerBindings(): readonly KeyBinding[] {
         { key: 'Backspace', run: backspaceEmptyBullet },
         { key: 'Backspace', run: backspaceMergeBullet },
         { key: 'Delete', run: deleteMergeNext },
+        { key: 'Shift-Enter', run: caretToLoneFenceEnd },
         { key: 'Shift-Enter', run: shiftEnterInCode },
         { key: 'Shift-Enter', run: softNewline },
         // Consumed where the toggle is refused too, as the format toggles are, so the browser never acts on it.

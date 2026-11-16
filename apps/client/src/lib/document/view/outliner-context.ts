@@ -114,6 +114,25 @@ export function visibleFencedBlocks(state: EditorState): readonly FencedBlockRan
     return blocks
 }
 
+const panelBlocksByState = new WeakMap<EditorState, readonly FencedBlockRange[]>()
+
+/**
+ * The blocks the editor DRAWS: {@link visibleFencedBlocks} less every block inside another. A code
+ * sample can hold a fenced block of its own, and the whole sample is the outer block's code (Editor
+ * Content Rules → Fenced blocks are opaque), so it is drawn as one panel: the inner pair's fences
+ * are rows of it like any other, with no panel, first and last row, scroll bar or column of their
+ * own. A panel drawn for the inner pair too sat at another left edge inside the outer one, which left
+ * the outer panel's edge jagged. The keys still read the inner pair (`fencedBlocksAtLine`).
+ */
+export function panelFencedBlocks(state: EditorState): readonly FencedBlockRange[] {
+    const cached = panelBlocksByState.get(state)
+    if (cached) return cached
+    const all = visibleFencedBlocks(state)
+    const outer = all.filter((b) => !all.some((o) => o !== b && o.start < b.start && b.end < o.end))
+    panelBlocksByState.set(state, outer)
+    return outer
+}
+
 function readVisibleFencedBlocks(state: EditorState): readonly FencedBlockRange[] {
     const analysis = state.field(editorAnalysisField, false) as EditorAnalysis | undefined
     const lines = analysis?.lines ?? state.doc.toString().split('\n')

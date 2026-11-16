@@ -28,6 +28,7 @@ import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 import { type FencedBlockRange, fencedBlocks, fenceLineInfo, normaliseFenceLines } from '../fenced-code'
 import { editorAnalysisField, type EditorAnalysis } from './analysis/editor-analysis'
 import { EXTERNAL, collaborative } from './cm-document'
+import { minimalReplacement } from './minimal-replacement'
 import { isOwnEditing } from './own-editing'
 
 type Range = { from: number; to: number }
@@ -82,11 +83,12 @@ function padsBelowFenceColumn(tr: Transaction): ChangeSpec[] {
         // The code lines as they stand after the edit: from below the opener to above the closer.
         const first = tr.newDoc.lineAt(tr.changes.mapPos(opener.to, 1)).number + 1
         const last = tr.newDoc.lineAt(tr.changes.mapPos(closer.from, -1)).number - 1
+        const wasFence = fenceLikeCodeLines(tr, block)
         for (let n = first; n <= last; n++) {
             const text = tr.newDoc.line(n).text
             const indent = text.length - text.trimStart().length
             if (indent === text.length || indent >= block.fenceColumn) continue // blank, or at the column
-            if (fenceLineInfo(text)) continue
+            if (fenceLineInfo(text) && !wasFence.has(n)) continue
             columns.set(n, Math.max(columns.get(n) ?? 0, block.fenceColumn))
         }
     }
@@ -94,6 +96,20 @@ function padsBelowFenceColumn(tr: Transaction): ChangeSpec[] {
         const line = tr.newDoc.line(n)
         return { from: line.from, insert: ' '.repeat(column - (line.text.length - line.text.trimStart().length)) }
     })
+}
+
+/**
+ * The code lines of `block` that read as a fence before `tr` (a sample's fence at the block's own
+ * column), as 1-based lines of the edited text. Such a line is code like any other and is padded;
+ * only a line the edit made a fence line is left alone.
+ */
+function fenceLikeCodeLines(tr: Transaction, block: FencedBlockRange): Set<number> {
+    const lines = new Set<number>()
+    for (let n = block.start + 2; n <= block.end; n++) {
+        const old = tr.startState.doc.line(n)
+        if (fenceLineInfo(old.text)) lines.add(tr.newDoc.lineAt(tr.changes.mapPos(old.to, -1)).number)
+    }
+    return lines
 }
 
 /**
@@ -153,6 +169,27 @@ function pairingsBefore(tr: Transaction): Map<number, number> {
 }
 
 /**
+ * Whether the guard may repair the tolerant pairing `block`, given the strict pairing as it stood
+ * before the edit (`paired`). A repair restores a pairing the edit broke, or makes a new one. It never
+ * pairs a fence the strict scan paired with another line before the edit: a "closer" a few columns
+ * right of the opener can be another block's fence, not one an edit nudged. In a code sample written
+ * with three backticks, an inner opener that stops being a fence (a backtick deleted, a second word
+ * typed after its info string) leaves the inner closer two columns right of the sample's opener, and
+ * snapping it back closed the sample there. Judged against the text after the edit, a nudge can look
+ * the same: the opener pairs with a stray fence further down until the repair.
+ *
+ * A new pairing is made only by the edit that wrote or moved its closer. Two stray fences up to three
+ * columns apart look like a nudged pair to the tolerant scan, and an edit to the lines between them
+ * left nothing to snap back: moving the lower one made code of everything between.
+ */
+function mayRepair(doc: Text, block: FencedBlockRange, changed: readonly Range[], paired: Map<number, number>): boolean {
+    if ((paired.get(block.start) ?? block.end) !== block.end || (paired.get(block.end) ?? block.start) !== block.start) return false
+    if (paired.get(block.start) === block.end) return true
+    const closer = doc.line(block.end + 1)
+    return changed.some((c) => c.from <= closer.to && c.to >= closer.from)
+}
+
+/**
  * The re-clamp of every complete block the edit touched, as changes to `doc`. `before` gives the
  * strict pairing as it stood before the edit ({@link pairingsBefore}), read only when a block needs
  * a repair.
@@ -184,20 +221,15 @@ function normaliseTouchedBlocks(doc: Text, changed: readonly Range[], before: ()
         if (!opener) continue
         const fixed = normaliseFenceLines(lines, block.fenceColumn, opener.run)
         if (fixed.every((line, k) => line === lines[k])) continue
-        // A repair restores a pairing the edit broke, or makes a new one. It never pairs a fence the
-        // strict scan paired with another line before the edit: a "closer" a few columns right of the
-        // opener can be another block's fence, not one an edit nudged. In a code sample written with
-        // three backticks, an inner opener that stops being a fence (a backtick deleted, a second word
-        // typed after its info string) leaves the inner closer two columns right of the sample's opener,
-        // and snapping it back closed the sample there. Judged against the text after the edit, a nudge
-        // can look the same: the opener pairs with a stray fence further down until the repair.
-        const paired = before()
-        if ((paired.get(block.start) ?? block.end) !== block.end || (paired.get(block.end) ?? block.start) !== block.start) continue
+        if (!mayRepair(doc, block, changed, before())) continue
         for (let k = 0; k < lines.length; k++) {
-            if (fixed[k] !== lines[k]) {
-                const ln = doc.line(block.start + 1 + k)
-                corrections.push({ from: ln.from, to: ln.to, insert: fixed[k] })
-            }
+            // Only the characters that differ, so the caret keeps its place on the line. The guard runs
+            // after the caret clamp: a closer replaced whole carried the caret to column 0 of its line,
+            // left of the fence column, where the next character typed ended the block.
+            const change = minimalReplacement(lines[k], fixed[k])
+            if (!change) continue
+            const ln = doc.line(block.start + 1 + k)
+            corrections.push({ from: ln.from + change.from, to: ln.from + change.to, insert: change.insert })
         }
     }
     return corrections

@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 
+import { analysisFor } from './analysis/editor-analysis'
 import { collaborative, EXTERNAL } from './cm-document'
 import { tidiedAfterChildren, tidiedBlock, tidiedProse, tidyTargetAt } from './leave-tidy'
 import { editorFixture } from './testing/editor-state-fixture'
@@ -67,6 +68,11 @@ describe('tidiedProse', () => {
         expect(tidiedProse('    code  ')).toBe('    code')
         expect(tidiedProse('\tcode')).toBeNull()
         expect(tidiedProse('text')).toBeNull()
+    })
+
+    it('keeps a fence line’s leading spaces, which decide what it pairs with, and trims its end', () => {
+        expect(tidiedProse('  ```')).toBeNull()
+        expect(tidiedProse(' ````js  ')).toBe(' ````js')
     })
 
     it('empties a whitespace-only line', () => {
@@ -148,6 +154,13 @@ describe('leave-tidy filter', () => {
         editor.key('Mod-Enter')
         editor.select(editor.text().length) // click into c
         expect(editor.fixture()).toBe('- a\n  - b\n    soft\n\n- c|')
+    })
+
+    it('never moves a stray fence to the margin, where it would pair with the next block’s opener', () => {
+        const editor = editorFixture('|  ```\n```\ncode\n```')
+        editor.select(editor.state.doc.line(2).from)
+        expect(editor.text()).toBe('  ```\n```\ncode\n```')
+        expect(analysisFor(editor.state).fencedBlocks).toEqual([{ start: 1, end: 3, fenceColumn: 0 }])
     })
 
     it('trims a prose line on leave, and never a fenced block or the frontmatter', () => {

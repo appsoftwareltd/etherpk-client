@@ -51,7 +51,7 @@ import { DESKTOP_MEDIA_QUERY } from '#lib/layout/breakpoint.js'
 import type { FencedBlockRange } from '../../fenced-code'
 import { INDENT_UNIT, type OutlineLine } from '../../indent-unit'
 import { contentColumn, continuationColumn, isBulletLine, lineIndent, markerLength, MARKER_WIDTH } from '../../outliner'
-import { fencedBlockAtIn, insideFencedBlockIn, visibleFencedBlocks } from '../outliner-context'
+import { fencedBlockAtIn, insideFencedBlockIn, panelFencedBlocks } from '../outliner-context'
 import { treeChanged } from './base-renderer'
 import { blockquoteLines } from './blockquote-core'
 import { CODE_FONT_SCALE, CODE_PANEL_PAD_LEFT } from './code-highlight'
@@ -260,7 +260,7 @@ function measureCodeShifts(view: EditorView, current: ReadonlyMap<number, number
     // that fixed gap in again on every measure walked the blocks sharing its key further sideways
     // with each keystroke. The next block of the key that is drawn as code is measured instead.
     const collapsed = collapsedFenceStarts(state)
-    for (const block of visibleFencedBlocks(state).filter((b) => !collapsed.has(b.start))) {
+    for (const block of panelFencedBlocks(state).filter((b) => !collapsed.has(b.start))) {
         // Skip top-level code (no correction needed there) and code owned by no bullet (under a prose
         // line: nothing to align to). The alignment owner: for a form-1 block (`- ``` `) the opener IS
         // the bullet, so its own content column — the fence run, sitting on the proportional column
@@ -506,12 +506,49 @@ interface LineClamp {
     panel: boolean
     /** The block's fence column, when this line carries a panel (the panel-inset anchor). */
     fenceCol: number
+    /**
+     * The 0-based line of the block's opener, when this line carries a panel, or -1. Every row of a
+     * panel takes its nesting step and its measured shift from that one line, so the rows cannot
+     * disagree: read a row at a time, a bullet-shaped code line that the outline took for a bullet
+     * while the fence above it was still being typed sat a step to the right of the rows around it.
+     */
+    blockLine: number
     /** This panel line is a form-1 opener (a bullet line). It is NOT shifted (it anchors the block via
      *  its prose-rendered `- ` marker), so its panel inset compensates for the body lines' left shift. */
     opener: boolean
     /** A plain bullet line (NOT a form-1 opener): its content carries the {@link CONTENT_GUTTER} so its
      *  text sits the same distance from the dot as a code block's text from its panel. */
     bullet: boolean
+}
+
+/**
+ * Where the panel of the block opened on 0-based line `openerLine` starts, as a CSS length from the
+ * content's padding edge: the body rows' `margin-left` (their nesting steps less the measured shift)
+ * plus their `--code-inset`, from the same state the rows are drawn from. The sideways scrollbar
+ * (code-scroll.ts) is a strip of the panel that is no line, and takes its left edge from here: set
+ * from a measure of the rows instead, it trailed them by a frame or more after every edit that moved
+ * the block, and the panel's edge was jagged until the measure landed. `ch` and `em` are the code
+ * font's, so the element using this must be set in it.
+ */
+export function codePanelLeft(state: EditorState, openerLine: number, fenceCol: number): string {
+    if (fenceCol === 0) return '0px'
+    const { outline, lines } = analysisFor(state)
+    const info = outline[openerLine]
+    const depth = nestingDepth(info, false, fenceCol)
+    const ownerIndent = info && info.owner >= 0 ? lineIndent(lines[info.owner]) : -1
+    const shift = ownerIndent >= 0 ? Math.round(state.field(codeShiftsField).get(shiftKey(fenceCol, ownerIndent)) ?? 0) : 0
+    const steps = depth > 0 ? `${stepsTerm(depth)} + ` : ''
+    return `calc(${steps}${fenceCol}ch - ${PANEL_PAD} - ${shift}px)`
+}
+
+/** The line a row takes its nesting step from: its block's opener when it is a panel row, or itself. */
+function stepLine(blockLine: number, own: number): number {
+    return blockLine >= 0 ? blockLine : own
+}
+
+/** The 0-based line of `block`'s opener, or -1 for no block. */
+function openerLine(state: EditorState, block: { from: number } | null): number {
+    return block ? state.doc.lineAt(block.from).number - 1 : -1
 }
 
 function classifyLine(
@@ -525,7 +562,7 @@ function classifyLine(
     // A line of [[Frontmatter]] is neither a bullet nor prose to clamp: it is verbatim YAML in a
     // panel the frontmatter augmentation draws, and a `- item` there is a list entry (ADR 0061).
     if (lineFrom <= frontmatterEnd) {
-        return { cols: 0, code: false, body: false, panel: false, fenceCol: 0, opener: false, bullet: false }
+        return { cols: 0, code: false, body: false, panel: false, fenceCol: 0, blockLine: -1, opener: false, bullet: false }
     }
     // A `- item` INSIDE a fence (content or closer, not the opener) is code, whatever it looks like:
     // in a code sample that holds a fenced block of its own, the inner pair's opener is code too.
@@ -544,6 +581,8 @@ function classifyLine(
             body: false,
             panel: opener,
             fenceCol: opener ? block.fenceColumn : 0,
+            // A form-1 opener is the bullet line itself, so it reads its own outline entry.
+            blockLine: -1,
             opener,
             bullet: !opener,
         }
@@ -557,6 +596,7 @@ function classifyLine(
         body: block !== null && lineFrom !== block.from && lineFrom !== state.doc.lineAt(block.to).from,
         panel: block !== null,
         fenceCol: block ? block.fenceColumn : 0,
+        blockLine: openerLine(state, block),
         opener: false,
         bullet: false,
     }
@@ -567,7 +607,7 @@ function buildClamp(view: EditorView): DecorationSet {
     const codeShifts = state.field(codeShiftsField)
     const units = measuredUnits(state.field(proseMetricsField))
     const collapsedStarts = collapsedFenceStarts(state)
-    const visibleBlocks = visibleFencedBlocks(state)
+    const visibleBlocks = panelFencedBlocks(state)
     const { frontmatterEnd, outline } = analysisFor(state)
     const docLines = analysisFor(state).lines as string[] // the shared analysis lines; read only
     const decos: Range<Decoration>[] = []
@@ -585,7 +625,7 @@ function buildClamp(view: EditorView): DecorationSet {
                 continue
             }
             seen.add(line.from)
-            const { cols, code, body, panel, fenceCol, opener, bullet } = classifyLine(
+            const { cols, code, body, panel, fenceCol, blockLine, opener, bullet } = classifyLine(
                 state,
                 line.from,
                 line.text,
@@ -648,7 +688,8 @@ function buildClamp(view: EditorView): DecorationSet {
                 // Widen each nesting level visually (Logseq-like). `margin-left` shifts the whole line —
                 // marker, content and any code panel together — so every internal alignment is
                 // preserved while the indent grows (nestingDepth says how many steps each line takes).
-                const info = outline[line.number - 1]
+                // A panel row reads the block's opener line, so every row of the panel takes the same step.
+                const info = outline[stepLine(blockLine, line.number - 1)]
                 const depth = nestingDepth(info, plain, panel ? fenceCol : cols)
                 const ownerIndent = info && info.owner >= 0 ? lineIndent(docLines[info.owner]) : -1
                 const shift = ownerIndent >= 0 ? (codeShifts.get(shiftKey(fenceCol, ownerIndent)) ?? 0) : 0

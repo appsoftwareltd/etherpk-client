@@ -109,11 +109,48 @@ export function guideThreadsFor(state: EditorState, within?: { from: number; to:
     return inPart.filter((thread) => !foldedParents.has(thread.parent) && !hidden(thread.parent))
 }
 
+/** The fold starting highest that hides `pos`, a line's end; undefined when the line is shown. */
+function outermostFoldOver(folds: readonly { from: number; to: number }[], pos: number): { from: number; to: number } | undefined {
+    let outer: { from: number; to: number } | undefined
+    for (const fold of folds) if (pos > fold.from && pos <= fold.to && (!outer || fold.from < outer.from)) outer = fold
+    return outer
+}
+
 /** The bottom (viewport px) of the quote panel on the rendered line starting at `lineFrom`, or null. */
 function panelBottom(view: EditorView, lineFrom: number): number | null {
     const { node } = view.domAtPos(lineFrom)
     const line = (node instanceof HTMLElement ? node : node.parentElement)?.closest('.cm-line')
     return line ? quotePanelBottom(line) : null
+}
+
+/**
+ * Where a thread ends: the bottom of its branch's last row (Logseq-style, the thread spans the whole
+ * subtree), a soft line with nothing on it yet included, or, where that line ends a quote, the
+ * bottom of the quote's panel. `viewport` is that in viewport px, or null below the rendered range
+ * and inside a block widget, where `block` (the line block's bottom, from the document's top) stands
+ * in. `unmeasured` says a rendered position gave no coordinates: layout is not ready.
+ *
+ * A last line that a fold hides has no row of its own: the thread ends at the bottom of the folded
+ * bullet's row, as it would beside the open branch. The fold's start is the end of that bullet's
+ * text. Read from the fold's end, or from the fold's side of its start, the position is the fold's
+ * zero-height placeholder at the row's top, and the thread stopped a row short: so it is read from
+ * the text side (`-1`).
+ */
+function threadBottom(
+    view: EditorView,
+    thread: GuideThread,
+    folds: readonly { from: number; to: number }[],
+    rendered: (pos: number) => boolean,
+): { viewport: number | null; block: number; unmeasured: boolean } {
+    const lastLine = view.state.doc.line(thread.last + 1)
+    const fold = outermostFoldOver(folds, lastLine.to)
+    const lastPos = fold ? fold.from : lastLine.to
+    const block = view.lineBlockAt(lastPos).bottom
+    if (!rendered(lastPos)) return { viewport: null, block, unmeasured: false }
+    const panel = !fold && thread.toPanel() ? panelBottom(view, lastLine.from) : null
+    if (panel !== null) return { viewport: panel, block, unmeasured: false }
+    const last = view.coordsAtPos(lastPos, fold ? -1 : 1)
+    return { viewport: last ? last.bottom : null, block, unmeasured: !last }
 }
 
 function computeThreads(view: EditorView): Measured {
@@ -165,6 +202,7 @@ function computeThreads(view: EditorView): Measured {
         textLeft = content.getBoundingClientRect().left + content.clientLeft + parseFloat(getComputedStyle(content).paddingLeft)
         return textLeft
     }
+    const folds = allFolds(state)
     for (const thread of guideThreadsFor(state, { from: visibleFrom, to: visibleTo })) {
         const i = thread.parent
         const parent = state.doc.line(i + 1)
@@ -194,16 +232,9 @@ function computeThreads(view: EditorView): Measured {
         // phase → uniform, and as close to the dot's (fractional) centre as the grid allows.
         const dpr = window.devicePixelRatio || 1
         const x = Math.round((centreX - GUIDE_WIDTH_PX / 2) * dpr) / dpr - sx
-        // Down to the bottom of the branch's last row (Logseq-style — the thread spans the whole
-        // subtree), a soft line with nothing on it yet included, or, where that line ends a quote, on
-        // to the bottom of the quote's panel.
-        // Below the rendered range, or inside a block widget, the block's bottom stands in.
-        const lastLine = state.doc.line(thread.last + 1)
-        const lastPos = lastLine.to
-        const panel = rendered(lastPos) && thread.toPanel() ? panelBottom(view, lastLine.from) : null
-        const last = panel === null && rendered(lastPos) ? view.coordsAtPos(lastPos) : null
-        if (panel === null && !last && rendered(lastPos)) incomplete = true
-        const bottom = panel !== null ? panel - sy : last ? last.bottom - sy : view.lineBlockAt(lastPos).bottom + docTop
+        const end = threadBottom(view, thread, folds, rendered)
+        if (end.unmeasured) incomplete = true
+        const bottom = end.viewport !== null ? end.viewport - sy : end.block + docTop
         if (bottom > top) threads.push({ parent: i, x, top, height: bottom - top })
     }
     return { threads, incomplete }

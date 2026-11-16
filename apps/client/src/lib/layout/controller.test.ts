@@ -91,6 +91,25 @@ describe('LayoutController — identity (singleton rule)', () => {
         expect(mainViews).toHaveLength(2)
     })
 
+    it('numbers a forceNew copy past the copies a restored Layout already holds', () => {
+        // A new controller counts copies from one again. Over a restored Layout that holds
+        // `document:doc-A::1`, the next copy took that id too, and the renderer refused it.
+        const first = setup()
+        first.controller.restore(defaultLayout())
+        first.controller.openView(docA)
+        const kept = first.controller.openView(docA, { forceNew: true })
+        const saved = first.controller.serialize()
+
+        const { controller } = setup()
+        controller.restore(saved)
+        const copy = controller.openView(docA, { forceNew: true })
+        expect(copy.panelId).not.toBe(kept.panelId)
+        const ids = controller.serialize().model.regions.main.panes.flatMap((pane) => pane.views.map((v) => v.panelId))
+        expect(new Set(ids).size).toBe(ids.length)
+        expect(ids).toContain(kept.panelId)
+        expect(ids).toContain(copy.panelId)
+    })
+
     it('still treats the canonical view as the singleton after a forceNew copy exists', () => {
         const { controller, renderer } = ctx
         controller.openView(docA)

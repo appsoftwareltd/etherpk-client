@@ -110,8 +110,17 @@ function writtenLine(start: number, tr: Transaction, same: SameLine): number | n
     const doc = tr.newDoc
     const mapped = tr.changes.mapPos(start, 1)
     let found: number | null = null
-    tr.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
-        if (!(fromA <= start && start < toA) || fromB === toB) return
+    // Whether a change took the line's start out. The line may be written again by that change (a
+    // replace of both blocks) or by another of the same transaction: a branch move leaves the moved
+    // branch in place and deletes the lines it passes on one side to write them on the other
+    // (anchored-move.ts).
+    let replaced = false
+    tr.changes.iterChangedRanges((fromA, toA) => {
+        if (fromA <= start && start < toA) replaced = true
+    })
+    if (!replaced) return null
+    tr.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
+        if (fromB === toB) return
         for (let number = doc.lineAt(fromB).number, last = doc.lineAt(toB).number; number <= last; number++) {
             const line = doc.line(number)
             if (!same(text, line.text)) continue

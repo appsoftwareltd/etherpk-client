@@ -14,44 +14,68 @@ import type { EditorState, Extension, StateEffect } from '@codemirror/state'
 import { type EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
 import { conceptKey } from '../../backlinks/backlink-index'
-import { bulletContent, isBulletLine } from '../../outliner'
+import { bulletContent } from '../../outliner'
+import { analysisFor } from '../analysis/editor-analysis'
 import { editorDocument } from '../editor-document'
-import { activeFoldMemory, foldFingerprint, type KeptFold } from './fold-memory'
+import { activeFoldMemory, foldFingerprint, foldPath, type KeptFold } from './fold-memory'
 import { bulletFoldRange, foldedBulletLines, foldOfBullet } from './outline-folds'
 import { isProtectedDocumentFacet } from './protected-document'
 
-/** The folds of `state` as they are kept: each folded bullet's line and fingerprint, in document order. */
+/**
+ * Every foldable bullet's fingerprint in `state`, by 1-based line, in document order: over its own
+ * words and those of each bullet above it in the outline, so a "Comments" under one task is not the
+ * "Comments" under another, nor a bullet its parent of the same name.
+ */
+function foldablePrints(state: EditorState): Map<number, string> {
+    const { lines, branchEnds } = analysisFor(state)
+    const out = new Map<number, string>()
+    /** The bullets the current line is under: each one's indent and words, outermost first. */
+    const above: { indent: number; words: string }[] = []
+    for (let i = 0; i < lines.length; i++) {
+        if (branchEnds[i] < 0) continue // not a bullet: a soft line, code, prose
+        const indent = lines[i].length - lines[i].trimStart().length
+        while (above.length && above[above.length - 1].indent >= indent) above.pop()
+        above.push({ indent, words: bulletContent(lines[i]) })
+        if (bulletFoldRange(state, i + 1)) out.set(i + 1, foldFingerprint(foldPath(above.map((a) => a.words))))
+    }
+    return out
+}
+
+/** The lines of the bullets with each fingerprint, in document order. */
+function linesByPrint(prints: Map<number, string>): Map<string, number[]> {
+    const out = new Map<string, number[]>()
+    for (const [line, print] of prints) out.set(print, [...(out.get(print) ?? []), line])
+    return out
+}
+
+/** The folds of `state` as they are kept: each folded bullet's line, fingerprint and place among its like, in document order. */
 export function keptFoldsOf(state: EditorState): KeptFold[] {
-    return foldedBulletLines(state).map((line) => ({ line, fingerprint: foldFingerprint(bulletContent(state.doc.line(line).text)) }))
+    const prints = foldablePrints(state)
+    const byPrint = linesByPrint(prints)
+    return [...foldedBulletLines(state)]
+        .sort((a, b) => a - b)
+        .flatMap((line) => {
+            const fingerprint = prints.get(line)
+            return fingerprint === undefined ? [] : [{ line, fingerprint, nth: byPrint.get(fingerprint)!.indexOf(line) }]
+        })
 }
 
 /**
- * The 1-based lines kept folds name in `state`: each at its line when that bullet still has the
- * fingerprint and children, or else at the nearest such bullet not already taken. One found nowhere
- * is left out.
+ * The 1-based lines kept folds name in `state`. A fold is looked for among the foldable bullets
+ * with its fingerprint: the one at its line when that is also its place among them, or else the one
+ * at its place among them (lines added above move a bullet's line, not its place), or else the
+ * nearest to its line. One found nowhere is left out.
  */
 export function resolveKeptFolds(state: EditorState, kept: readonly KeptFold[]): number[] {
-    const { doc } = state
-    const prints = new Map<number, string>()
-    const printOf = (line: number) => {
-        let print = prints.get(line)
-        if (print === undefined) prints.set(line, (print = foldFingerprint(bulletContent(doc.line(line).text))))
-        return print
-    }
-    const fits = (line: number, fingerprint: string) =>
-        line >= 1 && line <= doc.lines && isBulletLine(doc.line(line).text) && printOf(line) === fingerprint && bulletFoldRange(state, line) !== null
+    const byPrint = linesByPrint(foldablePrints(state))
     const taken = new Set<number>()
     for (const fold of kept) {
-        if (fits(fold.line, fold.fingerprint) && !taken.has(fold.line)) {
-            taken.add(fold.line)
-            continue
-        }
-        let best: number | null = null
-        for (let line = 1; line <= doc.lines; line++) {
-            if (taken.has(line) || !fits(line, fold.fingerprint)) continue
-            if (best === null || Math.abs(line - fold.line) < Math.abs(best - fold.line)) best = line
-        }
-        if (best !== null) taken.add(best)
+        const like = (byPrint.get(fold.fingerprint) ?? []).filter((line) => !taken.has(line))
+        if (like.length === 0) continue
+        const all = byPrint.get(fold.fingerprint)!
+        const atPlace = all[fold.nth]
+        const best = atPlace !== undefined && !taken.has(atPlace) ? atPlace : like.reduce((a, b) => (Math.abs(b - fold.line) < Math.abs(a - fold.line) ? b : a))
+        taken.add(best)
     }
     return [...taken].sort((a, b) => a - b)
 }

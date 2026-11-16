@@ -21,7 +21,7 @@ import { type EditorState, type Extension, type Range } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
 import { isBulletLine } from '../../outliner'
-import { visibleFencedBlocks } from '../outliner-context'
+import { panelFencedBlocks } from '../outliner-context'
 import { CODE_TOKEN_STYLES } from './code-token-styles'
 import { collapsedFenceStarts, collapseMayHaveChanged } from './rendered-common'
 import { rangeRevealed, revealUpdated } from './reveal-policy'
@@ -246,7 +246,7 @@ function buildCodeBlockDecorations(view: EditorView): DecorationSet {
     // dim, or prefix styling — for a collapsed form-1 the opener line stays visible, and a shaded
     // diagram-tall code panel behind the widget is exactly what suppression prevents.
     const collapsed = collapsedFenceStarts(state)
-    for (const block of visibleFencedBlocks(state)) {
+    for (const block of panelFencedBlocks(state)) {
         const startLine = state.doc.line(block.start + 1)
         const endLine = state.doc.line(block.end + 1)
         if (collapsed.has(block.start)) {

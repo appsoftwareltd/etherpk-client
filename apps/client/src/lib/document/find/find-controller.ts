@@ -487,7 +487,8 @@ export class FindController {
             if (plan.replaced === 0) return true
             if (scope === 'all') this.#deps.beforeReplaceAll?.(target)
             const before = target.state.doc
-            target.dispatch(replaceTransaction(target.state, plan))
+            // The selection find put on the current match must not outlive the matches (see replaceTransaction).
+            target.dispatch(replaceTransaction(target.state, plan, { collapseSelection: scope === 'all' && this.#onCurrent() }))
             return target.state.doc !== before
         }
 

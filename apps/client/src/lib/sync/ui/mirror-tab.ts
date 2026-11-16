@@ -16,13 +16,30 @@
  * here for a decision, so what they hold, what they could not confirm and why they stopped are
  * reported here rather than being discovered in the folder later.
  */
+import { formatBytes } from '@appsoftwareltd/etherpk-shared'
+
 import type { MirrorStatus } from '#lib/storage/synced/local-mirror.js'
 
 export interface ExportEstimate {
     documents: number
     assets: number
-    /** About how many bytes the archive would hold: the attachments, which are nearly all of it. */
+    /**
+     * The attachments' bytes, from the server's list. The documents' size is not known until each
+     * is decrypted, so it is not in here: the attachments are nearly all of an archive that has any.
+     */
     bytes: number
+}
+
+/**
+ * The estimate as the tab words it. The size is named as the attachments', which is what it
+ * measures, and is left out when there are none: "about 0 B" for a graph of documents read as
+ * though the archive would be empty.
+ */
+export function describeExportEstimate(estimate: ExportEstimate): string {
+    const documents = `${estimate.documents} ${estimate.documents === 1 ? 'document' : 'documents'}`
+    if (estimate.assets === 0) return `${documents} and no attachments.`
+    const attachments = `${estimate.assets} ${estimate.assets === 1 ? 'attachment' : 'attachments'}`
+    return `${documents} and ${attachments}. The attachments are about ${formatBytes(estimate.bytes)}.`
 }
 
 export interface ExportTabProps {

@@ -218,7 +218,16 @@ export interface TitleLinkRow {
  * and the index is plaintext at rest, so the conservative reading is the only safe one.
  */
 function fencedLines(text: string): (line: number) => boolean {
-    const lines = text.split('\n')
+    return indexFencedLines(text.split('\n'))
+}
+
+/**
+ * {@link fencedLines} over a document's lines: whether the index reads 0-based line `line` as fenced,
+ * so that a `- [ ]` there is no task. The editor draws a task's checkbox from this same answer
+ * (`task-checkbox.ts`), so a checkbox shows exactly where the [[Tasks View]] lists a task, at every
+ * step of typing a fence, before its closer arrives too.
+ */
+export function indexFencedLines(lines: readonly string[]): (line: number) => boolean {
     const spans: Array<[number, number]> = fencedBlocks(lines).map((b) => [b.start, b.end])
     const inside = (line: number) => spans.some(([from, to]) => line >= from && line <= to)
     for (let index = 0; index < lines.length; index++) {

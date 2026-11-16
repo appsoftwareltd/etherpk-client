@@ -97,9 +97,18 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
     // move through it; entries for panes the renderer stops reporting are dropped.
     let paneIdFor = new Map<string, string>()
 
+    /**
+     * A panel id for a `forceNew` copy that no open View has. The counter starts again with each
+     * controller, while a restored Layout brings the copies an earlier one numbered, so an id
+     * already in the model is passed over: the renderer refuses a second panel under one id.
+     */
     function nextCopyId(key: string): string {
-        copyCounter += 1
-        return `${key}::${copyCounter}`
+        let id: string
+        do {
+            copyCounter += 1
+            id = `${key}::${copyCounter}`
+        } while (locatePanel(model, id))
+        return id
     }
 
     function nextPaneId(): string {

@@ -36,9 +36,9 @@
 import { type EditorState, type Extension, Prec, type Range, StateEffect, StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 
-import { visibleFencedBlocks } from '../outliner-context'
+import { panelFencedBlocks } from '../outliner-context'
 import { CODE_FONT_SIZE, CODE_PANEL_PAD_RIGHT } from './code-highlight'
-import { codeShiftsField, PANEL_PAD } from './content-clamp'
+import { codePanelLeft, codeShiftsField, PANEL_PAD } from './content-clamp'
 import {
     clampScroll,
     fenceBodyRange,
@@ -85,12 +85,14 @@ interface ScrollableBlock {
     /** 1-based line numbers of the body. */
     firstLine: number
     lastLine: number
+    /** Where the block's panel starts, as a CSS length from the content's padding edge (`codePanelLeft`). */
+    panelLeft: string
 }
 
 function scrollableBlocks(state: EditorState): ScrollableBlock[] {
     const collapsed = collapsedFenceStarts(state)
     const out: ScrollableBlock[] = []
-    for (const block of visibleFencedBlocks(state)) {
+    for (const block of panelFencedBlocks(state)) {
         // A block collapsed to its rendered widget shows no lines to scroll (ADR 0022).
         if (collapsed.has(block.start)) continue
         const body = fenceBodyRange(block)
@@ -101,6 +103,7 @@ function scrollableBlocks(state: EditorState): ScrollableBlock[] {
             bodyTo: state.doc.line(body.last + 1).to,
             firstLine: body.first + 1,
             lastLine: body.last + 1,
+            panelLeft: codePanelLeft(state, block.start, block.fenceColumn),
         })
     }
     return out
@@ -140,17 +143,26 @@ const overflowingField = StateField.define<ReadonlySet<number>>({
  * block's offset moved (a keystroke above it), so the DOM survives every rebuild.
  */
 class ScrollbarWidget extends WidgetType {
-    constructor(readonly opener: number) {
+    /**
+     * `panelLeft` is where the block's panel starts, worked out from the state the block's rows are
+     * drawn from, so the strip is in line with them in the same paint. A measure of the rows used to
+     * set it, a frame or more after each edit that moved the block.
+     */
+    constructor(
+        readonly opener: number,
+        readonly panelLeft: string,
+    ) {
         super()
     }
 
     eq(other: ScrollbarWidget): boolean {
-        return other.opener === this.opener
+        return other.opener === this.opener && other.panelLeft === this.panelLeft
     }
 
     updateDOM(dom: HTMLElement): boolean {
         if (!dom.classList.contains('gk-code-scrollbar')) return false
         dom.dataset.gkCodeBlock = String(this.opener)
+        dom.style.marginLeft = this.panelLeft
         return true
     }
 
@@ -159,10 +171,7 @@ class ScrollbarWidget extends WidgetType {
         bar.className = 'gk-code-scrollbar'
         bar.setAttribute('data-augmentation', 'code-scroll')
         bar.dataset.gkCodeBlock = String(this.opener)
-        // Where the panel starts, from the block's last measure, so the first paint is already
-        // aligned: the measure that follows this mount lands a frame later.
-        const margin = view.plugin(codeScrollPlugin)?.barMarginOf(this.opener)
-        if (margin !== undefined) bar.style.marginLeft = `${margin}px`
+        bar.style.marginLeft = this.panelLeft
         // A pointer affordance only: the caret keeps the keyboard path, and the reveal follows it.
         bar.setAttribute('aria-hidden', 'true')
         const track = bar.appendChild(document.createElement('div'))
@@ -247,7 +256,7 @@ function buildBars(state: EditorState): DecorationSet {
     const decos: Range<Decoration>[] = []
     for (const b of scrollableBlocks(state)) {
         if (!overflowing.has(b.opener)) continue
-        decos.push(Decoration.widget({ widget: new ScrollbarWidget(b.opener), block: true, side: 1 }).range(b.bodyTo))
+        decos.push(Decoration.widget({ widget: new ScrollbarWidget(b.opener, b.panelLeft), block: true, side: 1 }).range(b.bodyTo))
     }
     return Decoration.set(decos, true)
 }
@@ -261,7 +270,9 @@ const barsField = StateField.define<DecorationSet>({
         // collapsed to a widget, and the block scan is caret-aware (a half-typed fence), so a
         // selection change can move a bar.
         const ticked = collapseMayHaveChanged(tr)
-        if (revealInputsChanged(tr) || overflowChanged || ticked) return buildBars(tr.state)
+        // The measured code shift is part of where a panel starts.
+        const shifted = tr.startState.field(codeShiftsField) !== tr.state.field(codeShiftsField)
+        if (revealInputsChanged(tr) || overflowChanged || ticked || shifted) return buildBars(tr.state)
         return decos
     },
     provide: (f) => EditorView.decorations.from(f),
@@ -486,11 +497,6 @@ class CodeScrollController {
         return this.blocks.get(opener)?.overflow ?? 0
     }
 
-    /** The bar's `margin-left` (px) from the block's last measure, for a bar created before the next one. */
-    barMarginOf(opener: number): number | undefined {
-        return this.blocks.get(opener)?.barMarginLeft
-    }
-
     /** Scroll a block (the bar and the wheel come here); the lines follow through the property. */
     scrollTo(opener: number, x: number): void {
         const metrics = this.blocks.get(opener)
@@ -551,7 +557,6 @@ class CodeScrollController {
                 trackPx: m.trackPx,
             }
             this.blocks.set(m.opener, metrics)
-            for (const bar of m.bars) bar.style.marginLeft = `${m.barMarginLeft}px`
             this.applyShift(m.opener, metrics)
             verdicts.set(m.opener, m.overflow > 0)
         }
@@ -632,6 +637,8 @@ const theme = EditorView.baseTheme({
     // vertical footprint is padding, never margin (ADR 0022: CodeMirror measures the border box).
     '.gk-code-scrollbar': {
         boxSizing: 'content-box',
+        // The code's own face: the strip's left edge is given in its `ch` and `em` (`codePanelLeft`).
+        fontFamily: 'var(--gk-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
         height: '0.5em',
         padding: `0.15em ${CODE_PANEL_PAD_RIGHT} 0.15em ${PANEL_PAD}`,
         fontSize: CODE_FONT_SIZE,

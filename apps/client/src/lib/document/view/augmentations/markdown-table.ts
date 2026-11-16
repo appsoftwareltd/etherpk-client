@@ -20,7 +20,7 @@ import { EditorView, WidgetType } from '@codemirror/view'
 
 import { displayNameForRef } from '../../../storage/fs/asset-store'
 import { type InlinePart, inlineParts } from '../../inline-parts'
-import { type Align, type MarkdownTable } from '../../markdown-table'
+import { type Align, cellDisplaySource, type MarkdownTable } from '../../markdown-table'
 import { analysisFor } from '../analysis/editor-analysis'
 import { blockWidgetField } from './base-renderer'
 import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, blockWidgetIndent } from './content-clamp'
@@ -66,9 +66,14 @@ function partNode(part: InlinePart, missing: ReadonlySet<string>): Node {
     }
 }
 
+/** A cell's parts as the grid shows them: an escaped pipe is a pipe. */
+function cellParts(source: string): InlinePart[] {
+    return inlineParts(cellDisplaySource(source))
+}
+
 /** Fill a cell with its source's parts, each inside the spans of the marks over it. */
 function fillCell(cell: HTMLElement, source: string, missing: ReadonlySet<string>): void {
-    for (const part of inlineParts(source)) {
+    for (const part of cellParts(source)) {
         let node = partNode(part, missing)
         for (const mark of [...(part.marks ?? [])].reverse()) {
             const wrap = document.createElement('span')
@@ -85,7 +90,7 @@ function missingIn(table: MarkdownTable, isMissing: ((concept: string) => boolea
     const missing = new Set<string>()
     if (!isMissing) return missing
     for (const cell of [...table.header, ...table.rows.flat()]) {
-        for (const part of inlineParts(cell)) {
+        for (const part of cellParts(cell)) {
             if (part.kind === 'wikilink' && isMissing(part.concept)) missing.add(part.concept)
         }
     }

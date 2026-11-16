@@ -7,7 +7,7 @@
  * CodeMirror. Pure.
  */
 
-import type { Align, MarkdownTable } from './markdown-table'
+import { type Align, cellPipes, type MarkdownTable } from './markdown-table'
 
 /** Minimum cell content width when serialising (AS Notes' DEFAULT_CELL_WIDTH for content). */
 export const DEFAULT_CELL_WIDTH = 3
@@ -79,11 +79,7 @@ export function buildTable(table: MarkdownTable, indent = '', headerIndent = ind
  * pipe is pipe #1, so column = pipesBefore - 1 (clamped to 0).
  */
 export function cursorColumn(rawLine: string, charIndex: number): number {
-    let pipes = 0
-    for (let i = 0; i < charIndex && i < rawLine.length; i++) {
-        const ch = rawLine[i]
-        if (ch === '|' && (i === 0 || rawLine[i - 1] !== '\\')) pipes++
-    }
+    const pipes = cellPipes(rawLine.slice(0, Math.max(0, charIndex))).length
     return Math.max(0, pipes - 1)
 }
 
@@ -99,8 +95,7 @@ export function cellPosition(serialised: string, lineIndex: number, column: numb
     const row = Math.min(Math.max(0, lineIndex), lines.length - 1)
     const line = lines[row]
     const offset = lines.slice(0, row).reduce((n, l) => n + l.length + 1, 0)
-    const pipes: number[] = []
-    for (let i = 0; i < line.length; i++) if (line[i] === '|' && (i === 0 || line[i - 1] !== '\\')) pipes.push(i)
+    const pipes = cellPipes(line)
     if (pipes.length === 0) return offset
     // Cell c opens at pipe c; the last pipe closes the row, so the last cell opens at pipes.length - 2.
     const open = pipes[Math.min(Math.max(0, column), Math.max(0, pipes.length - 2))]

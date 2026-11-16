@@ -21,7 +21,8 @@ import { EditorView, keymap, layer, RectangleMarker } from '@codemirror/view'
 
 import { isBulletLine, lineIndent } from '../../outliner'
 import { analysisFor } from '../analysis/editor-analysis'
-import { isFoldableBullet, isFoldedBullet, toggleBulletFoldSpec } from './outline-folds'
+import { anchorBlockMenu, blockMenuAnchor } from '../block-menu-anchor'
+import { allFolds, isFoldableBullet, isFoldedBullet, toggleBulletFoldSpec } from './outline-folds'
 
 /** A line a menu opens on: its 1-based number and its text when the menu opened. */
 export interface MenuLine {
@@ -186,6 +187,11 @@ function toggle(view: EditorView, line: number): boolean {
     return true
 }
 
+/** Tell the editor which bullet the block menu about to open is for, so its rows find it after a peer's edit. */
+function anchorMenu(view: EditorView, line: number): void {
+    view.dispatch({ effects: anchorBlockMenu.of(line) })
+}
+
 function menuLine(state: EditorState, line: number): MenuLine {
     return { number: line, text: state.doc.line(line).text }
 }
@@ -248,7 +254,10 @@ const handlers = EditorView.domEventHandlers({
         const { blockMenu, lineMenu } = options
         const open =
             dot !== null && blockMenu
-                ? (line: MenuLine, x: number, y: number) => blockMenu(line, x, y, true)
+                ? (line: MenuLine, x: number, y: number) => {
+                      anchorMenu(view, line.number)
+                      blockMenu(line, x, y, true)
+                  }
                 : box !== null
                   ? lineMenu
                   : undefined
@@ -279,7 +288,7 @@ const handlers = EditorView.domEventHandlers({
             event.preventDefault()
             return true
         }
-        return plainPrimary(event) && pressControl(view, event)
+        return plainPrimary(event) && (pressControl(view, event) || pressBesideFold(view, event))
     },
     contextmenu(event, view) {
         // Chrome raises the context menu as a PointerEvent, which says what raised it. A touch's menu
@@ -292,7 +301,11 @@ const handlers = EditorView.domEventHandlers({
             return true
         }
         event.preventDefault()
-        if (!touch) view.state.field(optionsField).blockMenu?.(menuLine(view.state, dot), event.clientX, event.clientY, false)
+        const blockMenu = view.state.field(optionsField).blockMenu
+        if (!touch && blockMenu) {
+            anchorMenu(view, dot)
+            blockMenu(menuLine(view.state, dot), event.clientX, event.clientY, false)
+        }
         return true
     },
 })
@@ -320,6 +333,27 @@ function pressControl(view: EditorView, event: MouseEvent): boolean {
     if (dot === null || !isFoldableBullet(view.state, dot)) return false
     event.preventDefault()
     clickOrDrag(view, event, dot)
+    return true
+}
+
+/**
+ * A press in the empty room right of a folded bullet's text: the caret goes to the end of that text
+ * and the fold stays. Taken from CodeMirror, which has no one answer for that place: the hidden
+ * lines' placeholder sits there, and the press was read as the end of the hidden text (which opened
+ * the fold with the caret at the foot of the branch), or as two places at once, which selected the
+ * bullet's text or the whole hidden branch. Judged by where the press is, right of the end of the
+ * text on the folded bullet's row, not by the position the browser gives it.
+ */
+function pressBesideFold(view: EditorView, event: MouseEvent): boolean {
+    if (event.detail > 1) return false
+    const block = view.lineBlockAtHeight(event.clientY - view.documentTop)
+    const fold = allFolds(view.state).find((f) => f.from >= block.from && f.from <= block.to && view.state.doc.lineAt(f.from).to === f.from)
+    if (!fold) return false
+    const end = view.coordsAtPos(fold.from, -1)
+    if (!end || event.clientX < end.right || event.clientY < end.top || event.clientY > end.bottom) return false
+    event.preventDefault()
+    view.focus()
+    view.dispatch({ selection: { anchor: fold.from }, userEvent: 'select.pointer', scrollIntoView: true })
     return true
 }
 
@@ -367,6 +401,7 @@ function blockMenuAtCaret(view: EditorView): boolean {
         return c ? { x: c.left, y: c.bottom } : null
     })()
     if (!at) return true
+    anchorMenu(view, owner + 1)
     open(menuLine(state, owner + 1), at.x, at.y + 8, false)
     return true
 }
@@ -387,6 +422,7 @@ const theme = EditorView.baseTheme({
 export function foldControlsAugmentation(options: FoldControlOptions = {}): Extension {
     return [
         optionsField.init(() => options),
+        blockMenuAnchor(),
         hoverRowField,
         hoverDotField,
         hoverChevronField,

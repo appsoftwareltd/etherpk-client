@@ -3,29 +3,39 @@
  * [[Fold]] is how one device shows a document: it is never written into the graph, sent to the Sync
  * Server, or kept for a [[Protected Document]].
  *
- * A bullet has no identity of its own (ADR 0016), so a fold is kept as its bullet's 1-based line and
- * a fingerprint of the bullet's text, and found again as a task reference finds its task: at its
- * line, or else at the nearest line with the same fingerprint (fold-persistence.ts). One that is
- * found nowhere is dropped without a word.
+ * A bullet has no identity of its own (ADR 0016), so a fold is kept as its bullet's 1-based line, a
+ * fingerprint of its words and its ancestors', and which bullet with that fingerprint it is, and
+ * found again from those (fold-persistence.ts). One that is found nowhere is dropped without a word.
  *
- * One store per graph, under {@link foldMemoryKey}; the workspace opens the graph's and makes it the
- * active one, and removing the graph from the device removes the key (`graph-device-memory.ts`).
+ * One store per graph, a key for each document under {@link foldMemoryKey}; the workspace opens the
+ * graph's and makes it the active one, and removing the graph from the device removes its keys
+ * (`graph-device-memory.ts`).
  * Every editor of one document in the tab reads the same entry and hears the others' changes, so
  * two panes show the same folds. Another tab's changes are read at its next open.
  *
  * Kept free of `#lib` imports, so an e2e fixture can import it.
  */
 
-/** A kept fold: its bullet's 1-based line and the fingerprint of the bullet's text. */
+/**
+ * A kept fold: its bullet's 1-based line, the fingerprint of the bullet's words and of every
+ * bullet above it in the outline, and which of the bullets with that fingerprint it is, counted from
+ * the top of the document (0 for the first). The words alone are not enough: a journal repeats
+ * "Comments" under many tasks, and a fold kept by its line and its own words came back on another
+ * bullet, or on its parent, once lines were added above it.
+ */
 export interface KeptFold {
     line: number
     fingerprint: string
+    nth: number
 }
 
 /** The part of `Storage` the store uses. */
 export interface FoldStorage {
     getItem(key: string): string | null
     setItem(key: string, value: string): void
+    removeItem(key: string): void
+    readonly length: number
+    key(index: number): string | null
 }
 
 export interface FoldMemoryOptions {
@@ -36,6 +46,8 @@ export interface FoldMemoryOptions {
     /** Most folds kept for one document. */
     foldLimit?: number
     saveDelayMs?: number
+    /** The clock a write stamps a document with, for dropping the least recently changed. */
+    now?: () => number
     flushOn?: (flush: () => void) => () => void
 }
 
@@ -51,22 +63,46 @@ export interface FoldMemory {
 }
 
 export const FOLD_MEMORY_KEY_PREFIX = 'etherpk:folds:'
-const FORMAT_VERSION = 1
+const FORMAT_VERSION = 2
 const DEFAULT_DOCUMENT_LIMIT = 500
 const DEFAULT_FOLD_LIMIT = 500
 const DEFAULT_SAVE_DELAY_MS = 400
 
-/** The `localStorage` key of one graph's folds. */
+/**
+ * The start of the `localStorage` keys of one graph's folds. Each document has a key of its own,
+ * {@link foldDocumentKey}: a tab writes only the documents whose folds it changed, and reads no other
+ * tab's to do it. One key for the whole graph made every write a read of all the documents followed
+ * by a store of them all, and two tabs writing at once (both do when a window closes) could each
+ * store what it read before the other's landed, which lost the other's folds
+ * (spec/fold-memory/FoldMemory.tla).
+ */
 export function foldMemoryKey(graphId: string): string {
     return `${FOLD_MEMORY_KEY_PREFIX}${graphId}`
 }
 
+/** The `localStorage` key of one document's folds, under the graph's `storageKey`. */
+export function foldDocumentKey(storageKey: string, key: string): string {
+    return `${storageKey}:${encodeURIComponent(key)}`
+}
+
+/** Every `localStorage` key holding a graph's folds: its documents', and the single key of the first format. */
+export function foldMemoryKeysIn(storage: Pick<FoldStorage, 'length' | 'key'>, graphId: string): string[] {
+    const own = foldMemoryKey(graphId)
+    const out: string[] = []
+    for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i)
+        if (key !== null && (key === own || key.startsWith(`${own}:`))) out.push(key)
+    }
+    return out
+}
+
 /**
- * The fingerprint of a bullet's text: FNV-1a over its words with whitespace collapsed, as 8 hex
- * digits. Enough to tell one bullet from its neighbours; it is not a security measure.
+ * The fingerprint of a bullet: FNV-1a over `text` with whitespace collapsed, as 8 hex digits.
+ * `text` is the bullet's words after its ancestors' ({@link foldPath}). Enough to tell one bullet
+ * from its neighbours; it is not a security measure.
  */
 export function foldFingerprint(text: string): string {
-    const words = text.normalize('NFC').replace(/\s+/g, ' ').trim()
+    const words = text.normalize('NFC').replace(/[^\S\n]+/g, ' ').trim()
     let hash = 0x811c9dc5
     for (let i = 0; i < words.length; i++) {
         hash ^= words.charCodeAt(i)
@@ -75,36 +111,42 @@ export function foldFingerprint(text: string): string {
     return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-/** The stored form: `{ v, docs: [[key, [[line, fingerprint], …]], …] }`, least recently changed first. */
-type StoredDoc = [string, [number, string][]]
-
-function plausibleFold(f: unknown): f is [number, string] {
-    return Array.isArray(f) && f.length === 2 && Number.isInteger(f[0]) && f[0] >= 1 && typeof f[1] === 'string' && /^[0-9a-f]{8}$/.test(f[1])
+/** What a fingerprint is taken over: the words of each bullet above this one, outermost first, then its own. */
+export function foldPath(words: readonly string[]): string {
+    return words.map((w) => w.replace(/\s+/g, ' ').trim()).join('\n')
 }
 
-/** One stored document's key and folds, or null when it is not one or keeps none worth reading. */
-function readDoc(doc: unknown): [string, KeptFold[]] | null {
-    if (!Array.isArray(doc) || typeof doc[0] !== 'string' || !Array.isArray(doc[1])) return null
-    const folds = (doc[1] as unknown[]).filter(plausibleFold).map(([line, fingerprint]) => ({ line, fingerprint }))
-    return folds.length ? [doc[0], folds] : null
+/** The stored form of one document: `{ v, t, folds: [[line, fingerprint, nth], …] }`, `t` when it was written. */
+interface StoredDoc {
+    v: number
+    t: number
+    folds: [number, string, number][]
 }
 
-function readStored(storage: FoldStorage | null, storageKey: string): Map<string, KeptFold[]> {
-    const out = new Map<string, KeptFold[]>()
-    if (!storage) return out
+function plausibleFold(f: unknown): f is [number, string, number] {
+    return (
+        Array.isArray(f) &&
+        f.length === 3 &&
+        Number.isInteger(f[0]) &&
+        f[0] >= 1 &&
+        typeof f[1] === 'string' &&
+        /^[0-9a-f]{8}$/.test(f[1]) &&
+        Number.isInteger(f[2]) &&
+        f[2] >= 0
+    )
+}
+
+/** One document's stored folds and when they were written, or null when the value is not ours. */
+function readDoc(raw: string | null): { folds: KeptFold[]; at: number } | null {
+    if (!raw) return null
     try {
-        const raw = storage.getItem(storageKey)
-        if (!raw) return out
-        const parsed = JSON.parse(raw) as { v?: unknown; docs?: unknown }
-        if (parsed?.v !== FORMAT_VERSION || !Array.isArray(parsed.docs)) return out
-        for (const doc of parsed.docs as unknown[]) {
-            const read = readDoc(doc)
-            if (read) out.set(read[0], read[1])
-        }
+        const parsed = JSON.parse(raw) as Partial<StoredDoc>
+        if (parsed?.v !== FORMAT_VERSION || !Array.isArray(parsed.folds)) return null
+        const folds = (parsed.folds as unknown[]).filter(plausibleFold).map(([line, fingerprint, nth]) => ({ line, fingerprint, nth }))
+        return { folds, at: typeof parsed.t === 'number' ? parsed.t : 0 }
     } catch {
-        // Unreadable (a blocked origin) or not ours: no folds kept.
+        return null
     }
-    return out
 }
 
 export function createFoldMemory(options: FoldMemoryOptions): FoldMemory {
@@ -112,33 +154,68 @@ export function createFoldMemory(options: FoldMemoryOptions): FoldMemory {
     const documentLimit = options.documentLimit ?? DEFAULT_DOCUMENT_LIMIT
     const foldLimit = options.foldLimit ?? DEFAULT_FOLD_LIMIT
     const saveDelayMs = options.saveDelayMs ?? DEFAULT_SAVE_DELAY_MS
-    let docs: Map<string, KeptFold[]> | null = null
-    /** Documents changed since the last write, applied to what is stored then (another tab may have written). */
+    const now = options.now ?? Date.now
+    /** Each document's folds as this tab last read or set them. Another tab's later changes are read at the next open. */
+    const docs = new Map<string, KeptFold[]>()
+    /** Documents changed since the last write. */
     let changed = new Set<string>()
     let timer: ReturnType<typeof setTimeout> | null = null
     let stopFlushOn: (() => void) | null = null
     const listeners = new Map<string, Set<(source: object | undefined) => void>>()
 
-    const loaded = () => (docs ??= readStored(options.storage(), storageKey))
+    const storage = (): FoldStorage | null => {
+        try {
+            return options.storage()
+        } catch {
+            return null
+        }
+    }
+
+    function loaded(key: string): KeptFold[] {
+        let folds = docs.get(key)
+        if (!folds) {
+            let raw: string | null = null
+            try {
+                raw = storage()?.getItem(foldDocumentKey(storageKey, key)) ?? null
+            } catch {
+                // Unreadable (a blocked origin): no folds kept.
+            }
+            folds = readDoc(raw)?.folds ?? []
+            docs.set(key, folds)
+        }
+        return folds
+    }
+
+    /** Drop the least recently written documents past the limit, and the single key of the first format. */
+    function prune(store: FoldStorage): void {
+        const prefix = `${storageKey}:`
+        const kept: { key: string; at: number }[] = []
+        for (let i = 0; i < store.length; i++) {
+            const key = store.key(i)
+            if (key !== null && key.startsWith(prefix)) kept.push({ key, at: readDoc(store.getItem(key))?.at ?? 0 })
+        }
+        store.removeItem(storageKey)
+        if (kept.length <= documentLimit) return
+        kept.sort((a, b) => a.at - b.at)
+        for (const { key } of kept.slice(0, kept.length - documentLimit)) store.removeItem(key)
+    }
 
     function write(): void {
         if (timer !== null) clearTimeout(timer)
         timer = null
         const keys = changed
         changed = new Set()
-        const storage = options.storage()
-        if (!storage || keys.size === 0) return
-        const stored = readStored(storage, storageKey)
-        const mine = loaded()
-        for (const key of keys) {
-            stored.delete(key)
-            const folds = mine.get(key)
-            if (folds?.length) stored.set(key, folds)
-        }
-        while (stored.size > documentLimit) stored.delete(stored.keys().next().value as string)
-        const out: StoredDoc[] = [...stored].map(([key, folds]) => [key, folds.map((f) => [f.line, f.fingerprint])])
+        const store = storage()
+        if (!store || keys.size === 0) return
         try {
-            storage.setItem(storageKey, JSON.stringify({ v: FORMAT_VERSION, docs: out }))
+            // Only the documents this tab changed, each under its own key: nothing another tab wrote is read or stored.
+            for (const key of keys) {
+                const folds = docs.get(key) ?? []
+                const at = foldDocumentKey(storageKey, key)
+                if (folds.length === 0) store.removeItem(at)
+                else store.setItem(at, JSON.stringify({ v: FORMAT_VERSION, t: now(), folds: folds.map((f) => [f.line, f.fingerprint, f.nth]) } satisfies StoredDoc))
+            }
+            prune(store)
         } catch {
             // Full or refused: the folds still hold for this session.
         }
@@ -149,15 +226,12 @@ export function createFoldMemory(options: FoldMemoryOptions): FoldMemory {
     }
 
     return {
-        get: (key) => loaded().get(key) ?? [],
+        get: (key) => loaded(key),
         set(key, folds, source) {
-            const map = loaded()
-            const next = folds.slice(0, foldLimit).map((f) => ({ line: f.line, fingerprint: f.fingerprint }))
-            const before = map.get(key) ?? []
+            const next = folds.slice(0, foldLimit).map((f) => ({ line: f.line, fingerprint: f.fingerprint, nth: f.nth }))
+            const before = loaded(key)
             if (JSON.stringify(before) === JSON.stringify(next)) return
-            // Recency is insertion order: a document changed now moves to the end.
-            map.delete(key)
-            if (next.length) map.set(key, next)
+            docs.set(key, next)
             changed.add(key)
             if (!stopFlushOn && options.flushOn) stopFlushOn = options.flushOn(flush)
             if (timer === null) timer = setTimeout(write, saveDelayMs)

@@ -32,6 +32,7 @@ import {
     outdentBlockSpec,
     structureSpec,
 } from '../view/block-actions'
+import { anchoredBlock } from '../view/block-menu-anchor'
 import { bodyWritable } from '../view/body-writable'
 import { indentBranch, moveBranchDown, moveBranchUp, outdentBranch } from '../view/outliner-keymap'
 import { dispatchPaste, readClipboard } from './paste-commands'
@@ -43,16 +44,18 @@ interface Found {
 }
 
 /**
- * The target's editor and its line, while that line still holds the text it had when the menu opened.
- * Null once an edit has moved or changed it: a row then does nothing, rather than act on a bullet
- * the person did not choose.
+ * The target's editor and its bullet's line as it is now, while the bullet is still there and its
+ * Block reads as it did when the menu opened (block-menu-anchor.ts). Null once an edit has removed or
+ * changed it: a row then does nothing, rather than act on a bullet the person did not choose or take
+ * more than its label said. A peer's edit elsewhere in the document, lines added above included,
+ * leaves the rows working.
  */
 function find(target: ContextMenuTarget): Found | null {
     if (!isBlockTarget(target)) return null
     const view = bookmarkEditorFor(target.concept, target.panelId)
     if (!view) return null
-    const { doc } = view.state
-    return target.line <= doc.lines && doc.line(target.line).text === target.text ? { view, line: target.line } : null
+    const line = anchoredBlock(view.state)
+    return line !== null && view.state.doc.line(line).text === target.text ? { view, line } : null
 }
 
 function writable(state: EditorState): boolean {

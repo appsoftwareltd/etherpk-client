@@ -112,18 +112,22 @@ function withoutPending(lines: string[], pending: number | null): string[] {
 }
 
 /**
- * Whether the fence at `line` pairs without taking any block's fence: the scan with it holds every
- * block the scan without it holds, unchanged, and one more, which it opens. That is a held opener once
- * its own closer is written (Enter completes one). Waiting for the whole document to balance kept it
- * held, its block drawn as text, wherever a stray fence elsewhere left the document unbalanced.
+ * Whether the fence at `line` pairs without taking any block's fence: with it, it opens a block, and
+ * every fence that pairs without it is still in a block. That is a held opener once its own closer is
+ * written (Enter completes one). Waiting for the whole document to balance kept it held, its block
+ * drawn as text, wherever a stray fence elsewhere left the document unbalanced. This is the same
+ * balance, asked only of the fences the opener can change.
+ *
+ * The fences are compared, not the blocks. With the opener set aside its own new closer pairs with the
+ * opener of the block below, so the two scans never hold the same blocks above a block at its column,
+ * and asking for the same blocks kept the opener held there for as long as the stray stayed. An
+ * opener that took a block's fence shows as that block's other fence left outside every block.
  */
 function pairsOnItsOwn(lines: string[], line: number): boolean {
     const raw = fencedBlocks(lines)
-    const without = fencedBlocks(withoutPending(lines, line))
-    if (raw.length !== without.length + 1 || !raw.some((b) => b.start === line)) return false
-    const key = (b: FencedBlockRange) => `${b.start}:${b.end}`
-    const rawKeys = new Set(raw.map(key))
-    return without.every((b) => rawKeys.has(key(b)))
+    if (!raw.some((b) => b.start === line)) return false
+    const inBlock = (i: number) => raw.some((b) => b.start <= i && i <= b.end)
+    return fencedBlocks(withoutPending(lines, line)).every((b) => inBlock(b.start) && inBlock(b.end))
 }
 
 /**
@@ -154,11 +158,21 @@ function resolvePending(lines: string[], previous: EditorAnalysis | undefined, t
     lines.forEach((l, i) => {
         if (isBareFence(l) && !before.has(i)) fresh.push(i)
     })
-    if (fresh.length !== 1) return null
-    // Only an opener is held: a fresh bare fence that a block below needs as its closer would, if
-    // defanged, dissolve that block (a whole-document replacement introduces its closers as "fresh").
-    const raw = fencedBlocks(lines).length
-    return fencedBlocks(withoutPending(lines, fresh[0])).length >= raw ? fresh[0] : null
+    return fresh.length === 1 && isFreshOpener(lines, fresh[0]) ? fresh[0] : null
+}
+
+/**
+ * Whether the bare fence an edit introduced at `line` is an opener to hold. A fresh bare fence that a
+ * block below needs as its closer would, if defanged, dissolve that block (a whole-document
+ * replacement introduces its closers as "fresh"). A fence that closes a block is no opener either,
+ * even where its opener would pair with a fence further down once it is set aside: the closer Enter
+ * writes under an opener typed above a four-backtick block was held, and the new block drawn down to
+ * that block's opener.
+ */
+function isFreshOpener(lines: string[], line: number): boolean {
+    const raw = fencedBlocks(lines)
+    if (raw.some((b) => b.end === line)) return false
+    return fencedBlocks(withoutPending(lines, line)).length >= raw.length
 }
 
 function analyse(doc: Text, previous?: EditorAnalysis, tr?: Transaction): EditorAnalysis {

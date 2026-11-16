@@ -53,6 +53,50 @@ starts at 0.9.3.
   - A code block under a bullet stays where it is while you type elsewhere on the page. It moved
     further right with each key when a diagram, video or other rendered block sat above it at the
     same indent.
+  - The shaded background of a code block is one clean rectangle. A code sample holding a code
+    block of its own (a four-backtick block around a three-backtick one) drew a second, offset
+    background inside the first, with a scroll bar it did not need and the start of its lines cut
+    off. A bullet-shaped line of code could also sit to the right of the lines around it while a
+    fence above it was being typed.
+  - Alt+Up and Alt+Down in a shared graph keep a word someone else types into the moving bullet at
+    the same moment. It used to land at the start of the next line.
+  - A task's checkbox shows exactly where the Tasks view lists the task. Typing a code fence above
+    a task no longer hides its checkbox before the fence has its closing line, and a task beside an
+    unclosed fence shows its checkbox where the Tasks view lists it.
+  - Enter or Shift+Enter between the backticks of a code fence that has no closing line acts as at
+    the end of the line, so it no longer splits the fence. Enter there completes the fence.
+  - Tab over code lines and one fence of a code sample inside a code block does nothing, as Shift+Tab
+    already did. It moved the code lines and left the fence where it was.
+  - Enter at the end of the opening line of a four-backtick code block that holds a three-backtick
+    sample adds a line of code. It added a second closing line.
+  - A code block completed with Enter is drawn as a block straight away on a page that has an
+    unclosed fence elsewhere. It stayed drawn as text.
+  - Typing or pasting between two unclosed fences leaves both where they are. The lower one moved
+    to the margin, and the lines between them became code.
+  - Ctrl+Enter does nothing where the code block it carries out of a bullet would land under a
+    longer unclosed fence at the margin. The block was carried out and stopped being a block.
+  - Moving the caret off an indented, unclosed fence line leaves the line where it is. It moved to
+    the margin and broke the code block below it.
+  - A space typed in front of a code block's closing line, or Ctrl+Delete at its end, leaves the
+    caret in place. It jumped to the start of the line.
+  - Shift+Tab on a code line indented with a tab removes the spaces Tab added, or one tab. It
+    removed the tab and a space together. Ctrl+Enter keeps a code line's tab when it carries a
+    code block out of a bullet.
+  - Several lines pasted into a code block that is not under a bullet line up with the code, as
+    they do in a block under a bullet.
+  - Deleting a selection inside a code block keeps the block. A selection that started on an empty
+    line could move the code to the margin.
+  - A click on a link opens it straight after a link's right-click menu has closed. The first
+    click did nothing.
+  - `\|` in a table cell is a pipe in that cell. It split the cell in two, and formatting the
+    table added a column.
+  - A search filter typed with a stray `"` keeps the same value when another filter's chip is
+    removed.
+  - An export of a graph with no name is called `Graph <date>.zip`, not `_ <date>.zip`. Before an
+    export, **Mirror and Export** gives the size of the attachments and says so, and no longer
+    shows "about 0 B" for a graph with none.
+  - After **Replace all** in Find and Replace, the first replaced word is no longer left selected,
+    which looked like a match beside "No matches".
 
 ## 0.30.0 - 2026-11-13
 

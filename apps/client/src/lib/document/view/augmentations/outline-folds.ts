@@ -11,20 +11,23 @@
  *   found again from its bullet's branch, so a child added at the foot of a folded branch is hidden
  *   with the rest. CodeMirror's mapping alone would leave it showing.
  * - **A fold ends with its bullet**: when the bullet is deleted, merged away, or left with no child.
- * - **A fold moves with its text.** A branch move replaces the lines it carries, which deletes a
- *   fold inside them; a fold whose bullet's branch comes back unchanged in the change's inserted
- *   text is put back there.
+ * - **A fold moves with its bullet.** The bullet is followed by its marker, and where a change
+ *   deleted the marker and wrote the branch again (a move heard from a peer or another pane), by its
+ *   whole branch among the lines the change wrote.
+ * - **A fold never takes in a line that was showing**, and an undo or redo that changes hidden text
+ *   opens it.
  *
  * Everything here reads a state, never a view, so the rule tables run it in Node.
  */
 
 import { codeFolding, foldEffect, foldedRanges, foldService, unfoldEffect } from '@codemirror/language'
 import { EditorView } from '@codemirror/view'
-import { type ChangeSet, EditorState, type Extension, MapMode, type StateEffect, type Text, type Transaction, type TransactionSpec } from '@codemirror/state'
+import { EditorState, type Extension, MapMode, type StateEffect, type Text, type Transaction, type TransactionSpec } from '@codemirror/state'
 
 import { fencedBlocks } from '../../fenced-code'
 import { ownerBulletIndex } from '../../outliner'
 import { analysisFor } from '../analysis/editor-analysis'
+import { historyStepRunning } from '../editor-history'
 import { branchEnds } from './outline-guides-core'
 
 /** A fold's range: document offsets, `from` at the end of the bullet's own text, `to` at its branch's end. */
@@ -140,7 +143,9 @@ export function toggleBulletFoldSpec(state: EditorState, line: number): Transact
     if (hasFold(state, range)) return { effects: unfoldEffect.of(range), userEvent: 'fold' }
     const head = state.selection.main.head
     const inside = head > range.from && head <= range.to
-    return { effects: foldEffect.of(range), ...(inside ? { selection: { anchor: range.from } } : {}), userEvent: 'fold' }
+    // Unfiltered when the caret moves: a fold changes no text, and tidy on leave (a filter) would
+    // rewrite the line the caret left, in a step Undo would then take back as if the person had typed it.
+    return { effects: foldEffect.of(range), ...(inside ? { selection: { anchor: range.from }, filter: false } : {}), userEvent: 'fold' }
 }
 
 /** The transaction that opens every fold in the branch of the bullet on 1-based line `line`, its own included. */
@@ -169,53 +174,123 @@ export function hasFoldedDescendant(state: EditorState, line: number): boolean {
     return found
 }
 
+const indentOf = (text: string) => text.length - text.trimStart().length
+
+/** The branch of the bullet on 0-based line `i`, moved out to the margin: what a move carries, whatever depth it lands at. */
+function branchAtMargin({ lines, ends }: Outline, i: number): string {
+    const root = indentOf(lines[i])
+    return lines
+        .slice(i, ends[i] + 1)
+        .map((text) => text.slice(Math.min(root, indentOf(text))))
+        .join('\n')
+}
+
 /**
- * Where a folded branch that a change deleted came back, if it did: the change's inserted text holds
- * the branch (its bullet line to its last line) unchanged, as whole lines. Returns the new offset of
- * the branch's first line. A branch move inserts from the start of a line, so a match at the start
- * of the inserted text counts as one.
+ * The 1-based line in the new document of the folded bullet that was on 0-based line `i`, or null
+ * when it is gone.
+ *
+ * The bullet is its marker, followed through the change: an indent, an outdent, a line added above
+ * and a move that leaves its branch in place (anchored-move.ts) all keep the marker, and a change
+ * that deletes the marker deletes the bullet. `TrackAfter` reads a deletion that starts exactly at
+ * the marker as taking it; a plain mapping left the fold on whatever line came next.
+ *
+ * A change that writes over the bullet's line may have written the branch again somewhere else: a
+ * peer's move reaches this editor as the smallest replacement between the two texts (a store write,
+ * or a Yjs delta), which can cut through any line, deleting the marker or leaving it in front of
+ * another bullet's words, and a move of a neighbour past this branch re-inserts it. So the branch is
+ * first looked for among the lines such a change wrote: a bullet whose whole branch, moved out to the
+ * margin, is the one that was folded, nearest to where the marker mapped. The whole branch, because a
+ * sibling that only starts with the same lines is another bullet. An edit to the bullet's own words
+ * writes no such branch, and the marker is followed.
  */
-function movedBranchStart(startDoc: Text, changes: ChangeSet, branchFrom: number, branchTo: number): number | null {
-    const text = startDoc.sliceString(branchFrom, branchTo)
+function bulletLineAfter(tr: Transaction, before: Outline, after: Outline, i: number): number | null {
+    const startDoc = tr.startState.doc
+    const oldLine = startDoc.line(i + 1)
+    const marker = oldLine.from + indentOf(oldLine.text)
+    // A change that wrote over the bullet's own line may have written the branch somewhere else: the
+    // smallest replacement of a move can keep the marker and put another bullet's words after it.
+    const written = tr.changes.touchesRange(oldLine.from, oldLine.to) ? writtenBranch(tr, before, after, i, marker) : null
+    if (written !== null) return written
+    const kept = tr.changes.mapPos(marker, 1, MapMode.TrackAfter)
+    if (kept === null) return null
+    const line = tr.newDoc.lineAt(kept)
+    return kept === line.from + indentOf(line.text) && after.ends[line.number - 1] >= 0 ? line.number : null
+}
+
+/** The 1-based line of the bullet, among the lines `tr` wrote, whose whole branch is the one folded on 0-based line `i`, nearest to where its marker mapped. */
+function writtenBranch(tr: Transaction, before: Outline, after: Outline, i: number, marker: number): number | null {
+    const branch = branchAtMargin(before, i)
+    const near = tr.changes.mapPos(marker, 1)
     let found: number | null = null
-    changes.iterChanges((fromA, toA, fromB, _toB, inserted) => {
-        if (found !== null || branchFrom < fromA || branchTo > toA) return
-        const insert = inserted.toString()
-        for (let at = insert.indexOf(text); at >= 0; at = insert.indexOf(text, at + 1)) {
-            const lineStart = at === 0 || insert[at - 1] === '\n'
-            const lineEnd = at + text.length === insert.length || insert[at + text.length] === '\n'
-            if (lineStart && lineEnd) {
-                found = fromB + at
-                return
+    let distance = Infinity
+    tr.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
+        if (fromB === toB) return
+        for (let n = tr.newDoc.lineAt(fromB).number, last = tr.newDoc.lineAt(toB).number; n <= last; n++) {
+            if (after.ends[n - 1] < 0 || branchAtMargin(after, n - 1) !== branch) continue
+            const away = Math.abs(tr.newDoc.line(n).from - near)
+            if (away < distance) {
+                found = n
+                distance = away
             }
         }
     })
     return found
 }
 
-/** The 1-based line in the new document of the folded bullet starting at `bulletFrom`, or null when it is gone. */
-function bulletLineAfter(tr: Transaction, bulletFrom: number, foldTo: number): number | null {
-    // The moved text first: a replacement that starts at the bullet's line maps its start to the
-    // replacement's end, which is not where a branch it carries lands.
-    const moved = movedBranchStart(tr.startState.doc, tr.changes, bulletFrom, foldTo)
-    if (moved !== null) return tr.newDoc.lineAt(moved).number
-    const mapped = tr.changes.mapPos(bulletFrom, 1, MapMode.TrackDel)
-    return mapped === null ? null : tr.newDoc.lineAt(mapped).number
+/** Whether `tr` wrote every character of the new document's `[from, to]` that is not white space. */
+function writtenByChange(tr: Transaction, from: number, to: number): boolean {
+    if (to <= from) return true
+    let at = from
+    let whole = true
+    const blank = (a: number, b: number) => tr.newDoc.sliceString(a, b).trim() === ''
+    tr.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
+        if (!whole || toB <= at || fromB >= to) return
+        if (fromB > at && !blank(at, fromB)) whole = false
+        at = Math.max(at, toB)
+    })
+    return whole && (at >= to || blank(at, to))
 }
 
-/** The folds the rules give the new document: each folded bullet's branch where the bullet is now. */
+/** Whether `tr` is an undo or a redo: CodeMirror's own, or the collaborative history's (editor-history.ts). */
+function isHistoryStep(tr: Transaction): boolean {
+    return tr.isUserEvent('undo') || tr.isUserEvent('redo') || historyStepRunning()
+}
+
+/**
+ * The folds the rules give the new document: each folded bullet's branch where the bullet is now,
+ * less the folds the change opens.
+ *
+ * - **A fold never takes in a line that was showing.** When the branch has grown past where the fold
+ *   ended and what it gained was there before the change (Shift+Tab on a folded bullet makes the
+ *   siblings below it its children; a peer indents the bullet below a folded one), the fold opens:
+ *   lines the person could see would vanish. Text the change itself wrote at the foot (a child a peer
+ *   adds) is hidden with the rest.
+ * - **An undo or redo that changes hidden text opens the fold**, wherever it leaves the caret.
+ */
 function followedFolds(tr: Transaction, before: readonly FoldRange[]): FoldRange[] {
-    const startDoc = tr.startState.doc
     const oldOutline = outlineIn(tr.startState)
     const outline = outlineOf(tr.newDoc)
+    const history = isHistoryStep(tr)
     const kept = new Map<number, FoldRange>()
     for (const fold of before) {
-        const bullet = bulletOfFold(oldOutline, startDoc, fold.from)
-        const line = bullet === null ? null : bulletLineAfter(tr, startDoc.line(bullet).from, fold.to)
-        const range = line === null ? null : foldRangeIn(outline, tr.newDoc, line - 1)
+        const range = followedFold(tr, fold, oldOutline, outline, history)
         if (range && !kept.has(range.from)) kept.set(range.from, range)
     }
     return [...kept.values()]
+}
+
+/** Where `fold` is after `tr`, or null when the change ends or opens it ({@link followedFolds}). */
+function followedFold(tr: Transaction, fold: FoldRange, before: Outline, after: Outline, history: boolean): FoldRange | null {
+    const bullet = bulletOfFold(before, tr.startState.doc, fold.from)
+    if (bullet === null) return null
+    if (history && tr.changes.touchesRange(fold.from + 1, fold.to)) return null
+    const line = bulletLineAfter(tr, before, after, bullet - 1)
+    const range = line === null ? null : foldRangeIn(after, tr.newDoc, line - 1)
+    if (!range) return null
+    // Where the fold ended, if that place is still in the branch: past it is what the branch gained.
+    const end = tr.changes.mapPos(fold.to, -1)
+    const gained = end >= range.from && end < range.to
+    return gained && !writtenByChange(tr, end, range.to) ? null : range
 }
 
 /** Whether the caret is in what `fold` hides: anywhere past the end of the bullet's own text, its end included. */
