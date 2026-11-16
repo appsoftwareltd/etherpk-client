@@ -127,6 +127,10 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
 
     // Collect every document's text, gated on its first catchup (see module doc).
     await deps.settle?.()
+    // The registry is the root document's content. Until that has arrived from the server it is
+    // empty or partial, and every asset used in a document it does not list yet would look unused.
+    const rootArrived = await reachedWithin(deps.graph.rootCaughtUp(), deps.timeoutMs ?? 8000)
+    if (!rootArrived) throw new Error('The list of documents has not finished syncing - try again once the graph is fully synced')
     const docIds: string[] = []
     deps.graph.registry().forEach((_entry, docId) => docIds.push(docId))
     const { stored, unreadableOther } = await readDocumentTexts(deps, docIds)

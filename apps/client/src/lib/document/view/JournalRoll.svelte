@@ -268,13 +268,13 @@
        that offered it sit the same distance below what is above them, so loading swaps one for
        the other in place. */
     .journal-roll__bar {
-        margin: 0.5rem var(--content-pad-x) 0;
+        margin: 0.5rem var(--content-pad-x) 0 calc(var(--content-pad-x) + var(--gk-fold-column, 0px));
     }
     .journal-roll__bar--trailing {
         margin-bottom: 1.5rem;
     }
     .journal-roll__gone {
-        margin: 0.75rem var(--content-pad-x) 1.5rem;
+        margin: 0.75rem var(--content-pad-x) 1.5rem calc(var(--content-pad-x) + var(--gk-fold-column, 0px));
         color: var(--gk-text-muted);
         font-size: 0.875rem;
     }

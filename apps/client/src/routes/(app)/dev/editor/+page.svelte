@@ -62,6 +62,14 @@
     } from '#lib/document/view/augmentations/wikilink.js'
     import type { ViewRef } from '#lib/layout/index.js'
     import CommandBar from '#lib/layout/renderers/CommandBar.svelte'
+    import ContextMenu from '#lib/surface/ui/ContextMenu.svelte'
+    import { registerBlockCommands } from '#lib/document/commands/block-commands.js'
+    import { registerPasteCommands } from '#lib/document/commands/paste-commands.js'
+    import {
+        browserFoldMemory,
+        releaseActiveFoldMemory,
+        setActiveFoldMemory,
+    } from '#lib/document/view/augmentations/fold-memory.js'
 
     const store = createInMemoryDocumentStore({
         'doc-a':
@@ -90,6 +98,9 @@
     // never on the server render.
     const footprints = typeof window === 'undefined' ? null : browserImageFootprints('dev-editor')
     if (footprints) setActiveImageFootprints(footprints)
+    // The bullets folded here, kept as a graph's are (fold-memory.ts), so a spec can reload and find them.
+    const folds = typeof window === 'undefined' ? null : browserFoldMemory('dev-editor')
+    if (folds) setActiveFoldMemory(folds)
 
     // The Command + Contribution registries so the `/` Command Menu has commands to offer
     // (mirrors the /g/[graphId] composition root). Editor commands reach the focused editor
@@ -100,6 +111,9 @@
     setActiveContributionRegistry(contributions)
     const detachEditorCommands = registerEditorCommands(commandRegistry, contributions)
     const detachLinkCommands = registerLinkCommands(commandRegistry, contributions)
+    // The line and block menus' rows, which the workspace registers (the menu is hosted below).
+    const detachPasteCommands = registerPasteCommands(commandRegistry, contributions)
+    const detachBlockCommands = registerBlockCommands(commandRegistry, contributions)
     // The built-in Augmentation renderers (mermaid, math) — ADR 0022.
     const detachRenderers = registerAugmentationRenderers(contributions)
     // Every extension, started as a graph starts them, so a Map Block draws over its `map` fence and
@@ -368,6 +382,8 @@
             detachExtensionIcons()
             detachEditorCommands()
             detachLinkCommands()
+            detachPasteCommands()
+            detachBlockCommands()
             setActiveGraphIndex(null)
             graphIndex?.dispose()
             setActiveDocumentStore(null)
@@ -376,6 +392,10 @@
             if (footprints) {
                 releaseActiveImageFootprints(footprints)
                 footprints.dispose()
+            }
+            if (folds) {
+                releaseActiveFoldMemory(folds)
+                folds.dispose()
             }
             setActiveGraphSettings({})
             setActiveCommandRegistry(null)
@@ -403,6 +423,8 @@
          exercised against a real DocumentView and the registered editor Commands. -->
     <CommandBar />
 </div>
+<!-- The Context Menu the workspace hosts once: the line and block menus open in it. -->
+<ContextMenu />
 
 <style>
     .harness {

@@ -36,7 +36,7 @@
 
     import { openConcept, openConceptAtLine, panelToOpenBeside } from "../open-concept";
     import { lineText } from "../quote-segments";
-    import { CONTENT_GUTTER } from "./augmentations/content-clamp";
+    import { CONTENT_GUTTER, INDENT_STEP_PHONE_PX, INDENT_STEP_PX } from "./augmentations/content-clamp";
     import { GUIDE_WIDTH_PX } from "./augmentations/outline-guides-core";
     import InlineMarkdown from "./InlineMarkdown.svelte";
     import QuotedText from "./QuotedText.svelte";
@@ -228,6 +228,8 @@
     class:groups--highlight={highlight}
     {@attach measureProse}
     style:--content-gutter={CONTENT_GUTTER}
+    style:--indent-step-desktop="{INDENT_STEP_PX}px"
+    style:--indent-step-phone="{INDENT_STEP_PHONE_PX}px"
 >
     {#each groups as group (group.sourceConcept)}
         <li class="group" data-testid="backlinks-group">
@@ -351,13 +353,15 @@
          * space and dash (measured into --ref-space and --ref-dash; Inter's are the fallbacks):
          * - a row's text starts a dash, a space and CONTENT_GUTTER in from where its `- ` would be
          *   (content-clamp.ts; passed in on the root as --content-gutter, the editor's own value);
-         * - each level steps in the two spaces of the Indent Unit plus INDENT_STEP_PX (12px);
+         * - each level steps in the two spaces of the Indent Unit plus the nesting step
+         *   (INDENT_STEP_PX, and INDENT_STEP_PHONE_PX below the Layout's breakpoint);
          * - the dot sits at the middle of the dash, half a line pitch down (bullet-marker.ts).
          * Rows are the editor's pitch: 1.7 lines, rounded to a whole pixel where the browser can
          * (cm-document.ts), so every row, and every dot on it, lands on the pixel grid alike.
          */
         --ref-content: calc(var(--ref-dash, 0.457em) + var(--ref-space, 0.2778em) + var(--content-gutter));
-        --ref-step: calc(2 * var(--ref-space, 0.2778em) + 12px);
+        --ref-step: calc(2 * var(--ref-space, 0.2778em) + var(--ref-indent-step));
+        --ref-indent-step: var(--indent-step-desktop);
         line-height: 1.7;
         padding: 0.4rem 0.55rem;
         background: var(--gk-surface-2);
@@ -368,6 +372,13 @@
     @supports (line-height: round(1px, 1px)) {
         .ref {
             line-height: round(1.7em, 1px);
+        }
+    }
+    /* Below the Layout's breakpoint (layout/breakpoint.ts, 1024px) the editor steps a level in by
+       less, and these rows follow it. */
+    @media (max-width: 1023.98px) {
+        .ref {
+            --ref-indent-step: var(--indent-step-phone);
         }
     }
     @media (hover: hover) {

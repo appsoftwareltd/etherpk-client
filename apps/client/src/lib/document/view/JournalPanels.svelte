@@ -122,10 +122,10 @@
         overflow: visible;
         visibility: inherit;
         pointer-events: inherit;
-        flex: 0 0 calc(100% - 2 * var(--content-pad-x));
+        flex: 0 0 calc(100% - 2 * var(--content-pad-x) - var(--gk-fold-column, 0px));
         min-width: 0;
         box-sizing: border-box;
-        margin: 0 var(--content-pad-x);
+        margin: 0 var(--content-pad-x) 0 calc(var(--content-pad-x) + var(--gk-fold-column, 0px));
         font-family: var(--gk-sans, "Inter", system-ui, sans-serif);
         font-size: 0.875rem;
         line-height: 1.5;

@@ -8,7 +8,6 @@
  * ids below. Handlers no-op when no editor is focused or the caret is not in a table.
  */
 
-import { toggleFold } from '@codemirror/language'
 import type { EditorView } from '@codemirror/view'
 
 import { showNotice } from '#lib/activity/notices.js'
@@ -32,6 +31,7 @@ import {
     moveBranchUp,
     outdentBranch,
     toggleBullet,
+    toggleFoldAtCaret,
     toggleTask,
 } from '../view/outliner-keymap'
 import type { MarkdownTable } from '../markdown-table'
@@ -150,7 +150,7 @@ export function registerEditorCommands(
     command('editor.moveDown', withWritableView((view) => void moveBranchDown(view)))
     command('editor.toggleTask', withWritableView((view) => void toggleTask(view)))
     command('editor.toggleBullet', withWritableView((view) => void toggleBullet(view)))
-    command('editor.toggleFold', withView((view) => void toggleFold(view)))
+    command('editor.toggleFold', withView((view) => void toggleFoldAtCaret(view)))
     command('editor.openCommandMenu', withView((view) => openCommandMenu(view)))
     // The bracket buttons. Over a selection the wrap rule takes (one line, not only whitespace, not
     // the frontmatter) either makes the whole wikilink at once, the word left selected so the

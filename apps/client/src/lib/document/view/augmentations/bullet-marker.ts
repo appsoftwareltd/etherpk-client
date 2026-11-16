@@ -6,6 +6,7 @@
  * the line's font, so it stays a uniform size even on a smaller-font line (e.g. a code-block opener).
  */
 
+import { foldedRanges } from '@codemirror/language'
 import { type Extension, type Range } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
@@ -13,6 +14,7 @@ import { isBulletLine, lineIndent } from '../../outliner'
 import { analysisFor } from '../analysis/editor-analysis'
 import { insideFencedBlock } from '../outliner-context'
 import { CONTENT_GUTTER } from './content-clamp'
+import { foldedBulletLines } from './outline-folds'
 
 /** Marks the single `-` of a bullet marker; CSS hides the glyph and paints a dot over it. The dot also
  *  carries the CONTENT_GUTTER as `margin-right`. On a form-1 opener, whose `- ` stays in flow, that is
@@ -21,6 +23,16 @@ import { CONTENT_GUTTER } from './content-clamp'
  *  which wraps this mark; there the margin only widens the lifted box, and the line's padding carries the
  *  gutter instead. */
 const dot = Decoration.mark({ class: 'cm-bullet-dot' })
+/** A bullet with children: its dot is a fold control (fold-controls.ts). */
+const foldableDot = Decoration.mark({ class: 'cm-bullet-dot cm-bullet-dot--foldable' })
+/** A folded bullet: its disc stays drawn, in place of CodeMirror's `…` box. */
+const foldedDot = Decoration.mark({ class: 'cm-bullet-dot cm-bullet-dot--foldable cm-bullet-dot--folded' })
+
+/** The dot for 1-based bullet `line`: folded, with children to fold, or neither. */
+function dotFor(line: number, folded: ReadonlySet<number>, branchEnds: readonly number[]): Decoration {
+    if (folded.has(line)) return foldedDot
+    return branchEnds[line - 1] > line - 1 ? foldableDot : dot
+}
 
 function buildBulletMarkers(view: EditorView): DecorationSet {
     const { state } = view
@@ -31,6 +43,8 @@ function buildBulletMarkers(view: EditorView): DecorationSet {
     // A line carrying an inline widget (e.g. a `- ![…]` image) splits `visibleRanges`, so a line straddling
     // that gap is reached from BOTH ranges. Dedupe by line start, or the bullet would get two stacked dots.
     const seen = new Set<number>()
+    const { branchEnds } = analysisFor(state)
+    const folded = new Set(foldedBulletLines(state))
     for (const { from, to } of view.visibleRanges) {
         let pos = from
         while (pos <= to) {
@@ -44,7 +58,7 @@ function buildBulletMarkers(view: EditorView): DecorationSet {
             ) {
                 seen.add(line.from)
                 const hyphen = line.from + lineIndent(line.text) // the `-` is the first non-space char
-                decos.push(dot.range(hyphen, hyphen + 1))
+                decos.push(dotFor(line.number, folded, branchEnds).range(hyphen, hyphen + 1))
             }
             pos = line.to + 1
         }
@@ -71,6 +85,31 @@ const theme = EditorView.baseTheme({
         transform: 'translate(-50%, -50%)',
         pointerEvents: 'none',
     },
+    // The disc behind a dot: drawn while the mouse is over it, and kept on a folded bullet. Its
+    // transparent border widens the box that takes the dot's clicks to 1.5em (fold-controls.ts)
+    // while the disc drawn inside it stays 1em, about Logseq's.
+    '.cm-bullet-dot::after': {
+        content: '""',
+        position: 'absolute',
+        left: '50%',
+        top: '50%',
+        width: 'var(--editor-font-size, 1rem)',
+        height: 'var(--editor-font-size, 1rem)',
+        border: 'calc(var(--editor-font-size, 1rem) * 0.25) solid transparent',
+        // The app's reset sizes every box by its border; the disc is the content box inside it.
+        boxSizing: 'content-box',
+        backgroundClip: 'padding-box',
+        borderRadius: '50%',
+        transform: 'translate(-50%, -50%)',
+        backgroundColor: 'transparent',
+        transition: 'background-color 120ms ease-out',
+        cursor: 'pointer',
+    },
+    '.cm-bullet-dot--folded::after': { backgroundColor: 'color-mix(in srgb, var(--gk-text-subtle, #a3a3a3) 22%, transparent)' },
+    '@media (hover: hover)': {
+        '.cm-bullet-dot:hover::after': { backgroundColor: 'color-mix(in srgb, var(--gk-text-subtle, #a3a3a3) 36%, transparent)' },
+    },
+    '@media (prefers-reduced-motion: reduce)': { '.cm-bullet-dot::after': { transition: 'none' } },
     // A whole-pixel dot (5.76px at 16px would blur to a different shape on every line); together with
     // the whole-pixel line pitch in cm-document.ts this is what keeps every dot identical.
     '@supports (width: round(1px, 1px))': {
@@ -87,7 +126,7 @@ const theme = EditorView.baseTheme({
     // top-left corner (the old 0.45em lift) it read visibly small — a disc crammed against a big shape looks
     // shrunken. Lift it only to the OPENING FENCE ROW instead: it aligns with the block's first line the way
     // a prose bullet aligns with its text, with breathing room off the top edge, so it reads at its real size.
-    '.cm-line.gk-code-block-first-bullet .cm-bullet-dot::before': { top: 'calc(50% - 0.15em)' },
+    '.cm-line.gk-code-block-first-bullet .cm-bullet-dot::before, .cm-line.gk-code-block-first-bullet .cm-bullet-dot::after': { top: 'calc(50% - 0.15em)' },
 })
 
 /** The bullet-dot augmentation (Dual Mode Editor.md). Mounted in DocumentView alongside the others. */
@@ -99,7 +138,9 @@ export function bulletMarkerAugmentation(): Extension {
                 this.decorations = buildBulletMarkers(view)
             }
             update(update: ViewUpdate) {
-                if (update.docChanged || update.viewportChanged) this.decorations = buildBulletMarkers(update.view)
+                if (update.docChanged || update.viewportChanged || foldedRanges(update.startState) !== foldedRanges(update.state)) {
+                    this.decorations = buildBulletMarkers(update.view)
+                }
             }
         },
         { decorations: (v) => v.decorations },

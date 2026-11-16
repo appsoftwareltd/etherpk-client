@@ -1199,13 +1199,16 @@
      * its [[Bookmark]]s, and the link renames its edits propose. None for a held `source`, which is
      * not the target's document.
      */
-    function targetServices(): Pick<EditorExtensionServices, 'document' | 'bookmarks' | 'wikilinksEdited'> {
+    function targetServices(): Pick<EditorExtensionServices, 'document' | 'bookmarks' | 'wikilinksEdited' | 'blockMenu'> {
         if (source) return {}
         return {
             // An edited link is a rename proposal (ADR 0065); the workspace owns the question.
             wikilinksEdited: (edits) => currentWorkspaceServices()?.wikilinkRename?.edited(view.target, edits),
             // Which document this editor shows, and where, for a Command holding only the view.
             document: { concept: view.target, panelId },
+            // The block menu, on a bullet's dot (fold-controls.ts, block-commands.ts).
+            blockMenu: (line, x, y, touch) =>
+                openContextMenu({ kind: 'block', concept: view.target, panelId, line: line.number, text: line.text, touch }, x, y),
             bookmarks: {
                 lineMenu: (line, x, y) =>
                     openContextMenu({ kind: 'line', concept: view.target, panelId, line: line.number, text: line.text }, x, y),

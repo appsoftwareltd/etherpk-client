@@ -257,7 +257,9 @@ export function createDocumentEditor(options: DocumentEditorOptions): DocumentEd
                         // The row pitch as a length, for anything that must be exactly one row tall
                         // without relying on in-flow text (the clamp's lifted-prefix strut).
                         '--gk-line-pitch': 'calc(var(--editor-font-size, 1rem) * 1.7)',
-                        padding: `0.75rem ${CONTENT_PAD_X}`,
+                        // The left side adds the fold column (app.css), where a top-level bullet's
+                        // chevron is drawn (fold-controls.ts).
+                        padding: `0.75rem ${CONTENT_PAD_X} 0.75rem calc(${CONTENT_PAD_X} + var(--gk-fold-column, 0px))`,
                     },
                     // The remote-caret name tag (y-codemirror.next). Its base theme sets `serif`, so
                     // without the font it is the one serif element in the app; and it inherits the

@@ -62,6 +62,12 @@ export function registerPasteCommands(commands: CommandRegistry, contributions: 
  */
 export async function pasteInto(view: EditorView): Promise<void> {
     view.focus()
+    const data = await readClipboard()
+    if (data) dispatchPaste(view, data)
+}
+
+/** The clipboard's contents as a paste carries them, or null when the browser refused, which a notice explains. */
+export async function readClipboard(): Promise<DataTransfer | null> {
     const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
     const data = new DataTransfer()
     try {
@@ -84,8 +90,13 @@ export async function pasteInto(view: EditorView): Promise<void> {
             tone: 'info',
             text: 'The browser did not let EtherPK read the clipboard. Press Ctrl+V (⌘V on a Mac) to paste instead.',
         })
-        return
+        return null
     }
+    return data
+}
+
+/** Hand `data` to the editor as a paste event at the caret, so every paste route runs as for a key. */
+export function dispatchPaste(view: EditorView, data: DataTransfer): void {
     const event = new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
     // Firefox ignores the `clipboardData` given to the constructor, and the event then carries
     // none. An own property on the event shadows the prototype's getter, so every listener reads

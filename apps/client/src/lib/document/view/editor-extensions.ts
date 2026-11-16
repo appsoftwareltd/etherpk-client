@@ -34,6 +34,8 @@ import { pasteToFenceAugmentation } from './augmentations/paste-to-fence'
 import { plainPasteAugmentation } from './augmentations/plain-paste'
 import { richPasteAugmentation } from './augmentations/rich-paste'
 import { bulletMarkerAugmentation } from './augmentations/bullet-marker'
+import { foldControlsAugmentation, type MenuLine } from './augmentations/fold-controls'
+import { foldPersistence } from './augmentations/fold-persistence'
 import { codeScrollAugmentation } from './augmentations/code-scroll'
 import { contentClampAugmentation } from './augmentations/content-clamp'
 import { conceptPicker } from './augmentations/concept-picker'
@@ -124,6 +126,11 @@ export interface EditorExtensionServices {
     placeholder?: PlaceholderSource
     /** Which document the editor shows and the panel it sits in (editor-document.ts). Absent outside a workspace. */
     document?: EditorDocumentInfo
+    /**
+     * Open the block menu for the bullet on `line` (a right-click or long press on its dot,
+     * fold-controls.ts). Absent, the dot only folds. `touch` says a long press opened it.
+     */
+    blockMenu?: (line: MenuLine, x: number, y: number, touch: boolean) => void
     /**
      * [[Bookmark]]s (bookmarks.ts): the line Context Menu and whether the editor shows a Draft.
      * Needs `document` too. Absent, the editor draws and tracks no bookmarks.
@@ -219,6 +226,13 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         { name: 'bullet-marker', extension: bulletMarkerAugmentation() },
         { name: 'task-checkbox', extension: taskCheckboxAugmentation() },
         { name: 'outline-guides', extension: outlineGuidesAugmentation() },
+        // The dot and the chevron as fold controls, and the block menu they open (a right-click on
+        // the dot; a long press on it, or on a task's checkbox, on a touch screen). Its handlers sit
+        // above the bookmarks' and the checkbox's, which would take the same events.
+        {
+            name: 'fold-controls',
+            extension: foldControlsAugmentation({ blockMenu: services.blockMenu, lineMenu: services.bookmarks?.lineMenu }),
+        },
         // Content-column clamp (ADR 0020), then the selection highlight drawn from the laid-out lines.
         { name: 'content-clamp', extension: contentClampAugmentation() },
         // A code line's scroll container (ADR 0094) fills the geometry the clamp gives the line, and
@@ -334,6 +348,10 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // Read by the interactive fences, so a widget behind another tab lets go of what it holds.
         { name: 'on-screen', extension: editorOnScreen.init(() => services.onScreen?.() ?? true) },
         { name: 'line-anchor', extension: lineAnchor() },
+        // The folds kept on the device for this document, put back when it opens (ADR 0191).
+        // Not in an editor that shows part of a document (the Task Editor): a fold kept from the whole
+        // document can start on a line the part hides, where it could not be opened.
+        { name: 'fold-persistence', extension: keepsFolds(services) ? foldPersistence() : [] },
         // After `wikilink`, `asset-link` and `spell-check`: their right-click menus claim the event on
         // their own targets, and the line menu takes the rest of the line.
         {
@@ -358,6 +376,11 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
             ],
         },
     ]
+}
+
+/** Whether an editor keeps its folds on the device: one showing a whole document, not a part of one. */
+function keepsFolds(services: EditorExtensionServices): boolean {
+    return services.document !== undefined && !services.shownRange && !services.partOfDocument
 }
 
 /** The flat extension list `createDocumentEditor` loads. */

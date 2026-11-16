@@ -92,6 +92,10 @@ html.dark select {
 }
 
 :root {
+    /* The column left of the editor's text that holds a bullet's fold chevron (fold-controls.ts):
+       on a desktop with a mouse only, since a device with no pointer never shows the chevron. The
+       editor's text, and what lines up with it, starts this far right of the content padding. */
+    --gk-fold-column: 16px;
     /* The greys here are Tailwind's neutral scale, written as hex so a script can read a token (the
        Graph View does). The one exception is the dark theme's surface-1, between neutral-900 and
        neutral-800: a panel has to differ from both, and the scale has no step there. */
@@ -486,4 +490,12 @@ html.dark .ProseMirror pre {
 
 html.dark .ProseMirror pre code {
     background-color: transparent !important;
+}
+
+/* Below the Layout's breakpoint (layout/breakpoint.ts) and on a screen with no hover, no chevron is
+   drawn, so its column is not kept. */
+@media (max-width: 1023.98px), (hover: none) {
+    :root {
+        --gk-fold-column: 0px;
+    }
 }

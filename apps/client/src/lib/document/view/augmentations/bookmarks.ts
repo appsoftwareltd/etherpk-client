@@ -477,7 +477,10 @@ const ICON_HEIGHT = 14
 function paddingBand(view: EditorView): { left: number; right: number } {
     const rect = view.contentDOM.getBoundingClientRect()
     const style = getComputedStyle(view.contentDOM)
-    const padding = parseFloat(style.paddingLeft) || 0
+    // The fold column (app.css) is the inner part of the padding, where a chevron is drawn: the
+    // bookmarks keep the outer part.
+    const foldColumn = parseFloat(style.getPropertyValue('--gk-fold-column')) || 0
+    const padding = Math.max(0, (parseFloat(style.paddingLeft) || 0) - foldColumn)
     const left = rect.left - Math.min(0, parseFloat(style.marginLeft) || 0)
     return { left, right: left + padding }
 }
@@ -518,6 +521,15 @@ function markers(view: EditorView): RectangleMarker[] {
     return out
 }
 
+/**
+ * The pointer cursor while the mouse is in the padding, where a click sets or clears the line's
+ * bookmark. The bookmark is drawn in a layer that takes no pointer events, so the cursor is the
+ * text's own: the class goes on the text.
+ */
+const paddingCursor = EditorView.contentAttributes.compute([hoverField], (state): Record<string, string> =>
+    state.field(hoverField) === null ? {} : { class: 'gk-bookmark-padding-hover' },
+)
+
 const bookmarkLayer = layer({
     above: true,
     class: 'gk-bookmark-layer',
@@ -529,6 +541,16 @@ const bookmarkLayer = layer({
         update.startState.field(bookmarkMarkState).marks !== update.state.field(bookmarkMarkState).marks ||
         update.startState.field(hoverField) !== update.state.field(hoverField),
 })
+
+/**
+ * `line` when hovering its padding offers something: a bookmark to remove, or words to bookmark. A
+ * line with no words shows neither the faint bookmark nor the pointer, since a click there could only
+ * say it cannot be bookmarked.
+ */
+function offeredLine(state: EditorState, line: number | null): number | null {
+    if (line === null || normaliseLine(state.doc.line(line).text) !== '') return line
+    return bookmarkedLines(state).some((mark) => mark.line === line) ? line : null
+}
 
 /** Whether the editor's last pointer was a finger, from its pointerdown. */
 const touchPointer = new WeakMap<EditorView, boolean>()
@@ -550,7 +572,7 @@ const handlers = EditorView.domEventHandlers({
         return false
     },
     mousemove(event, view) {
-        const line = touchPointer.get(view) ? null : paddingLineAt(view, event)
+        const line = touchPointer.get(view) ? null : offeredLine(view.state, paddingLineAt(view, event))
         if (line !== view.state.field(hoverField)) view.dispatch({ effects: hoverLine.of(line) })
         return false
     },
@@ -605,6 +627,7 @@ const theme = EditorView.baseTheme({
         clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%)',
     },
     '.gk-bookmark.gk-bookmark-ghost': { backgroundColor: 'var(--gk-border-strong, #a3a3a3)' },
+    '.cm-content.gk-bookmark-padding-hover': { cursor: 'pointer' },
     '.gk-bookmark-flash': {
         backgroundColor: 'var(--gk-find-current, rgba(234, 88, 12, 0.25))',
         transition: 'background-color 160ms ease-out',
@@ -618,6 +641,7 @@ export function bookmarksAugmentation(options: BookmarkOptions = {}): Extension 
         bookmarkMarks(),
         optionsField.init(() => options),
         hoverField,
+        paddingCursor,
         flashField,
         ViewPlugin.fromClass(BookmarkSync),
         bookmarkLayer,

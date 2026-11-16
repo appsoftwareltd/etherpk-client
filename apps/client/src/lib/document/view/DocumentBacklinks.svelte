@@ -154,10 +154,10 @@
        DocumentView wraps while this is drawn. In the text's column: the rule and everything under
        it line up with the text above (CONTENT_PAD_X), and the pointer is an arrow again. */
     .document-backlinks {
-        flex: 0 0 calc(100% - 2 * var(--content-pad-x));
+        flex: 0 0 calc(100% - 2 * var(--content-pad-x) - var(--gk-fold-column, 0px));
         min-width: 0;
         box-sizing: border-box;
-        margin: 0 var(--content-pad-x);
+        margin: 0 var(--content-pad-x) 0 calc(var(--content-pad-x) + var(--gk-fold-column, 0px));
         padding: 0.75rem 0 1.5rem;
         border-top: 1px solid var(--gk-border-soft);
         font-family: var(--gk-sans, "Inter", system-ui, sans-serif);

@@ -9,6 +9,19 @@ starts at 0.9.3.
 
 ### Client
 
+- **Fold a bullet from its dot.** Click a bullet's dot, or the arrow that appears beside it under
+  the pointer, to fold or unfold its children; on a phone, tap the dot. A folded bullet keeps a
+  shaded circle in place of the `…` box, and stays folded when the document is opened again on
+  the same device. Folds are not shared with other people in the document.
+
+- **A block menu on the dot.** Right-click a bullet's dot, press and hold it on a phone, or press
+  Ctrl+Shift+. to fold, copy, cut, duplicate, move, indent or delete the block with everything
+  under it, paste above or below it, or put the cursor at its start or end. Pressing and holding a
+  task's checkbox on a phone opens the task's menu.
+
+- **More room between outline levels.** Each level of an outline steps in further on a computer,
+  and the text starts a little further from the left edge to make room for the fold arrow.
+
 - **A protected documents passkey can be replaced or removed.** Settings > Protected Documents
   offers **Bind a new passkey** and **Remove this device's passkey** on a device that already has
   one, for a passkey that was deleted from the password manager. When a passkey cannot be used, the
@@ -33,6 +46,8 @@ starts at 0.9.3.
 - **Fixes.**
   - **Scan for orphaned assets** on a synced graph reads the documents a hundred at a time and
     closes each batch after reading it, so the memory it uses does not grow with the graph.
+    It also waits for the graph's list of documents to arrive before it reads them, and says so
+    when the list has not finished syncing.
   - The help text under **Rebuild search index** says when to use it: when backlinks, tasks or
     search results do not match your documents.
   - A code block under a bullet stays where it is while you type elsewhere on the page. It moved

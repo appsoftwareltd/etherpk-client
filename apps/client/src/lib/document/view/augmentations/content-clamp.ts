@@ -46,6 +46,8 @@ import { syntaxTree } from '@codemirror/language'
 import { type EditorState, type Extension, type Range, StateEffect, StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
+import { DESKTOP_MEDIA_QUERY } from '#lib/layout/breakpoint.js'
+
 import type { FencedBlockRange } from '../../fenced-code'
 import { INDENT_UNIT, type OutlineLine } from '../../indent-unit'
 import { contentColumn, continuationColumn, isBulletLine, lineIndent, markerLength, MARKER_WIDTH } from '../../outliner'
@@ -59,9 +61,32 @@ import { revealUpdated } from './reveal-policy'
 import { CHECKBOX_SLOT } from './task-checkbox'
 import { analysisFor } from '../analysis/editor-analysis'
 
-/** Extra visual indent (px) added per nesting level, on top of the source indentation, so the
- *  outline indents read closer to Logseq's spacing. Applied as a uniform `margin-left` (see below). */
-export const INDENT_STEP_PX = 12
+/** Extra visual indent (px) added per nesting level, on top of the source indentation, so one level
+ *  steps in 28px at the default size, about one row's height (Logseq's step is 29px). Applied as a
+ *  uniform `margin-left` (see below). */
+export const INDENT_STEP_PX = 20
+
+/** The same under the Phone Layout, where six levels at the desktop step would take 168px of a 390px
+ *  screen: a level steps in 20px there. */
+export const INDENT_STEP_PHONE_PX = 12
+
+/**
+ * The nesting step as a CSS length. The editor's theme sets `--gk-indent-step` by the Layout's
+ * breakpoint, so a line's margin follows a window crossing it without the clamp being rebuilt. What
+ * needs the step as a number (the outline guides) reads it from {@link ProseMetrics}.
+ */
+export const INDENT_STEP = `var(--gk-indent-step, ${INDENT_STEP_PX}px)`
+
+/** A line's `margin-left` declaration for `depth` nesting steps less `pull` px, or nothing for none. */
+function marginStyle(depth: number, pull: number): string {
+    if (depth > 0) return `;margin-left:calc(${stepsTerm(depth)}${pull !== 0 ? ` - ${pull}px` : ''})`
+    return pull !== 0 ? `;margin-left:${-pull}px` : ''
+}
+
+/** `depth` nesting steps as a term of a CSS sum. */
+function stepsTerm(depth: number): string {
+    return depth === 1 ? INDENT_STEP : `${depth} * ${INDENT_STEP}`
+}
 
 /** How far a block that is a bullet's content (an inline image or table grid) is dropped below the row
  *  top, so the dot reads as the block's top-left corner and the block is not flush against the row above
@@ -266,10 +291,12 @@ function measureCodeShifts(view: EditorView, current: ReadonlyMap<number, number
     return changed ? next : null
 }
 
-/** Widths (px) of a space and of the bullet dash in the prose font, or null before the first measure. */
+/** Widths (px) of a space and of the bullet dash in the prose font, and the nesting step in force
+ *  ({@link INDENT_STEP}), or null before the first measure. */
 export interface ProseMetrics {
     space: number
     dash: number
+    step: number
 }
 
 const setProseMetrics = StateEffect.define<ProseMetrics | null>()
@@ -297,7 +324,8 @@ function measureProseMetrics(view: EditorView): ProseMetrics | null {
     const space = ctx.measureText(' ').width
     const dash = ctx.measureText('-').width
     if (!(space > 0) || !(dash > 0)) return null
-    return { space, dash }
+    const step = parseFloat(getComputedStyle(view.dom).getPropertyValue('--gk-indent-step'))
+    return { space, dash, step: Number.isFinite(step) ? step : INDENT_STEP_PX }
 }
 
 /**
@@ -308,12 +336,12 @@ function measureProseMetrics(view: EditorView): ProseMetrics | null {
  * painted over (bullet-marker.ts). The outline guides place a bullet that is not rendered with it.
  */
 export function bulletDotOffset(depth: number, indent: number, metrics: ProseMetrics): number {
-    return depth * INDENT_STEP_PX + indent * metrics.space + metrics.dash / 2
+    return depth * metrics.step + indent * metrics.space + metrics.dash / 2
 }
 
 function metricsEqual(a: ProseMetrics | null, b: ProseMetrics | null): boolean {
     if (a === null || b === null) return a === b
-    return Math.abs(a.space - b.space) < 0.05 && Math.abs(a.dash - b.dash) < 0.05
+    return Math.abs(a.space - b.space) < 0.05 && Math.abs(a.dash - b.dash) < 0.05 && a.step === b.step
 }
 
 /** The widths a prose indent is written in, as CSS lengths: a space and the bullet dash. */
@@ -356,7 +384,7 @@ const proseMetricsAttributes = EditorView.editorAttributes.compute([proseMetrics
  */
 export function outlineBaseShift(base: OutlineBase | null): string | null {
     if (!base || (base.depth === 0 && base.indent === 0)) return null
-    return `calc(-1 * (${base.depth * INDENT_STEP_PX}px + ${base.indent} * ${PUBLISHED_UNITS.space}))`
+    return `calc(-1 * (${base.depth} * ${INDENT_STEP} + ${base.indent} * ${PUBLISHED_UNITS.space}))`
 }
 
 /** The text area moved left by the editor's outline base, when it has one. */
@@ -391,7 +419,7 @@ function proseTextTerms(reading: 'continuation' | 'plain', cols: number, units: 
 }
 
 /**
- * A line's nesting steps, its `margin-left` in {@link INDENT_STEP_PX}. Plain prose takes none, its
+ * A line's nesting steps, its `margin-left` in {@link INDENT_STEP}. Plain prose takes none, its
  * columns being its own spaces: a blank line the walk gives to a bullet across a prose line reads as
  * prose (continuationColumn) and sits where the text typed on it will. For every other line a bullet
  * owns it is the line's STRUCTURAL depth from the outline walk (ADR 0067): a bullet's own level, and
@@ -419,20 +447,20 @@ function bulletTextTerms(line: string, units: ProseUnits): string[] {
 
 /**
  * Where the text of the line at `pos` starts, as {@link buildClamp} draws a bullet or an indented
- * prose line, in the published widths: its margin (px) and the terms of its padding. Null for a
+ * prose line, in the published widths: its nesting steps (the margin) and the terms of its padding. Null for a
  * prose line at column 0, whose text starts at the text area's edge.
  */
-function textPlacement(state: EditorState, pos: number): { margin: number; padding: string[] } | null {
+function textPlacement(state: EditorState, pos: number): { steps: number; padding: string[] } | null {
     const line = state.doc.lineAt(pos)
     const { lines, outline } = analysisFor(state)
     const i = line.number - 1
     if (isBulletLine(line.text)) {
-        return { margin: nestingDepth(outline[i], false, contentColumn(line.text)) * INDENT_STEP_PX, padding: bulletTextTerms(line.text, PUBLISHED_UNITS) }
+        return { steps: nestingDepth(outline[i], false, contentColumn(line.text)), padding: bulletTextTerms(line.text, PUBLISHED_UNITS) }
     }
     const cols = lineIndent(line.text)
     if (cols === 0) return null
     const reading = indentedLineReading(lines, outline, i)
-    return { margin: nestingDepth(outline[i], reading === 'plain', cols) * INDENT_STEP_PX, padding: proseTextTerms(reading, cols, PUBLISHED_UNITS) }
+    return { steps: nestingDepth(outline[i], reading === 'plain', cols), padding: proseTextTerms(reading, cols, PUBLISHED_UNITS) }
 }
 
 /**
@@ -445,7 +473,7 @@ function textPlacement(state: EditorState, pos: number): { margin: number; paddi
 export function blockWidgetIndent(state: EditorState, pos: number): string | null {
     const placement = textPlacement(state, pos)
     if (!placement) return null
-    return sumOf(placement.margin > 0 ? [`${placement.margin}px`, ...placement.padding] : placement.padding)
+    return sumOf(placement.steps > 0 ? [stepsTerm(placement.steps), ...placement.padding] : placement.padding)
 }
 
 /**
@@ -455,7 +483,7 @@ export function blockWidgetIndent(state: EditorState, pos: number): string | nul
  */
 export function blockWidgetLineStart(state: EditorState, pos: number): string | null {
     const placement = textPlacement(state, pos)
-    return placement && placement.margin > 0 ? `${placement.margin}px` : null
+    return placement && placement.steps > 0 ? sumOf([stepsTerm(placement.steps)]) : null
 }
 
 /**
@@ -630,8 +658,7 @@ function buildClamp(view: EditorView): DecorationSet {
                 // inside it (the margin can go slightly negative — that's the correction). A form-1 opener
                 // is NOT shifted: its prose-rendered `- ` marker already anchors it, so it stays put and
                 // its panel inset (below) absorbs the difference.
-                const margin = depth * INDENT_STEP_PX - (code && fenceCol > 0 ? shift : 0)
-                if (Math.round(margin) !== 0) style += `;margin-left:${Math.round(margin)}px`
+                style += marginStyle(depth, Math.round(code && fenceCol > 0 ? shift : 0))
                 // The panel's left edge: `PANEL_PAD` left of the code text. Code body/closer lines sit
                 // `fenceCol` mono-spaces in (then the line is shifted by `margin`); the opener is unshifted
                 // but its body lines were pulled left by `shift`, so its inset adds `shift` back to keep the
@@ -658,6 +685,9 @@ function buildClamp(view: EditorView): DecorationSet {
 }
 
 const theme = EditorView.baseTheme({
+    // The nesting step (INDENT_STEP): the desktop's, and the phone's below the Layout's breakpoint.
+    '&': { '--gk-indent-step': `${INDENT_STEP_PX}px` },
+    [`@media not ${DESKTOP_MEDIA_QUERY}`]: { '&': { '--gk-indent-step': `${INDENT_STEP_PHONE_PX}px` } },
     // A line whose prefix is lifted (module comment): the containing block for the prefix, and at
     // least one row tall — an EMPTY bullet (`- `) has nothing left in the flow once its marker is
     // lifted, and without the strut its box would collapse to nothing. `--gk-line-pitch` is the

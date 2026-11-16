@@ -39,6 +39,7 @@ export type ContextMenuTarget =
     | BacklinkContextMenuTarget
     | MisspellingContextMenuTarget
     | LineContextMenuTarget
+    | BlockContextMenuTarget
     | TaskContextMenuTarget
     | BookmarkContextMenuTarget
     | BookmarkGroupContextMenuTarget
@@ -66,6 +67,16 @@ export interface EditorLine {
 
 export interface LineContextMenuTarget extends EditorLine {
     kind: 'line'
+}
+
+/**
+ * A bullet [[Block]] in an editor, with every Block nested under it: what a right-click or long
+ * press on a bullet's dot raises. Its rows act on the Block, where the line menu's act on the line.
+ */
+export interface BlockContextMenuTarget extends EditorLine {
+    kind: 'block'
+    /** Whether a touch opened it (a long press): the rows that place the caret are offered only then. */
+    touch?: boolean
 }
 
 /** A [[Task]] a list shows, such as a row of the [[Tasks View]], by its document, line and label. */
@@ -260,6 +271,10 @@ export function editorLineOf(target: ContextMenuTarget): EditorLine | null {
 
 export function isTaskTarget(target: ContextMenuTarget): target is TaskContextMenuTarget {
     return target.kind === 'task'
+}
+
+export function isBlockTarget(target: ContextMenuTarget): target is BlockContextMenuTarget {
+    return target.kind === 'block'
 }
 
 export function isLineTarget(target: ContextMenuTarget): target is LineContextMenuTarget {

@@ -29,19 +29,23 @@
  * left its threads drawn at the stale position, while the long branch never got one at all.
  */
 
-import { syntaxTree } from '@codemirror/language'
+import { foldedRanges, syntaxTree } from '@codemirror/language'
 import { type EditorState, type Extension } from '@codemirror/state'
 import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
 import { lineIndent } from '../../outliner'
 import { analysisFor } from '../analysis/editor-analysis'
 import { outlineBaseIn } from './outline-base'
+import { hoveredDotLine } from './fold-controls'
+import { allFolds, foldedBulletLines } from './outline-folds'
 import { quoteEndsAt } from './blockquote-core'
 import { bulletDotOffset, proseMetricsField } from './content-clamp'
 import { quotePanelBottom } from './markdown-format'
 import { GUIDE_WIDTH_PX, type GuideThread, guideThreads } from './outline-guides-core'
 
 interface Thread {
+    /** 0-based line of the bullet the thread hangs from. */
+    parent: number
     x: number
     top: number
     height: number
@@ -55,6 +59,9 @@ interface Measured {
 
 /** Vertical gap (px) left between a thread's top and the parent dot, so they don't crowd each other. */
 const DOT_GAP = 8
+/** The dot's and its disc's diameters, in ems of the editor's font (bullet-marker.ts). */
+const DOT_EM = 0.36
+const DISC_EM = 1
 
 /**
  * Frames to wait for a rendered position to become measurable before drawing what we have. Keeps the
@@ -90,7 +97,16 @@ export function guideThreadsFor(state: EditorState, within?: { from: number; to:
     const tree = syntaxTree(state)
     const threads = guideThreads(analysis.lines, analysis.branchEnds, analysis.outline, (line) => quoteEndsAt(tree, state.doc, line), within)
     const shown = outlineBaseIn(state)?.shown
-    return shown ? threads.filter((thread) => thread.parent >= shown.first && thread.parent <= shown.last) : threads
+    const inPart = shown ? threads.filter((thread) => thread.parent >= shown.first && thread.parent <= shown.last) : threads
+    // A folded bullet hangs no thread, and a bullet its fold hides draws nothing (outline-folds.ts).
+    const folds = allFolds(state)
+    if (folds.length === 0) return inPart
+    const hidden = (line: number) => {
+        const from = state.doc.line(line + 1).from
+        return folds.some((fold) => from > fold.from && from <= fold.to)
+    }
+    const foldedParents = new Set(foldedBulletLines(state).map((line) => line - 1))
+    return inPart.filter((thread) => !foldedParents.has(thread.parent) && !hidden(thread.parent))
 }
 
 /** The bottom (viewport px) of the quote panel on the rendered line starting at `lineFrom`, or null. */
@@ -188,7 +204,7 @@ function computeThreads(view: EditorView): Measured {
         const last = panel === null && rendered(lastPos) ? view.coordsAtPos(lastPos) : null
         if (panel === null && !last && rendered(lastPos)) incomplete = true
         const bottom = panel !== null ? panel - sy : last ? last.bottom - sy : view.lineBlockAt(lastPos).bottom + docTop
-        if (bottom > top) threads.push({ x, top, height: bottom - top })
+        if (bottom > top) threads.push({ parent: i, x, top, height: bottom - top })
     }
     return { threads, incomplete }
 }
@@ -215,7 +231,9 @@ const guidePlugin = ViewPlugin.fromClass(
             // The prose metrics too: an off-screen parent's dot is placed with them, so the threads
             // redraw on them directly rather than on whatever re-measure happens to follow.
             const metricsChanged = update.startState.field(proseMetricsField, false) !== update.state.field(proseMetricsField, false)
-            if (update.docChanged || update.viewportChanged || update.geometryChanged || metricsChanged) {
+            const foldsChanged = foldedRanges(update.startState) !== foldedRanges(update.state)
+            const hoverChanged = hoveredDotLine(update.startState) !== hoveredDotLine(update.state)
+            if (update.docChanged || update.viewportChanged || update.geometryChanged || metricsChanged || foldsChanged || hoverChanged) {
                 this.schedule()
             }
         }
@@ -247,10 +265,16 @@ const guidePlugin = ViewPlugin.fromClass(
 
         render(threads: Thread[]) {
             this.box.textContent = ''
+            // Under a dot's disc (bullet-marker.ts) the thread starts lower by the disc's extra radius,
+            // so the gap between them is the one a dot alone has.
+            const hovered = hoveredDotLine(this.view.state)
+            const font = parseFloat(getComputedStyle(this.view.contentDOM).fontSize) || 16
+            const discExtra = (font * (DISC_EM - DOT_EM)) / 2
             for (const t of threads) {
+                const drop = hovered !== null && t.parent === hovered - 1 ? Math.min(discExtra, t.height) : 0
                 const line = this.box.appendChild(document.createElement('div'))
                 line.className = 'cm-outline-guide'
-                line.style.cssText = `position:absolute;left:${t.x}px;top:${t.top}px;width:${GUIDE_WIDTH_PX}px;height:${t.height}px`
+                line.style.cssText = `position:absolute;left:${t.x}px;top:${t.top + drop}px;width:${GUIDE_WIDTH_PX}px;height:${t.height - drop}px`
             }
         }
 

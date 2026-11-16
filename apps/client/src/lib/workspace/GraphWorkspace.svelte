@@ -156,6 +156,11 @@
         setActiveImageFootprints,
     } from "#lib/document/view/augmentations/image-footprints.js";
     import {
+        browserFoldMemory,
+        releaseActiveFoldMemory,
+        setActiveFoldMemory,
+    } from "#lib/document/view/augmentations/fold-memory.js";
+    import {
         adoptGraphDictionary,
         setGraphDictionary,
         subscribeGraphDictionary,
@@ -347,6 +352,7 @@
     import { BOOKMARK_STATUS_NOTICE_ID, resetBookmarkStatus } from "#lib/document/bookmarks/status.js";
     import { registerBookmarkCommands } from "#lib/document/commands/bookmark-commands.js";
     import { registerPasteCommands } from "#lib/document/commands/paste-commands.js";
+    import { registerBlockCommands } from "#lib/document/commands/block-commands.js";
     import { bookmarksFileBinding } from "#lib/storage/fs/bookmarks-file.js";
     import { cfiFromReference, requestEbookPlace } from "#lib/document/ebook/ebook-links.js";
     import { followEbookRename, removeEbookBookmarksOf, resetEbookBookmarks } from "#lib/document/ebook/ebook-bookmarks.js";
@@ -5186,7 +5192,13 @@
         );
         // [[Bookmark]]s (ADR 0159): Ctrl+Alt+K, the line Context Menu, the Sidebar rows.
         // Paste on the line menu, which replaces the browser's on a right-click in text.
-        detachPasteCommands = registerPasteCommands(commandRegistry, contributions);
+        // With them, the block menu raised on a bullet's dot: fold, copy, paste beside, move and delete a Block.
+        const detachLinePaste = registerPasteCommands(commandRegistry, contributions);
+        const detachBlockMenu = registerBlockCommands(commandRegistry, contributions);
+        detachPasteCommands = () => {
+            detachLinePaste();
+            detachBlockMenu();
+        };
         detachBookmarkCommands = registerBookmarkCommands(commandRegistry, contributions, {
             openDocumentAtLine: (concept, line) => openConceptAtDocumentLine(concept, line),
             revealSidebar: () => {
@@ -8050,6 +8062,13 @@
         session.own(() => {
             releaseActiveImageFootprints(footprints);
             footprints.dispose();
+        });
+        // The bullets folded in this graph's documents, kept on this device (ADR 0191).
+        const folds = browserFoldMemory(graphId);
+        setActiveFoldMemory(folds);
+        session.own(() => {
+            releaseActiveFoldMemory(folds);
+            folds.dispose();
         });
         // Spell Check (ADR 0095). One service for the tab, opened on this graph while the device
         // preference is on (closed, it neither downloads nor holds a dictionary); it hears the

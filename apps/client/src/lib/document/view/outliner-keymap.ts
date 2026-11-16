@@ -6,7 +6,7 @@
  * module; this file is the thin CM adapter.
  */
 
-import { codeFolding, foldService, toggleFold } from '@codemirror/language'
+import { foldedRanges, unfoldEffect } from '@codemirror/language'
 import { type ChangeSpec, EditorSelection, type EditorState, type Extension, MapMode, type StateCommand, type Transaction, type TransactionSpec } from '@codemirror/state'
 import { type Command, type KeyBinding, keymap } from '@codemirror/view'
 
@@ -52,6 +52,7 @@ import { buildFenceCompletion, type FencedBlockRange, fencedBlocks, fencedBlocks
 import { INDENT, INDENT_UNIT } from '../indent-unit'
 import { deletionBreaksFence } from './fence-guard'
 import { minimalReplacement } from './minimal-replacement'
+import { foldOfBullet, isFoldableBullet, outlineFolds, toggleBulletFoldSpec } from './augmentations/outline-folds'
 import { lineWriteChanges, nestedTaskWrites } from '../task-cascade'
 import { toggleBold, toggleHighlight, toggleItalic } from './wrap-selection'
 import { isBlockSelection, rangeBlockOwner, selectedBranches, shrinkBlockSelectionDown, shrinkBlockSelectionUp, snappedBlockSelection } from './block-select'
@@ -1434,15 +1435,93 @@ const blurEditor: Command = (view) => {
     return true
 }
 
-/** Fold a bullet's descendants (everything more indented than it). */
-const outlinerFoldService = foldService.of((state, lineStart) => {
+/**
+ * Mod+. folds or unfolds the bullet the caret is in, or, on a bullet with no children, the nearest
+ * bullet above whose branch holds it (Logseq; Editor Content Rules → Folds). Consumed everywhere, so
+ * the browser never acts on the chord.
+ */
+export const toggleFoldAtCaret: StateCommand = (view) => {
+    const { state } = view
     const lines = state.doc.toString().split('\n')
-    const index = state.doc.lineAt(lineStart).number - 1
-    if (!isBulletLine(lines[index])) return null
-    const { start, end } = branchRange(lines, index)
-    if (end <= start) return null
-    return { from: state.doc.line(start + 1).to, to: state.doc.line(end + 1).to }
-})
+    const index = state.doc.lineAt(state.selection.main.head).number - 1
+    const owner = ownerBulletIndex(lines, index)
+    if (owner === null) return true
+    for (let j = owner; j >= 0; j--) {
+        if (!isBulletLine(lines[j]) || (j < owner && branchRange(lines, j).end < owner)) continue
+        if (!isFoldableBullet(state, j + 1)) continue
+        const spec = toggleBulletFoldSpec(state, j + 1)
+        if (spec) dispatch(view, spec)
+        return true
+    }
+    return true
+}
+
+/**
+ * Enter at the end of a folded bullet's text (its own line, or the last of its soft lines or its code
+ * block) starts a sibling below the hidden branch, not a child inside it, where it would be hidden as
+ * it is made (Logseq).
+ */
+const enterAtFold: StateCommand = (view) => {
+    const { state } = view
+    const range = state.selection.main
+    if (!range.empty) return false
+    let fold: { from: number; to: number } | null = null
+    foldedRanges(state).between(range.head, range.head, (from, to) => {
+        if (from === range.head) fold = { from, to }
+    })
+    if (!fold) return false
+    const { from, to } = fold
+    const lines = state.doc.toString().split('\n')
+    const owner = ownerBulletIndex(lines, state.doc.lineAt(from).number - 1)
+    if (owner === null || !foldOfBullet(state, owner + 1)) return false
+    const bullet = lines[owner]
+    const insert = '\n' + bullet.slice(0, lineIndent(bullet)) + newBulletMarker(bullet)
+    dispatch(view, { changes: { from: to, insert }, selection: { anchor: to + insert.length }, userEvent: 'input' })
+    return true
+}
+
+/** The fold that ends at the end of the line before 1-based line `line`, if one does. */
+function foldEndingAbove(state: EditorState, line: number): { from: number; to: number } | null {
+    if (line <= 1) return null
+    const end = state.doc.line(line - 1).to
+    let found: { from: number; to: number } | null = null
+    foldedRanges(state).between(end, end, (from, to) => {
+        if (to === end) found = { from, to }
+    })
+    return found
+}
+
+/**
+ * Backspace at the start of the line below a fold opens the fold, and does nothing else: a merge
+ * would join this line to a hidden one out of sight (Editor Content Rules → Folds). "The start" is
+ * anywhere up to the line's content column, where Backspace merges.
+ */
+const backspaceBelowFold: StateCommand = (view) => {
+    const { state } = view
+    const range = state.selection.main
+    if (!range.empty) return false
+    const line = state.doc.lineAt(range.head)
+    const column = isBulletLine(line.text) ? contentStart(line.text) : lineIndent(line.text)
+    if (range.head - line.from > column) return false
+    const fold = foldEndingAbove(state, line.number)
+    if (!fold) return false
+    dispatch(view, { effects: unfoldEffect.of(fold), userEvent: 'fold' })
+    return true
+}
+
+/** Delete at the end of a folded bullet's text opens the fold, as Backspace below one does. */
+const deleteAtFold: StateCommand = (view) => {
+    const { state } = view
+    const range = state.selection.main
+    if (!range.empty) return false
+    let fold: { from: number; to: number } | null = null
+    foldedRanges(state).between(range.head, range.head, (from, to) => {
+        if (from === range.head) fold = { from, to }
+    })
+    if (!fold) return false
+    dispatch(view, { effects: unfoldEffect.of(fold), userEvent: 'fold' })
+    return true
+}
 
 /**
  * Home and End inside a fenced block are the LOGICAL line ends (Editor Content Rules → Keys inside
@@ -1483,6 +1562,8 @@ export function outlinerBindings(): readonly KeyBinding[] {
         { key: 'Tab', run: indentBranch },
         { key: 'Shift-Tab', run: shiftTabInCode },
         { key: 'Shift-Tab', run: outdentBranch },
+        // Before every other Enter: at the end of a folded bullet's text the new bullet goes below the fold.
+        { key: 'Enter', run: enterAtFold },
         { key: 'Enter', run: completeFence },
         { key: 'Enter', run: enterInCode },
         { key: 'Enter', run: enterBullet },
@@ -1511,6 +1592,9 @@ export function outlinerBindings(): readonly KeyBinding[] {
         { key: 'Mod-Delete', mac: 'Alt-Delete', run: rangeDeleteHeal },
         { mac: 'Mod-Backspace', run: rangeDeleteHeal },
         { mac: 'Mod-Delete', run: rangeDeleteHeal },
+        // A merge into a folded branch opens the fold first.
+        { key: 'Backspace', run: backspaceBelowFold },
+        { key: 'Delete', run: deleteAtFold },
         // A join across a fence edge is consumed before any merge can dissolve the block.
         { key: 'Backspace', run: backspaceAtFenceEdge },
         { key: 'Delete', run: deleteAtFenceEdge },
@@ -1533,7 +1617,7 @@ export function outlinerBindings(): readonly KeyBinding[] {
         // a text range fall through to CodeMirror's line move, which the block snap then widens.
         { key: 'Shift-ArrowUp', run: shrinkBlockSelectionUp },
         { key: 'Shift-ArrowDown', run: shrinkBlockSelectionDown },
-        { key: 'Mod-.', run: toggleFold },
+        { key: 'Mod-.', run: toggleFoldAtCaret, preventDefault: true },
         // Format Toggles (wrap-selection.ts, ADR 0077). `preventDefault` so a refused toggle (in a
         // fence, say) still does not reach the browser, where Mod-b opens Firefox's bookmarks.
         { key: 'Mod-b', run: toggleBold, preventDefault: true },
@@ -1545,5 +1629,5 @@ export function outlinerBindings(): readonly KeyBinding[] {
 
 /** The full outliner keyboard extension (Dual Mode Editor.md → Keyboard scheme). */
 export function outlinerKeymap(): Extension {
-    return [codeFolding(), outlinerFoldService, keymap.of([...outlinerBindings()])]
+    return [outlineFolds(), keymap.of([...outlinerBindings()])]
 }

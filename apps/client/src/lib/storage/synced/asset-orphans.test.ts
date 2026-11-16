@@ -121,6 +121,40 @@ describe('scanOrphanedServerAssets', () => {
         cache.dispose()
     })
 
+    // A device that has just opened the graph holds no registry until the root document arrives.
+    // Scanned then, every asset would look unused, and the person would be offered all of them.
+    it('waits for the list of documents to arrive before it reads them', async () => {
+        const relay = createLoopbackRelay()
+        // Both devices hold the graph's key.
+        const keyring = createGraphKeyring('g-orphans')
+        const open = async (name: string) =>
+            createGraphSync({
+                graphId: 'g-orphans',
+                rootDocId: ROOT,
+                keyring,
+                relayUrl: 'ws://loopback/sync',
+                token: fixedSyncToken('t'),
+                cache: await openGraphCache(`${name}-${Math.floor(performance.now() * 1000)}`),
+                connect: relay.connect,
+                debounceMs: 5,
+            })
+        const first = await open('orphans-first')
+        await first.ready()
+        first.registry().set(DOC_WITH_ASSET, { kind: 'page', title: 'Uses Asset' })
+        first.docSync(DOC_WITH_ASSET).doc.getText('content').insert(0, `![pic](../assets/pic.${USED}.png)`)
+        await first.flushAll()
+        await first.awaitAcked()
+
+        // A second device, with an empty cache, scans the moment it opens.
+        const second = await open('orphans-second')
+        const { f } = stubApi([{ assetId: USED, size: 1 }, { assetId: ORPHAN, size: 1 }])
+        const scan = await scanOrphanedServerAssets({ graph: second, graphId: 'g-orphans', baseUrl: 'http://server', syncToken: fixedSyncToken('t'), fetch: f })
+        expect(scan.scannedDocuments).toBe(1)
+        expect(scan.orphans.map((o) => o.id)).toEqual([ORPHAN])
+        first.dispose()
+        second.dispose()
+    })
+
     it('aborts rather than guessing when a document has not caught up', async () => {
         const { graph, cache } = await openTestGraph()
         // A registry entry whose content doc never syncs: dispose the socket first, then

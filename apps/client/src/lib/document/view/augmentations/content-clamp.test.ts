@@ -4,7 +4,7 @@ import { analysisFor } from '../analysis/editor-analysis'
 import { editorFixture } from '../testing/editor-state-fixture'
 import { EditorView } from '@codemirror/view'
 
-import { blockWidgetIndent, codeLineIndent, CONTENT_GUTTER, contentClampAugmentation, indentedLineReading, INDENT_STEP_PX, outlineBaseShift, proseTextInset } from './content-clamp'
+import { blockWidgetIndent, codeLineIndent, CONTENT_GUTTER, contentClampAugmentation, indentedLineReading, INDENT_STEP, outlineBaseShift, proseTextInset } from './content-clamp'
 import { outlineBaseFacet } from './outline-base'
 import { CHECKBOX_SLOT } from './task-checkbox'
 
@@ -102,7 +102,7 @@ describe('blockWidgetIndent and proseTextInset', () => {
         const text = `${DASH} + ${SPACE} + ${CONTENT_GUTTER}`
         expect(at('- a\n  ![x](y)', 1)).toEqual({ widget: `calc(${text})`, inset: `calc(${text})` })
         const nested = `2 * ${SPACE} + ${text}`
-        expect(at('- a\n  - b\n    ![x](y)', 2)).toEqual({ widget: `calc(${INDENT_STEP_PX}px + ${nested})`, inset: `calc(${nested})` })
+        expect(at('- a\n  - b\n    ![x](y)', 2)).toEqual({ widget: `calc(${INDENT_STEP} + ${nested})`, inset: `calc(${nested})` })
     })
 
     it('reads a line as the clamp and the keys do: the outline reaches it across a soft line, and one space short is prose', () => {
@@ -112,7 +112,7 @@ describe('blockWidgetIndent and proseTextInset', () => {
 
     it('starts at a bullet’s text on a bullet line, where a form-1 fence’s live preview hangs under its collapsed render', () => {
         expect(at('- ```mermaid', 0).widget).toBe(`calc(${DASH} + ${SPACE} + ${CONTENT_GUTTER})`)
-        expect(at('- a\n  - ```mermaid', 1).widget).toBe(`calc(${INDENT_STEP_PX}px + 2 * ${SPACE} + ${DASH} + ${SPACE} + ${CONTENT_GUTTER})`)
+        expect(at('- a\n  - ```mermaid', 1).widget).toBe(`calc(${INDENT_STEP} + 2 * ${SPACE} + ${DASH} + ${SPACE} + ${CONTENT_GUTTER})`)
         expect(at('- [ ] ```mermaid', 0).widget).toBe(`calc(${DASH} + ${SPACE} + ${CONTENT_GUTTER} + ${CHECKBOX_SLOT} + ${SPACE})`)
     })
 })
@@ -124,7 +124,7 @@ describe('blockWidgetIndent and proseTextInset', () => {
  */
 describe('outlineBaseShift', () => {
     it('is the base level’s nesting steps and indent, as the clamp lays a bullet out', () => {
-        expect(outlineBaseShift({ depth: 2, indent: 4, shown: { first: 2, last: 3 } })).toBe(`calc(-1 * (${2 * INDENT_STEP_PX}px + 4 * var(--gk-prose-space, 1ch)))`)
+        expect(outlineBaseShift({ depth: 2, indent: 4, shown: { first: 2, last: 3 } })).toBe(`calc(-1 * (2 * ${INDENT_STEP} + 4 * var(--gk-prose-space, 1ch)))`)
     })
 
     it('is nothing at column 0', () => {

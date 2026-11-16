@@ -89,6 +89,8 @@ describe('forgetGraphOnDevice', () => {
             'etherpk-folder-path-skipped:g1',
             // Picture references with the size each was drawn at (image-footprints.ts).
             'etherpk:image-footprints:g1',
+            // The bullets folded in each document, by line and fingerprint (fold-memory.ts).
+            'etherpk:folds:g1',
         ])
     })
 })

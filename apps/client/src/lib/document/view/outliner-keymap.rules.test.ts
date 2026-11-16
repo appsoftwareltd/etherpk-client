@@ -36,6 +36,8 @@ import { imageClickCaret, imageClickSpec, imageEmbedAugmentation } from './augme
 import { imageWidthChange } from './augmentations/image-resize'
 import { markdownTableAugmentation } from './augmentations/markdown-table'
 import { guideThreadsFor } from './augmentations/outline-guides'
+import { blockRange } from './block-actions'
+import { bulletFoldRange, foldedBulletLines, foldOfBullet, hasFoldedDescendant, toggleBulletFoldSpec, unfoldBranchSpec } from './augmentations/outline-folds'
 import { outlineBaseIn } from './augmentations/outline-base'
 import { commandMenuShown, slashCompletion } from './augmentations/slash-complete'
 import { refreshOpenPopovers } from './augmentations/popover-menu'
@@ -3823,5 +3825,155 @@ describe('a part of a task shows its markdown only while it has the keyboard (Et
         expect(pictureShown(editor.state, 2)).toBe(false)
         focus(editor, false)
         expect(pictureShown(editor.state, 2)).toBe(false)
+    })
+})
+
+// Folds (Editor Content Rules → Folds). A fold is view state, so each row reads the text and which
+// bullets are folded (1-based lines) after the keys or the change.
+describe('folds', () => {
+    /** An editor with the bullets on the given 1-based lines folded. */
+    function folded(text: string, lines: number[]): HeadlessEditor {
+        const editor = editorFixture(text)
+        for (const line of lines) {
+            const spec = toggleBulletFoldSpec(editor.state, line)
+            if (!spec) throw new Error(`line ${line} cannot fold`)
+            editor.dispatch(editor.state.update(spec))
+        }
+        return editor
+    }
+    const tree = '- Garden|\n  - Beans\n    - water the beans\n  - Peas\n- Kitchen'
+
+    it('Mod+. folds the bullet the caret is in, and again unfolds it (Logseq)', () => {
+        const editor = editorFixture(tree)
+        editor.key('Mod-.')
+        expect(foldedBulletLines(editor.state)).toEqual([1])
+        editor.key('Mod-.')
+        expect(foldedBulletLines(editor.state)).toEqual([])
+    })
+
+    it('Mod+. on a bullet with no children folds the nearest bullet above whose branch holds it (Logseq)', () => {
+        const editor = editorFixture('- Garden\n  - Beans\n    - water the beans|\n  - Peas')
+        editor.key('Mod-.')
+        expect(foldedBulletLines(editor.state)).toEqual([2])
+    })
+
+    it('a bullet with no child does not fold (EtherPK)', () => {
+        expect(bulletFoldRange(editorFixture('- Garden|\n  soft line').state, 1)).toBeNull()
+    })
+
+    it('a fold hides the children and leaves the bullet’s own soft lines shown (Logseq)', () => {
+        const editor = folded('- Garden|\n  soft line\n  - Beans', [1])
+        const range = bulletFoldRange(editor.state, 1)!
+        expect(range.from).toBe(editor.state.doc.line(2).to)
+        expect(range.to).toBe(editor.state.doc.line(3).to)
+    })
+
+    it('a child added at the foot of a folded branch is hidden with the rest (EtherPK)', () => {
+        const editor = folded(tree, [1])
+        const end = editor.state.doc.line(4).to
+        editor.dispatch(editor.state.update({ changes: { from: end, insert: '\n  - Leeks' } }))
+        expect(foldedBulletLines(editor.state)).toEqual([1])
+        expect(foldOfBullet(editor.state, 1)!.to).toBe(editor.state.doc.line(5).to)
+    })
+
+    it('a fold ends when its bullet loses its last child (EtherPK)', () => {
+        const editor = folded('- Garden|\n  - Beans\n- Kitchen', [1])
+        const line = editor.state.doc.line(2)
+        editor.dispatch(editor.state.update({ changes: { from: line.from - 1, to: line.to } }))
+        expect(editor.text()).toBe('- Garden\n- Kitchen')
+        expect(foldedBulletLines(editor.state)).toEqual([])
+    })
+
+    it('a fold ends when its bullet is deleted (EtherPK)', () => {
+        const editor = folded('- Kitchen\n- Garden|\n  - Beans', [2])
+        editor.dispatch(editor.state.update({ changes: { from: editor.state.doc.line(1).to, to: editor.state.doc.line(2).to } }))
+        expect(foldedBulletLines(editor.state)).toEqual([])
+    })
+
+    it('Alt+Down moves a folded bullet with its hidden branch, and it stays folded (Logseq)', () => {
+        const editor = folded('- Garden|\n  - Beans\n- Kitchen', [1])
+        editor.key('Alt-ArrowDown')
+        expect(editor.text()).toBe('- Kitchen\n- Garden\n  - Beans')
+        expect(foldedBulletLines(editor.state)).toEqual([2])
+    })
+
+    it('Tab indents a folded bullet with its hidden branch, and it stays folded (Logseq)', () => {
+        const editor = folded('- Kitchen\n- Garden|\n  - Beans', [2])
+        editor.key('Tab')
+        expect(editor.text()).toBe('- Kitchen\n  - Garden\n    - Beans')
+        expect(foldedBulletLines(editor.state)).toEqual([2])
+    })
+
+    it('Enter at the end of a folded bullet starts a sibling below the hidden branch (Logseq)', () => {
+        const editor = folded(tree, [1])
+        editor.key('Enter')
+        expect(editor.fixture()).toBe('- Garden\n  - Beans\n    - water the beans\n  - Peas\n- |\n- Kitchen')
+        expect(foldedBulletLines(editor.state)).toEqual([1])
+    })
+
+    it('Backspace at the start of the line below a fold opens the fold and changes nothing else (EtherPK)', () => {
+        const editor = folded('- Garden\n  - Beans\n- |Kitchen', [1])
+        editor.key('Backspace')
+        expect(editor.fixture()).toBe('- Garden\n  - Beans\n- |Kitchen')
+        expect(foldedBulletLines(editor.state)).toEqual([])
+    })
+
+    it('Delete at the end of a folded bullet opens the fold and changes nothing else (EtherPK)', () => {
+        const editor = folded('- Garden|\n  - Beans\n- Kitchen', [1])
+        editor.key('Delete')
+        expect(editor.fixture()).toBe('- Garden|\n  - Beans\n- Kitchen')
+        expect(foldedBulletLines(editor.state)).toEqual([])
+    })
+
+    it('a selection that lands inside a fold opens it (Logseq)', () => {
+        const editor = folded(tree, [1])
+        editor.select(editor.state.doc.line(3).to)
+        expect(foldedBulletLines(editor.state)).toEqual([])
+    })
+
+    it('a caret left at a fold’s end opens it, so nothing is typed into hidden text (Logseq)', () => {
+        const editor = folded('- Garden\n  - Beans\n- |Kitchen', [1])
+        editor.select(editor.state.doc.line(2).to)
+        expect(foldedBulletLines(editor.state)).toEqual([])
+        editor.type('x')
+        expect(editor.text()).toBe('- Garden\n  - Beansx\n- Kitchen')
+    })
+
+    it('Tab that makes the caret’s bullet a child of a folded one opens the fold (Logseq)', () => {
+        const editor = folded('- Garden\n  - Beans\n- Kitchen|', [1])
+        editor.key('Tab')
+        expect(editor.text()).toBe('- Garden\n  - Beans\n  - Kitchen')
+        expect(foldedBulletLines(editor.state)).toEqual([])
+    })
+
+    it('Enter at the end of a folded bullet’s soft line starts a sibling below the hidden branch (Logseq)', () => {
+        const editor = folded('- Garden\n  soft line|\n  - Beans\n- Kitchen', [1])
+        editor.key('Enter')
+        expect(editor.fixture()).toBe('- Garden\n  soft line\n  - Beans\n- |\n- Kitchen')
+        expect(foldedBulletLines(editor.state)).toEqual([1])
+    })
+
+    it('Enter at the end of a folded bullet’s code block starts a sibling below the hidden branch (Logseq)', () => {
+        const editor = folded('- Garden\n  ```\n  dig\n  ```|\n  - Beans', [1])
+        editor.key('Enter')
+        expect(editor.fixture()).toBe('- Garden\n  ```\n  dig\n  ```\n  - Beans\n- |')
+        expect(foldedBulletLines(editor.state)).toEqual([1])
+    })
+
+    it('a bullet-shaped line in a code block is not a Block (EtherPK)', () => {
+        expect(blockRange(editorFixture('- Garden|\n  ```md\n  - a\n  - b\n  ```').state, 3)).toBeNull()
+        expect(bulletFoldRange(editorFixture('- Garden|\n  ```md\n  - a\n    - b\n  ```').state, 3)).toBeNull()
+    })
+
+    it('a folded bullet hangs no outline guide, and nothing inside it does (Logseq)', () => {
+        const editor = folded('- Garden\n  - Beans\n    - water the beans\n- Kitchen|\n  - Peas', [1])
+        expect(guideThreadsFor(editor.state).map((thread) => thread.parent)).toEqual([3])
+    })
+
+    it('unfolding a branch opens the folds inside it too (EtherPK)', () => {
+        const editor = folded(tree, [2, 1])
+        expect(hasFoldedDescendant(editor.state, 1)).toBe(true)
+        editor.dispatch(editor.state.update(unfoldBranchSpec(editor.state, 1)!))
+        expect(foldedBulletLines(editor.state)).toEqual([])
     })
 })
