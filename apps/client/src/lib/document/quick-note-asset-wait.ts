@@ -1,5 +1,5 @@
 /**
- * How long the Quick Notes View waits before asking again for a file a [[Quick Note]] names
+ * How long the Quick Notes Modal waits before asking again for a file a [[Quick Note]] names
  * and the graph's asset store does not have (ADR 0186).
  *
  * A note shared from another device reaches this one over the relay as soon as it is added,

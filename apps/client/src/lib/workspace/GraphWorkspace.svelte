@@ -61,7 +61,7 @@
     } from "#lib/layout/renderers/tab-renderer.js";
     // Type only: the adapter itself is `import()`ed in the browser (see mountPresenter).
     import type { DockviewRenderer } from "#lib/layout/renderers/dockview-adapter.js";
-    import { QUICK_NOTES_VIEW, TASKS_VIEW } from "#lib/layout/serialization.js";
+    import { RETIRED_QUICK_NOTES_VIEW, TASKS_VIEW } from "#lib/layout/serialization.js";
     import { revealResident, toggleResidentSidebar, type Resident } from "./residents";
     import { forgetWorkspaceCompanions } from "./workspace-reset";
 
@@ -101,7 +101,7 @@
     import { registerTaskStatusCommands } from "#lib/document/commands/task-status-commands.js";
     import type { AgentReach } from "#lib/document/agent-instruction.js";
     import { parseTaskReference, resolveTaskReference, type TaskReference } from "#lib/document/task-reference.js";
-    import QuickNotesView from "#lib/document/view/QuickNotesView.svelte";
+    import QuickNotesModal from "#lib/document/view/QuickNotesModal.svelte";
     import {
         createTaskFilterStore,
         type TaskFilterStore,
@@ -127,7 +127,6 @@
     } from "#lib/document/commands/clipboard-text.js";
     import {
         QUICK_NOTES_OPEN,
-        QUICK_NOTES_OPEN_JOURNAL,
         registerQuickNotesCommands,
     } from "#lib/document/commands/quick-notes-commands.js";
     import {
@@ -137,7 +136,6 @@
         setQuickNoteDiscardHandler,
         adoptQuickNotes,
         offerQuickNoteDraft,
-        requestQuickNoteFocus,
         resetQuickNotes,
         setQuickNotes,
     } from "#lib/document/quick-notes.js";
@@ -292,6 +290,7 @@
         boundPasskey,
         enrolPasskey,
         passkeysAvailable,
+        unbindPasskey,
         unlockWithPasskey,
     } from "#lib/document/protection/passkey-protection.js";
     import SetProtectionPassphraseDialog from "#lib/document/protection/ui/SetProtectionPassphraseDialog.svelte";
@@ -815,8 +814,15 @@
     let shareWaiting = $state(false);
     /** The share was added while the open was still running; the loading notice says so. */
     let shareLanded = $state(false);
-    /** Reveal the Quick Notes resident as the presenter mounts: the share landed before one existed. */
-    let revealQuickNotesOnMount = false;
+    /**
+     * The [[Quick Notes Modal]] (ADR 0189), open or not. `focusBox` says whether opening puts the
+     * caret in its box: yes from the button and Alt+N, no when a share opens it, since on a
+     * phone the caret raises the keyboard over the note that just landed.
+     */
+    let quickNotes = $state.raw<{ focusBox: boolean } | null>(null);
+    let quickNotesModal = $state<QuickNotesModal>();
+    /** A share landed before the Layout was up: the modal opens once it is, as Settings does. */
+    let shareOpensQuickNotes = false;
     /** Set with the `missing` phase: which of the registry-miss cases this is. */
     let missing = $state<MissingGraphDiagnosis | null>(null);
     let settingUp = $state(false);
@@ -2302,6 +2308,12 @@
         protectionPasskeyBound = true;
     }
 
+    /** Forget this device's passkey for the graph. Needs no key: only the device's wrap goes. */
+    async function unbindProtectionPasskey(): Promise<void> {
+        await unbindPasskey(graphId);
+        protectionPasskeyBound = false;
+    }
+
     /** Rename dialog state — the dialog itself is a presentation surface over the store. */
     let renaming = $state<{
         concept: string;
@@ -3136,13 +3148,12 @@
     }
 
     /**
-     * The four residents (CONTEXT.md → Sidebar) as the Commands reach them. Backlinks is keyed by
+     * The three residents (CONTEXT.md → Sidebar) as the Commands reach them. Backlinks is keyed by
      * the document it opened on, so its fallback is today, the seed the default Layout uses; the
-     * other three are singletons.
+     * other two are singletons.
      */
-    const RESIDENTS: Record<"graph" | "quickNotes" | "backlinks" | "tasks", Resident> = {
+    const RESIDENTS: Record<"graph" | "backlinks" | "tasks", Resident> = {
         graph: { kind: "document-tree", side: "left", fallback: () => ({ kind: "document-tree", target: "root" }) },
-        quickNotes: { kind: QUICK_NOTES_VIEW.kind, side: "left", fallback: () => QUICK_NOTES_VIEW },
         backlinks: { kind: "backlinks", side: "right", fallback: () => ({ kind: "backlinks", target: todayISO() }) },
         tasks: { kind: TASKS_VIEW.kind, side: "right", fallback: () => TASKS_VIEW },
     };
@@ -3259,14 +3270,6 @@
         // tab is titled once at creation and retitled by the effect beside `toolbarStyle`.
         title: () => sidebarTabTitle(graphDisplayName, graphId),
         icon: "graph",
-    });
-    // The Quick Notes View is the left Sidebar's SECOND resident, beside the graph sidebar as
-    // Tasks is beside Backlinks: one singleton tab, present from the first open (ADR 0078).
-    registry.register({
-        kind: "quick-notes",
-        component: QuickNotesView,
-        naturalRegion: "left-sidebar",
-        title: () => "Quick notes",
     });
     // All Documents lives in the MAIN region, not the sidebar: at real scale (2838 documents
     // on the graph this was built against) a browse-everything list needs the room, which is
@@ -4865,7 +4868,7 @@
         // Each Sidebar toggle brings its resident back first if it has been closed (residents.ts):
         // a chord that expanded an empty Sidebar was the only way to lose a View for good.
         commandRegistry.register("layout.toggleSidebar", () => {
-            if (controller) toggleResidentSidebar(controller, [RESIDENTS.graph, RESIDENTS.quickNotes, ...extensionResidents("left")]);
+            if (controller) toggleResidentSidebar(controller, [RESIDENTS.graph, ...extensionResidents("left")]);
         });
         commandRegistry.register("layout.toggleBacklinks", () => {
             // An extension's resident (the Graph View's, on a desktop) is one of the right Sidebar's
@@ -4934,24 +4937,12 @@
         commandRegistry.register("tasks.open", () => {
             if (controller) revealResident(controller, RESIDENTS.tasks);
         });
-        // Quick Notes is the left Sidebar's second resident: the same reveal as Tasks, plus an
-        // Event the View answers by putting the caret in its box, so Alt+N, type, Enter captures
-        // a thought from anywhere without a pointer.
+        // The Quick Notes Modal with the caret in its box, so Alt+N, type, Enter captures a
+        // thought from anywhere without a pointer. Opening places the caret itself (the dialog's
+        // focus contract); pressed again over the open modal, the caret goes back to the box.
         commandRegistry.register(QUICK_NOTES_OPEN, () => {
-            if (!controller) return;
-            // A View that is not open yet mounts AFTER this tick and misses the Event, so the
-            // request is left for it to take at mount; an open one hears the Event.
-            const mounted = controller.findView(QUICK_NOTES_VIEW.kind) !== undefined;
-            if (!mounted) requestQuickNoteFocus();
-            revealResident(controller, RESIDENTS.quickNotes);
-            if (mounted) bus?.emit("quick-notes:focus", {});
-        });
-        // Out of Quick notes once they have moved: the graph's tab in front, then today's entry
-        // with the caret in it. The entry is opened last, so on a phone it is what shows.
-        commandRegistry.register(QUICK_NOTES_OPEN_JOURNAL, () => {
-            if (!controller) return;
-            revealResident(controller, RESIDENTS.graph);
-            openJournalDay(todayISO());
+            if (quickNotes) quickNotesModal?.focusInput();
+            else quickNotes = { focusBox: true };
         });
         // The Settings modal, for a surface with no cog of its own. The desktop toolbar carries
         // one; the mobile presenter's chrome does not, so on a phone the Sidebar offers Settings
@@ -5752,23 +5743,17 @@
         // a Layout that already holds it is untouched (openView focuses the existing View).
         if (!controller.isOpen(TASKS_VIEW))
             controller.openView(TASKS_VIEW, { activate: false });
-        // Quick Notes is the left Sidebar's resident (ADR 0078), ensured the same way.
-        if (!controller.isOpen(QUICK_NOTES_VIEW))
-            controller.openView(QUICK_NOTES_VIEW, { activate: false });
+        // Quick Notes was the left Sidebar's second resident until it became a modal (ADR 0189).
+        // A Layout saved before then still holds its tab, and no View of that kind is registered
+        // any more, so the tab is closed here, inside the save suppression and before the
+        // baseline save below writes the Layout without it.
+        if (controller.isOpen(RETIRED_QUICK_NOTES_VIEW)) controller.closeView(RETIRED_QUICK_NOTES_VIEW);
         // Every resident an extension declares is ensured the same way, behind the others: the Graph
         // View's on a desktop or tablet only (CONTEXT.md → Sidebar), since a phone has no room to draw
         // it. It also gives every Layout saved before a resident existed its tab.
         for (const resident of [...extensionResidents("left"), ...extensionResidents("right")]) {
             const view = resident.fallback();
             if (!controller.isOpen(view)) controller.openView(view, { activate: false });
-        }
-        // A share that landed while the graph was opening (ADR 0087, amended) is shown now: in
-        // front of its Sidebar, expanded, and BEFORE the baseline save below, so the layout is
-        // persisted with Quick Notes in front and a reload finds it there. Revealing after this
-        // function returned put it inside the save-suppression window and lost it on reload.
-        if (revealQuickNotesOnMount) {
-            revealQuickNotesOnMount = false;
-            revealResident(controller, RESIDENTS.quickNotes);
         }
         saveLayout();
         requestAnimationFrame(() => {
@@ -5794,6 +5779,7 @@
             if (asked) openGraphSettings(asked.tab, asked.options);
             else focusInitialDocument();
             runLaunchFromUrl();
+            openSharedQuickNotes();
         } else {
             suppressNav = false;
         }
@@ -5896,7 +5882,8 @@
         openAttempt = attempt;
         shareWaiting = peekPendingShare()?.graphId === graphId;
         shareLanded = false;
-        revealQuickNotesOnMount = false;
+        quickNotes = null;
+        shareOpensQuickNotes = false;
         // A Settings request held by an open that failed is not carried into this one.
         settingsAskedBeforeSeed = null;
         try {
@@ -5952,8 +5939,8 @@
      * wired - the root doc hydrated from the cache on a Server Backend, the notes file read on a
      * Filesystem Backend - before the relay wait, the index and the presenter, so a phone is not
      * kept waiting on the whole open for a one-line write. The note carries the instant it was
-     * shared, and the Quick Notes resident is revealed with it at the top once a presenter
-     * exists. The caret is NOT put in the box - on a phone that pops the keyboard, and the user
+     * shared, and the Quick Notes Modal opens with it at the top once the graph is ready.
+     * The caret is NOT put in the box - on a phone that pops the keyboard, and the user
      * came to put something down, not to type. Taken before the add, so a reload cannot add it
      * twice; a refused write puts the text in the box as unsent text, the same fallback a typed
      * note gets, and the notice says why.
@@ -5962,7 +5949,7 @@
      * Add the waiting share to Quick notes. A share with files (ADR 0186) waits for the graph's
      * asset store, which is built a little later in the open than the notes are wired: the early
      * call leaves it stashed and the call after the store exists lands it. Its files are stored
-     * first and their references written after the text, as the Quick Notes View does. A share
+     * first and their references written after the text, as the Quick Notes Modal does. A share
      * of text lands on the early call, as it always has.
      */
     async function landPendingShare(): Promise<void> {
@@ -5978,7 +5965,19 @@
         } catch (err) {
             notify(keepShareThatFailed(share, err as Error));
         }
-        revealQuickNotesOnMount = true;
+        shareOpensQuickNotes = true;
+        openSharedQuickNotes();
+    }
+
+    /**
+     * Open the Quick Notes Modal on the share that landed, its note at the top of the list: now,
+     * or from the end of the first `mountPresenter` when the share landed before the Layout was
+     * up, so the modal takes focus after the presenter has finished placing its own.
+     */
+    function openSharedQuickNotes(): void {
+        if (!seeded || !shareOpensQuickNotes) return;
+        shareOpensQuickNotes = false;
+        quickNotes = { focusBox: false };
     }
 
     /** A share that could not be added: its text goes into the box, and the notice says what happened. */
@@ -8225,6 +8224,17 @@
     <SearchModal controller={searchController} />
 {/if}
 
+<!-- Mounted for as long as the graph is open and only opened and closed, so the box keeps what
+     was in it across a dismissal. Unmounted with the graph, whose notes it lists. -->
+{#if phase === "ready"}
+    <QuickNotesModal
+        bind:this={quickNotesModal}
+        open={quickNotes !== null}
+        focusBox={quickNotes?.focusBox ?? true}
+        onclose={() => (quickNotes = null)}
+    />
+{/if}
+
 {#if settingProtectionPassphrase}
     <SetProtectionPassphraseDialog
         concept={settingProtectionPassphrase.concept ?? undefined}
@@ -8522,6 +8532,7 @@
                       };
                   },
                   onbindpasskey: bindProtectionPasskey,
+                  onunbindpasskey: unbindProtectionPasskey,
                   onchangepassphrase: async (current, next) => {
                       await protection?.changePassphrase(current, next);
                       void refreshProtectionRecord();

@@ -27,7 +27,7 @@
      * are the owner's too: the box shows the ones it is given and reports the ones picked,
      * pasted or dropped. What Enter does outside the list is the owner's decision (`onkey`).
      */
-    import { tick } from "svelte";
+    import { tick, type Snippet } from "svelte";
 
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
 
@@ -53,6 +53,7 @@
         onremovefile,
         oninput,
         onkey,
+        tools,
     }: {
         value?: string;
         /** The textarea's test id; the box's other parts are named from it. */
@@ -78,6 +79,8 @@
         oninput?: () => void;
         /** A key the list did not take. Return true when it was handled. */
         onkey?: (event: KeyboardEvent) => boolean;
+        /** A control of the caller's at the right end of the button row: the modal's Add as task. */
+        tools?: Snippet;
     } = $props();
 
     let textarea = $state<HTMLTextAreaElement | undefined>();
@@ -357,8 +360,15 @@
                 </button>
                 <input bind:this={picker} type="file" multiple hidden onchange={onPicked} data-testid="{testid}-picker" />
             {/if}
-            {#if unnamed && namesHint}
-                <span class="ml-auto pr-1 text-sm text-(--gk-text-muted)" data-testid="{testid}-names-hint" role="status">{namesHint}</span>
+            <!-- The right end of the row: the hint, then the caller's control. Wraps under the
+                 buttons, still to the right, when the box is too narrow for one row. -->
+            {#if (unnamed && namesHint) || tools}
+                <span class="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 pr-1">
+                    {#if unnamed && namesHint}
+                        <span class="text-sm text-(--gk-text-muted)" data-testid="{testid}-names-hint" role="status">{namesHint}</span>
+                    {/if}
+                    {@render tools?.()}
+                </span>
             {/if}
         </div>
     {/if}

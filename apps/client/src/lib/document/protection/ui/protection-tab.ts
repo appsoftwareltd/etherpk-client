@@ -21,6 +21,9 @@ export interface ProtectionTabProps {
     onsettings: (next: LockPreferences) => void
     /** Start protection on a graph that has none — opens the set-passphrase dialog. */
     onsetup: () => void
+    /** Bind a passkey, replacing the one this device already has when there is one. */
     onbindpasskey: () => Promise<void>
+    /** Forget this device's passkey, so unlocking here needs the passphrase. */
+    onunbindpasskey: () => Promise<void>
     onchangepassphrase: (current: string, next: string) => Promise<void>
 }

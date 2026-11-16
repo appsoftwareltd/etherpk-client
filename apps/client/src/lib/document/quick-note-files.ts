@@ -6,7 +6,7 @@
  * the line travels with the text and an image renders there as any image line does. Nothing
  * about the file is a field on the note.
  *
- * Pure over text: what a note's text is once its files are stored, how the Quick Notes View
+ * Pure over text: what a note's text is once its files are stored, how the Quick Notes Modal
  * reads a note back as text, pictures and files, and which assets a note references.
  */
 import { assetNameFromRef, buildAssetMarkdown, displayNameForRef, isImageAssetRef } from '#lib/storage/fs/asset-store.js'
@@ -30,7 +30,7 @@ export function noteTextWithFiles(text: string, files: readonly NoteFile[], imag
     return [text.trim(), ...lines].filter((part) => part !== '').join('\n')
 }
 
-/** One run of a note as the Quick Notes View shows it. */
+/** One run of a note as the Quick Notes Modal shows it. */
 export type QuickNotePart =
     | { kind: 'text'; text: string }
     | { kind: 'image'; url: string; alt: string }

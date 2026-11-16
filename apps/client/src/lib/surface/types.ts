@@ -56,13 +56,6 @@ export interface EventPayloads {
     'document:deleted': { graphId: string; documentId: string }
     /** The light or dark theme was switched on. Consumer: the extensions (ADR 0121). */
     'theme:changed': { graphId: string; dark: boolean }
-    /**
-     * The user asked for the [[Quick Notes View]]'s box (the `quickNotes.open` Command, Alt+N).
-     * The workspace has already focused the tab and expanded the Sidebar; the View puts the
-     * caret in its textarea. An Event because the View is mounted through the layout renderer
-     * and nothing else holds a reference to it.
-     */
-    'quick-notes:focus': { graphId: string }
 }
 
 export type EventName = keyof EventPayloads

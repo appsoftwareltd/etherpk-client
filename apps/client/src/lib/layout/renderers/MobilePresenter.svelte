@@ -880,7 +880,7 @@
        height leaves above and below the title's cap height, so the room around the title is the
        same on all four sides at either height (the touch height is below).
        The tabs share the drawer's width: the strip has no list to reach a tab it hides, and a
-       graph's name can be long enough to push Quick notes past the edge. Each tab grows from
+       graph's name can be long enough to push another tab past the edge. Each tab grows from
        nothing towards its own width, so a tab that fits in an equal share keeps its width and
        the rest split what is left, their titles ending in an ellipsis. A title with room is
        never cut. */

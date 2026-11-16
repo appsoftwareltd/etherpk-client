@@ -13,6 +13,8 @@
      */
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
 
+    import { passkeyUnlockFailureMessage } from "../passkey-protection";
+
     let {
         hasPasskey,
         onpassphrase,
@@ -52,8 +54,7 @@
             // Only say something when the user asked for it. An automatic attempt that fails -
             // most often because they dismissed the biometric prompt - should leave the passphrase
             // field waiting, not an error accusing them of something.
-            if (explicit)
-                error = `Could not unlock with your passkey: ${(e as Error).message}`;
+            if (explicit) error = passkeyUnlockFailureMessage(e);
         } finally {
             passkeyBusy = false;
         }

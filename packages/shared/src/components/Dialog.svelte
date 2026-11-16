@@ -30,6 +30,7 @@
         body,
         footer,
         tools,
+        icon,
         fillPhone = false,
     }: {
         /**
@@ -94,6 +95,12 @@
          * something Save applies (Graph Settings' index rebuild and orphan scan).
          */
         tools?: Snippet;
+        /**
+         * A picture drawn before the title, for a dialog a button with the same picture opens
+         * (Quick notes). Decoration: the title names the dialog, so the snippet's markup is
+         * hidden from the accessibility tree here.
+         */
+        icon?: Snippet;
         /**
          * At phone width the panel fills the screen, with no margin or rounded corners: for a dialog
          * that is a whole editing surface rather than a question (the Task Editor). From the `sm`
@@ -211,7 +218,12 @@
                 inputs it commits, with any `tools` after it.
             -->
             <div class="flex shrink-0 items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
-                <h2 id={titleId} class="text-base font-semibold text-neutral-950 dark:text-neutral-100">{title}</h2>
+                <h2 id={titleId} class="flex min-w-0 items-center gap-2 text-base font-semibold text-neutral-950 dark:text-neutral-100">
+                    {#if icon}
+                        <span class="inline-flex shrink-0 text-neutral-500 dark:text-neutral-400" aria-hidden="true" data-dialog-icon>{@render icon()}</span>
+                    {/if}
+                    {title}
+                </h2>
                 {#if dismissible}
                     <button
                         type="button"

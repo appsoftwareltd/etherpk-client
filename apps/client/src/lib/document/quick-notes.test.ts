@@ -8,19 +8,15 @@ import {
     offerQuickNoteDraft,
     type QuickNote,
     removeQuickNotes,
-    requestQuickNoteFocus,
     resetQuickNotes,
     discardQuickNotes,
     sanitizeQuickNotes,
     setQuickNoteDiscardHandler,
-    takeQuickNoteFocusRequest,
     setQuickNoteDraft,
     setQuickNotes,
     subscribeQuickNoteDraft,
     subscribeQuickNotes,
     unionQuickNotes,
-    markQuickNotesMoved,
-    quickNotesWereMoved,
 } from './quick-notes'
 
 const note = (id: string, createdAt: number, text = id): QuickNote => ({ id, text, createdAt })
@@ -176,28 +172,7 @@ describe('quick notes', () => {
     })
 })
 
-describe('notes that went to the journal', () => {
-    it('says so once the move took them, until a note is added', async () => {
-        expect(quickNotesWereMoved()).toBe(false)
-        const note = await addQuickNote('milk')
-        await removeQuickNotes([note!.id])
-        // Deleted, not moved: the list is empty for another reason.
-        expect(quickNotesWereMoved()).toBe(false)
-
-        markQuickNotesMoved()
-        expect(quickNotesWereMoved()).toBe(true)
-        await addQuickNote('eggs')
-        expect(quickNotesWereMoved()).toBe(false)
-    })
-
-    it('forgets it when the graph closes', () => {
-        markQuickNotesMoved()
-        resetQuickNotes()
-        expect(quickNotesWereMoved()).toBe(false)
-    })
-})
-
-describe('a draft offered from outside the View', () => {
+describe('a draft offered from outside the modal', () => {
     it('becomes the draft and reaches a mounted View, which the box seeds from otherwise', () => {
         // The workspace puts a refused share into the box (ADR 0087). A View already mounted
         // hears about it; one that mounts later reads the draft as it always has.
@@ -212,7 +187,7 @@ describe('a draft offered from outside the View', () => {
     })
 
     it('goes after text already in the box, a blank line between, so neither is lost', () => {
-        // One rule, here, not in the View: a box holding "buy milk" keeps it AND gets the share.
+        // One rule, here, not in the modal: a box holding "buy milk" keeps it AND gets the share.
         const listener = vi.fn()
         const off = subscribeQuickNoteDraft(listener)
         setQuickNoteDraft('buy milk')
@@ -228,18 +203,6 @@ describe('a draft offered from outside the View', () => {
         setQuickNoteDraft('typed')
         expect(listener).not.toHaveBeenCalled()
         off()
-    })
-})
-
-describe('focus request', () => {
-    it('is taken once by the next mount, and cleared on graph close', () => {
-        expect(takeQuickNoteFocusRequest()).toBe(false)
-        requestQuickNoteFocus()
-        expect(takeQuickNoteFocusRequest()).toBe(true)
-        expect(takeQuickNoteFocusRequest()).toBe(false)
-        requestQuickNoteFocus()
-        resetQuickNotes()
-        expect(takeQuickNoteFocusRequest()).toBe(false)
     })
 })
 

@@ -12,9 +12,11 @@ import {
     encodeCredentialId,
     enrolPasskey,
     indexedDbWrapStore,
+    passkeyUnlockFailureMessage,
     prfEnabledOn,
     prfSalt,
     prfSecretOf,
+    unbindPasskey,
     unlockWithPasskey,
 } from './passkey-protection'
 
@@ -137,6 +139,55 @@ describe('unlocking with a passkey', () => {
         await expect(
             unlockWithPasskey('graph-1', null, { ceremony: ceremonyYielding(SECRET), store: memoryStore() }),
         ).rejects.toThrow(PasskeyUnsupportedError)
+    })
+})
+
+describe('binding again on a device that already has a passkey', () => {
+    // The passkey itself lives in a password manager the person can clear. The wrap then names a
+    // credential that no longer exists, and binding again is the way back.
+    it('replaces the wrap with one for the new credential, which opens the same key', async () => {
+        const store = memoryStore()
+        await enrolPasskey('graph-1', KEY, { ceremony: ceremonyYielding(SECRET), store })
+        const next = new Uint8Array(32).fill(9)
+        const replacement: PasskeyCeremony = {
+            create: async () => credential({ prf: { enabled: true } }, new Uint8Array([4, 5, 6]).buffer),
+            assert: async () => credential({ prf: { results: { first: next.buffer.slice(0) } } }),
+        }
+
+        await enrolPasskey('graph-1', KEY, { ceremony: replacement, store })
+
+        expect(store.peek().get('graph-1')?.credentialId).toBe(encodeCredentialId(new Uint8Array([4, 5, 6]).buffer))
+        const key = await unlockWithPasskey('graph-1', null, { ceremony: replacement, store })
+        expect(toBase64Url(key)).toBe(toBase64Url(KEY))
+    })
+})
+
+describe('removing a device’s passkey', () => {
+    it('leaves no passkey bound, so the unlock prompt offers only the passphrase', async () => {
+        const store = memoryStore()
+        await enrolPasskey('graph-1', KEY, { ceremony: ceremonyYielding(SECRET), store })
+
+        await unbindPasskey('graph-1', { store })
+
+        expect(await boundPasskey('graph-1', null, { store })).toBeNull()
+    })
+})
+
+describe('what the unlock prompt says when the passkey fails', () => {
+    // The browser gives one answer, NotAllowedError, for a dismissed prompt and for a passkey that
+    // is no longer in the password manager, so the message has to cover both.
+    it('names the passphrase and where to bind a new passkey when the browser refuses', () => {
+        const message = passkeyUnlockFailureMessage(new DOMException('not allowed', 'NotAllowedError'))
+
+        expect(message).toContain('passphrase')
+        expect(message).toContain('Settings > Protected Documents')
+        expect(message).not.toContain('not allowed')
+    })
+
+    it('keeps the reason for any other failure', () => {
+        expect(passkeyUnlockFailureMessage(new PasskeyUnsupportedError('the passkey did not produce its encryption secret'))).toBe(
+            'Could not unlock with your passkey: the passkey did not produce its encryption secret',
+        )
     })
 })
 

@@ -109,6 +109,18 @@ describe('scanOrphanedServerAssets', () => {
         cache.dispose()
     })
 
+    // The scan reads every document in the graph. Left open, each one stays in memory and in
+    // sync for the rest of the session, which a graph of thousands of documents cannot afford.
+    it('closes the documents it opened to read, so memory does not grow with the graph', async () => {
+        const { graph, cache } = await openTestGraph()
+        const { f } = stubApi([{ assetId: USED, size: 1 }])
+        await scanOrphanedServerAssets({ graph, graphId: 'g-orphans', baseUrl: 'http://server', syncToken: fixedSyncToken('t'), fetch: f })
+        // Only the root document's engine is left once the two content documents are idle.
+        await expect.poll(() => graph.diagnostics().activeEngines, { timeout: 2000 }).toBe(1)
+        graph.dispose()
+        cache.dispose()
+    })
+
     it('aborts rather than guessing when a document has not caught up', async () => {
         const { graph, cache } = await openTestGraph()
         // A registry entry whose content doc never syncs: dispose the socket first, then

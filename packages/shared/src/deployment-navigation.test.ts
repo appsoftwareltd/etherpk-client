@@ -95,7 +95,7 @@ describe('deployment navigation', () => {
             graphsUrl: 'https://app.example.com/graphs',
         })).toEqual([
             { href: 'https://sync.example.com/', label: 'Sync+', current: false },
-            { href: 'https://app.example.com/graphs', label: 'Open app', current: false },
+            { href: 'https://app.example.com/graphs', label: 'Graphs', current: false },
             { href: PUBLIC_DOCS_URL, label: 'Docs', current: false },
         ])
     })
@@ -113,7 +113,6 @@ describe('deployment navigation', () => {
             signedIn: true,
             syncServerUrl: 'https://sync.example.com/',
             graphsUrl: '/graphs',
-            withinClient: true,
             current: 'graphs',
         })).toEqual([
             { href: 'https://sync.example.com/', label: 'Sync Server', current: false },
@@ -160,20 +159,12 @@ describe('deployment navigation', () => {
         expect(signedOut).toEqual({ href: 'https://sync.example.com/', label: 'Sync+', current: false })
     })
 
-    // From Corporate or the Sync Server the link opens the app. On the Client's own pages the
-    // person is already in the app, and the link is its Graphs page and the menu of their graphs.
-    it('names the Client link "Open app" from another origin and "Graphs" within the Client', () => {
-        const clientLink = (withinClient: boolean) => buildApplicationNavigation({
-            managed: true,
-            signedIn: false,
-            graphsUrl: withinClient ? '/graphs' : 'https://app.example.com/graphs',
-            withinClient,
-        })[0]
-        expect(clientLink(false)).toEqual({ href: 'https://app.example.com/graphs', label: 'Open app', current: false })
-        expect(clientLink(true)).toEqual({ href: '/graphs', label: 'Graphs', current: false })
-        // Left out, the link is named for a page on another origin.
-        expect(buildApplicationNavigation({ managed: false, signedIn: false, graphsUrl: 'https://app.example.com/graphs' })[0]?.label)
-            .toBe('Open app')
+    // One name on every origin, after the page the link opens: people arrive on Graphs.
+    it('names the Client link "Graphs" on every origin', () => {
+        expect(buildApplicationNavigation({ managed: true, signedIn: false, graphsUrl: 'https://app.example.com/graphs' })[0])
+            .toEqual({ href: 'https://app.example.com/graphs', label: 'Graphs', current: false })
+        expect(buildApplicationNavigation({ managed: false, signedIn: false, graphsUrl: '/graphs' })[0])
+            .toEqual({ href: '/graphs', label: 'Graphs', current: false })
     })
 
     it('rejects unsafe or ambiguous navigation origins', () => {

@@ -1,7 +1,8 @@
 <script lang="ts">
     /**
      * The graph [[Sidebar]]: a group of action buttons ([[Search]], today's [[Journal Entry]],
-     * the buttons extensions add), the [[Journal Calendar]], [[Favourite]]s, [[Recents]], the way
+     * the [[Quick Notes Modal]], the buttons extensions add) fixed at its top, and scrolling
+     * under them the [[Journal Calendar]], [[Favourite]]s, [[Recents]], the way
      * into [[All Documents]], and a synced graph's sync status at its foot (ADR 0139).
      *
      * Replaces the old `document-tree`, which listed every journal and every page flat -
@@ -274,7 +275,7 @@
 
     // ---- The action buttons -----------------------------------------------------------
     /**
-     * The buttons extensions add after Search and Today (the maps extension's Graph Map,
+     * The buttons extensions add after Search, Today and Quick notes (the maps extension's Graph Map,
      * the kanban extension's Graph Kanban), read again whenever one is added or taken back, as an
      * extension starts or is switched off.
      */
@@ -300,6 +301,17 @@
 
     function openSearch() {
         void tryGetActiveCommandRegistry()?.execute(SEARCH_OPEN);
+    }
+
+    /**
+     * Quick notes, the third button: the modal that takes a thought down and holds it until it
+     * is moved to the journal (ADR 0189). Drawn only where the Command exists, like Search.
+     */
+    const QUICK_NOTES_OPEN = "quickNotes.open";
+    const canQuickNote = tryGetActiveCommandRegistry()?.has(QUICK_NOTES_OPEN) ?? false;
+
+    function openQuickNotes() {
+        void tryGetActiveCommandRegistry()?.execute(QUICK_NOTES_OPEN);
     }
 
     /**
@@ -351,23 +363,29 @@
      */
     let columns = $state(2);
     let buttonsEl = $state<HTMLElement>();
+    let sidebarEl = $state<HTMLElement>();
     /** What the measure depends on besides sizes: which buttons there are and what they say. */
     const buttonLabels = $derived(
-        [canSearch ? "Search" : "", "Today", ...extensionButtons.map((button) => button.title)].join("\n"),
+        [
+            canSearch ? "Search" : "",
+            "Today",
+            canQuickNote ? "Quick notes" : "",
+            ...extensionButtons.map((button) => button.title),
+        ].join("\n"),
     );
 
     /**
      * Measure each button's natural width and the width the group has, and pick the columns.
      *
-     * The ResizeObserver watches the Sidebar's own box and each button's content, never the group:
-     * the group's height changes with its columns, and watching it would report that change back
-     * to this callback in the same frame. Each content box is as wide as its icon and label
-     * whatever the column, so it changes only with the label or a font arriving. The Sidebar is
-     * watched by its border box, which a scrollbar appearing does not change.
+     * The ResizeObserver watches the Sidebar's own box and each button's content, never the group
+     * or the header around it: their height changes with the columns, and watching them would
+     * report that change back to this callback in the same frame. Each content box is as wide as
+     * its icon and label whatever the column, so it changes only with the label or a font
+     * arriving.
      */
     $effect(() => {
         const group = buttonsEl;
-        const root = group?.parentElement;
+        const root = sidebarEl;
         if (iconsOnly || !group || !root) return;
         void buttonLabels;
         const measure = () => {
@@ -660,17 +678,21 @@
 
 <svelte:window onkeydown={onWindowKeydown} />
 
+<!-- Two parts: the action buttons, which stay where they are, and everything else, which
+     scrolls under them. The Sidebar itself does not scroll, so the buttons are in reach however
+     far down the lists have been read. -->
 <div
-    class="flex h-full flex-col gap-2 overflow-y-auto p-2 text-(--gk-text-default)"
+    bind:this={sidebarEl}
+    class="flex h-full flex-col text-(--gk-text-default)"
     style:font-family="var(--gk-sans, 'Inter', system-ui, sans-serif)"
     data-testid="graph-sidebar"
 >
-    <!-- ── The action buttons: Search, Today, the extensions' buttons (ADR 0139) ── -->
+    <!-- ── The action buttons: Search, Today, Quick notes, the extensions' buttons (ADR 0139) ── -->
     <!--
-        One row, two columns or one, whichever keeps every label whole (`columns`). Search and
-        Today come first, so they lead the row and head the grid and the stack. Every
-        column is the same width, so a button left on its own keeps the width of one. Under the
-        phone layout, icons alone sharing the row's width (`iconsOnly`).
+        One row, two columns or one, whichever keeps every label whole (`columns`). Search,
+        Today and Quick notes come first, so they lead the row and head the grid and the stack.
+        Every column is the same width, so a button left on its own keeps the width of one. Under
+        the phone layout, icons alone sharing the row's width (`iconsOnly`).
     -->
     {#snippet buttonContent(icon: string, label: string)}
         {#if iconsOnly}
@@ -691,6 +713,8 @@
             </span>
         {/if}
     {/snippet}
+    <!-- The padding under the buttons is the gap the lists scroll away into. -->
+    <div class="shrink-0 p-2" data-testid="sidebar-header">
     <div
         bind:this={buttonsEl}
         class={iconsOnly ? iconRow : "grid gap-2"}
@@ -723,6 +747,18 @@
             <!-- The calendar at the same line weight as the buttons beside it. -->
             {@render buttonContent("todays-journal", "Today")}
         </button>
+        {#if canQuickNote}
+            <button
+                type="button"
+                data-testid="sidebar-quick-notes"
+                onclick={openQuickNotes}
+                class={iconsOnly ? sidebarIconButton : sidebarButton}
+                aria-label={iconsOnly ? "Quick notes" : undefined}
+                {...helpFor("Open quick notes, ready to type", QUICK_NOTES_OPEN)}
+            >
+                {@render buttonContent("quick-notes", "Quick notes")}
+            </button>
+        {/if}
         {#each extensionButtons as button (button.id)}
             <button
                 type="button"
@@ -737,7 +773,9 @@
             </button>
         {/each}
     </div>
+    </div>
 
+    <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2" data-testid="sidebar-scroll">
     <!-- ── Journal Calendar ───────────────────────────────────────────────────── -->
     <section>
         <button
@@ -1111,4 +1149,5 @@
             />
         {/if}
     </div>
+</div>
 </div>

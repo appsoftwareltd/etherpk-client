@@ -200,6 +200,11 @@ export const ICON_PATHS: Record<string, string> = {
 /** Icons drawn on Heroicons' 24-unit grid: Heroicons 2.2.0 outline, each path copied verbatim. */
 const HEROICON_PATHS: Record<string, string> = {
     /**
+     * heroicons/outline `bolt`, a lightning flash: something done quickly. On the graph Sidebar's
+     * Quick notes button.
+     */
+    'quick-notes': '<path d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"/>',
+    /**
      * heroicons/outline `link`, a chain: the documents that link to this one. On the Backlinks
      * View's tab and the Show Backlinks row.
      */

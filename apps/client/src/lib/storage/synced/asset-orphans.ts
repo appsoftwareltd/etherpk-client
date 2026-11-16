@@ -24,6 +24,7 @@ import { type KeyringSource, contextAad, fromBase64Url, keyForEpoch, keyringRead
 import { mapWithPool } from '#lib/concurrency.js'
 import { formatBytes } from '@appsoftwareltd/etherpk-shared'
 import type { ProtectedTextReader } from '#lib/document/protection/protected-text-reader.js'
+import { reachedWithin } from '#lib/reached-within.js'
 import { contentBlocked } from '#lib/sync/doc-sync.js'
 import type { GraphSync } from '#lib/sync/graph-sync.js'
 import type { SyncTokenSource } from '#lib/sync/sync-token.js'
@@ -39,6 +40,9 @@ import {
 import { serverAssetByteReadiness } from './asset-byte-readiness'
 import { backfillAssetDedupTokens } from './asset-dedup-backfill'
 import { assetIdFromRef } from './server-asset-store'
+
+/** How many documents the scan holds open at once while it reads them. */
+const ENGINE_BATCH = 100
 
 export interface ServerAssetOrphanDeps {
     graph: GraphSync
@@ -125,23 +129,7 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
     await deps.settle?.()
     const docIds: string[] = []
     deps.graph.registry().forEach((_entry, docId) => docIds.push(docId))
-    const stored: string[] = []
-    // A document whose key is unavailable, or whose history will not decrypt, reads as empty:
-    // its references are as invisible as a locked protected document's, so it is unchecked too.
-    let unreadableOther = 0
-    for (const docId of docIds) {
-        const engine = deps.graph.docSync(docId)
-        const caught = await Promise.race([
-            engine.caughtUp().then(() => true),
-            new Promise<boolean>((resolve) => setTimeout(() => resolve(false), deps.timeoutMs ?? 8000)),
-        ])
-        if (!caught) throw new Error('A document has not finished syncing - try again once the graph is fully synced')
-        if (contentBlocked(engine.health())) {
-            unreadableOther += 1
-            continue
-        }
-        stored.push(engine.doc.getText('content').toString())
-    }
+    const { stored, unreadableOther } = await readDocumentTexts(deps, docIds)
 
     // A Quick Note can hold a reference (ADR 0186), and a note is in no document: every
     // member's notes are read from the root document, for matching only.
@@ -169,6 +157,44 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
         unlockable: deps.readProtected !== undefined,
     })
     return { ...scan, ...(dedupBackfill ? { dedupBackfill } : {}) }
+}
+
+/**
+ * The stored text of each document, read once it has caught up with the server. Throws when one
+ * does not catch up within the timeout: a half-synced document reads as empty, and the scan
+ * never guesses (see module doc).
+ */
+async function readDocumentTexts(deps: ServerAssetOrphanDeps, docIds: readonly string[]): Promise<{ stored: string[]; unreadableOther: number }> {
+    const stored: string[] = []
+    // A document whose key is unavailable, or whose history will not decrypt, reads as empty:
+    // its references are as invisible as a locked protected document's, so it is unchecked too.
+    let unreadableOther = 0
+    // Read in batches and release each one once its text is copied out. An engine opened and
+    // left open stays in memory and in sync for the rest of the session, so a scan that kept
+    // them would cost as much as opening every document in the graph at once.
+    for (let start = 0; start < docIds.length; start += ENGINE_BATCH) {
+        const batch = docIds.slice(start, start + ENGINE_BATCH)
+        try {
+            await deps.graph.readyDocs(batch)
+            // One at a time, so each document's wait starts when the one before it has arrived:
+            // the relay answers a batch's catch-ups in turn, and the last must not time out
+            // for having queued behind the rest.
+            for (const docId of batch) {
+                const caught = await reachedWithin(deps.graph.caughtUpDoc(docId), deps.timeoutMs ?? 8000)
+                if (!caught) throw new Error('A document has not finished syncing - try again once the graph is fully synced')
+                const engine = deps.graph.docSync(docId)
+                if (contentBlocked(engine.health())) {
+                    unreadableOther += 1
+                    continue
+                }
+                stored.push(engine.doc.getText('content').toString())
+            }
+        } finally {
+            // Releases the hold readyDocs took, whether or not the batch was read.
+            deps.graph.retireDocs(batch)
+        }
+    }
+    return { stored, unreadableOther }
 }
 
 /** The file name the uploader chose, then the size; the id prefix only when no name could be read. */

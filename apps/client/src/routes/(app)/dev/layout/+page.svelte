@@ -47,7 +47,6 @@
         { kind: 'backlinks', naturalRegion: 'right-sidebar' },
         { kind: 'document-tree', naturalRegion: 'left-sidebar' },
         { kind: 'tasks', naturalRegion: 'right-sidebar' },
-        { kind: 'quick-notes', naturalRegion: 'left-sidebar' },
     ]
 
     const registry = createViewRegistry()

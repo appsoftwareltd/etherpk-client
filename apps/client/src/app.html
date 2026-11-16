@@ -18,7 +18,18 @@
                     .map((entry) => entry.trim())
                     .find((entry) => entry.startsWith(`${cookieName}=`))
                     ?.slice(cookieName.length + 1);
-                const preference = supportedPreferences.has(cookieValue) ? cookieValue : 'system';
+                // A link from another EtherPK app carries its theme in the fragment
+                // (#theme=dark, see theme.ts). Keep it in this host's cookie and take it off
+                // the address, so every app shows the theme the person last chose.
+                const handedOver = location.hash.startsWith('#theme=') ? location.hash.slice(7) : null;
+                if (handedOver !== null) {
+                    history.replaceState(history.state, '', location.pathname + location.search);
+                }
+                const carried = supportedPreferences.has(handedOver) ? handedOver : null;
+                if (carried) {
+                    document.cookie = `${cookieName}=${carried}; Path=/; Max-Age=31536000; SameSite=Lax`;
+                }
+                const preference = carried ?? (supportedPreferences.has(cookieValue) ? cookieValue : 'system');
                 const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
                 const resolvedTheme = preference === 'system' ? (systemPrefersDark ? 'dark' : 'light') : preference;
                 const root = document.documentElement;

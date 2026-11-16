@@ -1,7 +1,7 @@
 /**
  * The files chosen for a [[Quick Note]] that is not added yet: held in memory, shown by
  * `QuickNoteBox`, and handed over whole when the note is added. Both surfaces that write a
- * note hold one (the Quick Notes View and the Share Target's page).
+ * note hold one (the Quick Notes Modal and the Share Target's page).
  *
  * A picture gets an object URL for its thumbnail, revoked when the file leaves the list, so a
  * long-lived tab does not keep every photo it was ever shown.

@@ -265,6 +265,10 @@ export interface PasskeyProtectionDeps {
 /**
  * Bind a passkey on this device to the graph's Protection Key. Requires the key in memory, which
  * is why enrolment is only offered while unlocked.
+ *
+ * Binding again replaces the wrap this device holds, which is the way back when the earlier
+ * passkey has been deleted from the password manager. The old wrap stays until the new one is
+ * written, so a ceremony that fails part-way leaves the device as it was.
  */
 export async function enrolPasskey(
     graphId: string,
@@ -291,6 +295,31 @@ export async function enrolPasskey(
     const wrap = await deviceWrapFromPrf(protectionKey, secret, credentialId)
     await store.write(graphId, wrap)
     return wrap
+}
+
+/**
+ * Forget this device's passkey for the graph. Only the wrap goes: the passkey itself stays in the
+ * person's password manager, where EtherPK cannot reach it, and opens nothing without the wrap.
+ */
+export async function unbindPasskey(graphId: string, deps: PasskeyProtectionDeps = {}): Promise<void> {
+    await (deps.store ?? indexedDbWrapStore).clear(graphId)
+}
+
+/**
+ * What the unlock prompt says when a passkey the person asked for did not unlock.
+ *
+ * The browser answers `NotAllowedError` both for a dismissed prompt and for a passkey that is no
+ * longer in the password manager, and its own message is a specification reference. So that case
+ * gets the two things a person can do next; any other failure keeps its reason.
+ */
+export function passkeyUnlockFailureMessage(error: unknown): string {
+    if (error instanceof DOMException && error.name === 'NotAllowedError') {
+        return (
+            'Your passkey was not used. Try again, or enter your passphrase. If the passkey is no longer ' +
+            'in your password manager, bind a new one under Settings > Protected Documents after you unlock.'
+        )
+    }
+    return `Could not unlock with your passkey: ${error instanceof Error ? error.message : String(error)}`
 }
 
 /** Whether this device has a passkey bound for the graph, and it matches the current key. */

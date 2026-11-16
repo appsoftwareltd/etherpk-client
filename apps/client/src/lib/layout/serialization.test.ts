@@ -18,8 +18,8 @@ describe('serialization', () => {
         )
 
         const leftViews = model.regions['left-sidebar'].panes.flatMap((p) => p.views)
-        // Quick Notes is a RESIDENT of the left Sidebar (ADR 0078), behind the graph sidebar.
-        expect(leftViews.map((v) => v.view.kind)).toEqual(['document-tree', 'quick-notes'])
+        // The graph sidebar alone: Quick Notes is a modal, not a tab beside it (ADR 0189).
+        expect(leftViews.map((v) => v.view.kind)).toEqual(['document-tree'])
         const leftPane = model.regions['left-sidebar'].panes[0]
         expect(leftPane.views.find((v) => v.panelId === leftPane.activePanelId)?.view.kind).toBe('document-tree')
         expect(model.regions['left-sidebar'].collapsed).toBe(false)
@@ -44,8 +44,8 @@ describe('serialization', () => {
     it('starts the left Sidebar collapsed when asked, for a graph a phone opens on its document', () => {
         const { model } = defaultLayout({ leftSidebarCollapsed: true })
         expect(model.regions['left-sidebar'].collapsed).toBe(true)
-        // Its residents are there all the same, behind the drawer's toggle.
-        expect(model.regions['left-sidebar'].panes.flatMap((p) => p.views).map((v) => v.view.kind)).toEqual(['document-tree', 'quick-notes'])
+        // Its resident is there all the same, behind the drawer's toggle.
+        expect(model.regions['left-sidebar'].panes.flatMap((p) => p.views).map((v) => v.view.kind)).toEqual(['document-tree'])
         // The option is about the left one only.
         expect(defaultLayout({ leftSidebarCollapsed: true, rightSidebarCollapsed: false }).model.regions['right-sidebar'].collapsed).toBe(false)
     })

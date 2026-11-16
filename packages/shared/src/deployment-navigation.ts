@@ -24,7 +24,7 @@ export const COMMUNITY_DISCORD_URL = 'https://discord.gg/m9vScxQzvp'
 
 export interface ApplicationNavigationItem {
     href: string
-    label: 'Sync+ Pricing' | 'Sync+' | 'Sync Server' | 'Open app' | 'Graphs' | 'Docs'
+    label: 'Sync+ Pricing' | 'Sync+' | 'Sync Server' | 'Graphs' | 'Docs'
     current: boolean
 }
 
@@ -44,12 +44,11 @@ export interface ApplicationNavigationOptions {
     syncServerUrl?: string | null
     /** Corporate's pricing page, on the managed service. */
     pricingUrl?: string | null
-    graphsUrl: string
     /**
-     * Set on the Client's own pages, where the link is the Graphs page and carries the menu of
-     * the person's graphs, so it is named "Graphs". From any other origin it reads "Open app".
+     * The Client's Graphs page. The link is named "Graphs" on every origin, after the page it
+     * opens: the name people know from the Client, where it also carries the menu of their graphs.
      */
-    withinClient?: boolean
+    graphsUrl: string
     /** `sync-server` marks the Sync+ link, whichever page it leads to. */
     current?: 'sync-server' | 'graphs' | null
 }
@@ -80,7 +79,7 @@ export function buildApplicationNavigation(
     }
     items.push({
         href: options.graphsUrl,
-        label: options.withinClient ? 'Graphs' : 'Open app',
+        label: 'Graphs',
         current: options.current === 'graphs',
     })
     // Last: it leaves the deployment, and it is never the current page. One site for every

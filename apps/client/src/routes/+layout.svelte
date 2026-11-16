@@ -2,6 +2,7 @@
     import "@fontsource-variable/inter/opsz.css";
     import "@fontsource-variable/inter/opsz-italic.css";
     import "../app.css";
+    import { carryThemeToSiblingApp } from "@appsoftwareltd/etherpk-shared/theme";
     import { onMount } from "svelte";
     import { beforeNavigate } from "$app/navigation";
     import { continueIfSignedInElsewhere } from "@appsoftwareltd/etherpk-shared";
@@ -13,6 +14,11 @@
     import { launchTarget } from "#lib/install/launch-target.js";
 
     let { children, data } = $props();
+
+    // A link to another of the deployment's apps carries the theme chosen here (theme.ts).
+    function carryTheme(event: Event) {
+        carryThemeToSiblingApp(event, [data.serverPortalUrl, data.corporateHomeUrl]);
+    }
 
     /** Chromium's launch queue, where the manifest's `launch_handler` delivers a launch. */
     type LaunchQueue = { setConsumer(consumer: (params: { targetURL?: string }) => void): void };
@@ -67,6 +73,8 @@
         return stopWatching;
     });
 </script>
+
+<svelte:document onpointerdowncapture={carryTheme} onclickcapture={carryTheme} />
 
 {@render children()}
 

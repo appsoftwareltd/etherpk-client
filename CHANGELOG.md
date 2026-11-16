@@ -5,6 +5,36 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **A protected documents passkey can be replaced or removed.** Settings > Protected Documents
+  offers **Bind a new passkey** and **Remove this device's passkey** on a device that already has
+  one, for a passkey that was deleted from the password manager. When a passkey cannot be used, the
+  unlock prompt says to enter the passphrase and where to bind a new passkey.
+
+- **The theme follows you between the Client and the Sync Server.** A link from one to the other
+  carries the light, dark or system theme chosen there, so both show the same one.
+
+- **Quick notes opens in a window over the graph.** A **Quick notes** button, third at the top
+  of the Graph Sidebar, and Alt+N open it with the cursor in the box. The Quick notes tab in the
+  left sidebar is gone. Text and files in the box are still there when you close the window and
+  open it again, and moving the notes to today's journal closes it. **Add as task** sits beside
+  **Attach**.
+
+- **The Graph Sidebar's buttons stay in place.** Search, Today, Quick notes and the extensions'
+  buttons no longer scroll away with the calendar and the lists under them.
+
+- **The Documentation button is gone from the workspace toolbar.** **Docs** in the header
+  opens the same pages.
+
+- **Fixes.**
+  - **Scan for orphaned assets** on a synced graph reads the documents a hundred at a time and
+    closes each batch after reading it, so the memory it uses does not grow with the graph.
+  - The help text under **Rebuild search index** says when to use it: when backlinks, tasks or
+    search results do not match your documents.
+
 ## 0.30.0 - 2026-11-13
 
 ### Client

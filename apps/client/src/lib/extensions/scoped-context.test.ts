@@ -180,7 +180,7 @@ describe('an extension context', () => {
         context.events.on('document:active-changed', listener)
         events.emit('document:active-changed', { documentId: 'Home' })
         expect(listener).toHaveBeenCalledWith({ graphId: 'g1', documentId: 'Home' })
-        expect(() => context.events.on('quick-notes:focus' as never, listener)).toThrow('Extensions cannot listen to "quick-notes:focus".')
+        expect(() => context.events.on('protection:changed' as never, listener)).toThrow('Extensions cannot listen to "protection:changed".')
     })
 
     it('keeps its values under its own key prefix on this device, as JSON', () => {

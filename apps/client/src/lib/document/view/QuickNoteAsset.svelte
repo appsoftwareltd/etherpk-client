@@ -1,6 +1,6 @@
 <script lang="ts">
     /**
-     * A file in a [[Quick Note]], as the Quick Notes View shows it (ADR 0186): a picture as a
+     * A file in a [[Quick Note]], as the Quick Notes Modal shows it (ADR 0186): a picture as a
      * thumbnail, any other file as its name, which downloads it. The bytes come from the open
      * graph's [[Asset]] store, which on a synced graph may still be on their way up or down, so
      * the row keeps its height while it waits and says so when the file is not here yet.

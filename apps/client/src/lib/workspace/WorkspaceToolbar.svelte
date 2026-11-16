@@ -1,6 +1,6 @@
 <script lang="ts">
     /**
-     * The desktop workspace toolbar: the two Sidebar toggles, Docs, Keyboard Shortcuts, the
+     * The desktop workspace toolbar: the two Sidebar toggles, Keyboard Shortcuts, the
      * Settings cog and Tasks.
      *
      * Rendered by the desktop presenter only. The mobile presenter carries its own chrome, and
@@ -26,7 +26,6 @@
      * Find not following yet reads as "still working" rather than as a fault. It sits first after
      * the spacer, so its coming and going moves no button.
      */
-    import { PUBLIC_DOCS_URL } from '@appsoftwareltd/etherpk-shared'
 
     import SidebarToggleIcon from '#lib/layout/renderers/SidebarToggleIcon.svelte'
 
@@ -91,22 +90,6 @@
             <span class="dot" class:spin={mirror.state === 'writing'}></span>
         </button>
     {/if}
-    <!-- The published docs, in a new tab. A link rather than a button because it leaves the
-         app, but drawn as one of the toolbar's own so the reference material reads as a group:
-         docs, then the shortcuts card, then the cog. heroicons/outline book-open. -->
-    <a
-        class="toggle"
-        href={PUBLIC_DOCS_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        title="Documentation"
-        aria-label="Documentation (opens in a new tab)"
-        data-testid="ws-docs"
-    >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
-        </svg>
-    </a>
     <!-- The keyboard-shortcuts card. Beside the cog because that is where a user looks for
          "how does this thing work", but its own button: it is a reference, not a setting. -->
     <button
@@ -255,8 +238,6 @@
         color: inherit;
         font: inherit;
         cursor: pointer;
-        /* The docs link shares the class; an anchor would otherwise underline and recolour. */
-        text-decoration: none;
     }
     .toggle:hover {
         background: var(--gk-surface-2, rgba(127, 127, 127, 0.12));

@@ -1,10 +1,10 @@
 /**
- * The [[Quick Notes View]]'s one shared [[Command]]: move every [[Quick Note]] into today's
- * [[Journal Entry]] (ADR 0078). Registered as a Command so the View's button, the Command
+ * The [[Quick Notes Modal]]'s one shared [[Command]]: move every [[Quick Note]] into today's
+ * [[Journal Entry]] (ADR 0078). Registered as a Command so the modal's button, the Command
  * Menu row and any keybinding all run the same code and refuse the same way.
  *
- * Adding and deleting a note stay local to the View: they need the box's text or a note id,
- * and nothing outside the View has either.
+ * Adding and deleting a note stay local to the modal: they need the box's text or a note id,
+ * and nothing outside the modal has either.
  */
 
 import {
@@ -15,19 +15,13 @@ import {
 
 import { formatISODate, todayISO } from '../calendar/month-grid-core'
 import { canCreateDocuments, type DocumentCreatingStore, whenDocumentText } from '../draft'
-import { getQuickNotes, markQuickNotesMoved, removeQuickNotes } from '../quick-notes'
+import { getQuickNotes, removeQuickNotes } from '../quick-notes'
 import { journalSeparator, quickNotesAsJournalBlocks } from '../quick-notes-journal'
 import type { DocumentStore } from '../types'
 
 export const QUICK_NOTES_MOVE = 'quickNotes.moveToJournal'
-/** Focuses the resident and its box; registered by the workspace, which owns the Layout. */
+/** Opens the [[Quick Notes Modal]] with the caret in its box; registered by the workspace, which hosts it. */
 export const QUICK_NOTES_OPEN = 'quickNotes.open'
-/**
- * Opens today's journal entry and brings the graph's own tab to the front of the left Sidebar:
- * where the Quick Notes View sends the person once their notes have moved. Registered by the
- * workspace, which owns the Layout.
- */
-export const QUICK_NOTES_OPEN_JOURNAL = 'quickNotes.openJournal'
 
 export interface MoveQuickNotesOptions {
     /** The day the notes land in. Read at the moment of the move, never cached (a tab lives for days). */
@@ -85,7 +79,6 @@ export async function moveQuickNotesToJournal(
     }
 
     await removeQuickNotes(notes.map((n) => n.id))
-    markQuickNotesMoved()
     return { moved: notes.length, concept }
 }
 

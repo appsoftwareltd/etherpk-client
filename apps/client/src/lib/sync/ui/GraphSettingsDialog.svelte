@@ -1334,8 +1334,9 @@
                 >
                 <p class="pt-1 text-sm text-neutral-500 dark:text-neutral-400">
                     Re-reads every document to rebuild backlinks, tasks and
-                    search from scratch. Use it if a sidebar disagrees with a
-                    document. Your documents are not changed.
+                    search from scratch. Use it if backlinks, tasks or search
+                    results do not match what your documents say. Your
+                    documents are not changed.
                 </p>
                 {#if rebuilt}
                     <p

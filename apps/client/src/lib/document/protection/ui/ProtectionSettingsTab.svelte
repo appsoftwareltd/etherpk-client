@@ -12,7 +12,7 @@
      * lose by leaving the tab; and a Save that applied to two tabs at once would be the confusing
      * thing, not this.
      */
-    import { untrack } from "svelte";
+    import { tick, untrack } from "svelte";
 
     import type { ProtectionTabProps } from "./protection-tab";
 
@@ -25,6 +25,7 @@
         onsettings,
         onsetup,
         onbindpasskey,
+        onunbindpasskey,
         onchangepassphrase,
     }: ProtectionTabProps = $props();
 
@@ -36,6 +37,10 @@
     let passkeyBusy = $state(false);
     let passkeyMessage = $state<string | null>(null);
     let passkeyError = $state<string | null>(null);
+    /** The inline "Remove it?" question. Removal can cost the only way in if the passphrase is forgotten. */
+    let confirmingRemove = $state(false);
+    let removeButton = $state<HTMLButtonElement | null>(null);
+    let keepButton = $state<HTMLButtonElement | null>(null);
 
     let changing = $state(false);
     let currentPassphrase = $state("");
@@ -79,6 +84,38 @@
         } finally {
             passkeyBusy = false;
         }
+    }
+
+    async function removePasskey() {
+        if (passkeyBusy) return;
+        passkeyBusy = true;
+        passkeyError = null;
+        passkeyMessage = null;
+        try {
+            await onunbindpasskey();
+            confirmingRemove = false;
+            passkeyMessage = "This device's passkey was removed. Unlocking here now needs your passphrase.";
+        } catch (e) {
+            passkeyError = `The passkey could not be removed: ${(e as Error).message}`;
+        } finally {
+            passkeyBusy = false;
+        }
+    }
+
+    /** Ask before removing, with focus on the safe answer: the question replaces the focused button. */
+    async function askRemove() {
+        passkeyMessage = null;
+        passkeyError = null;
+        confirmingRemove = true;
+        await tick();
+        keepButton?.focus();
+    }
+
+    /** Put focus back on the button that asked, which the confirmation replaced. */
+    async function cancelRemove() {
+        confirmingRemove = false;
+        await tick();
+        removeButton?.focus();
     }
 
     async function changePassphrase() {
@@ -198,8 +235,57 @@
             {#if hasPasskey}
                 <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400" data-testid="protection-passkey-bound">
                     A passkey is bound to this device, so you can unlock with your fingerprint, face
-                    or device PIN instead of typing your passphrase.
+                    or device PIN instead of typing your passphrase. If it has stopped working, for
+                    example because it was deleted from your password manager, bind a new one.
                 </p>
+                {#if confirmingRemove}
+                    <div class="mt-2" role="group" aria-labelledby="protection-remove-passkey-question">
+                        <p id="protection-remove-passkey-question" class="text-sm text-neutral-950 dark:text-neutral-100">
+                            Remove this device's passkey? Unlocking here will need your passphrase,
+                            which cannot be recovered if you have forgotten it.
+                        </p>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                bind:this={keepButton}
+                                onclick={() => void cancelRemove()}
+                                disabled={passkeyBusy}
+                                data-testid="protection-remove-passkey-cancel"
+                                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
+                            >Keep the passkey</button>
+                            <button
+                                type="button"
+                                onclick={() => void removePasskey()}
+                                disabled={passkeyBusy}
+                                data-testid="protection-remove-passkey-confirm"
+                                class="rounded-lg border border-red-300 dark:border-red-500/60 px-3 py-1.5 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-40"
+                            >{passkeyBusy ? "Removing…" : "Remove the passkey"}</button>
+                        </div>
+                    </div>
+                {:else}
+                    <div class="mt-2 flex flex-wrap gap-2">
+                        <button
+                            type="button"
+                            onclick={() => void bindPasskey()}
+                            disabled={passkeyBusy || !isUnlocked}
+                            data-testid="protection-replace-passkey"
+                            class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
+                        >{passkeyBusy ? "Waiting…" : "Bind a new passkey"}</button>
+                        <button
+                            type="button"
+                            bind:this={removeButton}
+                            onclick={() => void askRemove()}
+                            disabled={passkeyBusy}
+                            data-testid="protection-remove-passkey"
+                            class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
+                        >Remove this device's passkey</button>
+                    </div>
+                    {#if !isUnlocked}
+                        <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
+                            Unlock this graph first to bind a new passkey - binding needs the key itself.
+                        </p>
+                    {/if}
+                {/if}
             {:else if !canBindPasskey}
                 <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
                     This browser does not support passkeys, so unlocking here always needs the

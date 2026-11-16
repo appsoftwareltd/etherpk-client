@@ -37,11 +37,11 @@ export interface QuickNotesPersist {
     remove(ids: readonly string[]): Promise<void>
 }
 
-/** A hard ceiling, so a corrupt or hostile list cannot swamp the View or the root doc. */
+/** A hard ceiling, so a corrupt or hostile list cannot swamp the modal or the root doc. */
 const MAX_QUICK_NOTES = 10_000
 
 /**
- * How much text one note takes in: the cap on the View's box (`maxlength`) and on the `text`
+ * How much text one note takes in: the cap on the modal's box (`maxlength`) and on the `text`
  * field of a [[Share Target]] share (share-target.ts), which a whole shared article would
  * otherwise blow through - and every note on a Server Backend sits in the root doc that every
  * device loads on every open. Not enforced by `addQuickNote` itself: a share's title and
@@ -97,16 +97,10 @@ export function unionQuickNotes(existing: readonly QuickNote[], incoming: readon
 let list: QuickNote[] = []
 let persist: QuickNotesPersist | null = null
 let onDiscard: ((notes: readonly QuickNote[]) => void) | null = null
-/** Unsent text in the View's box: held per graph so leaving the tab and coming back keeps it. */
+/** Text for the modal's box, held per graph: what a refused share left for the person to add later. */
 let draft = ''
-/**
- * Set by the `quickNotes.open` Command when the View it just opened is not mounted yet - the
- * reveal creates the View and emits its focus Event in the same tick, before a fresh View has
- * subscribed. The View takes the flag at mount and puts the caret in its box.
- */
-let focusOnMount = false
 const listeners = new Set<(notes: QuickNote[]) => void>()
-/** Told when text is put into the box from OUTSIDE the View; the View's own typing is not echoed. */
+/** Told when text is put into the box from OUTSIDE the modal; the modal's own typing is not echoed. */
 const draftListeners = new Set<(text: string) => void>()
 
 /** Newest first; ties broken by id so two devices agree on the order of a same-instant pair. */
@@ -182,7 +176,6 @@ export async function addQuickNote(text: string, options: AddQuickNoteOptions = 
     const note = filedUnder({ id: newId(), text: trimmed, createdAt: options.createdAt ?? Date.now() }, options.under)
     const previous = list
     list = [...list, note]
-    movedToJournal = false
     emit()
     try {
         await persist?.add(note)
@@ -229,18 +222,6 @@ export function setQuickNoteDiscardHandler(handler: ((notes: readonly QuickNote[
     onDiscard = handler
 }
 
-/** Ask the next QuickNotesView to mount to take focus. */
-export function requestQuickNoteFocus(): void {
-    focusOnMount = true
-}
-
-/** Whether a mounting View should take focus; clears the request. */
-export function takeQuickNoteFocusRequest(): boolean {
-    const requested = focusOnMount
-    focusOnMount = false
-    return requested
-}
-
 export function getQuickNoteDraft(): string {
     return draft
 }
@@ -250,10 +231,10 @@ export function setQuickNoteDraft(text: string): void {
 }
 
 /**
- * Put text into the box from outside the View: the workspace, when a [[Share Target]] share's
+ * Put text into the box from outside the modal: the workspace, when a [[Share Target]] share's
  * write was refused (ADR 0087), so the text is not lost. Text already in the box is kept and
  * the offer goes after it, a blank line between - the one rule, here, so the box and this
- * draft cannot disagree. A View already mounted hears the whole new draft
+ * draft cannot disagree. A modal already mounted hears the whole new draft
  * (`subscribeQuickNoteDraft`); one that mounts later reads it as it always has.
  */
 export function offerQuickNoteDraft(text: string): void {
@@ -261,35 +242,17 @@ export function offerQuickNoteDraft(text: string): void {
     for (const listener of draftListeners) listener(draft)
 }
 
-/** Hear text offered from outside the View. Returns an unsubscribe. */
+/** Hear text offered from outside the modal. Returns an unsubscribe. */
 export function subscribeQuickNoteDraft(listener: (text: string) => void): () => void {
     draftListeners.add(listener)
     return () => draftListeners.delete(listener)
 }
 
 /** Graph close / test seam. */
-/**
- * Whether the list is empty because its notes went to the journal on this device, since the
- * graph opened and with nothing added after: what lets the Quick Notes View offer the way to
- * the entry. Kept here, not in the View, which a phone unmounts when the move shows the entry.
- */
-let movedToJournal = false
-
-/** The move to the journal took the notes (`moveQuickNotesToJournal`). */
-export function markQuickNotesMoved(): void {
-    movedToJournal = true
-}
-
-export function quickNotesWereMoved(): boolean {
-    return movedToJournal && list.length === 0
-}
-
 export function resetQuickNotes(): void {
-    movedToJournal = false
     list = []
     persist = null
     onDiscard = null
     draft = ''
-    focusOnMount = false
     emit()
 }
