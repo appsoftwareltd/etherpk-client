@@ -30,7 +30,7 @@
     import { QUICK_NOTES_MOVE } from "../commands/quick-notes-commands";
     import { subscribeFavourites } from "../favourites";
     import { NoteFileError, storeNoteFiles } from "../quick-note-file-store";
-    import { quickNoteParts } from "../quick-note-files";
+    import { quickNoteParts, quickNoteTask } from "../quick-note-files";
     import { fileUnderChoices } from "../quick-note-filing";
     import {
         MAX_QUICK_NOTE_LENGTH,
@@ -409,6 +409,7 @@
                     data-autofocus={focusBox ? undefined : ""}
                 >
                     {#each notes as note (note.id)}
+                        {@const task = quickNoteTask(note.text)}
                         <li
                             class="group/note relative rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) py-1.5 pr-9 pl-2 pointer-coarse:pr-12"
                             data-testid="quick-notes-row"
@@ -419,14 +420,36 @@
                                     Under <span class="font-medium text-(--gk-text-default)">{note.under}</span>
                                 </p>
                             {/if}
-                            <div class="flex flex-col gap-1.5">
-                                {#each quickNoteParts(note.text) as part, index (index)}
-                                    {#if part.kind === "text"}
-                                        <p class="text-sm whitespace-pre-wrap break-words text-(--gk-text-strong)" data-testid="quick-notes-text">{part.text}</p>
-                                    {:else}
-                                        <QuickNoteAsset url={part.url} kind={part.kind} alt={part.kind === "image" ? part.alt : ""} />
-                                    {/if}
-                                {/each}
+                            <!-- A task's checkbox is the first characters of its text (`shareNoteText`).
+                                 It is drawn as a box here, beside the first line, and written as it
+                                 is by the move. A picture, not a control: a note is ticked in the
+                                 journal, once it is a task there. -->
+                            <div class="flex items-start gap-2">
+                                {#if task}
+                                    <span
+                                        class="inline-flex h-5 shrink-0 items-center text-(--gk-text-muted)"
+                                        role="img"
+                                        aria-label={task.done ? "Task, done" : "Task"}
+                                        data-testid="quick-notes-task-mark"
+                                        data-state={task.done ? "done" : "open"}
+                                    >
+                                        <svg class="size-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                                            <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+                                            {#if task.done}
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M5.5 8 7.3 10 10.5 5.8" />
+                                            {/if}
+                                        </svg>
+                                    </span>
+                                {/if}
+                                <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+                                    {#each quickNoteParts(task ? task.text : note.text) as part, index (index)}
+                                        {#if part.kind === "text"}
+                                            <p class="text-sm whitespace-pre-wrap break-words text-(--gk-text-strong)" data-testid="quick-notes-text">{part.text}</p>
+                                        {:else}
+                                            <QuickNoteAsset url={part.url} kind={part.kind} alt={part.kind === "image" ? part.alt : ""} />
+                                        {/if}
+                                    {/each}
+                                </div>
                             </div>
                             <time
                                 datetime={new Date(note.createdAt).toISOString()}

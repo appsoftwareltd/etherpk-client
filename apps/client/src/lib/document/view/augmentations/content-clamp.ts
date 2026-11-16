@@ -230,7 +230,12 @@ function measureCodeShifts(view: EditorView, current: ReadonlyMap<number, number
     const next = new Map(current)
     const done = new Set<number>()
     let changed = false
-    for (const block of visibleFencedBlocks(state)) {
+    // A block collapsed to its rendered widget (ADR 0022) has no code line to read: its body is
+    // hidden, so the position resolves to the widget's own line, which no shift moves. Folding
+    // that fixed gap in again on every measure walked the blocks sharing its key further sideways
+    // with each keystroke. The next block of the key that is drawn as code is measured instead.
+    const collapsed = collapsedFenceStarts(state)
+    for (const block of visibleFencedBlocks(state).filter((b) => !collapsed.has(b.start))) {
         // Skip top-level code (no correction needed there) and code owned by no bullet (under a prose
         // line: nothing to align to). The alignment owner: for a form-1 block (`- ``` `) the opener IS
         // the bullet, so its own content column — the fence run, sitting on the proportional column

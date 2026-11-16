@@ -21,7 +21,8 @@ starts at 0.9.3.
   of the Graph Sidebar, and Alt+N open it with the cursor in the box. The Quick notes tab in the
   left sidebar is gone. Text and files in the box are still there when you close the window and
   open it again, and moving the notes to today's journal closes it. **Add as task** sits beside
-  **Attach**.
+  **Attach**, the box's text is the size of a document's, and a note added as a task shows a
+  checkbox in the list.
 
 - **The Graph Sidebar's buttons stay in place.** Search, Today, Quick notes and the extensions'
   buttons no longer scroll away with the calendar and the lists under them.
@@ -34,6 +35,9 @@ starts at 0.9.3.
     closes each batch after reading it, so the memory it uses does not grow with the graph.
   - The help text under **Rebuild search index** says when to use it: when backlinks, tasks or
     search results do not match your documents.
+  - A code block under a bullet stays where it is while you type elsewhere on the page. It moved
+    further right with each key when a diagram, video or other rendered block sat above it at the
+    same indent.
 
 ## 0.30.0 - 2026-11-13
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { noteTextWithFiles, quickNoteAssetRefs, quickNoteParts } from './quick-note-files'
+import { noteTextWithFiles, quickNoteAssetRefs, quickNoteParts, quickNoteTask } from './quick-note-files'
 
 const photo = { ref: '../assets/receipt.a1b2c3d4.webp', stem: 'receipt', isImage: true }
 const pdf = { ref: '../assets/report.e5f6a7b8.pdf', stem: 'report', isImage: false }
@@ -24,6 +24,27 @@ describe('noteTextWithFiles', () => {
 
     it('is the text alone with no files', () => {
         expect(noteTextWithFiles('beans', [])).toBe('beans')
+    })
+})
+
+describe('quickNoteTask', () => {
+    it('is null for a note that does not start with a checkbox', () => {
+        expect(quickNoteTask('water the beans')).toBeNull()
+        expect(quickNoteTask('see [ ] in the list')).toBeNull()
+        expect(quickNoteTask('[[Garden]] beds')).toBeNull()
+    })
+
+    it('reads an open and a done checkbox, and gives the text after it', () => {
+        expect(quickNoteTask('[ ] water the beans')).toEqual({ done: false, text: 'water the beans' })
+        expect(quickNoteTask('[x] water the beans\nby the shed')).toEqual({ done: true, text: 'water the beans\nby the shed' })
+        expect(quickNoteTask('[X]water the beans')).toEqual({ done: true, text: 'water the beans' })
+    })
+
+    it('keeps the lines after a checkbox that stands alone, a task that is only files', () => {
+        expect(quickNoteTask('[ ] \n![receipt](../assets/receipt.a1b2c3d4.webp)')).toEqual({
+            done: false,
+            text: '![receipt](../assets/receipt.a1b2c3d4.webp)',
+        })
     })
 })
 

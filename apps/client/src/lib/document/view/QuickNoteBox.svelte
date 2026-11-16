@@ -61,7 +61,7 @@
         label: string;
         placeholder?: string;
         maxlength?: number;
-        /** The share page's size: larger text and corners than the sidebar's box. */
+        /** The share page's size: more room and larger corners than the modal's box. */
         roomy?: boolean;
         readonly?: boolean;
         invalid?: boolean;
@@ -264,6 +264,8 @@
         </ul>
     {/if}
 
+    <!-- The text is the size of a document's, and follows the editor's zoom (`--editor-font-size`,
+         editor-font.ts), floored at 14px like the rest of the chrome. -->
     <textarea
         bind:this={textarea}
         bind:value
@@ -293,8 +295,9 @@
         spellcheck="false"
         class={[
             "block w-full resize-none overflow-y-auto border-0 bg-transparent text-(--gk-text-strong) field-sizing-content placeholder:text-(--gk-text-subtle) focus:outline-none",
-            roomy ? "max-h-72 min-h-24 px-4 py-3 text-base" : "max-h-60 min-h-18 px-2 py-1.5 text-sm",
+            roomy ? "max-h-72 min-h-24 px-4 py-3" : "max-h-60 min-h-18 px-2 py-1.5",
         ]}
+        style:font-size="max(0.875rem, var(--editor-font-size, 1rem))"
     ></textarea>
 
     <!-- The list keeps focus in the text: a press on a row must not blur the box, which would

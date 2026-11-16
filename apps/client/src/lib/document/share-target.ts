@@ -22,7 +22,7 @@
 import type { GraphRecord } from '#lib/storage/graph-registry.js'
 
 import { MARKDOWN_LINK, linkGroups } from './markdown-link-target'
-import { type NoteFile, noteTextWithFiles } from './quick-note-files'
+import { type NoteFile, noteTextWithFiles, quickNoteTask } from './quick-note-files'
 import { MAX_QUICK_NOTE_LENGTH, sanitizeUnder } from './quick-notes'
 import { isOpenableUrl } from './view/augmentations/markdown-link-core'
 
@@ -129,23 +129,17 @@ export function composeSharedNote(payload: SharedPayload): ComposedShare | null 
 }
 
 /**
- * A checkbox at the start of the text, open or done, with or without a space after it: the
- * editor's own task rule (`taskDone` in block-model.ts), less the bullet the move writes.
- */
-const LEADING_CHECKBOX = /^\[[ xX]\]/
-
-/**
  * What Add puts in the [[Quick Note]]: the edited text, trimmed, or `null` when nothing is left.
  * For a task, a checkbox in front, so the move to the journal writes the first line as
  * `  - [ ] <text>` and the note lands as a [[Task]]. The checkbox is the note's own text rather
- * than a field beside it, so the Quick Notes Modal shows exactly what will land and nothing about
+ * than a field beside it, so the Quick Notes Modal shows what will land (drawn as a box) and nothing about
  * the note's record, sync or file changes (ADR 0087, amended 2026-10-13). Text that already
  * starts with a checkbox is left alone, so a share sent back to the page cannot get a second.
  */
 export function shareNoteText(text: string, asTask: boolean): string | null {
     const trimmed = text.trim()
     if (trimmed === '') return null
-    return asTask && !LEADING_CHECKBOX.test(trimmed) ? `[ ] ${trimmed}` : trimmed
+    return asTask && quickNoteTask(trimmed) === null ? `[ ] ${trimmed}` : trimmed
 }
 
 /**

@@ -30,6 +30,23 @@ export function noteTextWithFiles(text: string, files: readonly NoteFile[], imag
     return [text.trim(), ...lines].filter((part) => part !== '').join('\n')
 }
 
+/**
+ * A checkbox at the start of a note, open or done, with or without a space after it: the editor's
+ * own task rule (`taskDone` in block-model.ts), less the bullet the move writes. The spaces after
+ * it go with it, and so does the line break when the checkbox stands alone on its line.
+ */
+const LEADING_CHECKBOX = /^\[([ xX])\][ \t]*\n?/
+
+/**
+ * Whether a note is a [[Task]], and its text without the checkbox. The checkbox is the note's own
+ * text (`shareNoteText`), so the move to the journal writes it as it is; the Quick Notes Modal
+ * draws it as a box in front of the text. Null for a note that does not start with one.
+ */
+export function quickNoteTask(text: string): { done: boolean; text: string } | null {
+    const match = LEADING_CHECKBOX.exec(text)
+    return match ? { done: match[1] !== ' ', text: text.slice(match[0].length) } : null
+}
+
 /** One run of a note as the Quick Notes Modal shows it. */
 export type QuickNotePart =
     | { kind: 'text'; text: string }
