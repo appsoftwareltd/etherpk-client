@@ -1210,8 +1210,8 @@
             blockMenu: (line, x, y, touch) =>
                 openContextMenu({ kind: 'block', concept: view.target, panelId, line: line.number, text: line.text, touch }, x, y),
             bookmarks: {
-                lineMenu: (line, x, y) =>
-                    openContextMenu({ kind: 'line', concept: view.target, panelId, line: line.number, text: line.text }, x, y),
+                lineMenu: (line, x, y, rows) =>
+                    openContextMenu({ kind: 'line', concept: view.target, panelId, line: line.number, text: line.text, ...(rows ? { rows } : {}) }, x, y),
                 draft: draft !== undefined,
                 // A bookmark's line is held as a Search result's is, so the tab's activation or
                 // the text arriving does not put back the line the open first asked for.

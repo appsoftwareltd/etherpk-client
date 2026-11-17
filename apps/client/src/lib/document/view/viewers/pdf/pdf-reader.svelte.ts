@@ -427,6 +427,15 @@ export class PdfReader {
         else this.linkedPage = pageNumber
     }
 
+    /**
+     * The page a link asked for that this reader took but has not gone to yet, because its pages
+     * did not exist before it closed: a view mounted and replaced at once, as the Phone Layout does
+     * when it brings a tab forward. The view hands it back for the reader that replaces this one.
+     */
+    heldLinkedPage(): number | null {
+        return this.restored ? null : this.linkedPage
+    }
+
     /** False when there is no page to go to. */
     nextPage(): boolean {
         const turned = this.viewer?.nextPage() ?? false

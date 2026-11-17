@@ -15,6 +15,7 @@ import { getActiveEditorView } from './active-editor'
 import { bodyWritable } from './view/body-writable'
 import { canRedo, canUndo } from './view/editor-history'
 import { misspellingAt } from './view/augmentations/spell-check'
+import { bodyTaskOnLine } from './view/caret-task'
 import { tableAtCaret, tableInsertable } from './view/table-context'
 import { bulletToggleable, bulletToggleOn, indentable, outlinerBulletAtCaret, taskToggleable } from './view/task-toggleable'
 
@@ -40,6 +41,7 @@ export const editorContext = $state<{
     canUndo: boolean
     canRedo: boolean
     misspelling: boolean
+    task: boolean
 }>({
     inOutlinerBlock: false,
     /** The task button's own, wider gate: prose counts, headings / code / frontmatter do not. */
@@ -86,6 +88,11 @@ export const editorContext = $state<{
      * group (CONTEXT.md → Command Bar, *Contextual Group*) is present exactly while this is true.
      */
     misspelling: false,
+    /**
+     * Whether the caret's line is a task in the document's body: the Command Bar's task group
+     * (priority, status, due date and the task's menu) is present exactly while this is true.
+     */
+    task: false,
 })
 
 /**
@@ -123,6 +130,7 @@ export function refreshEditorContext(view: EditorView | null): void {
         editorContext.canUndo = false
         editorContext.canRedo = false
         editorContext.misspelling = false
+        editorContext.task = false
         return
     }
     // A bullet of the outline, a form-1 opener included; a bullet-shaped code or YAML line is not one.
@@ -139,4 +147,5 @@ export function refreshEditorContext(view: EditorView | null): void {
     editorContext.canRedo = canRedo(view.state)
     const caret = view.state.selection.main
     editorContext.misspelling = caret.empty && misspellingAt(view, caret.head) !== null
+    editorContext.task = bodyTaskOnLine(view.state, view.state.doc.lineAt(caret.head).number) !== null
 }

@@ -339,6 +339,30 @@
     // the content reflows and the bottom Command Bar lands just above the keyboard.
     let keyboardInset = $state(0)
     $effect(() => watchKeyboardInset((inset) => (keyboardInset = inset)))
+
+    // --- Over a dialog -------------------------------------------------------------
+    // A modal dialog covers the workspace's Command Bar. While an editor inside one has the
+    // keyboard (the Task Editor's description, say), a second bar is drawn on the page's body
+    // above the dialog and the soft keyboard, under the dialog's menus, acting on that editor as
+    // this one acts on a document. A field such as a title has none, as in the workspace.
+    let editingInDialog = $state(false)
+    function readFocus(): void {
+        editingInDialog = document.activeElement?.closest('[role="dialog"] .cm-content') != null
+    }
+    $effect(() => {
+        readFocus()
+        document.addEventListener('focusin', readFocus)
+        document.addEventListener('focusout', readFocus)
+        return () => {
+            document.removeEventListener('focusin', readFocus)
+            document.removeEventListener('focusout', readFocus)
+        }
+    })
+    /** Move an element to the page's body for as long as it is mounted, above a dialog's stacking. */
+    function onBody(node: HTMLElement): () => void {
+        document.body.appendChild(node)
+        return () => node.remove()
+    }
 </script>
 
 <!-- The pin on a pinned View, leading its title as pinned Views lead the list. Read straight off
@@ -595,6 +619,11 @@
     <div class="command-bar-slot" onpointerdowncapture={pressedBar}>
         <CommandBar off={leftOpen || rightOpen} />
     </div>
+    {#if editingInDialog}
+        <div class="dialog-command-bar" style:bottom="{keyboardInset}px" data-testid="dialog-command-bar" {@attach onBody}>
+            <CommandBar />
+        </div>
+    {/if}
 </div>
 
 <style>
@@ -703,6 +732,13 @@
         }
     }
     /* The Command Bar's grid row, pinned to the bottom of the surface. */
+    /* On the page's body, over a dialog (`--z-dialog`) and under its menus (`--z-menu`). */
+    .dialog-command-bar {
+        position: fixed;
+        inset-inline: 0;
+        z-index: calc(var(--z-menu) - 1);
+    }
+
     .command-bar-slot {
         grid-row: 3;
     }

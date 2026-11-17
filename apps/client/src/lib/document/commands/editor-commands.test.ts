@@ -386,6 +386,9 @@ describe('registerEditorCommands — a locked Protected Document', () => {
             'table.addColumn',
             'table.removeRow',
             'table.removeColumn',
+            'task.bar.priority',
+            'task.bar.status',
+            'task.bar.due',
             'editor.toggleBullet',
             'editor.insertWikilinkOpen',
             'editor.insertWikilinkClose',
@@ -399,7 +402,8 @@ describe('registerEditorCommands — a locked Protected Document', () => {
             'editor.moveUp',
             'editor.moveDown',
         ])
-        expect(open).toEqual(['editor.toggleFold', 'editor.zoomOut', 'editor.zoomIn'])
+        // The task menu writes nothing itself; its rows check the document as a right-click's do.
+        expect(open).toEqual(['task.bar.menu', 'editor.toggleFold', 'editor.zoomOut', 'editor.zoomIn'])
         teardown()
     })
 

@@ -95,6 +95,23 @@ describe('the task tag run reads back what it writes', () => {
         )
     })
 
+    it('reads each Task Tag in any case, with Free Tags written among them, as `#bug #p3` is', () => {
+        const caseOf = fc.array(fc.boolean(), { minLength: 12, maxLength: 12 })
+        const freeAmong = fc.array(fc.constantFrom(...FREE_TAGS), { maxLength: 3 })
+        fc.assert(
+            fc.property(tags, text, caseOf, freeAmong, fc.array(fc.nat(), { minLength: 3, maxLength: 3 }), (set, words, lower, free, at) => {
+                // Every token in a case of its own: `#p3`, `#P3`, `#D-2026-11-05`, `#d-2026-11-05`.
+                const run: string[] = serialiseTags({ ...set, text: '' }).map((token, i) => (lower[i % lower.length] ? token.toLowerCase() : token))
+                // Free Tags anywhere in the run, before the first Task Tag too.
+                free.forEach((tag, i) => run.splice(at[i] % (run.length + 1), 0, tag))
+                const label = [...run, words].filter((part) => part !== '').join(' ')
+                const freeInRun = run.filter((token) => free.includes(token))
+                expect(parseTaskTags(label)).toEqual({ ...set, text: [...freeInRun, words].filter((part) => part !== '').join(' ') })
+            }),
+            fuzz(500),
+        )
+    })
+
     it('puts the line back when the same toggle is issued twice, and a date is set once whatever its repeats', () => {
         fc.assert(
             fc.property(taskLine, toggleCommand, dateCommand, (line, toggle, dated) => {

@@ -27,6 +27,7 @@
     import type { ViewRef } from "#lib/layout/index.js";
     import { attachContextMenu, openContextMenu, type TaskContextMenuTarget, tryGetActiveEventBus } from "#lib/surface/index.js";
     import { workspaceService } from "#lib/workspace/workspace-services.js";
+    import { createDocumentWatch } from "../document-watch";
 
     import { getActiveDocument } from "../active-document";
     import { conceptIsMissing, openConcept, openConceptAtLine } from "../open-concept";
@@ -280,6 +281,12 @@
      * than the worker replies.
      */
     let wanted = 0;
+    /**
+     * The documents the listed tasks come from, watched for edits made elsewhere (a phone, another
+     * window, an agent), which a tab otherwise hears only for the documents it shows
+     * (`document-watch.ts`). An edit heard reaches the index, whose update lists the tasks again.
+     */
+    const documentWatch = createDocumentWatch(() => workspaceService("store"));
     async function recompute(): Promise<void> {
         const index = getActiveGraphIndex();
         const ticket = ++wanted;
@@ -301,6 +308,7 @@
             today = query.today;
             releaseAgreedHolds(page.hits);
             hits = withHeldRows(page.hits);
+            documentWatch.watch(page.hits.map((hit) => hit.concept));
             // Counted from the QUERY, not from `hits`: a held row is one the query no longer
             // returns, so counting the rendered list would report "2 of 1".
             loaded = page.hits.length;
@@ -600,6 +608,7 @@
         unsubShow?.();
         indexRefresh.cancel();
         textFilterSettled.cancel();
+        documentWatch.dispose();
         store?.flush();
     });
 </script>

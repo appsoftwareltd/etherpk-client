@@ -41,6 +41,8 @@ export const CLIENT_IMPORT_EXCEPTIONS = {
         '#lib/document/caret-concepts.js',
         '#lib/document/commands/link-commands.js',
         '#lib/document/commands/agent-instruction-commands.js',
+        // The board and the Tasks View watch the documents their tasks come from (2026-11-17).
+        '#lib/document/document-watch.js',
         '#lib/document/in-memory-store.js',
         '#lib/document/index-db-sqlite.js',
         '#lib/document/index-db.js',

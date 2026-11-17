@@ -46,6 +46,23 @@ export function freeTagProblem(tag: string, existing: readonly string[]): string
     return null
 }
 
+/** How many of the graph's tags the tag field offers at once. */
+export const TAG_SUGGESTION_LIMIT = 8
+
+/**
+ * The graph's [[Free Tag]]s the Task Editor's tag field offers for what is typed: those that start
+ * with it first, then those that hold it, each A to Z, lower-cased as the field writes a tag, and
+ * none the task has. With nothing typed, every tag, A to Z.
+ */
+export function tagSuggestions(graphTags: readonly string[], typed: string, taken: readonly string[], limit = TAG_SUGGESTION_LIMIT): string[] {
+    const query = readFreeTag(typed).toLowerCase()
+    const has = new Set(taken.map((tag) => tag.toLowerCase()))
+    const tags = [...new Set(graphTags.map((tag) => tag.toLowerCase()))].filter((tag) => !has.has(tag)).sort()
+    const starting = tags.filter((tag) => tag.startsWith(query))
+    const holding = tags.filter((tag) => !tag.startsWith(query) && tag.includes(query))
+    return [...starting, ...holding].slice(0, limit)
+}
+
 /** The fields a new task is made from. */
 export interface NewTaskFields {
     title: string

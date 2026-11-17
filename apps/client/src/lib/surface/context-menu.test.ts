@@ -35,6 +35,17 @@ describe('context-menu contribution point', () => {
         expect(listContextMenuItems(registry, tab('Recipes')).map((r) => r.label)).toEqual(['Add to favourites'])
     })
 
+    it('lists only the rows a line target names, as the Command Bar’s Priority and Status buttons ask', () => {
+        const registry = createContributionRegistry()
+        registerContextMenuItem(registry, { id: 'task.setStatus.doing', label: 'Mark as Doing', command: 'a', order: 1 })
+        registerContextMenuItem(registry, { id: 'task.setPriority.1', label: 'Priority P1', command: 'b', order: 2 })
+        registerContextMenuItem(registry, { id: 'bookmarks.add', label: 'Bookmark', command: 'c', order: 3 })
+        const line = { kind: 'line', concept: 'Garden', line: 2, text: '- [ ] water the beans' } as const
+
+        expect(listContextMenuItems(registry, line).map((r) => r.label)).toEqual(['Mark as Doing', 'Priority P1', 'Bookmark'])
+        expect(listContextMenuItems(registry, { ...line, rows: 'task.setPriority.' }).map((r) => r.label)).toEqual(['Priority P1'])
+    })
+
     it('carries a row’s icon through, and none for a row without one', () => {
         const registry = createContributionRegistry()
         registerContextMenuItem(registry, { id: 'k', label: 'Open Kanban Board', command: 'kanban.open', icon: 'kanban', order: 1 })

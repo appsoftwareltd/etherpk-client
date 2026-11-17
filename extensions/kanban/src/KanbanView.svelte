@@ -21,6 +21,7 @@
     import { MediaQuery } from "svelte/reactivity";
 
     import { conceptKey, getActiveGraphIndex, type TaskStatus, taskDateKey } from "#lib/document/backlinks/index.js";
+    import { createDocumentWatch } from "#lib/document/document-watch.js";
     import { openConceptAtLine } from "#lib/document/open-concept.js";
     import { createSettleScheduler, TASK_TEXT_FILTER_SETTLE } from "#lib/document/settle-scheduler.js";
     import { bulletLabel, parseTaskTextFilter } from "#lib/document/index-derive.js";
@@ -255,23 +256,11 @@
 
     /**
      * The documents the board's cards come from, watched for edits made elsewhere (a phone, another
-     * window, an agent), which a tab otherwise hears only for the documents it shows. An edit heard
-     * reaches the index, whose update reads the board again. The new set is watched before the old
-     * one is let go, so a document in both is never unsubscribed in between.
+     * window, an agent), which a tab otherwise hears only for the documents it shows
+     * (`document-watch.ts`). An edit heard reaches the index, whose update reads the board again.
      */
-    let releaseWatch: (() => void) | undefined;
-    let watchedDocuments = "";
-    function watchBoardDocuments(read: BoardSnapshot): void {
-        const store = workspaceService("store");
-        if (!store?.watchDocuments) return;
-        const documents = boardDocuments(read);
-        const key = documents.join("\n");
-        if (key === watchedDocuments) return;
-        const release = store.watchDocuments(documents);
-        releaseWatch?.();
-        releaseWatch = release;
-        watchedDocuments = key;
-    }
+    const documentWatch = createDocumentWatch(() => workspaceService("store"));
+    const watchBoardDocuments = (read: BoardSnapshot) => documentWatch.watch(boardDocuments(read));
 
     /**
      * The index updates on every ingest, several times a second while someone types. An update
@@ -1389,7 +1378,7 @@
             refresh.cancel();
             filterSettled.cancel();
             statusDismiss.dispose();
-            releaseWatch?.();
+            documentWatch.dispose();
             endDrag();
             // A lane collapsed just before the tab closed is still remembered.
             boardState.flush();

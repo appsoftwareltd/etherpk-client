@@ -67,6 +67,11 @@ export interface EditorLine {
 
 export interface LineContextMenuTarget extends EditorLine {
     kind: 'line'
+    /**
+     * Only the rows whose id starts with this, such as `task.setPriority.`: what the Command Bar's
+     * Priority and Status buttons open. Absent, every row that applies.
+     */
+    rows?: string
 }
 
 /**
@@ -360,6 +365,7 @@ export function listContextMenuItems(
         .list(CONTEXT_MENU_KIND)
         .map((e) => e.value as ContextMenuItem)
         .filter((item) => !item.when || item.when(target))
+        .filter((item) => !(isLineTarget(target) && target.rows) || item.id.startsWith(target.rows))
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
         .map((item) => ({
             id: item.id,

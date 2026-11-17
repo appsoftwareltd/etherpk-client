@@ -21,6 +21,7 @@ import {
     registerCommandMenuItem,
 } from '../../surface'
 import { getActiveEditorView } from '../active-editor'
+import { openLineMenuAtCaret } from '../view/augmentations/bookmarks'
 import { getActiveGraphSettings } from '../active-graph-settings'
 import { zoomEditorFont } from '../editor-font'
 import { isSpellCheckEnabled, setSpellCheckEnabled, toggleSpellCheck } from '../spell-check-preference'
@@ -236,6 +237,22 @@ export function registerEditorCommands(
     barItem({ id: 'table.addColumn', icon: 'table-add-column', label: 'Add column', order: 0, command: 'table.addColumn', contextualGroup: 'table', writableOnly: true })
     barItem({ id: 'table.removeRow', icon: 'table-remove-row', label: 'Remove row', order: 0, command: 'table.removeRow', contextualGroup: 'table', tableRowOnly: true, writableOnly: true })
     barItem({ id: 'table.removeColumn', icon: 'table-remove-column', label: 'Remove column', order: 0, command: 'table.removeColumn', contextualGroup: 'table', tableMultiColumnOnly: true, writableOnly: true })
+    // The task group is a Contextual Group too: present only while the caret is on a task line,
+    // after the slash button. A phone has no right-click, so it holds what the line's menu offers a
+    // desktop: Priority and Status open that menu with only their rows, Due date the calendar the
+    // tag menu's "Due date…" row opens, and the last button the whole menu (Open in task editor,
+    // Copy agent instruction). The rows write the line as they do from a right-click.
+    command('task.bar.priority', withWritableView((view) => void openLineMenuAtCaret(view, 'task.setPriority.')))
+    command('task.bar.status', withWritableView((view) => void openLineMenuAtCaret(view, 'task.setStatus.')))
+    command('task.bar.menu', withView((view) => void openLineMenuAtCaret(view)))
+    command(
+        'task.bar.due',
+        withWritableView((view) => view.dispatch({ effects: openDateCalendar.of({ pos: view.state.selection.main.head, target: { kind: 'task-tag', tag: 'due' } }) })),
+    )
+    barItem({ id: 'task.bar.priority', icon: 'flag', label: 'Priority', order: 0, command: 'task.bar.priority', contextualGroup: 'task', writableOnly: true })
+    barItem({ id: 'task.bar.status', icon: 'check', label: 'Status', order: 0, command: 'task.bar.status', contextualGroup: 'task', writableOnly: true })
+    barItem({ id: 'task.bar.due', icon: 'calendar', label: 'Due date', order: 0, command: 'task.bar.due', contextualGroup: 'task', writableOnly: true })
+    barItem({ id: 'task.bar.menu', icon: 'more', label: 'Task menu', order: 0, command: 'task.bar.menu', contextualGroup: 'task' })
     // The bullet toggle is the first fixed button after the slash: making a line a bullet, or a
     // bullet prose again, is the block edit a phone reaches for most. Prose (a blank line included)
     // becomes a bullet and a bullet at column 0 becomes prose. A nested bullet greys it, since as

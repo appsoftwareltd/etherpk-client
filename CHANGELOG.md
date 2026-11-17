@@ -5,6 +5,25 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Task buttons on a phone.** With the cursor on a task, the command bar shows **Priority**,
+  **Status**, **Due date** and **Task menu**, which hold what a right-click on the task offers on a
+  computer, including **Open in task editor** and **Copy agent instruction**.
+- **The task editor saves a new task when you close it.** Closing a new task with **Esc**, the
+  close button or a click outside creates it when it has a title, instead of asking to discard it.
+  **Cancel** still asks first.
+- **Tag suggestions in the task editor.** The **Tags** field offers the tags already used in the
+  graph as you type, and writes tags in lower case. On a phone, the keyboard no longer capitalises
+  them, and the command bar shows while you type in the description, comments or additional context.
+- **The Tasks view keeps up with other devices.** On a synced graph, a task ticked or moved on
+  another device, in another window or by an agent changes in an open Tasks view without a reload.
+- **Fixes.**
+  - On a phone, a PDF bookmark in the sidebar opens the PDF at its page when another document was
+    in front. It used to open the PDF where you last left it.
+
 ## 0.32.0 - 2026-11-17
 
 ### Client

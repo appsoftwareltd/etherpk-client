@@ -24,6 +24,7 @@
     import { onDestroy, onMount, tick } from "svelte";
 
     import { Dialog } from "#lib/components/dialog.js";
+    import { getActiveGraphIndex } from "#lib/document/backlinks/index.js";
     import { todayISO } from "#lib/document/calendar/month-grid-core.js";
     import { TASK_COPY_REFERENCE } from "#lib/document/commands/agent-instruction-commands.js";
     import { bulletLabel } from "#lib/document/index-derive.js";
@@ -49,6 +50,7 @@
         type DateField,
         EMPTY_DESCRIPTION,
         freeTagProblem,
+        tagSuggestions,
         isUntouched,
         PRIORITY_CHOICES,
         readFreeTag,
@@ -125,6 +127,12 @@
     let savingShown = $state(false);
     let titleError = $state<string | null>(null);
     let tagInput = $state("");
+    /** The graph's Free Tags, read once as the editor opens, which the tag field offers as you type. */
+    let graphTags = $state.raw<string[]>([]);
+    /** The tag field's list is open: it has the focus and something to offer. Escape closes it. */
+    let tagListOpen = $state(false);
+    let tagSelected = $state(-1);
+    const tagOffers = $derived(tagListOpen ? tagSuggestions(graphTags, tagInput, freeTags) : []);
     let tagError = $state<string | null>(null);
     let commentInput = $state("");
     let commentError = $state<string | null>(null);
@@ -319,6 +327,39 @@
         if (picked !== undefined) onDateChange(field, picked);
     }
 
+    /** Take a tag the list offers: it is added as typed tags are. */
+    function takeTag(tag: string): void {
+        tagInput = tag;
+        tagSelected = -1;
+        void addTag();
+    }
+
+    /** The keys of the tag field: the arrows walk the list, Enter takes a tag, Escape closes the list. */
+    function onTagKeydown(event: KeyboardEvent): void {
+        const open = tagOffers.length > 0;
+        if (open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+            event.preventDefault();
+            // -1 is the field itself: past either end of the list the selection comes back to it.
+            const last = tagOffers.length - 1;
+            if (event.key === "ArrowDown") tagSelected = tagSelected >= last ? -1 : tagSelected + 1;
+            else tagSelected = tagSelected <= -1 ? last : tagSelected - 1;
+            return;
+        }
+        if (open && event.key === "Escape") {
+            // The list's own Escape: the dialog under it stays open.
+            event.preventDefault();
+            event.stopPropagation();
+            tagListOpen = false;
+            tagSelected = -1;
+            return;
+        }
+        if (event.key === "Enter" && !event.ctrlKey && !event.metaKey) {
+            event.preventDefault();
+            if (open && tagSelected >= 0) takeTag(tagOffers[tagSelected]);
+            else void addTag();
+        }
+    }
+
     async function addTag(): Promise<void> {
         const tag = readFreeTag(tagInput);
         tagError = freeTagProblem(tag, freeTags);
@@ -505,23 +546,31 @@
     }
 
     /**
-     * Close, unless a new task would be lost (then ask) or the title could not be saved (then stay).
-     * True when it closed.
+     * Close, saving what there is: a new task with a title is created first, so Escape, the close
+     * button or a click outside never loses it. A new task that cannot be saved (no title) asks
+     * before it goes, and so does Cancel, which is the way to leave one on purpose. An existing
+     * task stays when its title could not be saved. True when it closed.
      */
-    async function requestClose(): Promise<boolean> {
+    async function requestClose(via: "close" | "cancel" = "close"): Promise<boolean> {
         if (!editing) {
             if (discardAsked) {
                 discardAsked = false;
                 return false;
             }
-            if (!isUntouched({ title, status, priority, freeTags, due: dates.due, scheduled: dates.scheduled }, startedIn, held.getText())) {
-                discardAsked = true;
-                await tick();
-                keepEditingEl?.focus();
-                return false;
+            if (isUntouched({ title, status, priority, freeTags, due: dates.due, scheduled: dates.scheduled }, startedIn, held.getText())) {
+                onclose();
+                return true;
             }
-            onclose();
-            return true;
+            if (via === "close" && title.trim() !== "") {
+                await create();
+                // Created: what was typed is in the journal. Not created: the form says why, and stays.
+                if (editing) onclose();
+                return editing;
+            }
+            discardAsked = true;
+            await tick();
+            keepEditingEl?.focus();
+            return false;
         }
         if ((await commitTitle()) || titleUnsaved) {
             onclose();
@@ -555,6 +604,11 @@
     });
 
     onMount(() => {
+        // The graph's tags, for the tag field to offer. A list the index cannot give is no list.
+        void getActiveGraphIndex()
+            ?.freeTags()
+            .then((tags) => (graphTags = tags))
+            .catch(() => {});
         const detachHeld = held.subscribe((text) => (heldText = text));
         let pickerOpen = false;
         const detachPicker = subscribeAssetPicker((state) => {
@@ -808,28 +862,72 @@
                             {/each}
                         </ul>
                     {/if}
-                    <div class="flex gap-2">
+                    <div class="relative flex gap-2">
+                        <!-- A tag is written in lower case, so the field writes what is typed that way,
+                             and a phone's keyboard neither capitalises nor corrects it. -->
                         <input
                             id="{uid}-tag"
-                            bind:value={tagInput}
+                            value={tagInput}
                             class="gk-input min-w-0 flex-1"
                             type="text"
                             autocomplete="off"
+                            autocapitalize="none"
+                            autocorrect="off"
+                            spellcheck="false"
                             placeholder="Add another tag…"
                             disabled={loading}
+                            role="combobox"
+                            aria-expanded={tagOffers.length > 0}
+                            aria-controls="{uid}-tag-list"
+                            aria-activedescendant={tagSelected >= 0 ? `${uid}-tag-option-${tagSelected}` : undefined}
                             aria-invalid={tagError !== null}
                             aria-describedby={tagError ? `${uid}-tag-error` : `${uid}-tag-hint`}
-                            oninput={() => {
+                            onfocus={() => (tagListOpen = true)}
+                            onblur={() => setTimeout(() => (tagListOpen = false), 150)}
+                            oninput={(event) => {
+                                const typed = event.currentTarget.value.toLowerCase();
+                                if (typed !== event.currentTarget.value) {
+                                    const at = event.currentTarget.selectionStart;
+                                    event.currentTarget.value = typed;
+                                    event.currentTarget.setSelectionRange(at, at);
+                                }
+                                tagInput = typed;
+                                tagListOpen = true;
+                                tagSelected = -1;
                                 if (tagError) tagError = freeTagProblem(readFreeTag(tagInput), freeTags);
                             }}
-                            onkeydown={(event) => {
-                                if (event.key === "Enter" && !event.ctrlKey && !event.metaKey) {
-                                    event.preventDefault();
-                                    void addTag();
-                                }
-                            }}
+                            onkeydown={onTagKeydown}
                             data-testid="task-editor-tag-input"
                         />
+                        {#if tagOffers.length > 0}
+                            <ul
+                                id="{uid}-tag-list"
+                                role="listbox"
+                                aria-label="Tags in this graph"
+                                class="absolute top-full left-0 z-10 m-0 mt-1 max-h-60 w-full list-none overflow-y-auto rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) p-0 shadow-lg"
+                                data-testid="task-editor-tag-suggestions"
+                            >
+                                {#each tagOffers as tag, i (tag)}
+                                    <li>
+                                        <!-- A press keeps the field's focus, so the list does not close before the click lands. -->
+                                        <button
+                                            type="button"
+                                            id="{uid}-tag-option-{i}"
+                                            role="option"
+                                            tabindex={-1}
+                                            aria-selected={i === tagSelected}
+                                            onpointerdown={(event) => event.preventDefault()}
+                                            onclick={() => takeTag(tag)}
+                                            onmousemove={() => (tagSelected = i)}
+                                            class={["block w-full px-2 py-1.5 text-left text-sm text-(--gk-text-default) pointer-coarse:min-h-11", i === tagSelected && "bg-(--gk-surface-2)"]}
+                                            data-testid="task-editor-tag-suggestion"
+                                        >
+                                            {tag}
+                                        </button>
+                                    </li>
+                                {/each}
+                            </ul>
+                        {/if}
                         <button type="button" class="gk-button" onclick={() => void addTag()} disabled={loading} data-testid="task-editor-tag-add">Add tag</button>
                     </div>
                     {#if tagError}
@@ -973,7 +1071,7 @@
     {#snippet footer()}
         {#if discardAsked}
             <div role="alert" class="mr-auto flex flex-wrap items-center gap-2 text-sm text-(--gk-text-default)" data-testid="task-editor-discard">
-                <span>Discard this new task? Nothing of it has been saved.</span>
+                <span>{title.trim() === "" ? "A task needs a title to be saved. Discard this one?" : "Discard this new task? Nothing of it has been saved."}</span>
                 <button type="button" bind:this={keepEditingEl} class="gk-button" onclick={() => (discardAsked = false)} data-testid="task-editor-keep-editing">
                     Keep editing
                 </button>
@@ -986,7 +1084,7 @@
             <p class="m-0 mr-auto self-center text-sm text-(--gk-text-muted)">
                 New task in {laneLabel(status)}, in today's journal{concept === null ? "" : ` under ${concept}`}.
             </p>
-            <button type="button" class="gk-button" onclick={() => void requestClose()} data-testid="task-editor-cancel">Cancel</button>
+            <button type="button" class="gk-button" onclick={() => void requestClose("cancel")} data-testid="task-editor-cancel">Cancel</button>
             <button type="submit" class="gk-button gk-button--primary" data-testid="task-editor-create">Create task</button>
         {/if}
     {/snippet}

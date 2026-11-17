@@ -12,7 +12,7 @@
     import { ANNOTATION_COLOURS, STROKE_WIDTHS, STROKE_WIDTH_NAMES, colourName } from "#lib/document/pdf/annotation-palette.js";
     import { appendToJournal, insertAfterReference, pdfLinkMarkdown, quoteMarkdown } from "#lib/document/pdf/journal-write.js";
     import { addPdfFavourite, isPdfFavourite, pdfFavouriteTarget, removePdfFavourite, subscribePdfFavourites } from "#lib/document/pdf/pdf-favourites.js";
-    import { requestedPdfPage, subscribePdfPageRequests, takePdfOpenedFrom } from "#lib/document/pdf/page-requests.js";
+    import { requestedPdfPage, requestPdfPage, subscribePdfPageRequests, takePdfOpenedFrom } from "#lib/document/pdf/page-requests.js";
     import type { PdfAnnotation } from "#lib/document/pdf/pdf-state.js";
     import { refusingPdfState } from "#lib/document/pdf/synced-pdf-state.js";
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
@@ -135,7 +135,13 @@
             if (from) reader.noteOpenedFrom(from);
         };
         answer();
-        return subscribePdfPageRequests(answer);
+        const unsubscribe = subscribePdfPageRequests(answer);
+        return () => {
+            unsubscribe();
+            // A page asked for but not reached goes back for the reader that replaces this one.
+            const held = reader.heldLinkedPage();
+            if (held !== null) requestPdfPage(target, held);
+        };
     });
 
     $effect(() => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { createHeldDocument, DATE_FIELDS, freeTagProblem, isUntouched, PRIORITY_CHOICES, readFreeTag } from './task-editor-model'
+import { createHeldDocument, DATE_FIELDS, freeTagProblem, isUntouched, PRIORITY_CHOICES, readFreeTag, tagSuggestions } from './task-editor-model'
 
 describe('a Free Tag typed into the Task Editor', () => {
     it('is read without its #, trimmed', () => {
@@ -70,5 +70,23 @@ describe('the document a new task is described in', () => {
         held.applyChange({ from: 3, to: 3, insert: '\n- ' }, 'external')
         expect(held.getText()).toBe('- a\n- ')
         expect(heard).toEqual(['other: - a', 'editor: - a\n- ', 'other: - a\n- '])
+    })
+})
+
+describe('tagSuggestions', () => {
+    const graph = ['garden', 'bug', 'needs-review', 'Building', 'kitchen', 'bugfix']
+
+    it('offers the graph’s tags that start with what is typed first, then those that hold it, ignoring case and a leading #', () => {
+        expect(tagSuggestions(graph, '#BU', [])).toEqual(['bug', 'bugfix', 'building'])
+        expect(tagSuggestions(graph, 'en', [])).toEqual(['garden', 'kitchen'])
+    })
+
+    it('leaves out the tags the task has, and offers every tag, A to Z, before anything is typed', () => {
+        expect(tagSuggestions(graph, '', ['Bug', 'garden'])).toEqual(['bugfix', 'building', 'kitchen', 'needs-review'])
+    })
+
+    it('stops at the limit, and offers nothing for what is already a whole tag the task has', () => {
+        expect(tagSuggestions(graph, '', [], 2)).toEqual(['bug', 'bugfix'])
+        expect(tagSuggestions(['bug'], 'bug', ['bug'])).toEqual([])
     })
 })

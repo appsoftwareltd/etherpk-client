@@ -75,8 +75,11 @@ export const WRITE_BACK_DELAY_MS = 2000
 const FLASH_MS = 1200
 
 export interface BookmarkOptions {
-    /** Open the line Context Menu for `line` (its 1-based number and its text) at viewport `x`/`y`. */
-    lineMenu?: (line: { number: number; text: string }, x: number, y: number) => void
+    /**
+     * Open the line Context Menu for `line` (its 1-based number and its text) at viewport `x`/`y`,
+     * with only the rows whose id starts with `rows` when it is given.
+     */
+    lineMenu?: (line: { number: number; text: string }, x: number, y: number, rows?: string) => void
     /** Whether the editor shows a [[Draft]], which has no document to bookmark yet. */
     draft?: boolean
     /**
@@ -555,16 +558,22 @@ function offeredLine(state: EditorState, line: number | null): number | null {
 /** Whether the editor's last pointer was a finger, from its pointerdown. */
 const touchPointer = new WeakMap<EditorView, boolean>()
 
-/** Open the line menu for the caret's line, below the caret: Shift+F10 and the Menu key. */
-function lineMenuAtCaret(view: EditorView): boolean {
+/**
+ * Open the line menu for the caret's line, below the caret: Shift+F10, the Menu key, and the Command
+ * Bar's task group, whose Priority and Status buttons ask for only their `rows`. False when the
+ * editor has no line menu.
+ */
+export function openLineMenuAtCaret(view: EditorView, rows?: string): boolean {
     const options = view.state.field(optionsField, false)
     if (!options?.lineMenu) return false
     const head = view.state.selection.main.head
     const coords = view.coordsAtPos(head)
     if (!coords) return false
-    options.lineMenu(view.state.doc.lineAt(head), coords.left, coords.bottom)
+    options.lineMenu(view.state.doc.lineAt(head), coords.left, coords.bottom, rows)
     return true
 }
+
+const lineMenuAtCaret = (view: EditorView) => openLineMenuAtCaret(view)
 
 const handlers = EditorView.domEventHandlers({
     pointerdown(event, view) {

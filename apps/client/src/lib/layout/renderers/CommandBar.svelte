@@ -10,8 +10,9 @@
      * none pinned, the group is not drawn. Outliner-only buttons are disabled (greyed) when the
      * caret is not in an outliner block, read reactively from `editorContext`, and a toggle button
      * (the bullet toggle) carries `aria-pressed` from it too. A button in a
-     * **Contextual Group** (the table group) is present only while the caret is on what its
-     * Command acts on - it appears beside the slash button inside a table and is absent otherwise.
+     * **Contextual Group** (the table group, the task group) is present only while the caret is on
+     * what its Command acts on - it appears beside the slash button inside a table, or on a task
+     * line, and is absent otherwise.
      *
      * Buttons never steal focus from the editor (tabindex=-1 + preventDefault on pointerdown, and
      * on mousedown, which is where Firefox moves the focus),
@@ -61,6 +62,7 @@
         if (!besideTools(item)) return false
         if (item.contextualGroup === 'table') return editorContext.table !== null
         if (item.contextualGroup === 'spelling') return editorContext.misspelling
+        if (item.contextualGroup === 'task') return editorContext.task
         return true
     }
     const startItems = $derived(items.filter((i) => (i.align ?? 'start') === 'start' && shown(i)))

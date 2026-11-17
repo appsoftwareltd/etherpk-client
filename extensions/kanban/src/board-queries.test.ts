@@ -244,6 +244,18 @@ describe("a lane's tasks, for moving them all", () => {
     })
 })
 
+describe('Task Tags written in lower case, after a Free Tag', () => {
+    it('put the card in the lane and section they name, and a filter in either case finds it', async () => {
+        ingest(db, [page('Garden', ['- [ ] #bug #p3 #d water the beans', '- [ ] #P1 weed the path'])])
+        const board = await readBoard(source, 'Garden', TODAY)
+        expect(labels(board, 'doing', 3)).toEqual(['water the beans'])
+        for (const typed of ['#P3', '#p3', '#BUG']) {
+            const filtered = await readBoard(source, 'Garden', TODAY, { textFilter: typed })
+            expect(labels(filtered, 'doing', 3)).toEqual(['water the beans'])
+        }
+    })
+})
+
 describe('a board with a filter', () => {
     beforeEach(() => {
         const many = Array.from({ length: 60 }, (_, i) => `- [ ] Water bed ${String(i).padStart(2, '0')}`)

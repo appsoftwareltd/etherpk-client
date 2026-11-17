@@ -85,9 +85,9 @@ export interface CommandBarItem {
      * caret is on the thing the group's Commands act on, and absent otherwise - not greyed, unlike
      * the fixed buttons - because a group that is dead almost all of the time would crowd the
      * strip. `'table'`: shown while the caret is in a table. `'spelling'`: while the caret is in a
-     * word Spell Check has underlined.
+     * word Spell Check has underlined. `'task'`: while the caret is on a task line.
      */
-    contextualGroup?: 'table' | 'spelling'
+    contextualGroup?: 'table' | 'spelling' | 'task'
     /** The Command id to execute on tap. */
     command: string
     /** Optional argument forwarded to the Command. */

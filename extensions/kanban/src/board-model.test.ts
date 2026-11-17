@@ -154,17 +154,12 @@ describe('withPendingMoves', () => {
 })
 
 describe('boardDocuments', () => {
-    it('names each document the cards on the board come from once, in a stable order', () => {
+    it('names the document of each card on the board', () => {
         const read = board([
             ['open', 1, [card('water the beans', 'Garden', 1), card('wipe the shelves', 'Kitchen', 0)]],
-            ['doing', null, [card('weed the path', 'garden', 4), card('stake the beans', 'Garden', 2)]],
+            ['doing', null, [card('weed the path', 'Garden', 4)]],
         ])
-        expect(boardDocuments(read)).toEqual(['Garden', 'Kitchen'])
-    })
-
-    it('stops at the limit, so a board never asks the relay for more subscriptions than it allows', () => {
-        const many = Array.from({ length: 5 }, (_, i) => card(`task ${i}`, `Page ${i}`, 0))
-        expect(boardDocuments(board([['open', null, many]]), 3)).toHaveLength(3)
+        expect(boardDocuments(read)).toEqual(['Garden', 'Kitchen', 'Garden'])
     })
 })
 

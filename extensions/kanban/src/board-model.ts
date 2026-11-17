@@ -340,30 +340,12 @@ export function unsettledMoves(board: BoardSnapshot, moves: readonly PendingMove
 }
 
 /**
- * At most this many documents a board watches for edits made elsewhere: well inside the relay's
- * limit on one connection's subscriptions, which the documents open in tabs share.
+ * The documents the cards on the board come from: what the board watches (`createDocumentWatch`), so
+ * a move made on another device or by an agent reaches it while it is open. A collapsed lane's cards
+ * are not read, so their documents are not among them.
  */
-export const WATCHED_DOCUMENTS_LIMIT = 1000
-
-/**
- * The documents the cards on the board come from, each once (names compared without case), sorted:
- * what the board watches, so a move made on another device or by an agent reaches it while it is
- * open. A collapsed lane's cards are not read, so their documents are not among them.
- */
-export function boardDocuments(board: BoardSnapshot, limit = WATCHED_DOCUMENTS_LIMIT): string[] {
-    const documents = new Map<string, string>()
-    for (const lane of board.lanes) {
-        for (const section of lane.sections) {
-            for (const card of section.cards) {
-                const key = card.document.toLowerCase()
-                if (!documents.has(key)) documents.set(key, card.document)
-            }
-        }
-    }
-    return [...documents.entries()]
-        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-        .map(([, document]) => document)
-        .slice(0, limit)
+export function boardDocuments(board: BoardSnapshot): string[] {
+    return board.lanes.flatMap((lane) => lane.sections.flatMap((section) => section.cards.map((card) => card.document)))
 }
 
 /** Dates are `YYYY-MM-DD`, so comparing the strings compares the days. */
