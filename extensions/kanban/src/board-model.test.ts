@@ -11,6 +11,8 @@ import {
     countOnlyLanes,
     drawnLane,
     laneAfter,
+    boardDocuments,
+    boardFilterCountText,
     laneCountText,
     nextLaneWithTasks,
     type PendingMove,
@@ -117,12 +119,52 @@ describe('withPendingMoves', () => {
         expect(shown.lanes.find((l) => l.status === 'done')?.total).toBe(41)
     })
 
+    it("keeps every card's key its own when lines above the moved card have shifted since it moved", () => {
+        // Moved from Test to Doing at line 7; then a line was written above it, and the index, not yet
+        // showing the move, has it at line 8 and another task at line 7.
+        const peas = card('pick the peas', 'Garden', 7)
+        const read = board([
+            ['waiting', null, [card('wait for the seeds', 'Garden', 7)]],
+            ['test', null, [card('pick the peas', 'Garden', 8)]],
+        ])
+        const shown = withPendingMoves(read, [move(peas, 'doing', null, 1000)])
+        const keys = shown.lanes.flatMap((l) => l.sections.flatMap((s) => s.cards.map((c) => c.key)))
+        expect(new Set(keys).size).toBe(keys.length)
+        expect(labelsAt(shown, 'doing', null)).toEqual(['pick the peas'])
+        // The moved card takes the key the index gives its task now.
+        expect(shown.lanes.find((l) => l.status === 'doing')?.sections.at(-1)?.cards[0].key).toBe('Garden:8')
+    })
+
+    it("gives a moved card a key of its own when the read does not show its task and another card has its old key", () => {
+        const peas = card('pick the peas', 'Garden', 7)
+        const read = board([['waiting', null, [card('wait for the seeds', 'Garden', 7)]]])
+        const shown = withPendingMoves(read, [move(peas, 'doing', null, 1000)])
+        const keys = shown.lanes.flatMap((l) => l.sections.flatMap((s) => s.cards.map((c) => c.key)))
+        expect(new Set(keys).size).toBe(keys.length)
+        expect(labelsAt(shown, 'doing', null)).toEqual(['pick the peas'])
+    })
+
     it('changes nothing for a move the index already shows', () => {
         const quote = card('Send the quote')
         const snapshot = board([['doing', 2, [quote]]])
         const shown = withPendingMoves(snapshot, [move(quote, 'doing', 2)])
         expect(labelsAt(shown, 'doing', 2)).toEqual(['Send the quote'])
         expect(totalAt(shown, 'doing', 2)).toBe(1)
+    })
+})
+
+describe('boardDocuments', () => {
+    it('names each document the cards on the board come from once, in a stable order', () => {
+        const read = board([
+            ['open', 1, [card('water the beans', 'Garden', 1), card('wipe the shelves', 'Kitchen', 0)]],
+            ['doing', null, [card('weed the path', 'garden', 4), card('stake the beans', 'Garden', 2)]],
+        ])
+        expect(boardDocuments(read)).toEqual(['Garden', 'Kitchen'])
+    })
+
+    it('stops at the limit, so a board never asks the relay for more subscriptions than it allows', () => {
+        const many = Array.from({ length: 5 }, (_, i) => card(`task ${i}`, `Page ${i}`, 0))
+        expect(boardDocuments(board([['open', null, many]]), 3)).toHaveLength(3)
     })
 })
 
@@ -335,7 +377,14 @@ describe('the one lane the phone layout shows', () => {
         expect(nextLaneWithTasks(lanes, 'done', 1)).toBeUndefined()
     })
 
-    it("counts a lane's tasks, and how many its Lane Filter lets through when it has one", () => {
+    it('counts the tasks the Board Filter shows across the board, and says nothing without one', () => {
+        const filter = parseTaskTextFilter('beans')
+        expect(boardFilterCountText([{ total: 3, unfiltered: 12, filter }, { total: 0, unfiltered: 4, filter }])).toBe('3 of 16 tasks')
+        expect(boardFilterCountText([{ total: 1, unfiltered: 1, filter }])).toBe('1 of 1 task')
+        expect(boardFilterCountText([{ total: 12, unfiltered: 12, filter: null }])).toBeNull()
+    })
+
+    it("counts a lane's tasks, and how many the Board Filter lets through when there is one", () => {
         expect(laneCountText({ total: 12, unfiltered: 12, filter: null })).toBe('12')
         expect(laneCountText({ total: 3, unfiltered: 12, filter: parseTaskTextFilter('beans') })).toBe('3 of 12')
     })

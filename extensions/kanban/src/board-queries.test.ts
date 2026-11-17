@@ -244,39 +244,47 @@ describe("a lane's tasks, for moving them all", () => {
     })
 })
 
-describe('a lane with a title filter', () => {
+describe('a board with a filter', () => {
     beforeEach(() => {
         const many = Array.from({ length: 60 }, (_, i) => `- [ ] Water bed ${String(i).padStart(2, '0')}`)
         ingest(db, [page('Garden', [...many, '- [ ] #P1 Dig the bed', '- [ ] #D Water the beans', '- [ ] #D Weed'])])
     })
 
     const open = (board: BoardSnapshot) => board.lanes[0]
+    const doing = (board: BoardSnapshot) => board.lanes[1]
 
-    it('shows the matching cards of that lane alone, and counts them against the whole lane', async () => {
-        const board = await readBoard(source, 'Garden', TODAY, { textFilterFor: (status) => (status === 'doing' ? ' WEED ' : undefined) })
-        expect(board.lanes[1]).toMatchObject({ filter: { words: 'weed', tags: [] }, total: 1, unfiltered: 2 })
+    it('narrows every lane alike, and counts each against its whole lane', async () => {
+        const board = await readBoard(source, 'Garden', TODAY, { textFilter: ' WEED ' })
+        expect(doing(board)).toMatchObject({ filter: { words: 'weed', tags: [] }, total: 1, unfiltered: 2 })
         expect(labels(board, 'doing', null)).toEqual(['Weed'])
-        expect(open(board)).toMatchObject({ filter: null, total: 61, unfiltered: 61 })
+        expect(open(board)).toMatchObject({ filter: { words: 'weed', tags: [] }, total: 0, unfiltered: 61 })
+    })
+
+    it('counts a lane read for its counts alone through the filter too', async () => {
+        const board = await readBoard(source, 'Garden', TODAY, { textFilter: 'bed 5', countOnly: new Set(['open']) })
+        expect(open(board)).toMatchObject({ loaded: false, total: 10, unfiltered: 61 })
+        expect(labels(board, 'open', null)).toEqual([])
     })
 
     it('finds a match past the page the lane would load without the filter', async () => {
-        const board = await readBoard(source, 'Garden', TODAY, { sectionLimit: 3, textFilterFor: () => 'bed 59' })
+        const board = await readBoard(source, 'Garden', TODAY, { sectionLimit: 3, textFilter: 'bed 59' })
         expect(labels(board, 'open', null)).toEqual(['Water bed 59'])
         expect(open(board).total).toBe(1)
     })
 
     it('treats nothing but spaces as no filter', async () => {
-        const board = await readBoard(source, 'Garden', TODAY, { textFilterFor: () => '   ' })
+        const board = await readBoard(source, 'Garden', TODAY, { textFilter: '   ' })
         expect(open(board)).toMatchObject({ filter: null, total: 61 })
     })
 
-    it('narrows a lane by a tag, and by words and a tag together', async () => {
+    it('narrows the board by a tag, and by words and a tag together', async () => {
         ingestOne(db, page('Shed', ['- [ ] [[Garden]] Water the fence #urgent', '- [ ] [[Garden]] Mend the fence #bug']))
-        const byTag = await readBoard(source, 'Garden', TODAY, { textFilterFor: () => '#urgent' })
+        const byTag = await readBoard(source, 'Garden', TODAY, { textFilter: '#urgent' })
         expect(labels(byTag, 'open', null)).toEqual(['[[Garden]] Water the fence'])
         expect(open(byTag)).toMatchObject({ filter: { words: '', tags: ['urgent'] }, total: 1, unfiltered: 63 })
+        expect(doing(byTag).total).toBe(0)
 
-        const both = await readBoard(source, 'Garden', TODAY, { textFilterFor: () => 'mend #urgent' })
+        const both = await readBoard(source, 'Garden', TODAY, { textFilter: 'mend #urgent' })
         expect(open(both).total).toBe(0)
     })
 

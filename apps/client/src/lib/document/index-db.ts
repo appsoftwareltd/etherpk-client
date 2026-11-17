@@ -174,7 +174,7 @@ export interface SqlDb {
  * [[Free Tag]], and reads Task Tags past a Free Tag in the leading run (ADR 0166). 19 adds
  * `tasks.test` and `tasks.archived`, the `#T` and `#A` states (ADR 0167). 20 adds
  * `tasks.parent_task_local_id`, a task's [[Parent Task]] (ADR 0174). 21 adds `tasks.title_key`, what
- * a [[Lane Filter]] searches. 22 adds `tasks.tags_key`, the tags a [[Task Text Filter]] searches.
+ * a [[Board Filter]] searches. 22 adds `tasks.tags_key`, the tags a [[Task Text Filter]] searches.
  * 23 reads a [[Task Tag]] in any case (ADR 0032, amended 2026-11-05).
  */
 export const INDEX_SCHEMA_VERSION = 23

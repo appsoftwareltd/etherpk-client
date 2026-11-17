@@ -129,4 +129,18 @@ export interface DocumentStore {
      * document it just opened on the first line.
      */
     whenReady?(target: string): Promise<void>
+    /**
+     * Resolves once the document holds every change the other copies of it have made, as far as
+     * can be learned now: what a write from outside an editor (a Kanban move, a tick in the Tasks
+     * View, an agent) waits for before it reads the line it rewrites. A synced store catches the
+     * document up from the Sync Server, within a bound, and at once while offline. Absent where the
+     * store's own copy is the only one.
+     */
+    whenCurrent?(target: string): Promise<void>
+    /**
+     * Hear other copies' edits to these documents while the returned function is not called, as the
+     * store's change events, without showing them: what a view of tasks across documents asks for the
+     * documents it shows tasks from. Absent where the store's own copy is the only one.
+     */
+    watchDocuments?(targets: readonly string[]): () => void
 }

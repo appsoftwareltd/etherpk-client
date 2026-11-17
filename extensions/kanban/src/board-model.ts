@@ -125,9 +125,9 @@ export interface BoardLane extends BoardLaneSpec {
      * sections hold totals and no cards.
      */
     loaded: boolean
-    /** The lane's [[Lane Filter]] as it is searched for, or null when it shows all its tasks. `total` counts the matches. */
+    /** The [[Board Filter]] as it is searched for, or null when the lane shows all its tasks. `total` counts the matches. */
     filter: TaskTextFilter | null
-    /** Every task in the lane, whatever its Lane Filter hides. */
+    /** Every task in the lane, whatever the Board Filter hides. */
     unfiltered: number
 }
 
@@ -186,9 +186,20 @@ export function drawnLane(lanes: readonly BoardLane[], chosen: TaskStatus): Boar
     return lanes.find((lane) => lane.status === chosen && lane.loaded) ?? lanes.find((lane) => lane.loaded) ?? lanes[0]
 }
 
-/** How many tasks a lane shows, and of how many when its [[Lane Filter]] hides some. */
+/** How many tasks a lane shows, and of how many when the [[Board Filter]] hides some. */
 export function laneCountText(lane: Pick<BoardLane, 'total' | 'unfiltered' | 'filter'>): string {
     return lane.filter === null ? String(lane.total) : `${lane.total} of ${lane.unfiltered}`
+}
+
+/**
+ * How many of the board's tasks the [[Board Filter]] shows, across every lane, beside its input; null
+ * when the board was read without one. Archived has no lane, so it is not counted.
+ */
+export function boardFilterCountText(lanes: readonly Pick<BoardLane, 'total' | 'unfiltered' | 'filter'>[]): string | null {
+    if (!lanes.some((lane) => lane.filter !== null)) return null
+    const shown = lanes.reduce((sum, lane) => sum + lane.total, 0)
+    const all = lanes.reduce((sum, lane) => sum + lane.unfiltered, 0)
+    return `${shown} of ${all} ${all === 1 ? 'task' : 'tasks'}`
 }
 
 /**
@@ -252,11 +263,28 @@ function compareCards(a: BoardCard, b: BoardCard): number {
 export function withPendingMoves(board: BoardSnapshot, moves: readonly PendingMove[]): BoardSnapshot {
     if (moves.length === 0) return board
     let lanes = board.lanes
-    for (const move of moves) lanes = lanes.map((lane) => laneWithMove(lane, move))
+    for (const move of keyedToRead(board, moves)) lanes = lanes.map((lane) => laneWithMove(lane, move))
     return { ...board, lanes }
 }
 
-/** Whether a lane's [[Lane Filter]] lets `card` through. */
+/**
+ * The moves with their cards keyed as `board` keys them. A key is the task's document and line, and
+ * a line written above a moved task since it moved shifts it: kept, the moved card's old key can be
+ * another task's now, and the board would act on, focus or draw the one for the other. So a moved
+ * card takes the key the read gives its task, and, where the read does not show its task, a key no
+ * card in the read has.
+ */
+function keyedToRead(board: BoardSnapshot, moves: readonly PendingMove[]): PendingMove[] {
+    const cards = board.lanes.flatMap((lane) => lane.sections.flatMap((section) => section.cards))
+    const keys = new Set(cards.map((card) => card.key))
+    return moves.map((move) => {
+        const read = cards.find((card) => sameTask(card, move.card))
+        const key = read ? read.key : keys.has(move.card.key) ? `${move.card.key}:moving` : move.card.key
+        return key === move.card.key ? move : { ...move, card: { ...move.card, key } }
+    })
+}
+
+/** Whether the [[Board Filter]] a lane was read through lets `card` through. */
 export function passesFilter(lane: Pick<BoardLane, 'filter'>, card: BoardCard): boolean {
     return lane.filter === null || matchesTaskTextFilter(lane.filter, card.text)
 }
@@ -302,13 +330,40 @@ export function unsettledMoves(board: BoardSnapshot, moves: readonly PendingMove
         if (move.writtenAt === null) return true
         if (now - move.writtenAt >= holdMs) return false
         const shown = cellOf(board, move.card)
-        // A lane that holds no cards, one whose Lane Filter hides this card, or no lane at all
+        // A lane that holds no cards, one where the Board Filter hides this card, or no lane at all
         // (Archived) cannot show the card arriving, so a move into one settles when the card has
         // left every section the board does show.
         const target = board.lanes.find((lane) => lane.status === move.to.status)
         if (!target || !target.loaded || !passesFilter(target, move.card)) return shown !== undefined
         return !(shown && shown.status === move.to.status && shown.priority === move.to.priority)
     })
+}
+
+/**
+ * At most this many documents a board watches for edits made elsewhere: well inside the relay's
+ * limit on one connection's subscriptions, which the documents open in tabs share.
+ */
+export const WATCHED_DOCUMENTS_LIMIT = 1000
+
+/**
+ * The documents the cards on the board come from, each once (names compared without case), sorted:
+ * what the board watches, so a move made on another device or by an agent reaches it while it is
+ * open. A collapsed lane's cards are not read, so their documents are not among them.
+ */
+export function boardDocuments(board: BoardSnapshot, limit = WATCHED_DOCUMENTS_LIMIT): string[] {
+    const documents = new Map<string, string>()
+    for (const lane of board.lanes) {
+        for (const section of lane.sections) {
+            for (const card of section.cards) {
+                const key = card.document.toLowerCase()
+                if (!documents.has(key)) documents.set(key, card.document)
+            }
+        }
+    }
+    return [...documents.entries()]
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([, document]) => document)
+        .slice(0, limit)
 }
 
 /** Dates are `YYYY-MM-DD`, so comparing the strings compares the days. */

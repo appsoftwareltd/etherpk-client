@@ -24,8 +24,11 @@ export interface ReadBoardOptions {
     limitFor?: (cell: BoardCell) => number | undefined
     /** Lanes to read for their counts alone: the collapsed ones, whose cards are not shown. */
     countOnly?: ReadonlySet<TaskStatus>
-    /** What a lane's [[Lane Filter]] holds, as typed; undefined for a lane without one. */
-    textFilterFor?: (status: TaskStatus) => string | undefined
+    /**
+     * What the [[Board Filter]] holds, as typed; undefined or blank shows every task. Every lane is
+     * read through it, the ones read for their counts alone too, so each lane counts what it would show.
+     */
+    textFilter?: string
 }
 
 /**
@@ -39,12 +42,12 @@ export interface ReadBoardOptions {
  */
 export async function readBoard(source: TaskSource, concept: string | null, today: string, options: ReadBoardOptions = {}): Promise<BoardSnapshot> {
     const defaultLimit = options.sectionLimit ?? SECTION_PAGE_SIZE
+    const typed = options.textFilter
+    const filter = parseTaskTextFilter(typed ?? '')
     const lanes = await Promise.all(
         BOARD_LANES.map(async (lane): Promise<BoardLane> => {
             // A limit of 0 still returns the total, which is all a collapsed lane shows.
             const loaded = !options.countOnly?.has(lane.status)
-            const typed = options.textFilterFor?.(lane.status)
-            const filter = parseTaskTextFilter(typed ?? '')
             const sections = await Promise.all(
                 BOARD_SECTIONS.map(async (section) => {
                     const cell = { status: lane.status, priority: section.priority }
@@ -59,7 +62,7 @@ export async function readBoard(source: TaskSource, concept: string | null, toda
                 }),
             )
             const total = sections.reduce((sum, section) => sum + section.total, 0)
-            // One more round trip, and only for a filtered lane: the lane's whole count is its header's "of" and a lane reference's count.
+            // One more round trip, and only under a filter: the lane's whole count is its header's "of" and a lane reference's count.
             const unfiltered = filter === null ? total : (await source.tasks(laneQuery(concept, lane.status, today), 0, 0)).total
             return { ...lane, loaded, sections, total, filter, unfiltered }
         }),
@@ -81,7 +84,7 @@ const LANE_PAGE_SIZE = 200
 /**
  * Every task in one lane of the board for `concept` (null for the Graph Kanban), across its
  * priorities and past what the board has loaded: what "Move all to lane" moves, which is only what
- * the lane's [[Lane Filter]] lets through when it has one. Read a page at a time, in the index's own
+ * the [[Board Filter]] lets through when there is one. Read a page at a time, in the index's own
  * order, so a lane of any length is read whole.
  */
 export async function laneTasks(

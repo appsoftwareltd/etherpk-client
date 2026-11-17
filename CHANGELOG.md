@@ -5,7 +5,7 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.32.0 - 2026-11-17
 
 ### Client
 
@@ -13,7 +13,18 @@ starts at 0.9.3.
   on a bullet's own line, Enter adds a bullet above the block and moves there. Above a code block
   that is not under a bullet, it adds an empty line. Enter there used to add a line of code inside
   the block.
+- **One filter for the whole Kanban board.** The box above the lanes narrows every lane at once, by
+  title words and `#tags`, and each lane counts its matches out of all its tasks. It replaces the
+  search button on each lane. The line that says where a card went now goes away after five
+  seconds, unless the pointer or the keyboard is on it.
+- **A Kanban board keeps up with other devices.** On a synced graph, a board left open shows a card
+  moved on another device, in another window or by an agent as soon as the change arrives, without a
+  reload. It used to show such a change only for a document open in a tab.
 - **Fixes.**
+  - On a synced graph, a Kanban card moved to another lane no longer goes back to its old lane, and
+    Move all to lane moves the tasks when another window, device or agent changed them first. A
+    move, a tick in the Tasks view and an agent's change now start from the task as the Sync Server
+    has it.
   - Renaming a page to the same name in different capitals (`Garden` to `garden`) shows the new
     spelling on its tab, and its editor no longer says the name differs.
   - Renaming a page that is alone in a pane beside another keeps it in its own pane. It used to
@@ -25,6 +36,8 @@ starts at 0.9.3.
   - The Command Bar's buttons work after selected text is replaced by a change from outside the
     editor, such as a file changed on disk or another person's edit. They used to do nothing.
   - Opening or reloading a mirrored graph shows one "Mirrored to" notice, not two.
+  - On a local graph, a file deleted or renamed outside EtherPK while the folder is being checked no
+    longer stops the other changes from being picked up.
 
 ## 0.31.0 - 2026-11-16
 

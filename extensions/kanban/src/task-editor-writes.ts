@@ -155,7 +155,8 @@ export async function deleteTask(store: DocumentStore, task: ReadTask): Promise<
 export async function restoreTask(store: DocumentStore, removed: RemovedTask): Promise<{ ok: true } | Refusal> {
     let document
     try {
-        await store.whenReady?.(removed.concept)
+        // Current, as any write from outside an editor reads its document (`whenCurrent`).
+        await (store.whenCurrent ? store.whenCurrent(removed.concept) : store.whenReady?.(removed.concept))
         document = store.open(removed.concept)
     } catch {
         return { ok: false, reason: 'missing' }

@@ -210,6 +210,14 @@ export interface GraphSync {
     readonly rootDoc: Y.Doc
     docSync(docId: string): DocSync
     retainDoc(docId: string): () => void
+    /**
+     * Hear other devices' edits to these documents as they are made, until the returned function is
+     * called: what a view of tasks across documents (the Kanban board) asks for the documents its cards
+     * come from, which no tab shows. Only a relay subscription: no engine is kept alive and no
+     * presence is advertised. An edit that arrives creates an engine, which catches the document up
+     * and retires once idle, as one made for a read does.
+     */
+    watchDocs(docIds: readonly string[]): () => void
     /** Queue an ordered, durable lifecycle delete before the encrypted registry changes. */
     deleteDoc(docId: string): Promise<void>
     /** Drop deleted content from a document's cache row - after protecting it (ADR 0057). */
@@ -462,6 +470,14 @@ export interface GraphSync {
     firstCatchupPageDoc(docId: string): Promise<void>
     /** Resolves at the terminal page of ONE doc's current catch-up cycle. */
     caughtUpDoc(docId: string): Promise<void>
+    /**
+     * Ask the relay for what ONE doc has missed, ahead of background catch-ups, and resolve at the
+     * terminal page. An engine no tab retains is not subscribed, so after its first catch-up it
+     * hears nothing more of other devices' or tabs' edits; a write from outside an editor runs this
+     * first, or it rewrites the line as it was when the engine last caught up. At once while the
+     * relay is not connected.
+     */
+    catchUpDoc(docId: string): Promise<void>
     /**
      * Compare the Local Cache with one bounded relay metadata request per batch. Warm indexes
      * only materialise documents whose server watermark actually moved while this browser
@@ -926,6 +942,8 @@ export class RelayUnansweredError extends Error {}
 export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     const engines = new Map<string, DocSync>()
     const retained = new Map<string, number>([[deps.rootDocId, 1]])
+    /** Documents watched for edits (`watchDocs`), by how many watches hold each. */
+    const watched = new Map<string, number>()
     const retiring = new Set<string>()
     /**
      * Batch walks holding an engine: one count per `seedDocsFromCache` or `readyDocs` not yet
@@ -1229,10 +1247,20 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
      * reconnect.
      */
     function subscribeRetained(): void {
-        const docIds = [...retained.keys()]
+        const docIds = [...new Set([...retained.keys(), ...watched.keys()])]
         const batchSize = SYNC_PROTOCOL_LIMITS.maxSubscriptionDocIds
         for (let start = 0; start < docIds.length; start += batchSize) {
             sendNow({ type: 'subscribe', docIds: docIds.slice(start, start + batchSize) })
+        }
+    }
+
+    /** Subscribe to documents, or unsubscribe, in batches the relay accepts. Closed, the next open subscribes. */
+    function sendSubscription(type: 'subscribe' | 'unsubscribe', docIds: readonly string[]): void {
+        if (!open || docIds.length === 0) return
+        const batchSize = SYNC_PROTOCOL_LIMITS.maxSubscriptionDocIds
+        for (let start = 0; start < docIds.length; start += batchSize) {
+            const batch = docIds.slice(start, start + batchSize)
+            rawSend(type === 'subscribe' ? { type: 'subscribe', docIds: batch } : { type: 'unsubscribe', docIds: batch })
         }
     }
 
@@ -1323,6 +1351,8 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     // bounded, cache-only batches; foreground documents and post-commit reconciliation
     // explicitly promote an engine into synchronization.
     const readied = new Map<string, Promise<void>>()
+    /** Documents a `catchUpDoc` is waiting on: their catch-up goes ahead of background walks. */
+    const urgentCatchups = new Map<string, number>()
     const syncEnabled = new Set<string>()
 
     function activate(docId: string, e: DocSync): void {
@@ -1495,7 +1525,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                 onIdle: () => queueMicrotask(() => retireEngineIfIdle(docId)),
                 onQueueChange: () => noteQueue(docId),
                 catchupPriority: () => {
-                    return retained.has(docId) ? 'foreground' : 'background'
+                    return retained.has(docId) || urgentCatchups.has(docId) ? 'foreground' : 'background'
                 },
             })
             engines.set(docId, e)
@@ -1734,7 +1764,17 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                 .finally(() => finishCatchup(message.requestId))
             return
         }
-        void engine(message.docId).receive(message).catch(report)
+        void engineForPushed(message.docId).receive(message).catch(report)
+    }
+
+    /**
+     * The engine a relay message for `docId` goes to. An edit to a watched document nobody shows
+     * makes one to take it in; it goes once idle, as an engine a read made does, and the watch's
+     * subscription brings the next edit.
+     */
+    function engineForPushed(docId: string): DocSync {
+        if (!engines.has(docId) && watched.has(docId) && !retained.has(docId)) retiring.add(docId)
+        return engine(docId)
     }
 
     /**
@@ -1955,9 +1995,40 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                             if (open) void retainedEngine.advertisePresence().catch(reportError)
                             return
                         }
-                        rawSend({ type: 'unsubscribe', docIds: [docId] })
+                        // A watched document stays subscribed: the watch still wants its edits.
+                        if (!watched.has(docId)) rawSend({ type: 'unsubscribe', docIds: [docId] })
                         retireEngineIfIdle(docId)
                     })
+            }
+        },
+        watchDocs(docIds) {
+            const ids = [...new Set(docIds)].filter((docId) => docId !== deps.rootDocId)
+            const started: string[] = []
+            for (const docId of ids) {
+                const count = watched.get(docId) ?? 0
+                watched.set(docId, count + 1)
+                if (count === 0 && !retained.has(docId)) started.push(docId)
+            }
+            sendSubscription('subscribe', started)
+            let released = false
+            return () => {
+                if (released || disposed) return
+                released = true
+                const ended: string[] = []
+                for (const docId of ids) {
+                    const next = (watched.get(docId) ?? 1) - 1
+                    if (next > 0) {
+                        watched.set(docId, next)
+                        continue
+                    }
+                    watched.delete(docId)
+                    if (retained.has(docId)) continue
+                    ended.push(docId)
+                    // An engine an edit created while watched goes once idle, unless a walk holds it.
+                    retiring.add(docId)
+                    retireEngineIfIdle(docId)
+                }
+                sendSubscription('unsubscribe', ended)
             }
         },
         deleteDoc: (docId) => engine(docId).delete(),
@@ -2376,6 +2447,20 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
         retireDocs: releaseBatch,
         firstCatchupPageDoc: (docId) => engine(docId).firstCatchupPage(),
         caughtUpDoc: (docId) => engine(docId).caughtUp(),
+        async catchUpDoc(docId) {
+            const e = engine(docId)
+            await (readied.get(docId) ?? Promise.resolve())
+            if (disposed || !open || engines.get(docId) !== e) return
+            urgentCatchups.set(docId, (urgentCatchups.get(docId) ?? 0) + 1)
+            try {
+                e.resync()
+                await e.caughtUp()
+            } finally {
+                const left = (urgentCatchups.get(docId) ?? 1) - 1
+                if (left > 0) urgentCatchups.set(docId, left)
+                else urgentCatchups.delete(docId)
+            }
+        },
         async docsNeedingCatchup(docIds) {
             const changed: string[] = []
             for (

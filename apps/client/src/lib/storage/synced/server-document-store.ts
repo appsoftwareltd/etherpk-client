@@ -141,12 +141,23 @@ export interface ServerDocumentStore {
      * reconciliation continues independently to its terminal page.
      */
     whenReady(target: string): Promise<void>
+    /**
+     * Resolves once the document has caught up with the relay, within the ready bound: what a
+     * write from outside an editor waits for (`DocumentStore.whenCurrent`).
+     */
+    whenCurrent(target: string): Promise<void>
     /** The collab buffer for a target — DocumentView mounts y-codemirror over it. */
     getYText(target: string): Y.Text | undefined
     /** The per-doc presence handle for a target — remote cursors (ADR 0024). */
     getAwareness(target: string): Awareness | undefined
     /** Retain relay content and presence while a real view consumes this document. */
     retainDocument(target: string): () => void
+    /**
+     * Hear other devices' edits to these documents while the returned function is not called, as
+     * `onChange` events, without showing them (`GraphSync.watchDocs`). Names without a document are
+     * passed over.
+     */
+    watchDocuments(targets: readonly string[]): () => void
     scan(): Promise<void>
     listDocuments(): DocumentEntry[]
     /** Every document's identity, keyed by document id ({@link DocumentIdentity}). */
@@ -910,6 +921,16 @@ export function createServerDocumentStore(
                 throw new DocumentSyncDegradedError(target, health)
             }
         },
+        async whenCurrent(target: string): Promise<void> {
+            const docId = docIdFor(target)
+            if (!docId) return
+            await this.whenReady(target)
+            // A retained document is subscribed and hears every edit as it is made. Any other
+            // engine heard the relay only up to its last catch-up, so it is asked again; a write
+            // made on a copy that old would rewrite the line as it was then. Bounded, so a slow or
+            // silent relay delays the write rather than refusing it.
+            await reachedWithin(graph.catchUpDoc(docId), Math.max(0, options.readyTimeoutMs ?? 2000))
+        },
         getAwareness(target: string): Awareness | undefined {
             const docId = docIdFor(target)
             return docId ? graph.docSync(docId).awareness : undefined
@@ -917,6 +938,10 @@ export function createServerDocumentStore(
         retainDocument(target: string): () => void {
             const docId = docIdFor(target)
             return docId ? graph.retainDoc(docId) : () => {}
+        },
+        watchDocuments(targets: readonly string[]): () => void {
+            const docIds = targets.map((target) => docIdFor(target)).filter((docId): docId is string => docId !== undefined)
+            return graph.watchDocs(docIds)
         },
         async scan(): Promise<void> {
             // Seed the cached registry first. A cold offline open remains bounded, but once

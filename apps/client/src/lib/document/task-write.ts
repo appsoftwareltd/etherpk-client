@@ -123,14 +123,17 @@ export interface FoundTask {
 }
 
 /**
- * Open the task's document and find the task in it, or say why not. A document that cannot be
+ * Open the task's document, brought up to date with its other copies (`whenCurrent`), and find the
+ * task in it, or say why not. A document that cannot be
  * opened (renamed or deleted since the index read it, or not synced into a readable state) is
  * `missing`; it is reported, never thrown, so a caller can say so instead of failing silently.
  */
 export async function findIndexedTask(store: DocumentStore, task: IndexedTask): Promise<FoundTask | { reason: 'stale' | 'missing' }> {
     let document: EditorDocument
     try {
-        await store.whenReady?.(task.concept)
+        // Current, not only loaded: another device, tab or agent may have changed the line since
+        // this copy last heard from them, and the write must start from what they left.
+        await (store.whenCurrent ? store.whenCurrent(task.concept) : store.whenReady?.(task.concept))
         document = store.open(task.concept)
     } catch {
         // A `DocumentNotFoundError` (renamed or deleted since the index read it), or a synced
