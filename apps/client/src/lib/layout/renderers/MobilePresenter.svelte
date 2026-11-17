@@ -349,13 +349,20 @@
     function readFocus(): void {
         editingInDialog = document.activeElement?.closest('[role="dialog"] .cm-content') != null
     }
+    // Read once the focus change has settled, never inside the event. Svelte removing a focused
+    // element (closing the last tab tears its editor down) fires `focusout` synchronously inside
+    // its own teardown, where writing state throws `state_unsafe_mutation`; and during `focusout`
+    // the element taking focus is not yet `document.activeElement` anyway.
+    function readFocusSoon(): void {
+        queueMicrotask(readFocus)
+    }
     $effect(() => {
         readFocus()
-        document.addEventListener('focusin', readFocus)
-        document.addEventListener('focusout', readFocus)
+        document.addEventListener('focusin', readFocusSoon)
+        document.addEventListener('focusout', readFocusSoon)
         return () => {
-            document.removeEventListener('focusin', readFocus)
-            document.removeEventListener('focusout', readFocus)
+            document.removeEventListener('focusin', readFocusSoon)
+            document.removeEventListener('focusout', readFocusSoon)
         }
     })
     /** Move an element to the page's body for as long as it is mounted, above a dialog's stacking. */

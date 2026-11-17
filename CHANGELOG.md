@@ -5,7 +5,7 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.34.0 - 2026-11-17
 
 ### Client
 
@@ -21,6 +21,7 @@ starts at 0.9.3.
     before the bullet, where it turned the bullet into plain text.
   - A file added with the cursor in a page's frontmatter, or at the end of a code block's first or
     last line, goes on the next line instead of breaking the frontmatter or the code block.
+  - On a phone, closing the last open tab no longer raises an error.
 
 ## 0.33.0 - 2026-11-17
 
