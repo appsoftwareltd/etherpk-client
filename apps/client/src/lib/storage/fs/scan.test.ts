@@ -190,3 +190,37 @@ describe('scanGraph over the previous scan', () => {
         expect(second.map((e) => e.key)).toEqual(['2026-09-22', 'a', 'b', 'c'])
     })
 })
+
+describe('scanGraph while files come and go', () => {
+    // A file listed and then removed before it is read (a delete or a rename finishing while the
+    // reconcile poll scans) is gone: the scan leaves it out rather than failing the whole pass.
+    it('leaves out a file removed between the listing and the read', async () => {
+        const fs = createMemoryDirectoryAdapter({
+            now: clock(),
+            seed: { pages: { 'Garden.md': '- water the beans', 'Kitchen.md': '- basil on the sill' } },
+        })
+        const racing: DirectoryAdapter = {
+            ...fs,
+            async read(subdir, name) {
+                if (name === 'Kitchen.md') throw new DOMException('Kitchen.md is gone', 'NotFoundError')
+                return fs.read(subdir, name)
+            },
+        }
+
+        const entries = await scanGraph(racing)
+
+        expect(entries.map((e) => e.concept)).toEqual(['Garden'])
+    })
+
+    it('still fails on any other read error', async () => {
+        const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { pages: { 'Garden.md': '- water the beans' } } })
+        const failing: DirectoryAdapter = {
+            ...fs,
+            async read() {
+                throw new DOMException('not allowed', 'NotAllowedError')
+            },
+        }
+
+        await expect(scanGraph(failing)).rejects.toThrow('not allowed')
+    })
+})

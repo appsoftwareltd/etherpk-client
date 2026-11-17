@@ -120,15 +120,32 @@ function moveConceptViews(layout: DocumentMutationLayout, views: readonly OpenCo
     }
 }
 
-/** Whether the document's tab is the front one of the Pane holding it. */
-function isFrontTab(layout: DocumentMutationLayout, target: string): boolean {
+/** Where the document's tab is: the Pane holding it, and whether it is that Pane's front tab. */
+interface DocumentPlace {
+    paneId: string
+    front: boolean
+}
+
+/** The Pane holding the document's tab, or null when it is not open. */
+function documentPlace(layout: DocumentMutationLayout, target: string): DocumentPlace | null {
     const key = viewKey({ kind: 'document', target })
     for (const region of Object.values(layout.serialize().model.regions)) {
         for (const pane of region.panes) {
-            if (pane.views.some((v) => v.panelId === key)) return pane.activePanelId === key
+            if (pane.views.some((v) => v.panelId === key)) return { paneId: pane.id, front: pane.activePanelId === key }
         }
     }
-    return false
+    return null
+}
+
+/**
+ * Re-key the document View at `place` from `from` to `to` (ADR 0065): the new name opens in the same
+ * Pane, in front if the old one was, and then the old one closes. In the other order a document alone
+ * in its Pane emptied the Pane, which was removed, and the new name opened in whichever Pane was left.
+ * A View that is not open (`place` null) is only closed, which is nothing to undo.
+ */
+function rekeyDocument(layout: DocumentMutationLayout, from: string, to: string, place: DocumentPlace | null): void {
+    if (place) layout.openView({ kind: 'document', target: to }, { activate: place.front, paneId: place.paneId })
+    layout.closeView({ kind: 'document', target: from })
 }
 
 interface DocumentMutationRecents {
@@ -430,11 +447,7 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
             const steps = plan ? renameSteps(plan) : []
             const openScoped = layout ? openDocumentTargets(layout).filter((t) => isScopedBy(t, concept)) : []
             const froms = [...new Set([concept, ...steps.map((s) => s.from), ...openScoped])]
-            const state = froms.map((from) => ({
-                from,
-                open: layout?.isOpen({ kind: 'document', target: from }) ?? false,
-                active: layout ? isFrontTab(layout, from) : false,
-            }))
+            const state = froms.map((from) => ({ from, place: layout ? documentPlace(layout, from) : null }))
             const conceptViews = conceptViewsOf(layout)
 
             // The index says which documents the rewrite has to read; the store brings those
@@ -442,9 +455,12 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
             // 2026-09-20). Without an index the store reads every document instead.
             const referencing = strategy === 'rewrite' ? await referencingDocuments(concept) : undefined
             const result = await store.renamePage(concept, next, { strategy, referencing })
-            const keyChanged = conceptKey(result.concept) !== conceptKey(concept)
+            // Any change of spelling counts, a change of case alone included: the key is the same
+            // then, but the store has retired the document open under the old spelling, so a View
+            // left on it would keep showing the old name over a handle nothing writes through.
+            const renamed = result.concept !== concept
             const renamedTo = new Map<string, string>([[concept, result.concept]])
-            if (keyChanged) {
+            if (renamed) {
                 for (const step of cascadeFor(froms, concept, result.concept)) renamedTo.set(step.from, step.to)
                 // A cascaded document that landed on another document's alias lives on under THAT
                 // document's title; the plan knows (`into`), and can be trusted when it is the one
@@ -464,12 +480,11 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
             dependencies.renameInMemberLists?.(listMoves)
             dependencies.recents()?.rename(concept, result.concept)
 
-            if (!keyChanged) return result
+            if (!renamed) return result
             for (const entry of state) {
                 const to = renamedTo.get(entry.from)
                 if (!to || to === entry.from) continue
-                layout?.closeView({ kind: 'document', target: entry.from })
-                if (entry.open) layout?.openView({ kind: 'document', target: to }, { activate: entry.active })
+                if (layout) rekeyDocument(layout, entry.from, to, entry.place)
             }
             // Where a concept the rename moved lives on: one planned or open under the name
             // `renamedTo` gives it, any other one the renamed concept scopes by the cascade rule
@@ -505,9 +520,7 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
             const conceptViews = conceptViewsOf(layout)
             for (const step of moves) {
                 if (step.from === step.to) continue
-                const front = layout ? isFrontTab(layout, step.from) : false
-                layout?.closeView({ kind: 'document', target: step.from })
-                layout?.openView({ kind: 'document', target: step.to }, { activate: front })
+                if (layout) rekeyDocument(layout, step.from, step.to, documentPlace(layout, step.from))
             }
             // A pageless concept moved with its only link: no document was renamed. Extensions
             // hear of each open Draft and View it carried, then of the concept.
@@ -531,11 +544,8 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
             // Re-keyed in place, as a rename from inside the app is: the tab keeps its place
             // and is fronted only if it was the front one already. Done before the favourite
             // write is awaited, so a caller that goes on to save the layout saves the new name.
-            const wasOpen = layout?.isOpen({ kind: 'document', target: from }) ?? false
-            const wasFront = layout ? isFrontTab(layout, from) : false
             const conceptViews = conceptViewsOf(layout)
-            layout?.closeView({ kind: 'document', target: from })
-            if (wasOpen) layout?.openView({ kind: 'document', target: to }, { activate: wasFront })
+            if (layout) rekeyDocument(layout, from, to, documentPlace(layout, from))
             // The store reports each document it moved, scoped ones included, so only the Views
             // over this one concept follow here.
             if (from !== to) dependencies.conceptRenamed?.(from, to)

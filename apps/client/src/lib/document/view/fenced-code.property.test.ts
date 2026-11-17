@@ -461,13 +461,15 @@ describe('fenced blocks under the keys pressed inside them', { timeout: 30_000 }
         // "A body line keeps its indentation (CommonMark)": a line's spaces past the fence column are
         // the code's own. Only the caret's lines (and, for a delete, the line it joins) may change; a
         // block that moves as a unit keeps every line's indentation past its column, a tab included.
+        // Enter on an opener that took a block's fence completes it by design and leaves the code below
+        // the new block as text (`entersOpenerThatTookAFence`), so it ends the sequence.
         fc.assert(
             fc.property(scenarioArb, (s) => {
                 const placed = place(s)
                 if (!placed) return
                 const { editor } = placed
                 for (const key of s.keys) {
-                    if (editsFenceText(editor, key)) return
+                    if (editsFenceText(editor, key) || entersOpenerThatTookAFence(editor, key)) return
                     const { state } = editor
                     const before = editor.text().split('\n')
                     const fixture = editor.fixture()
@@ -763,6 +765,30 @@ describe('a longer fence with no closer', { timeout: 30_000 }, () => {
 })
 
 describe('fence completion', { timeout: 30_000 }, () => {
+    // Found by "a key keeps the own indentation of every code line it was not pressed on" under
+    // EDITOR_FUZZ_SEED=77 at 6000 runs, shrunk to `- water the beans\n  ```|\n  return 1\n  ```\n  ```\n```\n````
+    // with Enter. Three fences of one kind in a row read as an opener above a block, not a block above a
+    // stray, so Enter on the first completes it even with code under it: the code is left below the new
+    // block and the old closer pairs with the stray. The owner's answer (2026-11-17): intended. Someone
+    // with the caret on that fence knows Enter does not wrap the text below.
+    it('Enter on the opener of a block holding code, a stray fence just below it, completes the opener as a new block', () => {
+        for (const [before, after] of [
+            ['- a\n  ```|\n  return 1\n  ```\n  ```', '- a\n  ```\n  |\n  ```\n  return 1\n  ```\n  ```'],
+            ['```|\nreturn 1\n```\n```', '```\n|\n```\nreturn 1\n```\n```'],
+        ]) {
+            const editor = editorFixture(before)
+            editor.key('Enter')
+            expect(editor.fixture(), before).toBe(after)
+            // The new pair is a block, and the old closer pairs with the stray below it.
+            const column = before.startsWith('-') ? 2 : 0
+            const first = before.startsWith('-') ? 1 : 0
+            expect(analysisFor(editor.state).fencedBlocks, before).toEqual([
+                { start: first, end: first + 2, fenceColumn: column },
+                { start: first + 4, end: first + 5, fenceColumn: column },
+            ])
+        }
+    })
+
     it('Enter and Shift+Enter inside the backticks or info string of a fence no block pairs act as at the line end, never splitting it', () => {
         // "Enter / Shift+Enter (inside a fence line's backticks): as at the line end, never splitting
         // the fence." The owner's answer (2026-11-16): a fence with no closer, or a stray, too. On an

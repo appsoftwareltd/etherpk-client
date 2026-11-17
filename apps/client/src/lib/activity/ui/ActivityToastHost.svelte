@@ -11,7 +11,9 @@
      * Placement: bottom-right from `lg` up; **top-anchored under the navbar below `lg`**,
      * because the mobile [[Command Bar]] owns the bottom edge (its pinned right-hand group
      * is the font-size zoom, exactly where a bottom-right toast would land) and it rides
-     * above the soft keyboard.
+     * above the soft keyboard. In the workspace on a phone the rail starts below the phone's top bar
+     * instead (`--gk-notice-top`, set by MobilePresenter.svelte), so a card never covers the
+     * document control or the drawer toggles.
      *
      * Cancelling is a two-step inside the card rather than a confirm dialog: the toast is
      * the only progress surface, and a modal over it would be the competing surface the
@@ -125,7 +127,7 @@
     onmousedown={(e) => {
         if ((e.target as Element).closest("button")) e.preventDefault();
     }}
-    class="pointer-events-none fixed inset-x-0 top-16 z-40 lg:z-(--z-toast) flex flex-col items-center gap-2 px-4 lg:inset-x-auto lg:top-auto lg:right-4 lg:bottom-4 lg:items-end lg:px-0"
+    class="pointer-events-none fixed inset-x-0 top-[var(--gk-notice-top,4rem)] z-40 lg:z-(--z-toast) flex flex-col items-center gap-2 px-4 lg:inset-x-auto lg:top-auto lg:right-4 lg:bottom-4 lg:items-end lg:px-0"
 >
     {#if activities.length > 0}
         {#each activities as activity (activity.id)}

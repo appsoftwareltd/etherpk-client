@@ -24,6 +24,10 @@ export function attachReconciliation(
         running = true
         try {
             await store.reconcile()
+        } catch (error) {
+            // Nothing awaits a poll, so a failed pass is logged here rather than left as an
+            // unhandled rejection. The next focus or tick runs the pass again.
+            console.warn('[reconcile] a pass over the graph folder failed; the next one tries again', error)
         } finally {
             running = false
         }

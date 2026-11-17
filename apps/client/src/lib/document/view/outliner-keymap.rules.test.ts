@@ -1076,6 +1076,9 @@ table('Backspace and Delete merge Logseq-style', [
     { rule: 'an empty bullet at the top of the document drops its marker instead of nibbling it', precedent: 'Logseq', before: '- [x] |', key: 'Backspace', after: '|' },
     { rule: 'an empty bullet at the top of the document with a subtree removes itself and promotes the subtree', precedent: 'EtherPK', before: '- |\n  - a\n    - b\n- c', key: 'Backspace', after: '- |a\n  - b\n- c' },
     { rule: 'the promoted subtree keeps its continuation and fence', precedent: 'EtherPK', before: '- |\n  - a\n    soft\n    ```\n    x\n    ```', key: 'Backspace', after: '- |a\n  soft\n  ```\n  x\n  ```' },
+    // Only the structure left of the fence column moves. A tab the code is indented with is the code's.
+    { rule: '…and its code keeps a tab it is indented with', precedent: 'EtherPK', before: '- a\n- |\n  - b\n    ```\n    \tx\n    ```', key: 'Backspace', after: '- a|\n  - b\n    ```\n    \tx\n    ```' },
+    { rule: '…at the top of the document too', precedent: 'EtherPK', before: '- |\n  - a\n    ```\n    \tx\n    ```', key: 'Backspace', after: '- |a\n  ```\n  \tx\n  ```' },
     { rule: 'a subtree that is only a fence becomes top-level code', precedent: 'EtherPK', before: '- |\n  ```\n  x\n  ```', key: 'Backspace', after: '|```\nx\n```' },
     { rule: 'an empty top bullet over a lone continuation line becomes that line', precedent: 'EtherPK', before: '- |\n  soft', key: 'Backspace', after: '|soft' },
     { rule: 'an empty top bullet followed by a sibling still drops its marker', precedent: 'EtherPK', before: '- |\n- a', key: 'Backspace', after: '|\n- a' },
@@ -2039,6 +2042,10 @@ table('fence creation and completion (ADR 0018)', [
     { rule: 'a new info-string opener above an existing bare block completes on its own too', precedent: 'EtherPK', before: '```js|\n\n```\nx\n```', key: 'Enter', after: '```js\n|\n```\n\n```\nx\n```' },
     { rule: 'a new bullet opener above a sibling’s block completes on its own', precedent: 'EtherPK', before: '- ```|\n- ```\n  x\n  ```', key: 'Enter', after: '- ```\n  |\n  ```\n- ```\n  x\n  ```' },
     { rule: 'a stray unterminated fence above never makes a complete block’s opener look fresh', precedent: 'EtherPK', before: '```\np\n```js|\nx\n```', key: 'Enter', after: '```\np\n```js\n|\nx\n```' },
+    // Three fences of one kind in a row read as an opener above a block, code between the first two or
+    // not: Enter on the first completes it and does not wrap the text below (decided 2026-11-17).
+    { rule: 'a stray fence below a block’s closer makes its opener an opener above a block: Enter completes it', precedent: 'EtherPK', before: '```|\nx\n```\n```', key: 'Enter', after: '```\n|\n```\nx\n```\n```' },
+    { rule: '…in a bullet’s block too', precedent: 'EtherPK', before: '- a\n  ```|\n  x\n  ```\n  ```', key: 'Enter', after: '- a\n  ```\n  |\n  ```\n  x\n  ```\n  ```' },
     { rule: 'a shorter fence line inside a longer block is content: Enter is the in-block newline', precedent: 'CommonMark', before: '````\n```|\nx\n````', key: 'Enter', after: '````\n```\n|\nx\n````' },
     { rule: 'a longer fence never closes a shorter opener: the opener above a ```` block still completes on its own', precedent: 'EtherPK', before: '```|\n````\nx\n````', key: 'Enter', after: '```\n|\n```\n````\nx\n````' },
     { rule: 'Enter on the opener of a ``` block followed by a ```` block opens its first content line, never a second closer', precedent: 'EtherPK', before: '```|\nx\n```\n\n````\ny\n````', key: 'Enter', after: '```\n|\nx\n```\n\n````\ny\n````' },

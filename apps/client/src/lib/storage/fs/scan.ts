@@ -14,7 +14,7 @@
  * ([[Filesystem Backend]] → Reconciliation).
  */
 
-import type { DirectoryAdapter, Subdir } from './directory-adapter'
+import type { DirectoryAdapter, DirEntry, Subdir } from './directory-adapter'
 import { parseFrontmatter } from './frontmatter'
 import {
     type DocumentKind,
@@ -66,10 +66,43 @@ function fileKey(subdir: Subdir, fileName: string): string {
     return `${subdir}/${fileName}`
 }
 
+/** A file's text, or null when it is no longer there. Any other failure is the caller's. */
+async function readUnlessGone(adapter: DirectoryAdapter, subdir: Subdir, name: string): Promise<string | null> {
+    try {
+        return (await adapter.read(subdir, name)).text
+    } catch (error) {
+        if ((error as DOMException | null)?.name === 'NotFoundError') return null
+        throw error
+    }
+}
+
+/** Where a scan stands: the last scan's entries by file, and the files a save is writing now. */
+interface ScanContext {
+    adapter: DirectoryAdapter
+    previous: Map<string, DocumentEntry>
+    writeInFlight: (subdir: Subdir, fileName: string) => boolean
+}
+
+/**
+ * The entry for one listed document file: the last scan's, when the listing's stamps have not moved
+ * (or a save of ours is writing it), else read from the file. Null for a file removed since the
+ * listing (a delete or a rename finishing while a reconcile scans): it is gone.
+ */
+async function entryFor(context: ScanContext, subdir: Subdir, kind: DocumentKind, listed: DirEntry): Promise<DocumentEntry | null> {
+    const { name, lastModified, size } = listed
+    const known = context.previous.get(fileKey(subdir, name))
+    if (known && ((known.lastModified === lastModified && known.size === size) || context.writeInFlight(subdir, name))) return known
+    const text = await readUnlessGone(context.adapter, subdir, name)
+    if (text === null) return null
+    const fm = parseFrontmatter(text)
+    const concept = kind === 'journal' ? journalConceptOf(name) : conceptOf(fm, fileStem(name))
+    return { kind, concept, key: conceptKey(concept), subdir, fileName: name, aliases: aliasesOf(fm), lastModified, size }
+}
+
 export async function scanGraph(adapter: DirectoryAdapter, options: ScanOptions = {}): Promise<DocumentEntry[]> {
     const previous = new Map<string, DocumentEntry>()
     for (const entry of options.previous ?? []) previous.set(fileKey(entry.subdir, entry.fileName), entry)
-    const writeInFlight = options.writeInFlight ?? (() => false)
+    const context: ScanContext = { adapter, previous, writeInFlight: options.writeInFlight ?? (() => false) }
 
     const journals: DocumentEntry[] = []
     const pages: DocumentEntry[] = []
@@ -77,32 +110,10 @@ export async function scanGraph(adapter: DirectoryAdapter, options: ScanOptions 
     for (const subdir of SCANNED_SUBDIRS) {
         const kind = documentKindOf(subdir)
         if (!kind) continue
-
-        for (const { name, lastModified, size } of await adapter.list(subdir)) {
-            if (!isDocumentFile(name)) continue
-            const known = previous.get(fileKey(subdir, name))
-            const reusable =
-                known !== undefined &&
-                ((known.lastModified === lastModified && known.size === size) || writeInFlight(subdir, name))
-            if (reusable) {
-                ;(kind === 'journal' ? journals : pages).push(known)
-                continue
-            }
-            const { text } = await adapter.read(subdir, name)
-            const fm = parseFrontmatter(text)
-            const concept =
-                kind === 'journal' ? journalConceptOf(name) : conceptOf(fm, fileStem(name))
-            const entry: DocumentEntry = {
-                kind,
-                concept,
-                key: conceptKey(concept),
-                subdir,
-                fileName: name,
-                aliases: aliasesOf(fm),
-                lastModified,
-                size,
-            }
-            ;(kind === 'journal' ? journals : pages).push(entry)
+        for (const listed of await adapter.list(subdir)) {
+            if (!isDocumentFile(listed.name)) continue
+            const entry = await entryFor(context, subdir, kind, listed)
+            if (entry) (kind === 'journal' ? journals : pages).push(entry)
         }
     }
 

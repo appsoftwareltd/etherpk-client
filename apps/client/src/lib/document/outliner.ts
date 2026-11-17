@@ -462,9 +462,11 @@ export function healOrphanIndent(lines: string[], start: number, end: number, bl
     // A fenced block moves with the line it hangs under, as a unit, so its fences stay paired: the
     // whole block by the owner's correction (a form-2 fence under a bullet), or by the opener's own
     // correction when the opener is the bullet line (form-1).
+    // Only the indentation is moved, as `shiftLines` moves it: a tab the code is indented with past the
+    // fence column is the code's own, and rewriting the whole indent as spaces turned it into one space.
     const shiftBlock = (b: FencedBlockRange, first: number, delta: number) => {
         if (delta === 0) return
-        for (let k = first; k <= b.end && k <= end; k++) out[k] = ' '.repeat(Math.max(0, lineIndent(out[k]) + delta)) + out[k].trimStart()
+        for (let k = first; k <= b.end && k <= end; k++) out[k] = shiftLines([out[k]], delta)[0]
     }
     for (let i = start; i <= end && i < out.length; i++) {
         if (i === transparent) continue

@@ -201,6 +201,31 @@
     const overView = $derived(topBarOverView.current)
     let topBarHeight = $state(0)
     const pressedBar = () => overView?.pressed()
+
+    /**
+     * Notices and Activity Toasts drop in under the navbar on a phone (ActivityToastHost.svelte),
+     * which is where this top bar is: a notice left there for its 15 seconds took the taps meant
+     * for the document control and the drawer toggles. While the presenter is up, the rail is told
+     * where the bar ends (`--gk-notice-top`), measured from the presenter's top rather than the
+     * bar's own box, so a bar lying over the View and slid out of sight still keeps its room.
+     */
+    function noticesBelow(bar: HTMLElement): () => void {
+        const root = document.documentElement
+        const place = () => {
+            const top = (bar.parentElement?.getBoundingClientRect().top ?? 0) + bar.offsetHeight
+            root.style.setProperty('--gk-notice-top', `${Math.round(top + 8)}px`)
+        }
+        place()
+        const observer = new ResizeObserver(place)
+        observer.observe(bar)
+        window.addEventListener('resize', place)
+        return () => {
+            observer.disconnect()
+            window.removeEventListener('resize', place)
+            root.style.removeProperty('--gk-notice-top')
+        }
+    }
+
     $effect(() => {
         noteTopBarOpened(leftOpen || rightOpen || menuOpen)
         return () => noteTopBarOpened(false)
@@ -391,7 +416,7 @@
 <div class="mobile" data-testid="mobile-presenter" style="--keyboard-inset: {keyboardInset}px; --top-bar-over: {overView ? topBarHeight : 0}px">
     <!-- The drawer toggles, and between them the button to Search, the control naming the
          document in front and the button to today's journal -->
-    <div class="topbar" class:over={overView} data-gone={overView?.hidden || undefined} bind:offsetHeight={topBarHeight} onpointerdowncapture={pressedBar} data-testid="mobile-topbar">
+    <div class="topbar" class:over={overView} data-gone={overView?.hidden || undefined} bind:offsetHeight={topBarHeight} {@attach noticesBelow} onpointerdowncapture={pressedBar} data-testid="mobile-topbar">
         <button
             class="toggle"
             data-testid="mobile-toggle-left"

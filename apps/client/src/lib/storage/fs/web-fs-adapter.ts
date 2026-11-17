@@ -47,7 +47,15 @@ export function createWebFsDirectoryAdapter(root: FileSystemDirectoryHandle): Di
             // values() yields file + directory handles; we keep only files.
             for await (const handle of dir.values()) {
                 if (handle.kind !== 'file') continue
-                const file = await (handle as FileSystemFileHandle).getFile()
+                let file: File
+                try {
+                    file = await (handle as FileSystemFileHandle).getFile()
+                } catch (err) {
+                    // Removed while the folder was being listed (a delete or a rename finishing
+                    // meanwhile): it is not in the folder, so it is not in the listing.
+                    if ((err as DOMException)?.name === 'NotFoundError') continue
+                    throw err
+                }
                 out.push({ name: handle.name, lastModified: file.lastModified, size: file.size })
             }
             return out

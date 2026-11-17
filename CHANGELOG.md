@@ -5,6 +5,20 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Fixes.**
+  - Renaming a page to the same name in different capitals (`Garden` to `garden`) shows the new
+    spelling on its tab, and its editor no longer says the name differs.
+  - Renaming a page that is alone in a pane beside another keeps it in its own pane. It used to
+    move into the other pane, and its pane closed.
+  - On a phone, notices appear below the top bar, so the document control and the sidebar buttons
+    can still be tapped while one shows.
+  - Deleting an empty bullet whose children hold a code block keeps the tabs the code is indented
+    with.
+
 ## 0.31.0 - 2026-11-16
 
 ### Client

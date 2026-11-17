@@ -50,6 +50,46 @@ function layoutWith(open: string[], front: string | null) {
 }
 
 describe('workspace document mutations', () => {
+    // A document alone in a Pane beside another: closing it first emptied its Pane, which went, and
+    // the new name opened in the Pane left over. The View opens in its own Pane, then the old one goes.
+    it('re-keys a document in the Pane it is in, opening the new name before the old one closes', async () => {
+        const key = (target: string) => `document:${target}`
+        const layout = {
+            closeView: vi.fn(),
+            openView: vi.fn(),
+            isOpen: vi.fn((view: { target: string }) => ['Notes', 'Garden'].includes(view.target)),
+            serialize: () => ({
+                model: {
+                    regions: {
+                        main: {
+                            panes: [
+                                { id: 'main-1', views: [{ panelId: key('Notes') }], activePanelId: key('Notes') },
+                                { id: 'main-2', views: [{ panelId: key('Garden') }], activePanelId: key('Garden') },
+                            ],
+                        },
+                    },
+                },
+            }),
+        }
+        const controller = createDocumentMutationController({
+            store: () => ({
+                planRename: vi.fn().mockResolvedValue(null),
+                renamePage: vi.fn().mockResolvedValue({ ...result, concept: 'Pantry', cascaded: 0 }),
+                deleteDocument: vi.fn(),
+            }),
+            index: () => undefined,
+            layout: () => layout,
+            recents: () => null,
+            renameFavourite: vi.fn().mockResolvedValue(undefined),
+        })
+
+        await controller.rename('Garden', null, 'Pantry', 'rewrite')
+
+        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'Pantry' }, { activate: true, paneId: 'main-2' })
+        expect(layout.closeView).toHaveBeenCalledWith({ kind: 'document', target: 'Garden' })
+        expect(layout.openView.mock.invocationCallOrder[0]).toBeLessThan(layout.closeView.mock.invocationCallOrder[0])
+    })
+
     it('follows a rename that already happened: favourites, recents and the open View', async () => {
         const layout = layoutWith(['Kanban'], 'Kanban')
         const recents = { forget: vi.fn(), rename: vi.fn() }
@@ -70,7 +110,7 @@ describe('workspace document mutations', () => {
         expect(renameBookmarks).toHaveBeenCalledWith('Kanban', 'Kanban 2')
         expect(recents.rename).toHaveBeenCalledWith('Kanban', 'Kanban 2')
         expect(layout.closeView).toHaveBeenCalledWith({ kind: 'document', target: 'Kanban' })
-        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'Kanban 2' }, { activate: true })
+        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'Kanban 2' }, { activate: true, paneId: 'main-1' })
     })
 
     it('refuses to delete a document a publication includes, naming where and what to undo', () => {
@@ -242,7 +282,7 @@ describe('workspace document mutations', () => {
         await controller.rename('Old', stale, 'New', 'rewrite')
 
         expect(layout.closeView.mock.calls.map(([v]) => v.target).sort()).toEqual(['Old', '[[Old]] Child'].sort())
-        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'New' }, { activate: true })
+        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'New' }, { activate: true, paneId: 'main-1' })
     })
 
     it('closes nothing when the rename changed nothing', async () => {
@@ -282,8 +322,8 @@ describe('workspace document mutations', () => {
         await controller.rename('Old', plan, 'New', 'rewrite')
 
         expect(layout.closeView.mock.calls.map(([v]) => v.target).sort()).toEqual(['Old', '[[Old]] Child'].sort())
-        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'New' }, { activate: false })
-        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: '[[New]] Child' }, { activate: true })
+        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'New' }, { activate: false, paneId: 'main-1' })
+        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: '[[New]] Child' }, { activate: true, paneId: 'main-1' })
         expect(layout.openView).toHaveBeenCalledTimes(2)
     })
 
@@ -305,7 +345,7 @@ describe('workspace document mutations', () => {
         const bare: RenamePlan = { ...plan, cascade: [] }
         await controller.rename('Old', bare, 'New', 'rewrite')
         expect(layout.closeView).toHaveBeenCalledWith({ kind: 'document', target: '[[Old]] Idea' })
-        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: '[[New]] Idea' }, { activate: false })
+        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: '[[New]] Idea' }, { activate: false, paneId: 'main-1' })
     })
 
     it('carries favourites and bookmarks through every document the rename moved, scoped ones first, and every member’s lists with them', async () => {
@@ -389,7 +429,7 @@ describe('workspace document mutations', () => {
             { from: 'Old', to: 'New' },
         ])
         expect(recents.rename).toHaveBeenCalledWith('Old', 'New')
-        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'New' }, { activate: true })
+        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'New' }, { activate: true, paneId: 'main-1' })
         expect(conceptRenamed).toHaveBeenCalledWith('Old', 'New')
     })
 
@@ -442,6 +482,49 @@ describe('workspace document mutations', () => {
         expect(renameInMemberLists).toHaveBeenLastCalledWith([{ from: 'Kitchen', to: 'Pantry' }])
     })
 
+    // The concept's key is unchanged, but the store retires the document open under the old
+    // spelling: a tab left on it keeps the old name and edits a handle the store no longer holds.
+    it('re-keys the open View, in front, through a case-only rename', async () => {
+        const layout = layoutWith(['Notes', 'Garden'], 'Garden')
+        const controller = createDocumentMutationController({
+            store: () => ({
+                planRename: vi.fn().mockResolvedValue(null),
+                renamePage: vi.fn().mockResolvedValue({ ...result, concept: 'garden', cascaded: 0 }),
+                deleteDocument: vi.fn(),
+            }),
+            index: () => undefined,
+            layout: () => layout,
+            recents: () => null,
+            renameFavourite: vi.fn().mockResolvedValue(undefined),
+        })
+
+        await controller.rename('Garden', null, 'garden', 'rewrite')
+
+        expect(layout.closeView).toHaveBeenCalledWith({ kind: 'document', target: 'Garden' })
+        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'garden' }, { activate: true, paneId: 'main-1' })
+        expect(layout.closeView).not.toHaveBeenCalledWith({ kind: 'document', target: 'Notes' })
+    })
+
+    it('leaves the open View alone when the name it was given is the one it had', async () => {
+        const layout = layoutWith(['Garden'], 'Garden')
+        const controller = createDocumentMutationController({
+            store: () => ({
+                planRename: vi.fn().mockResolvedValue(null),
+                renamePage: vi.fn().mockResolvedValue({ ...result, concept: 'Garden', cascaded: 0 }),
+                deleteDocument: vi.fn(),
+            }),
+            index: () => undefined,
+            layout: () => layout,
+            recents: () => null,
+            renameFavourite: vi.fn().mockResolvedValue(undefined),
+        })
+
+        await controller.rename('Garden', null, 'Garden', 'rewrite')
+
+        expect(layout.closeView).not.toHaveBeenCalled()
+        expect(layout.openView).not.toHaveBeenCalled()
+    })
+
     it('leaves other members’ lists alone when following a rename made elsewhere: the renaming Client updated them', async () => {
         const renameInMemberLists = vi.fn()
         const controller = createDocumentMutationController({
@@ -471,10 +554,10 @@ describe('workspace document mutations', () => {
         expect(layout.closeView.mock.calls.map(([v]) => v.target).sort()).toEqual(
             ['Old', 'Really [[Complex [[Old]]]] Thing'].sort(),
         )
-        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'New' }, { activate: false })
+        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'New' }, { activate: false, paneId: 'main-1' })
         expect(layout.openView).toHaveBeenCalledWith(
             { kind: 'document', target: 'Really [[Complex [[New]]]] Thing' },
-            { activate: false },
+            { activate: false, paneId: 'main-1' },
         )
         // Notes is untouched.
         expect(layout.closeView).not.toHaveBeenCalledWith({ kind: 'document', target: 'Notes' })
