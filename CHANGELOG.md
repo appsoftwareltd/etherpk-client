@@ -5,6 +5,14 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Fixes.**
+  - In Firefox, selected text in the PDF reader is marked in grey, as in other browsers, instead of
+    the system's highlight colour.
+
 ## 0.34.0 - 2026-11-17
 
 ### Client

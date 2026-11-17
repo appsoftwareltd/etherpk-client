@@ -1365,9 +1365,13 @@
         background-image: var(--annotation-unfocused-field-background);
     }
     /* pdf.js marks a selection in blue, a Find match in violet and an unfilled form field in blue.
-       The interface's own grey and Find's own colours draw them here instead. */
+       The interface's own grey and Find's own colours draw them here instead. In Firefox pdf.js
+       also writes an inline transparent background and a backdrop filter onto each selection,
+       which paints it in the system's highlight colour (blue on most desktops), so the grey has to
+       outrank an inline style there. */
     .etherpk-pdf-scroller :global(.canvasWrapper .selection) {
-        background: rgb(115 115 115 / 0.35);
+        background: rgb(115 115 115 / 0.35) !important;
+        backdrop-filter: none !important;
     }
     .etherpk-pdf-scroller :global(.textLayer .highlight) {
         --highlight-bg-color: var(--gk-find-match);
