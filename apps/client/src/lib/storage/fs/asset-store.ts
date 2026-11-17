@@ -288,10 +288,23 @@ export function createAssetStore(adapter: DirectoryAdapter): AssetStore {
      * not the name it was added under. Keying the write on the whole file name instead — which
      * is what this did before — stored the same bytes twice whenever the stem differed.
      */
-    let contentIndex: Map<string, string> | undefined
+    let contentIndex: Promise<Map<string, string>> | undefined
 
-    async function assetsByContent(): Promise<Map<string, string>> {
-        if (contentIndex) return contentIndex
+    /**
+     * The index, listed once. The promise is what is kept, not the map: saves run several at once
+     * (an upload's pool), and each one that found no map yet used to list the folder into a map of
+     * its own. The last listing to finish replaced the rest, and every write recorded in the others
+     * was forgotten, so adding the same files again stored and reported most of them as new.
+     */
+    function assetsByContent(): Promise<Map<string, string>> {
+        contentIndex ??= listByContent().catch((err: unknown) => {
+            contentIndex = undefined // a failed listing is asked again by the next save
+            throw err
+        })
+        return contentIndex
+    }
+
+    async function listByContent(): Promise<Map<string, string>> {
         const index = new Map<string, string>()
         for (const { name } of await adapter.list('assets')) {
             const parsed = assetHashFromName(name)
@@ -300,39 +313,66 @@ export function createAssetStore(adapter: DirectoryAdapter): AssetStore {
                 index.set(contentKey(parsed.hash, parsed.ext), name)
             }
         }
-        contentIndex = index
         return index
+    }
+
+    /**
+     * Content key → the save storing those bytes right now. Two saves of the same bytes at once (a
+     * file dropped twice in one batch) both missed the index and wrote the file twice, under each
+     * name. The second waits for the first and references its file instead.
+     */
+    const storing = new Map<string, Promise<string>>()
+
+    /** The file holding `bytes` under `key`: one the folder already has, or one written now. */
+    async function store(key: string, name: string, hash: string, bytes: Uint8Array<ArrayBuffer>): Promise<{ fileName: string; reused: boolean }> {
+        const index = await assetsByContent()
+        // Already here under some name: reference that file. The index is this store's memory of
+        // the folder, and a file can leave the folder without it: the orphan scan, a trashed
+        // reference and a discarded Quick Note delete through the adapter. A name the folder no
+        // longer holds is written again, or the reference would point at nothing.
+        const held = index.get(key)
+        if (held !== undefined && (await adapter.exists('assets', held))) return { fileName: held, reused: true }
+        const fileName = assetFileName(name, hash)
+        await adapter.writeBinary('assets', fileName, bytes)
+        index.set(key, fileName)
+        return { fileName, reused: false }
     }
 
     return {
         async save({ name, bytes }, onBytes) {
             const hash = await contentHash(bytes)
             const { stem, ext } = splitNameExt(name)
-            const index = await assetsByContent()
             const key = contentKey(hash, ext)
-            // Already here under some name: reference that file. The new name still supplies the
-            // markdown label, so the reference reads as the user's own while the bytes are shared.
-            // The index is this store's memory of the folder, and a file can leave the folder
-            // without it: the orphan scan, a trashed reference and a discarded Quick Note delete
-            // through the adapter. A name the folder no longer holds is written again, or the
-            // reference would point at nothing.
-            const held = index.get(key)
-            const existing = held !== undefined && (await adapter.exists('assets', held)) ? held : undefined
-            const fileName = existing ?? assetFileName(name, hash)
-            if (!existing) {
-                await adapter.writeBinary('assets', fileName, bytes)
-                index.set(key, fileName)
+            let stored: { fileName: string; reused: boolean }
+            const pending = storing.get(key)
+            if (pending) {
+                // The same bytes are being stored by another save: reference its file. Should that
+                // save fail, this one stores the bytes itself.
+                stored = await pending.then(
+                    (fileName) => ({ fileName, reused: true }),
+                    () => store(key, name, hash, bytes),
+                )
+            } else {
+                const work = store(key, name, hash, bytes)
+                storing.set(key, work.then((done) => done.fileName))
+                try {
+                    stored = await work
+                } finally {
+                    storing.delete(key)
+                }
             }
             // A local write is one indivisible step, so the whole file lands at once. A
             // deduped write reports too - the caller is measuring work retired, not bytes
             // pushed through a socket.
             onBytes?.(bytes.length)
+            // The new name still supplies the markdown label, so the reference reads as the user's
+            // own while the bytes are shared.
             return {
-                ref: `../assets/${fileName}`,
-                name: fileName,
+                ref: `../assets/${stored.fileName}`,
+                name: stored.fileName,
                 stem: publishSlug(stem) || 'asset',
                 isImage: isImageExt(ext),
-                ...(existing ? { reused: true } : {}),
+                ...(stored.reused ? { reused: true } : {}),
             }
         },
 
@@ -378,7 +418,8 @@ export function createAssetStore(adapter: DirectoryAdapter): AssetStore {
             if (url) URL.revokeObjectURL(url)
             urlCache.delete(from)
             const parsed = assetHashFromName(to)
-            if (parsed) contentIndex?.set(contentKey(parsed.hash, parsed.ext), to)
+            // Into the index once it is listed; a listing that fails is asked again, and finds `to`.
+            if (parsed) contentIndex?.then((index) => index.set(contentKey(parsed.hash, parsed.ext), to)).catch(() => {})
         },
     }
 }

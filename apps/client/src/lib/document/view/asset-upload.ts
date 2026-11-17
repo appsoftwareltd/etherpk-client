@@ -16,6 +16,7 @@ import { bulletContent, contentColumn, isBulletLine, lineIndent } from '../outli
 import { normalizeDisplaySize } from './augmentations/image-display-size'
 import { liveEditorView } from './editor-succession'
 import type { ImageOptimizer } from './image-optimize'
+import { lineBreakNeededAt, pastedLineOpening } from './paste-clamp'
 
 /**
  * The editor an upload started in was torn down with nothing taking its place - the tab closed
@@ -48,38 +49,75 @@ export function defaultMaxImageDisplaySize(): string | undefined {
 }
 
 /**
- * Insert a saved asset's markdown at `at`, returning the caret offset just after it.
+ * Insert a saved asset's markdown at `at`, returning the offset just after the reference: where the
+ * next file of the same batch goes. The caret is left after the reference, or after the line break
+ * that keeps an image clear of the text that followed it.
+ *
  * Images carry the graph's default max display-size hint (Graph Settings) unless switched off, and
  * only render when they are the sole content of a line ({@link imageEmbedAugmentation}), so an
  * image dropped mid-line is padded with newlines; inline links are inserted as-is.
+ *
+ * `follows` puts the reference on a new line after `at`, where a pasted line would start
+ * ({@link pastedLineOpening}): every file of a batch after the first, `at` being the end of the
+ * reference before it, and a file whose position is in the frontmatter or at the end of a delimiter
+ * line ({@link lineBreakNeededAt}). Run together on one line, a batch's links and their action
+ * clusters left no gap to place the caret in, and an outline got one block holding them all.
  */
-export function insertAssetMarkdown(view: EditorView, asset: SavedAsset, at: number): number {
+export function insertAssetMarkdown(view: EditorView, asset: SavedAsset, at: number, follows = false): number {
     const md = buildAssetMarkdown(asset, asset.isImage ? defaultMaxImageDisplaySize() : undefined)
-    if (asset.isImage) {
-        const line = view.state.doc.lineAt(at)
-        // Dropping onto an EMPTY bullet → the image becomes the bullet's own content (`- ![…]`), which
-        // renders inline on the bullet line ({@link imageEmbedAugmentation}). Insert after the marker.
-        if (isBulletLine(line.text) && bulletContent(line.text).trim() === '') {
-            const anchor = line.to + md.length
-            view.dispatch({ changes: { from: line.to, insert: md }, selection: { anchor }, userEvent: 'input.complete' })
-            return anchor
-        }
-        // Otherwise an image only renders as its own line, so put it on one, clamped to the block's
-        // content column (ADR 0020) — aligned under the bullet rather than dropping to column 0.
-        const col = isBulletLine(line.text) ? contentColumn(line.text) : lineIndent(line.text)
-        const indent = ' '.repeat(col)
-        const before = view.state.sliceDoc(line.from, at)
-        const after = view.state.sliceDoc(at, line.to)
-        const lead = before.trim() !== '' ? '\n' + indent : ''
-        const trail = after.trim() !== '' ? '\n' + indent : ''
-        const insert = `${lead}${md}${trail}`
-        const anchor = at + insert.length
-        view.dispatch({ changes: { from: at, insert }, selection: { anchor }, userEvent: 'input.complete' })
-        return anchor
-    }
-    const anchor = at + md.length
-    view.dispatch({ changes: { from: at, insert: md }, selection: { anchor }, userEvent: 'input.complete' })
+    if (follows) return insertOnNextLine(view, md, asset.isImage, at)
+    if (asset.isImage) return insertImage(view, md, at)
+    return insertAround(view, at, '', md, '')
+}
+
+/**
+ * Put `lead`, the reference `md` and `trail` in at `at`, as one change, leaving the caret after all
+ * three. Returns the offset just after the reference, as the editor's filters left it: a filter can
+ * add to the change (the fence guard pads a code line short of its fence column), so the offset is
+ * carried through the transaction as the selection's anchor and read back, never computed.
+ */
+function insertAround(view: EditorView, at: number, lead: string, md: string, trail: string): number {
+    const insert = `${lead}${md}${trail}`
+    const end = at + lead.length + md.length
+    view.dispatch({ changes: { from: at, insert }, selection: { anchor: end, head: at + insert.length }, userEvent: 'input.complete' })
+    const { anchor, head } = view.state.selection.main
+    if (anchor !== head) view.dispatch({ selection: { anchor: head } })
     return anchor
+}
+
+/** A reference on a new line after `at` ({@link pastedLineOpening}). */
+function insertOnNextLine(view: EditorView, md: string, isImage: boolean, at: number): number {
+    const opening = pastedLineOpening(view.state, at)
+    // Text after `at` (a batch dropped mid-line) follows the last reference, as it follows pasted
+    // lines; under an image it takes the next line, at the new line's column, so the image renders.
+    const after = view.state.sliceDoc(at, view.state.doc.lineAt(at).to)
+    const trail = isImage && after.trim() !== '' ? '\n' + ' '.repeat(opening.column) : ''
+    return insertAround(view, at, opening.text, md, trail)
+}
+
+/** An image, which renders only as the whole of its line. */
+function insertImage(view: EditorView, md: string, at: number): number {
+    const line = view.state.doc.lineAt(at)
+    // Dropping onto an EMPTY bullet → the image becomes the bullet's own content (`- ![…]`), which
+    // renders inline on the bullet line ({@link imageEmbedAugmentation}). Insert after the marker.
+    if (isBulletLine(line.text) && bulletContent(line.text).trim() === '') return insertAround(view, line.to, '', md, '')
+    // Otherwise an image only renders as its own line, so put it on one, clamped to the block's
+    // content column (ADR 0020) — aligned under the bullet rather than dropping to column 0.
+    const indent = ' '.repeat(isBulletLine(line.text) ? contentColumn(line.text) : lineIndent(line.text))
+    const lead = view.state.sliceDoc(line.from, at).trim() !== '' ? '\n' + indent : ''
+    const trail = view.state.sliceDoc(at, line.to).trim() !== '' ? '\n' + indent : ''
+    return insertAround(view, at, lead, md, trail)
+}
+
+/**
+ * Insert the `index`th file of a batch at `pos`: the first where the upload started, unless that
+ * cannot hold text ({@link lineBreakNeededAt}), and every later one on a line of its own after the
+ * reference before it. Returns where the next file goes.
+ */
+function insertNext(view: EditorView, asset: SavedAsset, pos: number, index: number): number {
+    if (index > 0) return insertAssetMarkdown(view, asset, pos, true)
+    const breakAt = lineBreakNeededAt(view.state, pos)
+    return breakAt === null ? insertAssetMarkdown(view, asset, pos) : insertAssetMarkdown(view, asset, breakAt, true)
 }
 
 /**
@@ -196,7 +234,7 @@ export async function uploadAndInsert(
             pos = live.mapPos(pos)
             target = live.view
             if (options.place) options.place(target, asset, nextToInsert)
-            else pos = insertAssetMarkdown(target, asset, pos)
+            else pos = insertNext(target, asset, pos, nextToInsert)
             ready.delete(nextToInsert)
             nextToInsert += 1
             uploaded += 1

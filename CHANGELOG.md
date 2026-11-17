@@ -5,6 +5,23 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Several files added at once go on lines of their own.** Pasting, dropping or uploading more
+  than one file puts each link or picture after the first on a new line in text, or in a new
+  bullet in an outline, instead of running them together on one line. With one file to a line, a
+  click to the right of a file's buttons puts the cursor on that line and shows the link's Markdown.
+- **Fixes.**
+  - Adding files that a local graph already holds says they were reused, for every one of them. It
+    used to count most of them as uploaded again when several were added at once.
+  - The same file added twice in one go is stored once.
+  - A file dropped to the left of a bullet lands at the start of the bullet's text, instead of
+    before the bullet, where it turned the bullet into plain text.
+  - A file added with the cursor in a page's frontmatter, or at the end of a code block's first or
+    last line, goes on the next line instead of breaking the frontmatter or the code block.
+
 ## 0.33.0 - 2026-11-17
 
 ### Client

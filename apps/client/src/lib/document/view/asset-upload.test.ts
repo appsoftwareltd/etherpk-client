@@ -4,28 +4,35 @@
  * insert's position is derived from the previous one, so DOCUMENT order must still follow
  * the order the files were given.
  *
- * Non-image assets are used throughout: `insertAssetMarkdown` takes a branch that needs only
- * `view.dispatch`, so the ordering contract can be pinned without a DOM-backed EditorView.
+ * The editor is a real `EditorState` behind a recording `dispatch`, so the contract can be pinned
+ * without a DOM-backed EditorView: where each reference lands depends on the text around it.
  */
 import { describe, expect, it } from 'vitest'
+import { EditorState, type TransactionSpec } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 
-import type { AssetStore, SavedAsset } from '#lib/storage/fs/asset-store.js'
+import { type AssetStore, type SavedAsset, buildAssetMarkdown } from '#lib/storage/fs/asset-store.js'
 
-import { uploadAndInsert } from './asset-upload'
+import { defaultMaxImageDisplaySize, uploadAndInsert } from './asset-upload'
 import type { ImageOptimizer } from './image-optimize'
 import { markEditorTornDown, recordEditorSuccessor } from './editor-succession'
+import { editorFixture } from './testing/editor-state-fixture'
 
 /**
- * Records the text inserted at each dispatch, in the order the editor received them. `length` is
- * the document length the succession clamp reads; generous by default so it never bites here.
+ * An editor over `doc`, recording the text inserted at each dispatch in the order it received them.
+ * A number is a document of that many characters on one prose line: the length the succession
+ * clamp reads, generous by default so it never bites there.
  */
-function fakeView(length = 10_000) {
+function fakeView(doc: string | number = 10_000) {
     const inserts: { from: number; insert: string }[] = []
+    let state = EditorState.create({ doc: typeof doc === 'number' ? 'x'.repeat(doc) : doc })
     const view = {
-        state: { doc: { length } },
-        dispatch(spec: { changes: { from: number; insert: string } }) {
+        get state() {
+            return state
+        },
+        dispatch(spec: TransactionSpec & { changes: { from: number; insert: string } }) {
             inserts.push({ from: spec.changes.from, insert: spec.changes.insert })
+            state = state.update(spec).state
         },
     } as unknown as EditorView
     return { view, inserts }
@@ -74,8 +81,9 @@ describe('uploadAndInsert', () => {
             storedBytes: COUNT * 10,
             queued: 0,
         })
+        // The first at the caret, each after it on a line of its own (the batch rules below).
         expect(inserts.map((i) => i.insert)).toEqual(
-            Array.from({ length: COUNT }, (_, n) => `[doc${n}](../assets/doc${n}.pdf)`),
+            Array.from({ length: COUNT }, (_, n) => `${n === 0 ? '' : '\n'}[doc${n}](../assets/doc${n}.pdf)`),
         )
         // Positions advance monotonically: each insert lands after the previous one.
         let last = -1
@@ -106,7 +114,7 @@ describe('uploadAndInsert', () => {
         // The byte figures cover only what was stored: the reused file moved nothing.
         expect(result).toEqual({ uploaded: 2, reused: 1, cancelled: false, optimized: 0, givenBytes: 10, storedBytes: 10, queued: 0 })
         // A reused asset is still referenced in the document exactly like a fresh one.
-        expect(inserts.map((i) => i.insert)).toEqual(['[new](../assets/new.pdf)', '[again](../assets/again.pdf)'])
+        expect(inserts.map((i) => i.insert)).toEqual(['[new](../assets/new.pdf)', '\n[again](../assets/again.pdf)'])
     })
 
     it('counts the files kept on this device to upload later (queued), and references them like any other', async () => {
@@ -127,7 +135,7 @@ describe('uploadAndInsert', () => {
         }
         const result = await uploadAndInsert(view, store, [file('now.pdf'), file('later.pdf')], 0)
         expect(result).toEqual({ uploaded: 2, reused: 0, cancelled: false, optimized: 0, givenBytes: 20, storedBytes: 20, queued: 1 })
-        expect(inserts.map((i) => i.insert)).toEqual(['[now](../assets/now.pdf)', '[later](../assets/later.pdf)'])
+        expect(inserts.map((i) => i.insert)).toEqual(['[now](../assets/now.pdf)', '\n[later](../assets/later.pdf)'])
     })
 
     it('uploads in parallel, bounded by the limit', async () => {
@@ -227,7 +235,7 @@ describe('uploadAndInsert', () => {
         // assets unreachable in the graph.
         expect(inserts.map((i) => i.insert)).toEqual([
             '[doc0.pdf](../assets/doc0.pdf)',
-            '[doc1.pdf](../assets/doc1.pdf)',
+            '\n[doc1.pdf](../assets/doc1.pdf)',
         ])
     })
 
@@ -263,7 +271,7 @@ describe('uploadAndInsert', () => {
 
         expect(captured.inserts).toEqual([])
         expect(successor.inserts.map((i) => i.from)).toEqual([11, 11 + '[a.pdf](../assets/a.pdf)'.length])
-        expect(successor.inserts.map((i) => i.insert)).toEqual(['[a.pdf](../assets/a.pdf)', '[b.pdf](../assets/b.pdf)'])
+        expect(successor.inserts.map((i) => i.insert)).toEqual(['[a.pdf](../assets/a.pdf)', '\n[b.pdf](../assets/b.pdf)'])
     })
 
     it('clamps the position into a successor that is shorter than where the caret was', async () => {
@@ -366,6 +374,139 @@ describe('uploadAndInsert', () => {
     })
 })
 
+/**
+ * Several files at once (Editor Content Rules → *Uploading several files*). The first reference
+ * lands at the caret as it always has; each after it starts a line of its own, as a pasted line
+ * would (ADR 0089): in an outline a new block where Enter puts one, in prose a new line. Run back
+ * to back on one line, a row of links and their action clusters left no room to place the caret.
+ */
+describe('uploadAndInsert: a batch of several files', () => {
+    /** Saves each file under its own name; an image when its extension says so. */
+    const namedStore: AssetStore = {
+        async save({ name }): Promise<SavedAsset> {
+            return { ref: `../assets/${name}`, name, stem: name.replace(/\.[^.]+$/, ''), isImage: /\.png$/.test(name) }
+        },
+        async readBytes() {
+            return null
+        },
+        async resolve() {
+            return null
+        },
+        dispose() {},
+    }
+    const pdf = (stem: string) => `[${stem}](../assets/${stem}.pdf)`
+    const png = (stem: string) => buildAssetMarkdown({ ref: `../assets/${stem}.png`, stem, isImage: true }, defaultMaxImageDisplaySize())
+    const image = (name: string) => new File([new Uint8Array(10)], name, { type: 'image/png' })
+
+    /**
+     * Upload `files` with the caret at the `|` in `doc`, through the editor's own filters (the fence
+     * guard, the caret clamp, the frontmatter guard): the document after, the caret marked `|` again.
+     */
+    async function upload(doc: string, files: File[]): Promise<string> {
+        const editor = editorFixture(doc)
+        const view = {
+            get state() {
+                return editor.state
+            },
+            dispatch(spec: TransactionSpec) {
+                editor.dispatch(editor.state.update(spec))
+            },
+        } as unknown as EditorView
+        await uploadAndInsert(view, namedStore, files, editor.head(), { concurrency: 1 })
+        return editor.fixture()
+    }
+
+    it('on an empty bullet: the first file is the bullet, each after it a sibling', async () => {
+        expect(await upload('- Garden\n- |', [file('plan.pdf'), file('notes.pdf'), file('list.pdf')])).toBe(
+            `- Garden\n- ${pdf('plan')}\n- ${pdf('notes')}\n- ${pdf('list')}|`,
+        )
+    })
+
+    it('nested: the siblings keep the bullet’s depth', async () => {
+        expect(await upload('- Garden\n  - |', [file('plan.pdf'), file('notes.pdf')])).toBe(`- Garden\n  - ${pdf('plan')}\n  - ${pdf('notes')}|`)
+    })
+
+    it('after a block’s text with children: the files after the first are first children, as Enter makes one', async () => {
+        expect(await upload('- Garden |\n  - water the beans', [file('plan.pdf'), file('notes.pdf'), file('list.pdf')])).toBe(
+            `- Garden ${pdf('plan')}\n  - ${pdf('notes')}\n  - ${pdf('list')}|\n  - water the beans`,
+        )
+    })
+
+    it('in a task: each block after the first is a task, the kind Enter gives', async () => {
+        expect(await upload('- [ ] |', [file('plan.pdf'), file('notes.pdf')])).toBe(`- [ ] ${pdf('plan')}\n- [ ] ${pdf('notes')}|`)
+    })
+
+    it('images in an outline: each its own bullet, which renders it on the bullet line', async () => {
+        expect(await upload('- |', [image('beans.png'), image('peas.png')])).toBe(`- ${png('beans')}\n- ${png('peas')}|`)
+    })
+
+    it('in prose: each file after the first on a new line', async () => {
+        expect(await upload('Kitchen |', [file('plan.pdf'), file('notes.pdf'), file('list.pdf')])).toBe(
+            `Kitchen ${pdf('plan')}\n${pdf('notes')}\n${pdf('list')}|`,
+        )
+    })
+
+    it('in prose with text after the caret: the text follows the last file, as it follows pasted lines', async () => {
+        expect(await upload('Kitchen |shelf', [file('plan.pdf'), file('notes.pdf')])).toBe(`Kitchen ${pdf('plan')}\n${pdf('notes')}|shelf`)
+    })
+
+    it('an image after a link mid-line still gets a line of its own, the text after it below', async () => {
+        expect(await upload('Kitchen |shelf', [file('plan.pdf'), image('peas.png')])).toBe(`Kitchen ${pdf('plan')}\n${png('peas')}\n|shelf`)
+    })
+
+    it('an image placed mid-line keeps the text after it below, and the next file goes under the image', async () => {
+        expect(await upload('Kitchen |shelf', [image('beans.png'), file('plan.pdf')])).toBe(`Kitchen \n${png('beans')}\n${pdf('plan')}|\nshelf`)
+    })
+
+    it('on an empty bullet with children: the files after the first are first children, as Enter makes one', async () => {
+        expect(await upload('- |\n  - water the beans', [file('plan.pdf'), file('notes.pdf')])).toBe(`- ${pdf('plan')}\n  - ${pdf('notes')}|\n  - water the beans`)
+    })
+
+    it('mid-way through a block’s text: the text after the caret follows the last file, into its block', async () => {
+        expect(await upload('- Garden |shelf', [file('plan.pdf'), file('notes.pdf')])).toBe(`- Garden ${pdf('plan')}\n- ${pdf('notes')}|shelf`)
+    })
+
+    it('an image first, mid-way through a block’s text: the image under the text, the next file a block, the text after it', async () => {
+        expect(await upload('- Garden |shelf', [image('beans.png'), file('plan.pdf')])).toBe(`- Garden\n  ${png('beans')}\n- ${pdf('plan')}|\n  shelf`)
+    })
+
+    it('on a code line: each file after the first a code line at the fence column, the block still paired', async () => {
+        expect(await upload('- Garden\n  ```\n  one|\n  ```', [file('plan.pdf'), file('notes.pdf')])).toBe(
+            `- Garden\n  \`\`\`\n  one${pdf('plan')}\n  ${pdf('notes')}|\n  \`\`\``,
+        )
+    })
+
+    it('on a code line short of the fence column: the padding the fence guard adds does not split a reference', async () => {
+        // Another tool wrote the blank code line without the fence column's spaces; the guard pads it in
+        // the same transaction as the first insert, so the end of the reference moves with it.
+        expect(await upload('- Garden\n  ```\n  one\n|\n  two\n  ```', [file('plan.pdf'), file('notes.pdf'), file('list.pdf')])).toBe(
+            `- Garden\n  \`\`\`\n  one\n  ${pdf('plan')}\n  ${pdf('notes')}\n  ${pdf('list')}|\n  two\n  \`\`\``,
+        )
+    })
+
+    it('at the end of a fence’s opener: the files start on the first code line, never in the info string', async () => {
+        expect(await upload('- ```js|\n  one\n  ```', [file('plan.pdf'), file('notes.pdf')])).toBe(`- \`\`\`js\n  ${pdf('plan')}\n  ${pdf('notes')}|\n  one\n  \`\`\``)
+    })
+
+    it('at the end of a bullet’s fence closer: the files are blocks after it, and the closer still closes', async () => {
+        expect(await upload('- Garden\n  ```\n  one\n  ```|', [file('plan.pdf'), file('notes.pdf')])).toBe(
+            `- Garden\n  \`\`\`\n  one\n  \`\`\`\n- ${pdf('plan')}\n- ${pdf('notes')}|`,
+        )
+    })
+
+    it('a single file at the end of a prose fence’s closer starts the line after it', async () => {
+        expect(await upload('```\none\n```|', [file('plan.pdf')])).toBe(`\`\`\`\none\n\`\`\`\n${pdf('plan')}|`)
+    })
+
+    it('in the frontmatter: the files go after the block, which stays YAML', async () => {
+        expect(await upload('---\ntitle: Garden|\n---\n- one', [file('plan.pdf'), file('notes.pdf')])).toBe(`---\ntitle: Garden\n---\n${pdf('plan')}\n${pdf('notes')}|\n- one`)
+    })
+
+    it('a single file is unchanged: inline at the caret', async () => {
+        expect(await upload('- Garden |', [file('plan.pdf')])).toBe(`- Garden ${pdf('plan')}|`)
+    })
+})
+
 /** A store whose uploads finish only when the test says so - the window a remount lands in. */
 function heldStore(): { store: AssetStore; release: () => void } {
     let release: () => void = () => {}
@@ -397,8 +538,8 @@ describe('uploadAndInsert with an image optimiser (ADR 0080)', () => {
                 saved.push({ name, size: bytes.length, type })
                 onBytes?.(bytes.length)
                 const stem = name.replace(/\.[^.]+$/, '')
-                // Never an image: the image branch of insertAssetMarkdown needs a real
-                // EditorState, and what is under test here is what reaches the store.
+                // Never an image: what is under test here is what reaches the store, and a link's
+                // reference is the stored name as written.
                 return { ref: `../assets/${name}`, name, stem, isImage: false }
             },
             async readBytes() {
@@ -432,7 +573,7 @@ describe('uploadAndInsert with an image optimiser (ADR 0080)', () => {
             { name: 'shot.webp', size: 50, type: 'image/webp' },
             { name: 'doc.pdf', size: 20, type: 'application/pdf' },
         ])
-        expect(inserts.map((i) => i.insert)).toEqual(['[shot](../assets/shot.webp)', '[doc](../assets/doc.pdf)'])
+        expect(inserts.map((i) => i.insert)).toEqual(['[shot](../assets/shot.webp)', '\n[doc](../assets/doc.pdf)'])
     })
 
     it('counts optimised files and the batch bytes before and after', async () => {

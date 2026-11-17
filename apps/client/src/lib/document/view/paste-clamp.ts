@@ -608,6 +608,68 @@ function pastedAfterDelimiter(state: EditorState, lines: string[], blocks: Fence
     return insert(place(trim(body), newBlockTarget(newIndent, marker)).insert)
 }
 
+/** A new line inserted after a position: the line break and what leads its text, and the column its text starts at. */
+export interface LineOpening {
+    text: string
+    column: number
+}
+
+/**
+ * The line a pasted line after `at` would start, for an insert that places its own lines (an upload
+ * of several files, `asset-upload.ts`) rather than going through the filter. The same placement as
+ * the paste rules above:
+ *
+ * - In an outline, the block Enter at `at` would make: a sibling, or the first child at the end of a
+ *   body with children, with the marker Enter gives it (ADR 0089).
+ * - After a fence's closer, where {@link pastedAfterDelimiter} starts the lines: a block of the
+ *   bullet the fence belongs to, or prose at column 0.
+ * - On a fence's opener or a code line, a code line at the fence column, so the block stays paired.
+ * - In prose, a line at the column the caret clamp allows there.
+ *
+ * It never reads folds: a pasted line goes inside a folded branch, and opens it, as here.
+ */
+export function pastedLineOpening(state: EditorState, at: number): LineOpening {
+    const lines = state.doc.toString().split('\n')
+    const blocks = fencedBlocks(lines)
+    const index = state.doc.lineAt(at).number - 1
+    const block = blocks.find((b) => index >= b.start && index <= b.end)
+    if (block && index < block.end) return opening(block.fenceColumn, '')
+    // A closer's owner, or a line's own block: where the next block goes. A closer of no bullet's
+    // fence, and prose, are neither.
+    const owner = block || !isBulletLine(lines[index]) ? ownerBulletIndex(lines, index, blocks) : index
+    if (owner !== null) {
+        // After a closer the lines start where Enter at the closer's end would put them.
+        const from = block ? state.doc.line(index + 1).to : at
+        const target = pasteTargetAt(state, lines, blocks, owner, from, from, true)
+        return opening(target.newIndent, target.marker)
+    }
+    return opening(block ? 0 : clampColumn(lines, index), '')
+}
+
+function opening(indent: number, marker: string): LineOpening {
+    return { text: `\n${' '.repeat(indent)}${marker}`, column: indent + marker.length }
+}
+
+/**
+ * Where an insert at `at` cannot go on the caret's line, the offset its text should follow on a new
+ * line instead ({@link pastedLineOpening}), or null when it can. Inside the [[Frontmatter]] text
+ * would break the YAML (and a title is the page's identity, ADR 0007), so it goes after the block's
+ * closing `---`. At the end of a delimiter line (a fence's opener or closer, or a frontmatter `---`)
+ * it would be an info string, and a closer with one no longer closes; it starts on the next line, as
+ * a paste does there ({@link pastedAfterDelimiter}).
+ */
+export function lineBreakNeededAt(state: EditorState, at: number): number | null {
+    const lines = state.doc.toString().split('\n')
+    const yaml = frontmatterLines(lines)
+    const line = state.doc.lineAt(at)
+    const index = line.number - 1
+    if (index < yaml) return state.doc.line(yaml).to
+    if (at < line.from + line.text.trimEnd().length) return null
+    const holding = fencedBlocksAtLine(fencedBlocks(lines), index)
+    const delimiter = holding !== null && holding.inner === holding.outer && (holding.outer.start === index || holding.outer.end === index)
+    return delimiter ? line.to : null
+}
+
 /**
  * A line copied with nothing selected, pasted with nothing selected: CodeMirror inserts the copied
  * line and a line break at the start of the caret's line, which the filter sees as text typed before

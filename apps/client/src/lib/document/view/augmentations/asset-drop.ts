@@ -13,6 +13,7 @@ import { EditorView } from '@codemirror/view'
 
 import type { AssetStore } from '#lib/storage/fs/asset-store.js'
 
+import { clampedCaret } from '../caret-clamp'
 import { startAssetUpload } from '../upload-activity'
 
 export interface AssetDropOptions {
@@ -28,8 +29,10 @@ export function assetDropAugmentation(options: AssetDropOptions): Extension {
             const store = options.store()
             if (!store) return false
             event.preventDefault()
-            const pos =
-                view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.head
+            // Where a caret placed at the drop point rests: posAtCoords answers a line's start for a
+            // point in a bullet's margin, before its `- `, and a reference there made prose of the
+            // bullet. The caret clamp moves such a point to the start of the block's text.
+            const pos = clampedCaret(view.state, view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.head)
             // Runs as an Activity, so progress and any failure reach an [[Activity Toast]].
             // This used to be `void uploadAndInsert(...)`, which discarded the rejection
             // as well as the promise - a failed drop was completely silent.

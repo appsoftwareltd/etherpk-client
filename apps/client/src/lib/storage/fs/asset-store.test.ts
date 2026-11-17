@@ -12,6 +12,7 @@ import {
     mimeTypeForExt,
     splitNameExt,
 } from './asset-store'
+import type { DirectoryAdapter } from './directory-adapter'
 import { createMemoryDirectoryAdapter } from './memory-adapter'
 
 const clock = () => {
@@ -20,6 +21,21 @@ const clock = () => {
 }
 
 const bytes = (s: string) => new Uint8Array([...s].map((c) => c.charCodeAt(0)))
+
+/**
+ * A memory adapter whose folder calls each take a turn of the event loop, as OPFS and the File
+ * System Access API do. The plain memory adapter answers within the same turn, so saves running at
+ * once never overlap inside it and a race between them cannot show.
+ */
+function slowAdapter(adapter: DirectoryAdapter): DirectoryAdapter {
+    const later = <T>(value: Promise<T>) => new Promise<T>((resolve, reject) => setTimeout(() => value.then(resolve, reject), 1))
+    return {
+        ...adapter,
+        list: (subdir) => later(adapter.list(subdir)),
+        exists: (subdir, name) => later(adapter.exists(subdir, name)),
+        writeBinary: (subdir, name, data) => later(adapter.writeBinary(subdir, name, data)),
+    }
+}
 
 describe('splitNameExt', () => {
     it('splits stem and lower-cased extension', () => {
@@ -186,6 +202,49 @@ describe('createAssetStore.save content-only de-duplication', () => {
 
         expect(first.reused).toBeUndefined()
         expect(second.reused).toBe(true)
+    })
+
+    it('remembers every file of a batch saved at once, so adding the batch again reuses all of it', async () => {
+        // An upload saves up to six files at once. Each save used to build its own index of the
+        // folder, the last one built won, and the files the others recorded were forgotten: the
+        // second upload of the same three files then reported only one as reused.
+        const adapter = slowAdapter(createMemoryDirectoryAdapter({ now: clock() }))
+        const store = createAssetStore(adapter)
+        const files = ['Seed Order.pdf', 'Bed Layout.pdf', 'Watering Rota.pdf'].map((name) => ({ name, bytes: bytes(name), type: 'application/pdf' }))
+
+        await Promise.all(files.map((file) => store.save(file)))
+        const again = await Promise.all(files.map((file) => store.save(file)))
+
+        expect(again.map((saved) => saved.reused)).toEqual([true, true, true])
+        expect((await adapter.list('assets')).length).toBe(3)
+    })
+
+    it('references a file under the name it was renamed to', async () => {
+        const adapter = createMemoryDirectoryAdapter({ now: clock() })
+        const store = createAssetStore(adapter)
+        const first = await store.save({ name: 'Chart.png', bytes: bytes('pixels'), type: 'image/png' })
+        const hash = assetHashFromName(first.name)!.hash
+        await adapter.writeBinary('assets', `garden-chart.${hash}.png`, bytes('pixels'))
+        await adapter.remove('assets', first.name)
+        store.renamed?.(first.name, `garden-chart.${hash}.png`)
+
+        const again = await store.save({ name: 'Chart.png', bytes: bytes('pixels'), type: 'image/png' })
+
+        expect(again).toMatchObject({ name: `garden-chart.${hash}.png`, reused: true })
+    })
+
+    it('stores the same bytes once when they arrive twice in one batch', async () => {
+        const adapter = slowAdapter(createMemoryDirectoryAdapter({ now: clock() }))
+        const store = createAssetStore(adapter)
+
+        const [first, second] = await Promise.all([
+            store.save({ name: 'Beans.png', bytes: bytes('pixels'), type: 'image/png' }),
+            store.save({ name: 'Beans copy.png', bytes: bytes('pixels'), type: 'image/png' }),
+        ])
+
+        expect(second.name).toBe(first.name)
+        expect([first.reused, second.reused]).toEqual([undefined, true])
+        expect((await adapter.list('assets')).length).toBe(1)
     })
 
     it('treats the extension as part of identity, so the same bytes as .png and .bin are two files', async () => {
