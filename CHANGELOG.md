@@ -9,6 +9,10 @@ starts at 0.9.3.
 
 ### Client
 
+- **Add a line above a code block.** With the caret before the opening backticks of a code block
+  on a bullet's own line, Enter adds a bullet above the block and moves there. Above a code block
+  that is not under a bullet, it adds an empty line. Enter there used to add a line of code inside
+  the block.
 - **Fixes.**
   - Renaming a page to the same name in different capitals (`Garden` to `garden`) shows the new
     spelling on its tab, and its editor no longer says the name differs.
@@ -18,6 +22,9 @@ starts at 0.9.3.
     can still be tapped while one shows.
   - Deleting an empty bullet whose children hold a code block keeps the tabs the code is indented
     with.
+  - The Command Bar's buttons work after selected text is replaced by a change from outside the
+    editor, such as a file changed on disk or another person's edit. They used to do nothing.
+  - Opening or reloading a mirrored graph shows one "Mirrored to" notice, not two.
 
 ## 0.31.0 - 2026-11-16
 

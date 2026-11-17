@@ -2105,6 +2105,20 @@ table('keys inside a block', [
     { rule: 'a deeper bullet above a form-2 fence is skipped; the fence’s own bullet is the owner', precedent: 'EtherPK', before: '- x\n  - y\n  ```\n  foo\n  ```|', key: 'Enter', after: '- x\n  - y\n  ```\n  foo\n  ```\n- |' },
     { rule: 'a nested bullet’s closer opens a sibling at the same depth', precedent: 'EtherPK', before: '- x\n  - ```\n    foo\n    ```|', key: 'Enter', after: '- x\n  - ```\n    foo\n    ```\n  - |' },
     { rule: 'Enter at the end of a bullet’s closer opens a sibling bullet', precedent: 'EtherPK', before: '- ```\n  foo\n  ```|', key: 'Enter', after: '- ```\n  foo\n  ```\n- |' },
+    // The owner's request (2026-11-17): the caret before a block's backticks is where to add a block
+    // above it. A fence is never split, so the line above is the only place the key can open, and the
+    // caret goes there, ready to type (a plain bullet's Enter at its start leaves the caret on its text,
+    // and so does an opener with no closer yet, which is text: `- |```\n  x` gives `- \n- |```\n  x`).
+    { rule: 'Enter before the backticks of a bullet’s block opens a sibling bullet above it, caret in it', precedent: 'EtherPK', before: '- Test\n  - |```\n    Test\n    ```', key: 'Enter', after: '- Test\n  - |\n  - ```\n    Test\n    ```' },
+    { rule: '…with an info string too', precedent: 'EtherPK', before: '- |```js\n  x\n  ```', key: 'Enter', after: '- |\n- ```js\n  x\n  ```' },
+    { rule: 'before a prose block’s backticks it opens an empty line above it, caret on it', precedent: 'EtherPK', before: 'p\n|```\nx\n```', key: 'Enter', after: 'p\n|\n```\nx\n```' },
+    // A line above a block under a bullet's text would be a blank soft line of that bullet, Shift+Enter's
+    // job, which tidy on leave keeps: there Enter still acts as at the line end.
+    { rule: 'before the backticks of a block under a bullet’s text Enter still opens the first content line', precedent: 'EtherPK', before: '- a\n  |```\n  x\n  ```', key: 'Enter', after: '- a\n  ```\n  |\n  x\n  ```' },
+    { rule: '…and under its children too', precedent: 'EtherPK', before: '- a\n  - b\n  |```\n  x\n  ```', key: 'Enter', after: '- a\n  - b\n  ```\n  |\n  x\n  ```' },
+    { rule: 'a selection reaching the backticks is not a caret before them: Enter acts as at the line end', precedent: 'EtherPK', before: '- «``»`\n  x\n  ```', key: 'Enter', after: '- ```\n  |\n  x\n  ```' },
+    { rule: 'Enter just past the first backtick still opens the first content line', precedent: 'EtherPK', before: '- `|``\n  x\n  ```', key: 'Enter', after: '- ```\n  |\n  x\n  ```' },
+    { rule: 'Shift+Enter before the backticks is unchanged: the continuation after the opener', precedent: 'EtherPK', before: '- |```\n  x\n  ```', key: 'Shift-Enter', after: '- ```\n  |\n  x\n  ```' },
     { rule: 'Shift+Enter is the continuation clamped to the fence column', precedent: 'EtherPK', before: '- ```\n  foo|\n  ```', key: 'Shift-Enter', after: '- ```\n  foo\n  |\n  ```' },
     { rule: 'Shift+Enter after the closer is a soft line of the same bullet', precedent: 'EtherPK', before: '- ```\n  foo\n  ```|', key: 'Shift-Enter', after: '- ```\n  foo\n  ```\n  |' },
     { rule: 'Tab is code indentation', precedent: 'VS Code', before: '```\nfoo|\n```', key: 'Tab', after: '```\nfoo  |\n```' },

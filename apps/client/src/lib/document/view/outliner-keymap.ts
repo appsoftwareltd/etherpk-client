@@ -585,10 +585,11 @@ function leadAfterBlock(lines: string[], openerIdx: number, fenceColumn: number)
 
 /**
  * Enter inside a code block: a plain newline clamped to the fence column (never a sibling bullet).
- * The one way OUT through Enter is at the END of the closing-fence line (right of the closing
- * ticks), which opens a fresh block below — a sibling bullet when the block lives in a bullet,
- * otherwise a prose line (Shift-Enter there is the multiline continuation instead). From the
- * content, leaving is Mod+Enter ({@link breakoutFromCode}).
+ * Two ways OUT go through Enter: at the END of the closing-fence line (right of the closing ticks),
+ * which opens a fresh block below — a sibling bullet when the block lives in a bullet, otherwise a
+ * prose line (Shift-Enter there is the multiline continuation instead) — and before the opener's
+ * backticks, which opens one above ({@link enterBeforeOpener}). From the content, leaving is
+ * Mod+Enter ({@link breakoutFromCode}).
  */
 const enterInCode: StateCommand = (view) => {
     const { state } = view
@@ -601,7 +602,8 @@ const enterInCode: StateCommand = (view) => {
     const line = state.doc.lineAt(head)
     const closerLine = state.doc.lineAt(block.to)
     const openerLine = state.doc.lineAt(block.from)
-    // A fence line is structure: Enter anywhere on it acts as Enter at its end, so a caret inside
+    if (line.number === openerLine.number && enterBeforeOpener(view, block, line, head)) return true
+    // A fence line is structure: Enter anywhere else on it acts as Enter at its end, so a caret inside
     // the backtick run can never split the fence (found by the outliner invariant property test).
     if (line.number === openerLine.number && head < line.to) {
         const insert = '\n' + ' '.repeat(block.fenceColumn)
@@ -625,6 +627,26 @@ const enterInCode: StateCommand = (view) => {
     // Mod+Enter's job (below); an empty last row is not an exit, which is how Obsidian behaves too.
     const insert = '\n' + ' '.repeat(block.fenceColumn)
     dispatch(view, { changes: { from: head, insert }, selection: { anchor: head + insert.length }, userEvent: 'input' })
+    return true
+}
+
+/**
+ * Enter with a caret at or left of a block opener's backticks: a new block above it, the caret in it.
+ * A fence is never split, so the line above is the only place the key can open. On a bullet's own
+ * opener line (form 1) the new block is a sibling bullet at its indent; above a prose block at the
+ * margin it is an empty prose line. The caret goes onto the new line, unlike a plain bullet's Enter at
+ * its start, because nothing can be typed at the start of a fence. Every other opener keeps the
+ * in-block Enter: a block under a bullet's text (form 2), where a line above would be a blank soft
+ * line of that bullet, and an inner pair of a code sample, whose surroundings are code.
+ */
+function enterBeforeOpener(view: Target, block: FencedBlock, line: { from: number; text: string }, head: number): boolean {
+    if (!view.state.selection.main.empty || block.enclosed) return false
+    const fence = fenceLineInfo(line.text)
+    if (!fence || head > line.from + fence.col) return false
+    const bullet = isBulletLine(line.text)
+    if (!bullet && fence.col > 0) return false
+    const lead = bullet ? line.text.slice(0, lineIndent(line.text)) + newBulletMarker(line.text) : ''
+    dispatch(view, { changes: { from: line.from, insert: lead + '\n' }, selection: { anchor: line.from + lead.length }, userEvent: 'input' })
     return true
 }
 

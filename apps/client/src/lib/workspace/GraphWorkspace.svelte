@@ -7295,42 +7295,17 @@
     }
 
     /**
-     * Report a long full pass where the user is actually looking (ADR 0035). Only a full pass over
-     * a graph big enough to take noticeable time earns a toast: the first pass of a session, and
-     * every resume. A toast per debounced write would be noise, and the Mirror tab already carries
-     * the steady state.
+     * Report a long full pass where the user is actually looking (ADR 0035). Only a requested full
+     * pass over a graph big enough to take noticeable time earns a toast: the first pass of a
+     * session, every resume and Mirror now. A toast per debounced write would be noise, and so would
+     * one for the full pass a change sets off: on load the graph's metadata settles while the first
+     * pass runs (the protection record is read, the person's lists arrive), and each change took a
+     * full pass of its own, so every load said "Mirrored to" twice. The Mirror tab carries the
+     * steady state.
      */
     function reportMirrorPass(status: MirrorStatus): void {
         const running = status.pass;
-        if (
-            running?.kind === "full" &&
-            !mirrorActivity &&
-            running.progress.total >= MIRROR_TOAST_MIN_ITEMS
-        ) {
-            const phases = MIRROR_ACTIVITY_PHASES.map((phase) => ({
-                label: MIRROR_PHASE_LABELS[phase],
-                unit: "items" as const,
-            }));
-            let settle: (outcome?: ActivityOutcome) => void = () => {};
-            const finished = new Promise<ActivityOutcome | undefined>(
-                (resolve) => (settle = resolve),
-            );
-            const handle = {
-                report: (_: ActivityProgress) => {},
-                finish: settle,
-            };
-            mirrorActivity = handle;
-            void runActivity({
-                kind: "mirror",
-                title: `Mirroring to “${status.folder}”`,
-                phases,
-                cancellable: false,
-                run: async (activity) => {
-                    handle.report = (progress) => activity.report(progress);
-                    return (await finished) ?? {};
-                },
-            });
-        }
+        if (!mirrorActivity && earnsMirrorToast(running)) openMirrorActivity(status.folder);
         if (!mirrorActivity) return;
         if (running) {
             const phase = MIRROR_ACTIVITY_PHASES.indexOf(
@@ -7345,6 +7320,9 @@
             }
             return;
         }
+        // A pass that failed and waits for its retry has not ended: the retry reports into the
+        // same toast, rather than this one saying the folder is mirrored and the retry another.
+        if (status.retrying) return;
         // The pass ended. Which way it ended is the folder's state, not the toast's guess.
         const finish = mirrorActivity.finish;
         mirrorActivity = undefined;
@@ -7360,6 +7338,38 @@
                       title: `Mirrored to “${status.folder}”`,
                   },
         );
+    }
+
+    /** Whether a pass is worth a toast: a requested full pass over enough items to take noticeable time. */
+    function earnsMirrorToast(pass: MirrorStatus["pass"]): boolean {
+        return pass?.kind === "full" && pass.requested && pass.progress.total >= MIRROR_TOAST_MIN_ITEMS;
+    }
+
+    /** Start the Activity a long mirror pass reports into; `reportMirrorPass` finishes it. */
+    function openMirrorActivity(folder: string): void {
+        const phases = MIRROR_ACTIVITY_PHASES.map((phase) => ({
+            label: MIRROR_PHASE_LABELS[phase],
+            unit: "items" as const,
+        }));
+        let settle: (outcome?: ActivityOutcome) => void = () => {};
+        const finished = new Promise<ActivityOutcome | undefined>(
+            (resolve) => (settle = resolve),
+        );
+        const handle = {
+            report: (_: ActivityProgress) => {},
+            finish: settle,
+        };
+        mirrorActivity = handle;
+        void runActivity({
+            kind: "mirror",
+            title: `Mirroring to “${folder}”`,
+            phases,
+            cancellable: false,
+            run: async (activity) => {
+                handle.report = (progress) => activity.report(progress);
+                return (await finished) ?? {};
+            },
+        });
     }
 
     /**

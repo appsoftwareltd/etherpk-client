@@ -152,7 +152,7 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
     {
         title: 'Code blocks',
         shortcuts: [
-            { key: 'Enter', label: 'New line inside the block' },
+            { key: 'Enter', label: 'New line inside the block; before the opening backticks, a new line above it' },
             { key: 'Tab', label: 'Indent the code' },
             { key: 'Shift+Tab', label: 'Outdent the code' },
             { key: 'Mod+Enter', label: 'Leave the block' },

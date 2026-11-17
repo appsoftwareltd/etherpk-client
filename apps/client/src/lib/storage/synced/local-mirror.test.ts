@@ -1062,6 +1062,69 @@ describe('local mirror', () => {
             return { feed, release: () => release() }
         }
 
+        it('marks the pass start asked for as requested, and the full pass a change set off during it as not', async () => {
+            // On load the graph's metadata settles while the first pass runs (the protection record
+            // is read, the person's lists arrive), and each such change takes a full pass of its own.
+            // A host that showed every full pass told the person twice that the folder was mirrored.
+            const adapter = tickingAdapter()
+            const docs: FakeDocument[] = [{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first' }]
+            const { feed, release } = slowSource(docs)
+            const mirror = createLocalMirror(feed, adapter, { debounceMs: 0 })
+            const passes: Array<{ kind: string; requested: boolean }> = []
+            let last: { kind: string; requested: boolean } | undefined
+            mirror.onStatus((status) => {
+                const now = status.pass && { kind: status.pass.kind, requested: status.pass.requested }
+                if (now && (now.kind !== last?.kind || now.requested !== last?.requested || !last)) passes.push(now)
+                last = now
+            })
+            mirror.start() // held at its read
+            await new Promise((resolve) => setTimeout(resolve, 20))
+            feed.fire() // an unnamed change: settings, the protection record, a registry move
+            release()
+            await vi.waitFor(() => expect(passes).toHaveLength(2))
+            await vi.waitFor(() => expect(mirror.status().syncing).toBe(false))
+            expect(passes).toEqual([
+                { kind: 'full', requested: true },
+                { kind: 'full', requested: false },
+            ])
+            mirror.dispose()
+        })
+
+        it('marks a resume and Mirror now as requested too, and a failed pass’s retry still', async () => {
+            const adapter = tickingAdapter()
+            let failures = 1
+            const flaky: DirectoryAdapter = {
+                ...adapter,
+                write: async (subdir, name, text) => {
+                    if (failures > 0) {
+                        failures--
+                        throw new Error('disk was busy')
+                    }
+                    return adapter.write(subdir, name, text)
+                },
+            }
+            const mirror = createLocalMirror(source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'body' }]), flaky, {
+                debounceMs: 0,
+                retryDelaysMs: [0],
+            })
+            // One entry per pass: the first status that carries it.
+            const requested: boolean[] = []
+            let inPass = false
+            mirror.onStatus((status) => {
+                if (status.pass && !inPass) requested.push(status.pass.requested)
+                inPass = status.pass !== undefined
+            })
+            mirror.start()
+            // The first pass fails on its write and is retried: the retry is still the pass start asked for.
+            await vi.waitFor(async () => expect(await namesIn(adapter, 'pages')).toEqual(['Doc.md']))
+            await mirror.sync()
+            mirror.stop()
+            mirror.resume()
+            await vi.waitFor(() => expect(requested).toHaveLength(4))
+            expect(requested).toEqual([true, true, true, true])
+            mirror.dispose()
+        })
+
         it('resolves Mirror now only once a full pass has actually ended', async () => {
             const adapter = tickingAdapter()
             const docs: FakeDocument[] = [{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first' }]

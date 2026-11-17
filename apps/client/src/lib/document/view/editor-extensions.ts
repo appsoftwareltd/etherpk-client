@@ -65,6 +65,7 @@ import type { WikilinkEdit } from './augmentations/wikilink-episode'
 import { wikilinkCompletion } from './augmentations/wikilink-complete'
 import { blockSelection } from './block-select'
 import { caretClamp } from './caret-clamp'
+import { selectionOrder } from './selection-order'
 import { fenceDeleteGuard, fencePad } from './fence-guard'
 import { type EditRefusal, editRefusalReporter } from './edit-refused'
 import { type EditorDocumentInfo, editorDocument } from './editor-document'
@@ -361,6 +362,9 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // A shown caret stays shown when the editor shrinks: a phone's soft keyboard opening. It
         // decorates nothing and filters nothing, so its place in the list is free.
         { name: 'keep-caret-visible', extension: keepCaretVisible() },
+        // The last filter, so it runs first (filters run in reverse): every other filter reads the
+        // selection an edit leaves, and none of them expects a range CodeMirror mapped backwards.
+        { name: 'selection-order', extension: selectionOrder() },
         // The View's own hooks last: focus makes this editor the active one; updates keep the
         // Command Bar context, reading position and pending reveals in step.
         {

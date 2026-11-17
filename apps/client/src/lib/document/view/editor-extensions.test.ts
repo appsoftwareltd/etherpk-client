@@ -100,8 +100,16 @@ describe('editor feature stack', () => {
             'fold-persistence',
             'bookmarks',
             'keep-caret-visible',
+            'selection-order',
             'view-hooks',
         ])
+    })
+
+    it('puts the backwards-range filter after every other filter, so it runs before them', () => {
+        // Filters run in reverse order of registration, and the caret clamp, the block snap and the
+        // fence guards all read the selection an edit leaves. Only the view hooks, which filter
+        // nothing, come after it.
+        expect(names().at(-2)).toBe('selection-order')
     })
 
     it('shows part of the document only when the host gives the part (the Task Editor, ADR 0170)', () => {

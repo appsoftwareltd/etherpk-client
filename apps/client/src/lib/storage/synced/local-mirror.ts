@@ -202,8 +202,12 @@ export interface MirrorStatus {
      * What the running pass is doing. A `full` pass reconsiders every document, name, stray and
      * asset; a `targeted` one writes the handful whose content just changed. Only the first is
      * worth showing anywhere but the Mirror tab.
+     *
+     * `requested` marks the pass `start`, `resume` or `sync` asked for (and its retries), as against
+     * the full pass a change sets off. Only a requested pass is worth a notice: on load the graph's
+     * metadata settles while the first pass runs, and each change takes a full pass of its own.
      */
-    pass?: { kind: 'full' | 'targeted'; progress: MirrorProgress }
+    pass?: { kind: 'full' | 'targeted'; requested: boolean; progress: MirrorProgress }
     /** Set when mirroring has stopped and needs the user or a retry. */
     paused?: MirrorPause
     /**
@@ -491,6 +495,8 @@ export function createLocalMirror(
     let syncing = false
     /** Whether the next pass also sweeps strays, assets and metadata. */
     let sweepPending = true
+    /** Whether the next full pass is the one `start`, `resume` or `sync` asked for; it stays so until one completes. */
+    let requestPending = false
     /** Whether the next pass asks the server which documents changed elsewhere. A sweep always does. */
     let checkPending = false
     /** The last such question went unanswered, so the folder may be missing edits made elsewhere. */
@@ -508,7 +514,7 @@ export function createLocalMirror(
             folder: options.folder ?? '',
             running,
             syncing,
-            pass: pass && { kind: pass.kind, progress: { ...pass.progress } },
+            pass: pass && { kind: pass.kind, requested: pass.requested, progress: { ...pass.progress } },
             paused,
             ...(retrying ? { retrying } : {}),
             lastSyncAt,
@@ -1074,6 +1080,57 @@ export function createLocalMirror(
         return inFlight
     }
 
+    /**
+     * A timed check with nothing else to do asks its one question before announcing anything. When
+     * nothing changed elsewhere it ends there: announcing a pass would turn the toolbar dot amber
+     * every couple of minutes for a write that never happens. Resolves whether a pass is still
+     * needed, and whether the check alone completed.
+     */
+    async function askBeforePass(): Promise<{ needsPass: boolean; completed: boolean }> {
+        await markChangedElsewhere(source.listDocuments())
+        if (dirty.size > 0) return { needsPass: true, completed: false }
+        if (halted()) return { needsPass: false, completed: false }
+        // Answered with nothing behind: the folder matched the graph just now.
+        if (!changesElsewhereUnchecked) lastSyncAt = now()
+        return { needsPass: false, completed: true }
+    }
+
+    /** Run one announced pass. Resolves whether it ran to the end. */
+    async function announcedPass(sweep: boolean, checkInPass: boolean): Promise<boolean> {
+        const requested = sweep && requestPending
+        pass = { kind: sweep ? 'full' : 'targeted', requested, progress: { phase: 'scanning', done: 0, total: 0 } }
+        announce()
+        if (await runSync(sweep, checkInPass)) {
+            lastSyncAt = now()
+            retries = 0
+            if (requested) requestPending = false
+            return true
+        }
+        // Halted part way: what it did not get to is still to do.
+        sweepPending = sweepPending || sweep
+        checkPending = checkPending || checkInPass
+        return false
+    }
+
+    /** After a failed pass: schedule its retry (true), or pause until the user or the connection is back. */
+    function retryOrPause(failure: MirrorPause): boolean {
+        if ((failure.kind === 'error' || failure.kind === 'offline') && retries < retryDelays.length) {
+            const delay = retryDelays[retries++]
+            retrying = failure
+            // The retry is a full pass, which asks and re-arms the timed check itself; a check
+            // armed before the failure would only start a pass in the middle of the backoff.
+            disarmCatchUp()
+            announce()
+            schedule(delay)
+            return true
+        }
+        retrying = undefined
+        paused = failure
+        running = false
+        disarmCatchUp()
+        return false
+    }
+
     async function runPass(): Promise<void> {
         const sweep = sweepPending
         const check = sweep || checkPending
@@ -1085,36 +1142,9 @@ export function createLocalMirror(
         /** Whether the pass ran to the end; a completed pass that asked re-arms the timed check. */
         let completed = false
         try {
-            let needsPass = true
-            let checkInPass = check
-            if (!sweep && check && dirty.size === 0 && dirtyConcepts.size === 0) {
-                // A timed check with nothing else to do asks its one question before announcing
-                // anything. When nothing changed elsewhere it ends there: announcing a pass would
-                // turn the toolbar dot amber every couple of minutes for a write that never happens.
-                await markChangedElsewhere(source.listDocuments())
-                checkInPass = false
-                if (dirty.size === 0) {
-                    needsPass = false
-                    if (!halted()) {
-                        // Answered with nothing behind: the folder matched the graph just now.
-                        if (!changesElsewhereUnchecked) lastSyncAt = now()
-                        completed = true
-                    }
-                }
-            }
-            if (needsPass) {
-                pass = { kind: sweep ? 'full' : 'targeted', progress: { phase: 'scanning', done: 0, total: 0 } }
-                announce()
-                if (await runSync(sweep, checkInPass)) {
-                    lastSyncAt = now()
-                    retries = 0
-                    completed = true
-                } else {
-                    // Halted part way: what it did not get to is still to do.
-                    sweepPending = sweepPending || sweep
-                    checkPending = checkPending || checkInPass
-                }
-            }
+            const askFirst = !sweep && check && dirty.size === 0 && dirtyConcepts.size === 0
+            const asked = askFirst ? await askBeforePass() : { needsPass: true, completed: false }
+            completed = asked.needsPass ? await announcedPass(sweep, check && !askFirst) : asked.completed
         } catch (error) {
             failure = classifyMirrorFailure(error)
             // The in-memory view of the folder is suspect after a failure; read it again.
@@ -1124,22 +1154,7 @@ export function createLocalMirror(
             syncing = false
             pass = undefined
         }
-        if (failure) {
-            if ((failure.kind === 'error' || failure.kind === 'offline') && retries < retryDelays.length) {
-                const delay = retryDelays[retries++]
-                retrying = failure
-                // The retry is a full pass, which asks and re-arms the timed check itself; a check
-                // armed before the failure would only start a pass in the middle of the backoff.
-                disarmCatchUp()
-                announce()
-                schedule(delay)
-                return
-            }
-            retrying = undefined
-            paused = failure
-            running = false
-            disarmCatchUp()
-        }
+        if (failure && retryOrPause(failure)) return
         if (completed) retrying = undefined
         // Asked and done: the next question is due after the interval, or sooner when this one
         // went unanswered, so a device coming back online is not left unchecked for minutes.
@@ -1156,6 +1171,7 @@ export function createLocalMirror(
             running = true
             continuous = true
             sweepPending = true
+            requestPending = true
             listen()
             announce()
             void pump()
@@ -1164,6 +1180,7 @@ export function createLocalMirror(
             if (disposed || paused) return
             running = true
             sweepPending = true
+            requestPending = true
             listen()
             // "Now" means now: a pass already waiting on the debounce is folded into this one.
             if (timer) {
@@ -1221,6 +1238,7 @@ export function createLocalMirror(
             running = true
             continuous = true
             sweepPending = true
+            requestPending = true
             listen()
             announce()
             void pump()
