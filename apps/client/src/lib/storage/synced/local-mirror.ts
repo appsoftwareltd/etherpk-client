@@ -966,7 +966,7 @@ export function createLocalMirror(
         // Quick Notes are content that has not reached a journal yet (ADR 0078); the folder
         // is only a complete copy of the graph if it holds them too.
         if (meta.quickNotes) await writeTextIfChanged(QUICK_NOTES_FILE, quickNotesFileText(meta.quickNotes))
-        // The copier's Bookmarks (ADR 0159), so the folder opened as a Filesystem graph, or
+        // The copier's Bookmarks (ADR 0159), so the folder opened as a Folder graph, or
         // imported, keeps the lines they marked.
         if (meta.bookmarks) await writeTextIfChanged(BOOKMARKS_FILE, bookmarksFileText(meta.bookmarks))
         await writeReadingBookmarksFiles(meta)

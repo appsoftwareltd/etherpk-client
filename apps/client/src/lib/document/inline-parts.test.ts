@@ -78,8 +78,8 @@ describe('hyperlinks', () => {
     })
 
     it('claims a url on a dotless host, which GFM alone declines', () => {
-        expect(marked('http://localhost:5285/g/abc')).toEqual([
-            { kind: 'link', text: 'http://localhost:5285/g/abc', href: 'http://localhost:5285/g/abc' },
+        expect(marked('http://localhost:5285/graph/sync/abc')).toEqual([
+            { kind: 'link', text: 'http://localhost:5285/graph/sync/abc', href: 'http://localhost:5285/graph/sync/abc' },
         ])
     })
 

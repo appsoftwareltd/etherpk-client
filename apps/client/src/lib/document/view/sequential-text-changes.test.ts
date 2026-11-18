@@ -91,7 +91,7 @@ describe('sequentialTextChanges: each change against the text the ones before it
     })
 
     it('wrapping a selection in [[ ]] reaches the store as the editor shows it', () => {
-        // Found live on 2026-09-22 on a Filesystem graph. The wrap is one transaction of two
+        // Found live on 2026-09-22 on a Folder graph. The wrap is one transaction of two
         // changes (`[` before the selection, `]` after it), and both were forwarded in
         // pre-transaction offsets, so the store spliced the `]` one character early once the `[`
         // had shifted the text. Each press compounded the last: `[[Garden She]]d` on disk, and a

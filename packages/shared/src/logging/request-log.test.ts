@@ -155,7 +155,7 @@ describe('createHandleError', () => {
         const result = handleError({
             kind: 'app',
             error: { status: 403, message: 'Only the owner can do this' },
-            event: requestEvent('https://www.test/g/abc'),
+            event: requestEvent('https://www.test/graph/sync/abc'),
         })
 
         expect(result).toBeUndefined()
@@ -181,13 +181,13 @@ describe('createHandleError', () => {
         const result = handleError({
             kind: 'unknown',
             error: new Error('database is down'),
-            event: requestEvent('https://www.test/g/abc/d/Private?email=a%40b.test'),
+            event: requestEvent('https://www.test/graph/sync/abc/d/Private?email=a%40b.test'),
         })
 
         expect(result).toEqual({ message: 'Something went wrong' })
         expect(logger.error).toHaveBeenCalledWith('Unexpected server error', expect.objectContaining({
             status: 500,
-            path: '/g/abc/d/[redacted]',
+            path: '/graph/sync/abc/d/[redacted]',
             query: '?email=[redacted]',
             error: 'database is down',
             stack: expect.stringContaining('database is down'),

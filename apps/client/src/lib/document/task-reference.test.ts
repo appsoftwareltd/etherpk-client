@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import type { GraphAddress } from '../navigation/graph-address'
+
 import {
     parseTaskReference,
     resolveTaskReference,
@@ -44,8 +46,8 @@ describe('the words and the fingerprint', () => {
 })
 
 describe('the reference', () => {
-    const reference: TaskReference = { graphId: 'g-1', document: '[[Acme]] Launch/Plan', line: 14, fingerprint: '3fa9c1e07b2d' }
-    const id = 'etherpk:/g/g-1/d/%5B%5BAcme%5D%5D%20Launch/Plan#task=14-3fa9c1e07b2d'
+    const reference: TaskReference = { graph: { where: 'sync', name: 'g-1' }, document: '[[Acme]] Launch/Plan', line: 14, fingerprint: '3fa9c1e07b2d' }
+    const id = 'etherpk:/graph/sync/g-1/d/%5B%5BAcme%5D%5D%20Launch/Plan#task=14-3fa9c1e07b2d'
 
     it('is the etherpk: path of the Document URL with the task in its fragment, never a web address', () => {
         expect(taskReferenceId(reference)).toBe(id)
@@ -55,26 +57,40 @@ describe('the reference', () => {
         expect(parseTaskReference(id)).toEqual(reference)
     })
 
-    it('still reads the web address an earlier version copied, with any origin or none', () => {
-        expect(parseTaskReference('Send the quote\nhttps://app.example.com/g/g-1/d/%5B%5BAcme%5D%5D%20Launch/Plan#task=14-3fa9c1e07b2d')).toEqual(reference)
-        expect(parseTaskReference('/g/g-1/d/%5B%5BAcme%5D%5D%20Launch/Plan?fs=opfs#task=14-3fa9c1e07b2d')).toEqual(reference)
+    it('reads the address a browser shows for the task, with any origin or none', () => {
+        expect(parseTaskReference('Send the quote\nhttps://app.example.com/graph/sync/g-1/d/%5B%5BAcme%5D%5D%20Launch/Plan#task=14-3fa9c1e07b2d')).toEqual(reference)
+        expect(parseTaskReference('/graph/sync/g-1/d/%5B%5BAcme%5D%5D%20Launch/Plan?autosaveMs=150#task=14-3fa9c1e07b2d')).toEqual(reference)
+    })
+
+    it('names a folder graph by its folder, and reads that back', () => {
+        const inFolder: TaskReference = { ...reference, graph: { where: 'folder', name: 'Garden Notes' } }
+        expect(taskReferenceId(inFolder)).toBe('etherpk:/graph/folder/Garden%20Notes/d/%5B%5BAcme%5D%5D%20Launch/Plan#task=14-3fa9c1e07b2d')
+        expect(parseTaskReference(taskReferenceId(inFolder))).toEqual(inFolder)
+    })
+
+    it('still reads the shapes before ADR 0192: the etherpk: reference and the web address before it', () => {
+        const old: TaskReference = { ...reference, graph: { where: 'legacy', name: 'g-1' } }
+        expect(parseTaskReference('etherpk:/g/g-1/d/%5B%5BAcme%5D%5D%20Launch/Plan#task=14-3fa9c1e07b2d')).toEqual(old)
+        expect(parseTaskReference('Send the quote\nhttps://app.example.com/g/g-1/d/%5B%5BAcme%5D%5D%20Launch/Plan#task=14-3fa9c1e07b2d')).toEqual(old)
+        // Written back as it was read, so a reference a tool echoes still names the same graph.
+        expect(taskReferenceId(old)).toBe('etherpk:/g/g-1/d/%5B%5BAcme%5D%5D%20Launch/Plan#task=14-3fa9c1e07b2d')
     })
 
     it('is nothing when the text holds no reference', () => {
         expect(parseTaskReference('Send the quote')).toBeNull()
-        expect(parseTaskReference('https://app.example.com/g/g-1/d/Acme')).toBeNull()
-        expect(parseTaskReference('/g/g-1/d/Acme#task=14-3fa9')).toBeNull()
-        expect(parseTaskReference('/g/g-1/d/%E0%A4%A#task=1-3fa9c1e07b2d')).toBeNull()
-        expect(parseTaskReference('etherpk:/g/g-1/d/%E0%A4%A#task=1-3fa9c1e07b2d')).toBeNull()
+        expect(parseTaskReference('https://app.example.com/graph/sync/g-1/d/Acme')).toBeNull()
+        expect(parseTaskReference('/graph/sync/g-1/d/Acme#task=14-3fa9')).toBeNull()
+        expect(parseTaskReference('/graph/sync/g-1/d/%E0%A4%A#task=1-3fa9c1e07b2d')).toBeNull()
+        expect(parseTaskReference('etherpk:/graph/sync/g-1/d/%E0%A4%A#task=1-3fa9c1e07b2d')).toBeNull()
     })
 })
 
 describe('resolving', () => {
-    /** A graph of documents by name (bodies only), with aliases, served under `graphId`. */
-    function graph(bodies: Record<string, string>, options: { graphId?: string | null; aliases?: Record<string, string> } = {}): TaskReferenceSources {
+    /** A graph of documents by name (bodies only), with aliases, served at an address. */
+    function graph(bodies: Record<string, string>, options: { served?: GraphAddress; aliases?: Record<string, string> } = {}): TaskReferenceSources {
         const byKey = new Map(Object.keys(bodies).map((name) => [name.toLowerCase(), name]))
         return {
-            graphId: options.graphId === undefined ? 'g-1' : options.graphId,
+            graph: options.served ?? { where: 'sync', name: 'g-1' },
             resolveDocument: (name) => byKey.get(name.toLowerCase()) ?? byKey.get((options.aliases?.[name] ?? '').toLowerCase()) ?? null,
             readBody: async (document) => bodies[document] ?? null,
             allTasks: async () =>
@@ -85,7 +101,7 @@ describe('resolving', () => {
     }
 
     async function referenceTo(document: string, line: number, words: string): Promise<TaskReference> {
-        return { graphId: 'g-1', document, line, fingerprint: await taskFingerprint(words) }
+        return { graph: { where: 'sync', name: 'g-1' }, document, line, fingerprint: await taskFingerprint(words) }
     }
 
     it('finds the task at its line, whatever its tags now say', async () => {
@@ -124,9 +140,27 @@ describe('resolving', () => {
         expect(fenced).toEqual({ ok: false, code: 'task_not_found' })
     })
 
-    it('refuses a reference to another synced graph, and checks none on a folder graph', async () => {
-        const other = { ...(await referenceTo('Acme', 0, 'Send the quote')), graphId: 'g-2' }
-        expect(await resolveTaskReference(other, graph({ Acme: '- [ ] Send the quote' }))).toEqual({ ok: false, code: 'other_graph', servedGraphId: 'g-1' })
-        expect(await resolveTaskReference(other, graph({ Acme: '- [ ] Send the quote' }, { graphId: null }))).toMatchObject({ ok: true, foundBy: 'at_line' })
+    it('refuses a reference to another graph, by where it is kept and by name', async () => {
+        const here = await referenceTo('Acme', 0, 'Send the quote')
+        const bodies = { Acme: '- [ ] Send the quote' }
+        const other: TaskReference = { ...here, graph: { where: 'sync', name: 'g-2' } }
+        expect(await resolveTaskReference(other, graph(bodies))).toEqual({ ok: false, code: 'other_graph', served: { where: 'sync', name: 'g-1' } })
+
+        const reports: GraphAddress = { where: 'folder', name: 'reports' }
+        const inReports: TaskReference = { ...here, graph: reports }
+        expect(await resolveTaskReference(inReports, graph(bodies, { served: reports }))).toMatchObject({ ok: true, foundBy: 'at_line' })
+        expect(await resolveTaskReference(inReports, graph(bodies, { served: { where: 'folder', name: 'notes' } }))).toMatchObject({ ok: false, code: 'other_graph' })
+        // A synced graph's id that matches a folder's name is still another graph.
+        expect(await resolveTaskReference(inReports, graph(bodies, { served: { where: 'sync', name: 'reports' } }))).toMatchObject({ ok: false, code: 'other_graph' })
+    })
+
+    it('reads a reference of the shape before ADR 0192: a synced id is checked, a folder is not', async () => {
+        const here = await referenceTo('Acme', 0, 'Send the quote')
+        const bodies = { Acme: '- [ ] Send the quote' }
+        const old: TaskReference = { ...here, graph: { where: 'legacy', name: 'g-1' } }
+        expect(await resolveTaskReference(old, graph(bodies))).toMatchObject({ ok: true })
+        expect(await resolveTaskReference({ ...old, graph: { where: 'legacy', name: 'g-2' } }, graph(bodies))).toMatchObject({ ok: false, code: 'other_graph' })
+        // Each browser gave a folder an id of its own, so the old shape cannot be checked there.
+        expect(await resolveTaskReference({ ...old, graph: { where: 'legacy', name: 'anything' } }, graph(bodies, { served: { where: 'folder', name: 'reports' } }))).toMatchObject({ ok: true })
     })
 })

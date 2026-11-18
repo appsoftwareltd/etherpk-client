@@ -47,7 +47,7 @@ beforeEach(() => resetOAuthMetadataCache())
 describe('GET /auth/login', () => {
     // A cacheable 303 to Corporate would be replayed on Back and Forward.
     it('sends the browser to Corporate with a redirect no cache may keep', async () => {
-        const { outcome, setHeaders } = await login('?redirect=%2Fg%2Fdemo-graph&prompt=none')
+        const { outcome, setHeaders } = await login('?redirect=%2Fgraph%2Fsync%2Fdemo-graph&prompt=none')
 
         expect(outcome.status).toBe(303)
         expect(outcome.location.startsWith(`${issuer}/api/auth/oauth2/authorize?`)).toBe(true)

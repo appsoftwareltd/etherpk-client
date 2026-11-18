@@ -402,7 +402,7 @@
                 data-testid="graphs-hidden"
             >
                 {managed
-                    ? "Your synced graphs there are hidden until you sign in. Local folder graphs are not affected."
+                    ? "Your synced graphs there are hidden until you sign in. Folder graphs are not affected."
                     : "It may have been revoked or have expired. Synced graphs from this server are hidden until you add a new token."}
             </p>
             {#if managed}
@@ -556,7 +556,7 @@
             </svg>
             Loading synced graphs…
         </p>
-        <!-- Room for the graphs this device holds here: this group sits above Local Graphs, which
+        <!-- Room for the graphs this device holds here: this group sits above Folder Graphs, which
              should not jump down under the pointer when it fills in. A guess at the height, as a
              graph's members can make its card taller. -->
         {#each records as record (record.id)}

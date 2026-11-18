@@ -148,7 +148,7 @@ export function subgraph(graph: ConceptGraph, keep: (key: string, attributes: Co
 /**
  * Every concept within `depth` lines of `centre`, with its distance. A concept the filter hides
  * is neither included nor walked through, except the centre itself, which is always there: the
- * local Graph View is about the document in front of you, whatever kind it is.
+ * folder Graph View is about the document in front of you, whatever kind it is.
  */
 export function neighbourhood(model: GraphModel, centre: string, depth: number, filter: GraphFilter): Map<string, number> {
     const distance = new Map<string, number>()

@@ -18,7 +18,7 @@ function urls(doc: string): string[] {
 
 describe('the bare-url parser', () => {
     it('links a dotless http host GFM declines', () => {
-        expect(urls('see http://localhost:5174/g/x now')).toEqual(['http://localhost:5174/g/x'])
+        expect(urls('see http://localhost:5174/graph/sync/x now')).toEqual(['http://localhost:5174/graph/sync/x'])
     })
 
     it('links a bare file url, whitespace-terminated', () => {

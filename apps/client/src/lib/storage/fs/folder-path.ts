@@ -1,5 +1,5 @@
 /**
- * Where a Filesystem graph's folder sits on **this device**, as an absolute path - what "Copy
+ * Where a Folder graph's folder sits on **this device**, as an absolute path - what "Copy
  * full file path" on a document tab and an [[Agent Instruction]] join the file's name onto, so the
  * path can be handed to a tool outside the browser (an AI agent, an editor) that edits the file
  * directly.

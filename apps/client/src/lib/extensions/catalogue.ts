@@ -13,7 +13,7 @@
 import { type ExtensionModule, type ExtensionPackage, readExtensionPackage } from '@appsoftwareltd/etherpk-extension-api'
 
 /**
- * The first path segments of the Client's own workspace routes (`/g/<graph>/d/...` and so on),
+ * The first path segments of the Client's own workspace routes (`/graph/<where>/<name>/d/...` and so on),
  * which no extension may declare as its address. `x` is kept for the Extension Directory's
  * extensions (ADR 0123).
  */

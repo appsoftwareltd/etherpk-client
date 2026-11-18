@@ -4,6 +4,7 @@
 User-agent: *
 Allow: /
 Disallow: /graphs
+Disallow: /graph/
 Disallow: /g/
 Disallow: /dev/
 Disallow: /auth/

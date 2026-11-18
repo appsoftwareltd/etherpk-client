@@ -44,7 +44,7 @@ export type AgentsTabProps =
           createSetupCode: (() => Promise<{ code: string; expiresAt: string }>) | null
       }
     | {
-          kind: 'local'
+          kind: 'folder'
           /** The picked folder's leaf name (all a browser handle reveals). */
           folderName: string
           /** The absolute path the user typed for this device (folder-path.ts), or null if none yet. */
@@ -82,7 +82,7 @@ export interface AgentsSignIn {
 }
 
 /** A graph an agent can be given commands for: a synced graph, or a folder on disk. */
-export type AgentsReachableProps = Extract<AgentsTabProps, { kind: 'synced' | 'local' }>
+export type AgentsReachableProps = Extract<AgentsTabProps, { kind: 'synced' | 'folder' }>
 
 export { HEADLESS_CLIENT_PACKAGE, headlessClientPackage } from '@appsoftwareltd/etherpk-shared'
 
@@ -178,7 +178,7 @@ function shellPath(path: string): string {
 }
 
 /**
- * The registration for a local graph folder: `serve --folder <path>` in place of the server and
+ * The registration for a graph folder: `serve --folder <path>` in place of the server and
  * graph, since a folder needs no sign-in ([[2026-09-18 Headless Client Serves A Local Folder]]). The
  * path is this device's, from the General tab; the tab shows nothing to copy until it is known.
  */

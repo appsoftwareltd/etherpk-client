@@ -1,7 +1,7 @@
 /**
  * The maps extension's names (ADR 0118, ADR 0119, ADR 0121): its two View kinds, which its
- * manifest declares with their titles and addresses (`/g/<graph>/m/<concept>` and
- * `/g/<graph>/map`), and its Command ids, all under its id.
+ * manifest declares with their titles and addresses (`/graph/<where>/<name>/m/<concept>` and
+ * `/graph/<where>/<name>/map`), and its Command ids, all under its id.
  *
  * Two kinds rather than one with a special target: a concept may be called anything, so no target
  * string could stand for "the whole graph" without one day meaning a concept of that name.

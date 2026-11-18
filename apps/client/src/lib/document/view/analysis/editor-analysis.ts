@@ -8,6 +8,7 @@
 import { MapMode, StateField, type Extension, type Text, type Transaction } from '@codemirror/state'
 import { defangFence, fencedBlocks, fenceLineInfo, type FencedBlockRange } from '../../fenced-code'
 import { imageLineKind, type ImageLineKind } from '../../image-line'
+import { isMediaLine } from '../../media-line'
 import { outlineLines, type OutlineLine } from '../../indent-unit'
 import { isHeadingLine } from '../../outliner'
 import { findTables, type MarkdownTable } from '../../markdown-table'
@@ -17,6 +18,17 @@ import { frontmatterSpan, isFrontmatterDelimiter } from '#lib/storage/fs/frontma
 import { wikilinkSegmentsInSource } from '../../wikilink/source'
 import { renderableFences, type RenderableFence } from '../augmentations/fence-render-core'
 import { branchEnds } from '../augmentations/outline-guides-core'
+
+/** Whether `text` is a media line (`media-line.ts`) on a line that is not code. */
+function isMediaOutsideCode(text: string, code: boolean): boolean {
+    return !code && isMediaLine(text)
+}
+
+/** `lines` (1-based, in order) with `line` in it or out of it. */
+function withLine(lines: readonly number[], line: number, present: boolean): number[] {
+    const rest = lines.filter((other) => other !== line)
+    return present ? [...rest, line].sort((a, b) => a - b) : rest
+}
 
 export interface EditorImageLine {
     line: number
@@ -48,6 +60,8 @@ export interface EditorAnalysis {
      */
     outline: readonly OutlineLine[]
     imageLines: readonly EditorImageLine[]
+    /** The 1-based lines that are media lines (`media-line.ts`), outside code, in document order. */
+    mediaLines: readonly number[]
     /** Present only when the latest document transaction used the local line-update path. */
     incremental?: {
         oldFrom: number
@@ -193,6 +207,7 @@ function analyse(doc: Text, previous?: EditorAnalysis, tr?: Transaction): Editor
         const kind = imageLineKind(lines[line])
         if (kind) imageLines.push({ line: line + 1, kind })
     }
+    const mediaLines = lines.flatMap((text, line) => (isMediaOutsideCode(text, inFence[line]) ? [line + 1] : []))
     return {
         lines,
         fencedBlocks: blocks,
@@ -204,6 +219,7 @@ function analyse(doc: Text, previous?: EditorAnalysis, tr?: Transaction): Editor
         branchEnds: branchEnds(lines, blocks),
         outline: outlineLines(lines, blocks),
         imageLines,
+        mediaLines,
         pendingFence,
         incremental: undefined,
     }
@@ -376,6 +392,7 @@ function analyseIncrementally(
     const kind = !insideFence && !lineWasCode ? imageLineKind(change.newLineText) : null
     if (kind) imageLines.push({ line: change.oldLineNumber, kind })
     imageLines.sort((a, b) => a.line - b.line)
+    const mediaLines = withLine(previous.mediaLines, change.oldLineNumber, isMediaOutsideCode(change.newLineText, insideFence || lineWasCode))
 
     return {
         ...previous,
@@ -385,6 +402,7 @@ function analyseIncrementally(
         frontmatterEnd: mappedFrontmatterEnd,
         wikilinks,
         imageLines,
+        mediaLines,
         pendingFence: previous.pendingFence,
         incremental: {
             oldFrom: change.oldLineFrom,

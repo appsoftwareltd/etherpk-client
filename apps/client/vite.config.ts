@@ -83,7 +83,7 @@ export default defineConfig({
             },
             // The service worker serves one cached page, the shell, at any app address (ADR 0142),
             // so the files a page loads must be named from the root: a relative `./_app/...` written
-            // for `/offline-shell` would point nowhere when served for `/g/<id>/d/<page>`.
+            // for `/offline-shell` would point nowhere when served for `/graph/<where>/<name>/d/<page>`.
             paths: { relative: false },
             // Registered by the root layout, after the Trusted Types default policy exists (ADR 0130),
             // rather than by an inline script SvelteKit would add to every page.

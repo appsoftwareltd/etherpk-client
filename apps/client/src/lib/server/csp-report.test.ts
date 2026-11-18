@@ -4,7 +4,7 @@ import { createLogBudget, parseCspReport, readLimitedText } from './csp-report'
 /** A report as Chromium sends one to `report-uri` for a write Trusted Types refused. */
 const TRUSTED_TYPES_REPORT = {
     'csp-report': {
-        'document-uri': 'https://app.example.com/g/graph-1?code=secret#part',
+        'document-uri': 'https://app.example.com/graph/sync/graph-1?code=secret#part',
         referrer: '',
         'violated-directive': 'require-trusted-types-for',
         'effective-directive': 'require-trusted-types-for',
@@ -22,7 +22,7 @@ const TRUSTED_TYPES_REPORT = {
 describe('reading a CSP violation report', () => {
     it('keeps the fields that say what was refused and where', () => {
         expect(parseCspReport(JSON.stringify(TRUSTED_TYPES_REPORT))).toEqual({
-            documentUri: 'https://app.example.com/g/graph-1',
+            documentUri: 'https://app.example.com/graph/sync/graph-1',
             effectiveDirective: 'require-trusted-types-for',
             violatedDirective: 'require-trusted-types-for',
             blockedUri: 'trusted-types-sink',

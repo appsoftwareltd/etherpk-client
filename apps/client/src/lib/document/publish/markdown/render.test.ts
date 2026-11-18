@@ -189,6 +189,20 @@ describe('createDocumentRenderer', () => {
         expect(paged.assets).toEqual(['garden-guide.5e6f.pdf'])
     })
 
+    it("draws a recording in the graph's files with the browser's own player, and lists it as an asset", () => {
+        const r = renderer().render('![Adding a clip](../assets/add-a-clip.a1b2c3d4.webm)\n\n![A voice note](../assets/voice%20note.5e6f.mp3)\n')
+        expect(r.html).toContain('<video controls preload="metadata" src="assets/add-a-clip.a1b2c3d4.webm" aria-label="Adding a clip"></video>')
+        expect(r.html).toContain('<audio controls preload="metadata" src="assets/voice%20note.5e6f.mp3" aria-label="A voice note"></audio>')
+        expect(r.html).not.toContain('<img')
+        expect(r.assets).toEqual(['add-a-clip.a1b2c3d4.webm', 'voice note.5e6f.mp3'])
+    })
+
+    it('leaves a recording on another site as the image syntax it was written as', () => {
+        const r = renderer().render('![clip](https://example.com/clip.mp4)\n')
+        expect(r.html).not.toContain('<video')
+        expect(r.assets).toEqual([])
+    })
+
     it('never lets the display-size hint widen an image past its column', () => {
         // An inline style outranks the theme's `img { max-width: 100% }`, so a bare
         // `max-width:1000px` pushed a wide screenshot out of a narrower column in every theme.

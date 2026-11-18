@@ -76,7 +76,7 @@ describe('createGraphRegistry', () => {
         expect(all[0].name).toBe('Renamed')
     })
 
-    it('shows filesystem graphs globally but Server graphs only for the active account', async () => {
+    it('shows folder graphs globally but Server graphs only for the active account', async () => {
         let active = accountA
         const reg = createGraphRegistry(memoryPort(), { serverScopes: () => (active ? [active] : []) })
         await reg.insertGraph(record('local', 1))

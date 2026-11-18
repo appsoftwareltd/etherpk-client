@@ -41,7 +41,7 @@ export interface OrphanScan {
     scannedDocuments: number
     /**
      * TEMPORARY (ADR 0053): what the ride-along dedup-token backfill did on a synced graph.
-     * Absent on a filesystem graph. Delete with `storage/synced/asset-dedup-backfill.ts`.
+     * Absent on a folder graph. Delete with `storage/synced/asset-dedup-backfill.ts`.
      */
     dedupBackfill?: { tokened: number; failed: number }
     /**
@@ -131,7 +131,7 @@ export interface GraphAssetTools {
     /**
      * The [[Asset]] identity an [[Asset Reference]] names, or `null` when it names none (a
      * remote image, a wikilink). This is what `remove` takes and what document text is searched
-     * for, and the two backends disagree on what it is: a filesystem graph's identity is the
+     * for, and the two backends disagree on what it is: a folder graph's identity is the
      * file name, a synced graph's is the random asset id inside the reference.
      */
     identify(ref: string): string | null
@@ -180,7 +180,7 @@ export async function scanOrphanedAssets(adapter: DirectoryAdapter, options: Fil
 }
 
 /**
- * A filesystem graph is always ready to destroy bytes: there is no relay to be behind, and the
+ * A folder graph is always ready to destroy bytes: there is no relay to be behind, and the
  * files are right there. The Filesystem Backend directory is user-managed (ADR 0007), so a
  * reference typed into it by another editor is invisible until `reconcile()` runs — the same
  * exposure the [[Orphaned Asset]] scan has always carried, and not one a check here could close.

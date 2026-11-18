@@ -1,7 +1,7 @@
 /**
  * The Welcome page a graph created empty starts with (ADR 0183).
  *
- * A new synced graph, and a folder opened as a Local Graph that holds no notes, get one real page,
+ * A new synced graph, and a folder opened as a Folder Graph that holds no notes, get one real page,
  * "Welcome to EtherPK": a few lines a person can try where they stand. It is an ordinary page.
  * Deleting it is how a person says they do not want it, so it is written once and never again.
  *
@@ -118,7 +118,7 @@ async function holdsNote(root: FolderListing): Promise<boolean | null> {
 }
 
 /**
- * Whether a folder about to become a Local Graph was created empty: no Markdown file anywhere
+ * Whether a folder about to become a Folder Graph was created empty: no Markdown file anywhere
  * under it, apart from `AGENTS.md` and `CLAUDE.md` directly in it, and no `etherpk/settings.json`.
  * Notes another program keeps in folders of its own count, so the page is never written into a
  * folder that already has notes. Dot-folders and `node_modules` are not looked into. A folder the

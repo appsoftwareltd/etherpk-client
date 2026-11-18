@@ -6,7 +6,7 @@ import { SYNC_PLUS_OFFER_TEXT, SYNC_PLUS_PRICING_LABEL } from './sync-plus-offer
 describe('the Sync+ offer', () => {
     it('says what is free and what Sync+ adds, in one sentence set', () => {
         expect(SYNC_PLUS_OFFER_TEXT).toBe(
-            'Local folder graphs are free. Sync+ adds end-to-end encrypted sync across your devices, multiplayer and managed storage. Synced graphs shared with you are free.',
+            'Folder graphs are free. Sync+ adds end-to-end encrypted sync across your devices, multiplayer and managed storage. Synced graphs shared with you are free.',
         )
         expect(SYNC_PLUS_PRICING_LABEL).toBe('Sync+ Pricing')
     })

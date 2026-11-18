@@ -45,7 +45,7 @@ export function workspaceLaunchFrom(search: string): WorkspaceLaunch | null {
 
 /**
  * `search` without the named parameters: an empty string rather than a bare `?` when nothing is
- * left. Every other parameter rides along untouched, because the dev and e2e flags (`?fs=opfs`)
+ * left. Every other parameter rides along untouched, because the dev and e2e flags (`?autosaveMs=`)
  * share the query string.
  */
 export function withoutParams(search: string, names: readonly string[]): string {

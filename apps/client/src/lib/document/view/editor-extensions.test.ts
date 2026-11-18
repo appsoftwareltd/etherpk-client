@@ -76,6 +76,7 @@ describe('editor feature stack', () => {
             'math-inline',
             'image-embed',
             'asset-link',
+            'media-embed',
             'markdown-link',
             'asset-drop',
             'plain-paste',
@@ -120,6 +121,7 @@ describe('editor feature stack', () => {
         // drawn over every widget a later feature puts on a hidden line.
         before('shown-range', 'interactive-fence')
         before('shown-range', 'image-embed')
+        before('shown-range', 'media-embed')
         before('shown-range', 'fence-render')
     })
 

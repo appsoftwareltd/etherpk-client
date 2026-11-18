@@ -32,9 +32,9 @@ describe('setDocumentPublishing', () => {
         expect(store.open('Guide').getText()).toBe('- body [[X]]\n')
     })
 
-    // A local graph reads aliases from the file, and its listing catches up only when the autosave
+    // A folder graph reads aliases from the file, and its listing catches up only when the autosave
     // writes. A block deleted in the editor moments before Publish must stay deleted, aliases and all.
-    it('on a local graph, does not bring back the aliases of a block deleted before the autosave', async () => {
+    it('on a folder graph, does not bring back the aliases of a block deleted before the autosave', async () => {
         const adapter = createMemoryDirectoryAdapter({ now: () => 0 })
         await adapter.write('pages', 'Guide.md', '---\naliases: [Old]\n---\n- body\n')
         const store = createFilesystemDocumentStore(adapter)

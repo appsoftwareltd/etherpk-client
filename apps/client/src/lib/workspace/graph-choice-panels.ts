@@ -1,5 +1,5 @@
 /**
- * What the Graphs page offers a browser that holds no graph of its own: two choice panels, a Local
+ * What the Graphs page offers a browser that holds no graph of its own: two choice panels, a Folder
  * Graph and a Synced Graph. Everything the panels decide is here, apart from the markup
  * (`GraphChoicePanels.svelte`): which panel comes first, what each button says and does, and whether
  * the synced panel talks about a plan. The page passes in what it knows and acts on the answer.
@@ -55,7 +55,7 @@ export interface GraphChoiceInput {
     offer: SyncPlusOfferTerms | null
 }
 
-export interface LocalChoicePanel {
+export interface FolderChoicePanel {
     bullets: readonly string[]
     /** The browser can open a folder. Where it cannot, the panel has no button. */
     available: boolean
@@ -77,14 +77,14 @@ export interface SyncedChoicePanel {
 }
 
 export interface GraphChoicePanels {
-    order: readonly ['local', 'synced'] | readonly ['synced', 'local']
-    local: LocalChoicePanel
+    order: readonly ['folder', 'synced'] | readonly ['synced', 'folder']
+    folder: FolderChoicePanel
     synced: SyncedChoicePanel
 }
 
 export const FOLDER_UNAVAILABLE_REASON = 'Needs Chrome or Edge on a computer, or Chrome on Android.'
 
-const LOCAL_BULLETS = [
+const FOLDER_BULLETS = [
     'No account or sign-in needed',
     'Your notes stay on this device as plain Markdown files',
     'Works offline, and the same files open in any editor or coding agent',
@@ -231,35 +231,35 @@ function syncedPanel(input: GraphChoiceInput): SyncedChoicePanel {
         bullets: [
             'Works on your phone and in every browser',
             'Syncs between your devices',
-            // Said here because the Local panel says it: left out, it would read as a difference.
+            // Said here because the Folder panel says it: left out, it would read as a difference.
             'Works offline, and syncs when you are back online',
             managed
                 ? 'End-to-end encrypted, so EtherPK cannot read your notes'
                 : 'End-to-end encrypted, so the server cannot read your notes',
             'Share a notes graph and collaborate in real time',
-            // The mirror writes to a folder, so it needs what a Local Graph needs of the browser.
+            // The mirror writes to a folder, so it needs what a Folder Graph needs of the browser.
             'Keep a Local Mirror as plain Markdown files, in a browser that can open folders',
         ],
         ...syncedOffer(input, route),
     }
 }
 
-function localPanel(folderSupported: boolean): LocalChoicePanel {
+function folderPanel(folderSupported: boolean): FolderChoicePanel {
     return folderSupported
         ? {
-              bullets: LOCAL_BULLETS,
+              bullets: FOLDER_BULLETS,
               available: true,
               button: { label: 'Choose a folder', action: { kind: 'open-folder' } },
               help: 'For a new graph, choose a new, empty folder.',
           }
-        : { bullets: LOCAL_BULLETS, available: false, button: null, help: FOLDER_UNAVAILABLE_REASON }
+        : { bullets: FOLDER_BULLETS, available: false, button: null, help: FOLDER_UNAVAILABLE_REASON }
 }
 
 /** The two panels for a browser with no graph of its own. The one this browser can use comes first. */
 export function graphChoicePanels(input: GraphChoiceInput): GraphChoicePanels {
     return {
-        order: input.folderSupported ? ['local', 'synced'] : ['synced', 'local'],
-        local: localPanel(input.folderSupported),
+        order: input.folderSupported ? ['folder', 'synced'] : ['synced', 'folder'],
+        folder: folderPanel(input.folderSupported),
         synced: syncedPanel(input),
     }
 }

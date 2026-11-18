@@ -5,11 +5,13 @@
  * so the address says when it is open and on which tab: `?settings=<tab>` on top of whatever
  * Document URL (or Asset or Theme URL) is beneath it. The fragment is not used - ADR 0023
  * reserves it for in-document anchors - and every other param rides along untouched, because
- * the dev and e2e flags (`?fs=opfs`, `?autosaveMs=`) share the same query string.
+ * the dev and e2e flags (`?autosaveMs=`, `?backend=server`) share the same query string.
  *
  * Pure string helpers over a query string, so the workspace's history writes and its tests
  * agree on the spelling without a browser.
  */
+
+import { graphAddressPath, type GraphAddress } from '#lib/navigation/graph-address.js'
 
 import { SETTINGS_TABS, type SettingsTab } from './device-memory'
 
@@ -19,8 +21,8 @@ export const SETTINGS_PARAM = 'settings'
  * The address of a graph's Agents tab, for an [[Agent Instruction]] to send a person to. Bare of any
  * other param: the dev flags that share the query string can carry a sync token.
  */
-export function agentsSettingsUrl(origin: string, graphId: string): string {
-    return `${origin}/g/${encodeURIComponent(graphId)}${withSettingsTab('', 'agents')}`
+export function agentsSettingsUrl(origin: string, graph: GraphAddress): string {
+    return `${origin}${graphAddressPath(graph)}${withSettingsTab('', 'agents')}`
 }
 
 /** The tab an address names, or null when it names none - or names something that is not a tab. */

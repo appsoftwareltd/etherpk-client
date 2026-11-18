@@ -164,7 +164,7 @@ export async function getOpfsRoot(): Promise<FileSystemDirectoryHandle> {
 
 /**
  * Whether a graph root is a real folder on disk - picked through the FSA picker - rather than
- * a subdirectory of the Origin Private File System (the dev gate's `?fs=opfs` graphs, the demo
+ * a subdirectory of the Origin Private File System (the development graphs at `/graph/browser/<id>`, the demo
  * graph). Both are the same handle type, so the OPFS root is asked whether the handle descends
  * from it. Only an on-disk folder has a path a tool outside the browser could use.
  */

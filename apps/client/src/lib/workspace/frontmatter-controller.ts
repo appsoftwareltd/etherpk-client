@@ -79,7 +79,7 @@ export function createFrontmatterController(deps: FrontmatterControllerDeps): Fr
      * mismatch mark would offer to clear them, and the next episode would.
      */
     function carryAliasesIntoNewBlock(target: string): void {
-        // Only a Server Backend holds aliases outside any block. A local graph's listing reads them
+        // Only a Server Backend holds aliases outside any block. A folder graph's listing reads them
         // from the last saved file, so it can still name ones the person just cut: the file decides.
         if (deps.backend() !== 'server') return
         const text = deps.textOf(target)

@@ -4,7 +4,7 @@ import type { GraphRecord } from './graph-registry'
 import { resolveGraphTarget, rootDestination } from './graph-routing'
 
 function graph(id: string): GraphRecord {
-    return { id, name: id, backend: 'filesystem', createdAt: 0, handle: {} }
+    return { id, name: id, backend: 'filesystem', createdAt: 0, handle: { kind: 'directory', name: id } }
 }
 
 describe('resolveGraphTarget', () => {
@@ -14,13 +14,14 @@ describe('resolveGraphTarget', () => {
     })
 
     it('opens the only graph, ignoring the pointer', () => {
-        expect(resolveGraphTarget([graph('a')], null)).toEqual({ kind: 'open', id: 'a' })
-        expect(resolveGraphTarget([graph('a')], 'stale')).toEqual({ kind: 'open', id: 'a' })
+        const only = graph('a')
+        expect(resolveGraphTarget([only], null)).toEqual({ kind: 'open', graph: only })
+        expect(resolveGraphTarget([only], 'stale')).toEqual({ kind: 'open', graph: only })
     })
 
     it('opens the pointed-at graph when several exist and it is still present', () => {
         const graphs = [graph('a'), graph('b'), graph('c')]
-        expect(resolveGraphTarget(graphs, 'b')).toEqual({ kind: 'open', id: 'b' })
+        expect(resolveGraphTarget(graphs, 'b')).toEqual({ kind: 'open', graph: graphs[1] })
     })
 
     it('falls back to the picker when the pointer is unset or stale among many', () => {
@@ -32,18 +33,19 @@ describe('resolveGraphTarget', () => {
 
 describe('rootDestination', () => {
     const today = () => '2026-10-17'
-    const open = { kind: 'open', id: 'garden' } as const
+    // A folder graph, so the address is its folder's name (ADR 0192).
+    const open = { kind: 'open', graph: graph('garden') } as const
 
     it('opens the graph and forwards the query string, as before', () => {
-        expect(rootDestination(open, '', today)).toBe('/g/garden')
-        expect(rootDestination(open, '?fs=opfs', today)).toBe('/g/garden?fs=opfs')
-        expect(rootDestination({ kind: 'picker' }, '?fs=opfs', today)).toBe('/graphs')
-        expect(rootDestination({ kind: 'home' }, '?fs=opfs', today)).toBe('/home?fs=opfs')
+        expect(rootDestination(open, '', today)).toBe('/graph/folder/garden')
+        expect(rootDestination(open, '?autosaveMs=150', today)).toBe('/graph/folder/garden?autosaveMs=150')
+        expect(rootDestination({ kind: 'picker' }, '?autosaveMs=150', today)).toBe('/graphs')
+        expect(rootDestination({ kind: 'home' }, '?autosaveMs=150', today)).toBe('/home?autosaveMs=150')
     })
 
     it('drops the installed-launch marker, which is for the request log only', () => {
-        expect(rootDestination(open, '?source=pwa', today)).toBe('/g/garden')
-        expect(rootDestination(open, '?fs=opfs&source=pwa', today)).toBe('/g/garden?fs=opfs')
+        expect(rootDestination(open, '?source=pwa', today)).toBe('/graph/folder/garden')
+        expect(rootDestination(open, '?autosaveMs=150&source=pwa', today)).toBe('/graph/folder/garden?autosaveMs=150')
     })
 
     it('sends an installed launch with no graphs to the Graphs page rather than the public home', () => {
@@ -51,12 +53,12 @@ describe('rootDestination', () => {
     })
 
     it("opens today's journal in the graph for the today shortcut", () => {
-        expect(rootDestination(open, '?shortcut=today&source=pwa', today)).toBe('/g/garden/d/2026-10-17')
+        expect(rootDestination(open, '?shortcut=today&source=pwa', today)).toBe('/graph/folder/garden/d/2026-10-17')
     })
 
     it('asks the workspace to run the search and quick note shortcuts once it opens', () => {
-        expect(rootDestination(open, '?shortcut=search&source=pwa', today)).toBe('/g/garden?launch=search')
-        expect(rootDestination(open, '?shortcut=quick-note', today)).toBe('/g/garden?launch=quick-note')
+        expect(rootDestination(open, '?shortcut=search&source=pwa', today)).toBe('/graph/folder/garden?launch=search')
+        expect(rootDestination(open, '?shortcut=quick-note', today)).toBe('/graph/folder/garden?launch=quick-note')
     })
 
     it('sends a shortcut with no graph to open to the Graphs page', () => {
@@ -65,6 +67,6 @@ describe('rootDestination', () => {
     })
 
     it('ignores a shortcut it does not know', () => {
-        expect(rootDestination(open, '?shortcut=elsewhere', today)).toBe('/g/garden')
+        expect(rootDestination(open, '?shortcut=elsewhere', today)).toBe('/graph/folder/garden')
     })
 })

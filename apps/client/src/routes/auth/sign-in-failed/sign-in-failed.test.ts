@@ -12,21 +12,21 @@ function visit(query: string) {
 
 describe('/auth/sign-in-failed', () => {
     it('says why sign-in stopped and offers to sign in again, back to where the user was going', () => {
-        const { data } = visit('?reason=busy&redirect=%2Fg%2Fabc%2Fd%2FJournal')
+        const { data } = visit('?reason=busy&redirect=%2Fgraph%2Fsync%2Fabc%2Fd%2FJournal')
 
         expect(data.title).toBe('Sign-in did not finish')
         expect(data.detail).toMatch(/busy/)
-        expect(data.signInHref).toBe('/auth/login?redirect=%2Fg%2Fabc%2Fd%2FJournal')
+        expect(data.signInHref).toBe('/auth/login?redirect=%2Fgraph%2Fsync%2Fabc%2Fd%2FJournal')
     })
 
     // Where a reloaded or replayed callback lands.
     it('explains a callback that no longer belongs to a sign-in in progress', () => {
-        const { data } = visit('?reason=stale&redirect=%2Fg%2Fdemo-graph')
+        const { data } = visit('?reason=stale&redirect=%2Fgraph%2Fsync%2Fdemo-graph')
 
         expect(data.detail).toBe(
             'This sign-in link was already used or has expired, so it could not finish. Nothing was lost. Sign in again to carry on.',
         )
-        expect(data.signInHref).toBe('/auth/login?redirect=%2Fg%2Fdemo-graph')
+        expect(data.signInHref).toBe('/auth/login?redirect=%2Fgraph%2Fsync%2Fdemo-graph')
     })
 
     it('never sends the user off the Client, whatever the link carries', () => {

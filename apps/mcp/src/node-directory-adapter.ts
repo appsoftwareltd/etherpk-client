@@ -2,7 +2,7 @@
  * A {@link DirectoryAdapter} over a real directory through `node:fs`: the third adapter behind
  * the seam the filesystem store reads and writes through (the browser's `web-fs-adapter.ts`
  * and the tests' `memory-adapter.ts` are the other two), so `createFilesystemDocumentStore`
- * runs unchanged in the [[Headless Client]] over a local graph folder.
+ * runs unchanged in the [[Headless Client]] over a graph folder.
  *
  * The contract it keeps, because the store's external-change detection depends on it: a
  * listing reports each file's mtime in epoch milliseconds and its size in bytes, a write

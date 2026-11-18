@@ -10,7 +10,7 @@ import { setExtensionAddresses } from './extension-addresses'
 describe("an extension View's address", () => {
     it('is what its manifest declares, once a workspace has handed the address book over', () => {
         const view = { kind: 'timeline.day', target: '2026-10-02' }
-        expect(viewUrl('g1', view)).toBeNull()
+        expect(viewUrl({ where: 'sync', name: 'g1' }, view)).toBeNull()
         setExtensionAddresses(
             createAddressBook([
                 {
@@ -28,7 +28,7 @@ describe("an extension View's address", () => {
             ]),
         )
         try {
-            expect(viewUrl('g1', view)).toBe('/g/g1/day/2026-10-02')
+            expect(viewUrl({ where: 'sync', name: 'g1' }, view)).toBe('/graph/sync/g1/day/2026-10-02')
         } finally {
             setExtensionAddresses(null)
         }
@@ -51,43 +51,43 @@ describe('encodeConceptPath', () => {
 })
 
 describe('documentUrl / graphUrl', () => {
-    it('builds the /g/[graphId]/d/[...concept] form', () => {
-        expect(documentUrl('g1', 'Meeting Notes')).toBe('/g/g1/d/Meeting%20Notes')
+    it('builds the /graph/sync/[graphId]/d/[...concept] form', () => {
+        expect(documentUrl({ where: 'sync', name: 'g1' }, 'Meeting Notes')).toBe('/graph/sync/g1/d/Meeting%20Notes')
     })
     it('encodes the graph id too', () => {
-        expect(graphUrl('a b')).toBe('/g/a%20b')
+        expect(graphUrl({ where: 'sync', name: 'a b' })).toBe('/graph/sync/a%20b')
     })
 })
 
 describe('assetUrl', () => {
     it('addresses an Asset by identity', () => {
-        expect(assetUrl('g1', 'q3-report.a1b2c3d4.pdf')).toBe('/g/g1/a/q3-report.a1b2c3d4.pdf')
-        expect(assetUrl('g1', '7f3a1b2c-0000-4000-8000-000000000001.pdf')).toBe(
-            '/g/g1/a/7f3a1b2c-0000-4000-8000-000000000001.pdf',
+        expect(assetUrl({ where: 'sync', name: 'g1' }, 'q3-report.a1b2c3d4.pdf')).toBe('/graph/sync/g1/a/q3-report.a1b2c3d4.pdf')
+        expect(assetUrl({ where: 'sync', name: 'g1' }, '7f3a1b2c-0000-4000-8000-000000000001.pdf')).toBe(
+            '/graph/sync/g1/a/7f3a1b2c-0000-4000-8000-000000000001.pdf',
         )
     })
 
     it('encodes an identity that needs it', () => {
-        expect(assetUrl('g1', 'my file.aa.pdf')).toBe('/g/g1/a/my%20file.aa.pdf')
+        expect(assetUrl({ where: 'sync', name: 'g1' }, 'my file.aa.pdf')).toBe('/graph/sync/g1/a/my%20file.aa.pdf')
     })
 })
 
 describe('viewUrl', () => {
     it('addresses the two kinds that are places you go', () => {
-        expect(viewUrl('g1', { kind: 'document', target: 'Physics' })).toBe('/g/g1/d/Physics')
-        expect(viewUrl('g1', { kind: 'asset', target: 'chart.aa.png' })).toBe('/g/g1/a/chart.aa.png')
+        expect(viewUrl({ where: 'sync', name: 'g1' }, { kind: 'document', target: 'Physics' })).toBe('/graph/sync/g1/d/Physics')
+        expect(viewUrl({ where: 'sync', name: 'g1' }, { kind: 'asset', target: 'chart.aa.png' })).toBe('/graph/sync/g1/a/chart.aa.png')
     })
 
     it('keeps the address of a page whose extension is not installed here, each segment encoded', () => {
-        expect(viewUrl('g1', { kind: EXTENSION_ADDRESS_KIND, target: 'pear/branches/Old pear' })).toBe('/g/g1/x/pear/branches/Old%20pear')
+        expect(viewUrl({ where: 'sync', name: 'g1' }, { kind: EXTENSION_ADDRESS_KIND, target: 'pear/branches/Old pear' })).toBe('/graph/sync/g1/x/pear/branches/Old%20pear')
     })
 
     it('refuses the kinds that are chrome you look through', () => {
         // Sidebar residents are not Visits (ADR 0023), so they have no address.
-        expect(viewUrl('g1', { kind: 'backlinks', target: 'Physics' })).toBeNull()
-        expect(viewUrl('g1', { kind: 'tasks', target: 'tasks' })).toBeNull()
-        expect(viewUrl('g1', { kind: 'document-tree', target: 'root' })).toBeNull()
-        expect(viewUrl('g1', { kind: 'graph-view.local', target: 'local' })).toBeNull()
+        expect(viewUrl({ where: 'sync', name: 'g1' }, { kind: 'backlinks', target: 'Physics' })).toBeNull()
+        expect(viewUrl({ where: 'sync', name: 'g1' }, { kind: 'tasks', target: 'tasks' })).toBeNull()
+        expect(viewUrl({ where: 'sync', name: 'g1' }, { kind: 'document-tree', target: 'root' })).toBeNull()
+        expect(viewUrl({ where: 'sync', name: 'g1' }, { kind: 'graph-view.local', target: 'local' })).toBeNull()
     })
 })
 
@@ -96,14 +96,14 @@ describe('themeUrl', () => {
     // address opening one pushed no history entry, so Back walked straight past it (ADR 0023,
     // 2026-09-20).
     it('addresses a graph Theme by its id', () => {
-        expect(themeUrl('g1', 'docs-theme')).toBe('/g/g1/t/docs-theme')
+        expect(themeUrl({ where: 'sync', name: 'g1' }, 'docs-theme')).toBe('/graph/sync/g1/t/docs-theme')
     })
 
     it('encodes an id that needs it', () => {
-        expect(themeUrl('g1', 'my theme')).toBe('/g/g1/t/my%20theme')
+        expect(themeUrl({ where: 'sync', name: 'g1' }, 'my theme')).toBe('/graph/sync/g1/t/my%20theme')
     })
 
     it('is what viewUrl gives a theme View', () => {
-        expect(viewUrl('g1', { kind: 'theme', target: 'docs-theme' })).toBe('/g/g1/t/docs-theme')
+        expect(viewUrl({ where: 'sync', name: 'g1' }, { kind: 'theme', target: 'docs-theme' })).toBe('/graph/sync/g1/t/docs-theme')
     })
 })

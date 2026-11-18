@@ -9,7 +9,8 @@
  * `view.extension`, since its ids are its author's to choose.
  */
 
-import { DEMO_GRAPH_ID, isDemoGraph } from '#lib/demo/demo-graph.js'
+import { DEMO_GRAPH_ADDRESS, isDemoGraph } from '#lib/demo/demo-graph.js'
+import { graphAddressPath } from '#lib/navigation/graph-address.js'
 import type { ViewRef } from '#lib/layout/view-ref.js'
 import { assetExtension } from '#lib/surface/asset-viewer.js'
 import { createCommandRegistry, type CommandRegistry } from '#lib/surface/command-registry.js'
@@ -66,5 +67,6 @@ export function createWorkspaceUsage(statistics: Recorder, bundledExtensions: Re
 
 /** Whether a page of the app is the demo, where nothing is counted. */
 export function isDemoPath(pathname: string): boolean {
-    return pathname === '/demo' || pathname === `/g/${DEMO_GRAPH_ID}` || pathname.startsWith(`/g/${DEMO_GRAPH_ID}/`)
+    const demo = graphAddressPath(DEMO_GRAPH_ADDRESS)
+    return pathname === '/demo' || pathname === demo || pathname.startsWith(`${demo}/`)
 }

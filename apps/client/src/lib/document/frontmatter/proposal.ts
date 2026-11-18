@@ -54,7 +54,7 @@ export function proposeFrontmatter(input: ProposalInput): ProposalStep[] {
     if (!claim.hasBlock) {
         // No block is no claim: a synced document without aliases need not have one, and nothing
         // it has not said is up for clearing. A block the person just deleted is the exception,
-        // and clears the aliases it showed. On a local graph the saved file already has none.
+        // and clears the aliases it showed. On a folder graph the saved file already has none.
         if (!input.blockRemoved || input.backend !== 'server') return []
         const from = normaliseAliases(input.registry.aliases, input.registry.concept)
         return from.length > 0 ? [{ property: 'aliases', policy: 'silent', from, to: [] }] : []

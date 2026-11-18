@@ -51,9 +51,9 @@ describe("the maps manifest", () => {
     // A Map View is a place you go, as a board is (ADR 0118): one concept's places under its own
     // segment, and the whole graph's at one address, since there is one per graph.
     it("addresses a concept's map by the concept, a slash kept as a path separator, and the Graph Map", () => {
-        expect(host.addresses.url('g1', mapViewOf('Campsites'))).toBe('/g/g1/m/Campsites')
-        expect(host.addresses.url('g1', mapViewOf('Trips/Wales 2026'))).toBe('/g/g1/m/Trips/Wales%202026')
-        expect(host.addresses.url('g1', MAP_WHOLE)).toBe('/g/g1/map')
+        expect(host.addresses.url({ where: 'sync', name: 'g1' }, mapViewOf('Campsites'))).toBe('/graph/sync/g1/m/Campsites')
+        expect(host.addresses.url({ where: 'sync', name: 'g1' }, mapViewOf('Trips/Wales 2026'))).toBe('/graph/sync/g1/m/Trips/Wales%202026')
+        expect(host.addresses.url({ where: 'sync', name: 'g1' }, MAP_WHOLE)).toBe('/graph/sync/g1/map')
         expect(host.addresses.view('m', 'Campsites')).toEqual(mapViewOf('Campsites'))
         expect(host.addresses.view('map', '')).toEqual(MAP_WHOLE)
     })

@@ -1,6 +1,6 @@
 <script lang="ts">
     /**
-     * A local graph's card on the Graphs page: a folder on this computer, or the demo. Open
+     * A folder graph's card on the Graphs page: a folder on this computer, or the demo. Open
      * is its one primary action; the name beside it is a label, not a second way in. Synced graphs
      * have a card of their own (SyncedGraphRow). A coloured graph's band takes its colour (graph-card.ts).
      */
@@ -66,7 +66,7 @@
         <span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
             <span data-testid="graph-card-name" class="truncate text-sm font-medium {accent ? '' : 'text-neutral-950 dark:text-white'}">{graph.name}</span>
             <span class={accent ? BADGE_ON_COLOUR : 'rounded-full bg-neutral-100 px-2 py-0.5 text-sm text-neutral-600 dark:bg-white/10 dark:text-neutral-400'} data-testid="graphs-backend-tag">
-                {demo ? 'Demo' : graph.backend === 'server' ? 'Synced' : 'Local'}
+                {demo ? 'Demo' : graph.backend === 'server' ? 'Synced' : 'Folder'}
             </span>
         </span>
         {#if demo}

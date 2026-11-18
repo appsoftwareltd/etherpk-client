@@ -11,7 +11,7 @@ import { listMirrorFolders } from './mirror-folder-idb'
 import { type FolderReader, type KnownFolder, knownFolders } from './synced/mirror-takeover'
 
 /**
- * Every local graph's folder and every other graph's mirror on this device. Read from the raw
+ * Every folder graph's folder and every other graph's mirror on this device. Read from the raw
  * registry records rather than `listGraphs()`, which hides the synced graphs of an account that
  * is not signed in: their mirrors still resume when it is, so their folders are still taken.
  */

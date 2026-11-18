@@ -7,7 +7,7 @@
  */
 
 export const SYNC_PLUS_OFFER_TEXT =
-    'Local folder graphs are free. Sync+ adds end-to-end encrypted sync across your devices, multiplayer and managed storage. Synced graphs shared with you are free.'
+    'Folder graphs are free. Sync+ adds end-to-end encrypted sync across your devices, multiplayer and managed storage. Synced graphs shared with you are free.'
 
 /** The offer's button, to Corporate's pricing page. Billing offers Checkout in its place. */
 export const SYNC_PLUS_PRICING_LABEL = 'Sync+ Pricing'

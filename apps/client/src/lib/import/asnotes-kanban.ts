@@ -10,6 +10,7 @@
  * note and file handling, as AS Notes itself indexes those files as notes.
  */
 
+import { mediaKindOfTarget } from '#lib/document/media-line.js'
 import { parse as parseYaml } from 'yaml'
 
 import { readSourceFrontmatter } from './convert-shared'
@@ -142,6 +143,11 @@ function trimLines(text: string): string[] {
 
 const indent = (lines: string[], by: string) => lines.map((line) => (line.trim() === '' ? '' : `${by}${line}`))
 
+/** `!` for an attachment the editor draws in place: a picture, or a recording (a player, media-line.ts). */
+function embedMark(planned: PlannedAsset): string {
+    return planned.isImage || mediaKindOfTarget(planned.ref) !== null ? '!' : ''
+}
+
 /**
  * A card's detail as markdown at the card's own level: the assignee and labels, the description,
  * the notes above its first entry, then each `## entry` as a bullet with its text beneath it.
@@ -232,7 +238,7 @@ export function boardPageBody(
                 const planned = cardFile(card, fileName)
                 if (!planned || detail.includes(planned.ref)) continue
                 markReferenced(planned)
-                detailLines.push(`- ${planned.isImage ? '!' : ''}[${planned.stem}](${planned.ref})`)
+                detailLines.push(`- ${embedMark(planned)}[${planned.stem}](${planned.ref})`)
             }
             out.push(...indent(detailLines, '  '))
         }

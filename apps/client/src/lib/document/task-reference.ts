@@ -2,9 +2,11 @@
  * A [[Task Reference]] (ADR 0114, ADR 0165): the address of a task inside the [[Agent Instruction]]
  * a person copies to hand it to an agent (agent-instruction.ts). It is the path of the task's
  * [[Document URL]] under an `etherpk:` scheme, with `#task=<line>-<fingerprint>` as the fragment:
- * `etherpk:/g/<graph>/d/<document>#task=…`. It is not
- * a web address, so an agent reads it with its [[Headless Client]] rather than trying to fetch it,
- * and it keeps the `/g/…/d/…#task=…` shape that every Headless Client version parses. The Client
+ * `etherpk:/graph/sync/<id>/d/<document>#task=…`, or `etherpk:/graph/folder/<folder name>/d/…` on a
+ * [[Folder Graph]] (ADR 0192). It is not
+ * a web address, so an agent reads it with its [[Headless Client]] rather than trying to fetch it.
+ * The shape before ADR 0192, which had a `g` segment in place of the Graph Address, is still read
+ * for one release. The Client
  * and the Headless Client both resolve it back to the task by its position and its words, so
  * nothing is written into the document, and a reference survives the lines added above its task
  * and the tags rewritten on it while an agent works.
@@ -17,7 +19,8 @@
  *
  * Framework-free, and shared with the Headless Client through the `#lib` alias.
  */
-import { documentUrl } from '../navigation/document-url'
+import { encodeConceptPath } from '../navigation/concept-path'
+import { REFERENCED_GRAPH_PATTERN, referencedGraphFrom, referencedGraphPath, referencesGraph, type GraphAddress, type ReferencedGraph } from '../navigation/graph-address'
 import { fencedBlocks } from './fenced-code'
 import type { TaskLabel } from './index-db'
 import { bulletLabel } from './index-derive'
@@ -27,7 +30,8 @@ import { parseTaskLine, parseTaskTags, withoutFreeTags } from './task-tags'
 export const FINGERPRINT_LENGTH = 12
 
 export interface TaskReference {
-    graphId: string
+    /** The graph the task is in, by its [[Graph Address]]. */
+    graph: ReferencedGraph
     /** The document's name when the reference was made; a rename is followed on resolving. */
     document: string
     /** 0-based body line, as the index, `tasks` and `read_document` count lines. */
@@ -57,7 +61,7 @@ export async function taskFingerprint(label: string): Promise<string> {
 
 /** The reference's address: the Document URL with the task in its fragment, which a browser never sends. */
 export function taskReferenceUrl(reference: TaskReference, origin = ''): string {
-    return `${origin}${documentUrl(reference.graphId, reference.document)}#task=${reference.line}-${reference.fingerprint}`
+    return `${origin}${referencedGraphPath(reference.graph)}/d/${encodeConceptPath(reference.document)}#task=${reference.line}-${reference.fingerprint}`
 }
 
 /** The scheme that marks a Task Reference as EtherPK's own, and not a web address to fetch. */
@@ -68,7 +72,7 @@ export function taskReferenceId(reference: TaskReference): string {
     return `${SCHEME}${taskReferenceUrl(reference)}`
 }
 
-const PATH = String.raw`\/g\/([^/?#\s]+)\/d\/([^?#\s]+?)(?:\?[^#\s]*)?#task=(\d+)-([0-9a-f]{12})(?![0-9a-f])`
+const PATH = `${REFERENCED_GRAPH_PATTERN}${String.raw`\/d\/([^?#\s]+?)(?:\?[^#\s]*)?#task=(\d+)-([0-9a-f]{12})(?![0-9a-f])`}`
 /** The `etherpk:` form, read first so that nothing shaped like a reference in a task's words wins. */
 const ETHERPK_REFERENCE = new RegExp(`${SCHEME}${PATH}`)
 /** The reference anywhere, with any origin or none: the web address an earlier version copied. */
@@ -81,10 +85,10 @@ const ANY_REFERENCE = new RegExp(PATH)
 export function parseTaskReference(input: string): TaskReference | null {
     const match = ETHERPK_REFERENCE.exec(input) ?? ANY_REFERENCE.exec(input)
     if (!match) return null
-    const [, graph, path, line, fingerprint] = match
+    const [, where, graph, path, line, fingerprint] = match
     try {
         return {
-            graphId: decodeURIComponent(graph),
+            graph: referencedGraphFrom(where, graph),
             document: path.split('/').map(decodeURIComponent).join('/'),
             line: Number(line),
             fingerprint,
@@ -112,12 +116,12 @@ export interface ResolvedTaskReference {
 export type TaskReferenceRefusal =
     | { ok: false; code: 'task_not_found' }
     | { ok: false; code: 'task_ambiguous'; candidates: { document: string; line: number }[] }
-    | { ok: false; code: 'other_graph'; servedGraphId: string }
+    | { ok: false; code: 'other_graph'; served: GraphAddress }
 
 /** What resolving needs from wherever the graph is: the Client's workspace or the Headless Client. */
 export interface TaskReferenceSources {
-    /** The graph served, or null for a folder graph, whose id is local to each browser and is not checked. */
-    graphId: string | null
+    /** The address of the graph served. A reference for another graph is refused. */
+    graph: GraphAddress
     /** The name a document answers to now, through its aliases and whatever the case, or null. */
     resolveDocument(name: string): string | null
     /** A document's body, the text below any frontmatter, or null when it cannot be read. */
@@ -133,8 +137,8 @@ export interface TaskReferenceSources {
  * wrong task. A document that no longer answers to its name goes straight to the graph.
  */
 export async function resolveTaskReference(reference: TaskReference, sources: TaskReferenceSources): Promise<ResolvedTaskReference | TaskReferenceRefusal> {
-    if (sources.graphId !== null && sources.graphId !== reference.graphId) {
-        return { ok: false, code: 'other_graph', servedGraphId: sources.graphId }
+    if (!referencesGraph(reference.graph, sources.graph)) {
+        return { ok: false, code: 'other_graph', served: sources.graph }
     }
     const named = sources.resolveDocument(reference.document)
     if (named !== null) {

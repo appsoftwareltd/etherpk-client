@@ -8,31 +8,31 @@ import { agentsSettingsUrl, SETTINGS_PARAM, settingsTabFromUrl, withSettingsTab,
 
 describe('agentsSettingsUrl', () => {
     it("is a graph's Agents tab, which an address reads back as that tab", () => {
-        const url = agentsSettingsUrl('https://app.test', 'g-1')
-        expect(url).toBe('https://app.test/g/g-1?settings=agents')
+        const url = agentsSettingsUrl('https://app.test', { where: 'sync', name: 'g-1' })
+        expect(url).toBe('https://app.test/graph/sync/g-1?settings=agents')
         expect(settingsTabFromUrl(new URL(url))).toBe('agents')
     })
 
     it('encodes the graph id', () => {
-        expect(agentsSettingsUrl('https://app.test', 'a b')).toBe('https://app.test/g/a%20b?settings=agents')
+        expect(agentsSettingsUrl('https://app.test', { where: 'sync', name: 'a b' })).toBe('https://app.test/graph/sync/a%20b?settings=agents')
     })
 })
 
 describe('settingsTabFromUrl', () => {
     it('reads the tab an address names', () => {
-        expect(settingsTabFromUrl(new URL('https://app.test/g/g1/d/Physics?settings=publish'))).toBe('publish')
-        expect(settingsTabFromUrl(new URL('https://app.test/g/g1?fs=opfs&settings=general'))).toBe('general')
+        expect(settingsTabFromUrl(new URL('https://app.test/graph/sync/g1/d/Physics?settings=publish'))).toBe('publish')
+        expect(settingsTabFromUrl(new URL('https://app.test/graph/sync/g1?backend=server&settings=general'))).toBe('general')
     })
 
     it('is null for an address that names no tab', () => {
-        expect(settingsTabFromUrl(new URL('https://app.test/g/g1/d/Physics'))).toBeNull()
-        expect(settingsTabFromUrl(new URL('https://app.test/g/g1/d/Physics?fs=opfs'))).toBeNull()
+        expect(settingsTabFromUrl(new URL('https://app.test/graph/sync/g1/d/Physics'))).toBeNull()
+        expect(settingsTabFromUrl(new URL('https://app.test/graph/sync/g1/d/Physics?backend=server'))).toBeNull()
     })
 
     it('is null for a value that is not a tab, so a hand-edited address cannot open an empty panel', () => {
-        expect(settingsTabFromUrl(new URL('https://app.test/g/g1?settings=bogus'))).toBeNull()
-        expect(settingsTabFromUrl(new URL('https://app.test/g/g1?settings='))).toBeNull()
-        expect(settingsTabFromUrl(new URL('https://app.test/g/g1?settings'))).toBeNull()
+        expect(settingsTabFromUrl(new URL('https://app.test/graph/sync/g1?settings=bogus'))).toBeNull()
+        expect(settingsTabFromUrl(new URL('https://app.test/graph/sync/g1?settings='))).toBeNull()
+        expect(settingsTabFromUrl(new URL('https://app.test/graph/sync/g1?settings'))).toBeNull()
     })
 })
 
@@ -42,22 +42,22 @@ describe('withSettingsTab', () => {
     })
 
     it('keeps every other param - the dev and e2e flags ride the same query string', () => {
-        expect(withSettingsTab('?fs=opfs&autosaveMs=150', 'mirror')).toBe('?fs=opfs&autosaveMs=150&settings=mirror')
+        expect(withSettingsTab('?backend=server&autosaveMs=150', 'mirror')).toBe('?backend=server&autosaveMs=150&settings=mirror')
     })
 
     it('replaces a tab already named rather than adding a second', () => {
-        expect(withSettingsTab('?settings=general&fs=opfs', 'publish')).toBe('?fs=opfs&settings=publish')
+        expect(withSettingsTab('?settings=general&backend=server', 'publish')).toBe('?backend=server&settings=publish')
     })
 })
 
 describe('withoutSettingsTab', () => {
     it('drops the param and keeps the rest', () => {
-        expect(withoutSettingsTab('?fs=opfs&settings=publish')).toBe('?fs=opfs')
-        expect(withoutSettingsTab('?settings=publish&fs=opfs')).toBe('?fs=opfs')
+        expect(withoutSettingsTab('?backend=server&settings=publish')).toBe('?backend=server')
+        expect(withoutSettingsTab('?settings=publish&backend=server')).toBe('?backend=server')
     })
 
     it('leaves an address with no tab alone, and yields an empty string rather than a bare "?"', () => {
-        expect(withoutSettingsTab('?fs=opfs')).toBe('?fs=opfs')
+        expect(withoutSettingsTab('?backend=server')).toBe('?backend=server')
         expect(withoutSettingsTab('?settings=publish')).toBe('')
         expect(withoutSettingsTab('')).toBe('')
     })

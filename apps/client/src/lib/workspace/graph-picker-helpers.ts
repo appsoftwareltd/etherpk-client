@@ -99,11 +99,11 @@ export interface LoadSyncedGraphViewsOptions {
  */
 export async function loadSyncedGraphViews(
     api: SyncedOverviewApi,
-    localGraphs: readonly GraphRecord[],
+    folderGraphs: readonly GraphRecord[],
     options: LoadSyncedGraphViewsOptions = {},
 ): Promise<{ graphs: SyncedGraphView[]; ownedStorage: OwnedStorageTotals | null }> {
     const { graphs: serverGraphs, ownedStorage } = await api.graphsOverview()
-    const localById = new Map(localGraphs.map((graph) => [graph.id, graph]))
+    const localById = new Map(folderGraphs.map((graph) => [graph.id, graph]))
     const keyringById = new Map((options.keyrings ?? []).map((keyring) => [keyring.graphId, keyring]))
     const graphs = await Promise.all(
         serverGraphs.map(async (graph): Promise<SyncedGraphView> => {
@@ -184,6 +184,7 @@ export function persistableGraphRecord(record: GraphRecord, name: string): Graph
             : {}),
         ...(record.membershipActive === undefined ? {} : { membershipActive: record.membershipActive }),
         ...(record.toolbarColor ? { toolbarColor: record.toolbarColor } : {}),
+        ...(record.where ? { where: record.where } : {}),
     }
 }
 

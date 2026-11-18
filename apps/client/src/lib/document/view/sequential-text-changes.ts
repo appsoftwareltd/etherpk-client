@@ -10,7 +10,7 @@
  * transaction (`fromA`, `toA`), so forwarding them as reported applied the second change to text
  * the first had already shifted: the `]` of `[Garden Shed]` landed one character early, the next
  * press compounded it, and the file on disk read `[[Garden She]]d` while the index minted a
- * pageless "Garden She". Found live on 2026-09-22 on a Filesystem graph; every store that takes
+ * pageless "Garden She". Found live on 2026-09-22 on a Folder graph; every store that takes
  * `applyChange` was exposed (the Filesystem store, the in-memory harness store, and a Draft, the
  * page a new name starts as on any graph). A page already synced binds the `Y.Text` to the
  * editor and never takes this path.

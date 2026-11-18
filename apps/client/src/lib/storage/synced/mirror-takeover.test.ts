@@ -10,7 +10,7 @@ import {
     checkMirrorTakeover,
     findFolderOwner,
     knownFolders,
-    openAsLocalGraphRefusal,
+    openAsFolderGraphRefusal,
 } from './mirror-takeover'
 
 /**
@@ -20,7 +20,7 @@ import {
  * the graph, and its own attachment files the graph no longer holds. Choosing the wrong folder
  * is an easy slip in a native picker, so the check has to see every folder the mirror manages,
  * name what will go, and refuse outright the two folders this device knows belong to something
- * else: a local graph's own folder, and another graph's mirror.
+ * else: a folder graph's own folder, and another graph's mirror.
  */
 const ASSET = '11111111-1111-4111-8111-111111111111'
 const GONE = '22222222-2222-4222-8222-222222222222'
@@ -75,7 +75,7 @@ function check(reader: FolderReader, options: { owner?: KnownFolder[]; held?: st
 }
 
 describe('knownFolders', () => {
-    it('lists every local graph folder and every other graph’s mirror, by name', () => {
+    it('lists every graph folder and every other graph’s mirror, by name', () => {
         const local = handle('/notes')
         const mirror = handle('/backup')
         const known = knownFolders(
@@ -94,7 +94,7 @@ describe('knownFolders', () => {
             'sv2',
         )
         expect(known).toEqual([
-            { handle: local, owner: { kind: 'local-graph', graphId: 'fs1', name: 'My Notes' } },
+            { handle: local, owner: { kind: 'folder-graph', graphId: 'fs1', name: 'My Notes' } },
             { handle: mirror, owner: { kind: 'mirror', graphId: 'sv1', name: 'Team Archive' } },
         ])
     })
@@ -103,21 +103,21 @@ describe('knownFolders', () => {
 describe('findFolderOwner', () => {
     it('recognises the same folder by handle, not by name', async () => {
         const known: KnownFolder[] = [
-            { handle: handle('/a/notes'), owner: { kind: 'local-graph', graphId: 'fs1', name: 'Notes' } },
+            { handle: handle('/a/notes'), owner: { kind: 'folder-graph', graphId: 'fs1', name: 'Notes' } },
         ]
         expect(await findFolderOwner(handle('/a/notes'), known)).toEqual({
-            kind: 'local-graph',
+            kind: 'folder-graph',
             graphId: 'fs1',
             name: 'Notes',
             relation: 'same',
         })
-        // Another folder that happens to share the name is not the local graph's.
+        // Another folder that happens to share the name is not the folder graph's.
         expect(await findFolderOwner(handle('/b/notes'), known)).toBeNull()
     })
 
     it('finds a folder inside a known one, and one that holds a known one as a managed subfolder', async () => {
         const known: KnownFolder[] = [
-            { handle: handle('/notes'), owner: { kind: 'local-graph', graphId: 'fs1', name: 'Notes' } },
+            { handle: handle('/notes'), owner: { kind: 'folder-graph', graphId: 'fs1', name: 'Notes' } },
             { handle: handle('/parent/pages'), owner: { kind: 'mirror', graphId: 'sv1', name: 'Team' } },
         ]
         expect(await findFolderOwner(handle('/notes/assets/img'), known)).toMatchObject({
@@ -227,7 +227,7 @@ describe('checkMirrorTakeover', () => {
         expect(decision.kind === 'confirm' && decision.message).not.toContain('deletes')
     })
 
-    it('refuses a local graph’s folder, naming the graph, without reading it', async () => {
+    it('refuses a folder graph’s folder, naming the graph, without reading it', async () => {
         let read = false
         const reader: FolderReader = {
             list: async () => {
@@ -239,24 +239,24 @@ describe('checkMirrorTakeover', () => {
         const decision = await checkMirrorTakeover({
             handle: handle('/notes'),
             folder: 'notes',
-            known: [{ handle: handle('/notes'), owner: { kind: 'local-graph', graphId: 'fs1', name: 'My Notes' } }],
+            known: [{ handle: handle('/notes'), owner: { kind: 'folder-graph', graphId: 'fs1', name: 'My Notes' } }],
             reader,
             docs,
             heldAssetIds: async () => [],
         })
         expect(decision).toEqual({
             kind: 'refuse',
-            title: 'This is a local graph’s folder',
+            title: 'This is a folder graph’s folder',
             message:
-                '“notes” is the folder of your local graph “My Notes”. Mirroring a synced graph into it would ' +
+                '“notes” is the folder of your folder graph “My Notes”. Mirroring a synced graph into it would ' +
                 'delete and overwrite that graph’s pages. Choose another folder, ideally an empty one.',
         })
         expect(read).toBe(false)
     })
 
-    it('refuses a folder inside a local graph’s folder, or one holding it as pages/', async () => {
+    it('refuses a folder inside a folder graph’s folder, or one holding it as pages/', async () => {
         const known: KnownFolder[] = [
-            { handle: handle('/notes'), owner: { kind: 'local-graph', graphId: 'fs1', name: 'My Notes' } },
+            { handle: handle('/notes'), owner: { kind: 'folder-graph', graphId: 'fs1', name: 'My Notes' } },
         ]
         const inside = await checkMirrorTakeover({
             handle: handle('/notes/assets'),
@@ -268,21 +268,21 @@ describe('checkMirrorTakeover', () => {
         })
         expect(inside).toEqual({
             kind: 'refuse',
-            title: 'This folder is inside a local graph’s folder',
+            title: 'This folder is inside a folder graph’s folder',
             message:
-                '“assets” is inside the folder of your local graph “My Notes”. Mirroring a synced graph there ' +
+                '“assets” is inside the folder of your folder graph “My Notes”. Mirroring a synced graph there ' +
                 'would write its files into that graph’s folder. Choose another folder, ideally an empty one.',
         })
         const holds = await checkMirrorTakeover({
             handle: handle('/work'),
             folder: 'work',
-            known: [{ handle: handle('/work/pages'), owner: { kind: 'local-graph', graphId: 'fs1', name: 'My Notes' } }],
+            known: [{ handle: handle('/work/pages'), owner: { kind: 'folder-graph', graphId: 'fs1', name: 'My Notes' } }],
             reader: await folder({}),
             docs,
             heldAssetIds: async () => [],
         })
         expect(holds.kind === 'refuse' && holds.message).toBe(
-            '“work/pages” is the folder of your local graph “My Notes”. Mirroring a synced graph into “work” ' +
+            '“work/pages” is the folder of your folder graph “My Notes”. Mirroring a synced graph into “work” ' +
                 'would write into that graph’s folder and delete files in it. Choose another folder, ideally an ' +
                 'empty one.',
         )
@@ -311,7 +311,7 @@ describe('checkMirrorTakeover', () => {
         const decision = await checkMirrorTakeover({
             handle: handle('/home'),
             folder: 'home',
-            known: [{ handle: handle('/home/notes'), owner: { kind: 'local-graph', graphId: 'fs1', name: 'My Notes' } }],
+            known: [{ handle: handle('/home/notes'), owner: { kind: 'folder-graph', graphId: 'fs1', name: 'My Notes' } }],
             reader: await folder({}),
             docs,
             heldAssetIds: async () => [],
@@ -340,16 +340,16 @@ describe('checkMirrorTakeover', () => {
     })
 })
 
-describe('openAsLocalGraphRefusal', () => {
-    it('says why a mirror folder is not opened as a local graph', () => {
+describe('openAsFolderGraphRefusal', () => {
+    it('says why a mirror folder is not opened as a folder graph', () => {
         const mirror = { kind: 'mirror', graphId: 'sv1', name: 'Team Archive' } as const
-        expect(openAsLocalGraphRefusal('backup', { ...mirror, relation: 'same' })).toBe(
-            '“backup” is where “Team Archive” is mirrored on this device, so changes made to it as a local ' +
+        expect(openAsFolderGraphRefusal('backup', { ...mirror, relation: 'same' })).toBe(
+            '“backup” is where “Team Archive” is mirrored on this device, so changes made to it as a folder ' +
                 'graph would be undone the next time that mirror runs. Choose another folder, or first stop ' +
                 'mirroring “Team Archive” under its Settings > Mirror and Export.',
         )
-        expect(openAsLocalGraphRefusal('assets', { ...mirror, relation: 'inside' })).toBe(
-            '“assets” overlaps the folder where “Team Archive” is mirrored on this device, and a local graph ' +
+        expect(openAsFolderGraphRefusal('assets', { ...mirror, relation: 'inside' })).toBe(
+            '“assets” overlaps the folder where “Team Archive” is mirrored on this device, and a folder graph ' +
                 'there would mix its files with the mirror’s. Choose another folder, or first stop mirroring ' +
                 '“Team Archive” under its Settings > Mirror and Export.',
         )

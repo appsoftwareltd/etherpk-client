@@ -15,8 +15,8 @@ async function copiedReference(concept: string | null): Promise<string> {
     const { services } = kanbanContext()
     const copied: string[] = []
     registerAgentInstructionCommands(services.commands, services.contributions, {
-        graphId: () => 'g-1',
-        reach: async () => ({ kind: 'synced', graphName: 'Home', agentsUrl: 'https://app.example.com/g/g-1?settings=agents' }),
+        graph: () => ({ where: 'sync', name: 'g-1' }),
+        reach: async () => ({ kind: 'synced', graphName: 'Home', agentsUrl: 'https://app.example.com/graph/sync/g-1?settings=agents' }),
         writeClipboard: async (text) => void copied.push(text),
         notify: () => {},
     })
@@ -29,10 +29,10 @@ const segmentOf = (kind: string) => packageJson.etherpk.views.find((view) => vie
 
 describe("a lane reference's board address", () => {
     it("is under the segment of a concept's board", async () => {
-        expect(await copiedReference('Garden')).toBe(`etherpk:/g/g-1/${segmentOf(KANBAN_VIEW_KIND)}/Garden#lane=doing`)
+        expect(await copiedReference('Garden')).toBe(`etherpk:/graph/sync/g-1/${segmentOf(KANBAN_VIEW_KIND)}/Garden#lane=doing`)
     })
 
     it("is the Graph Kanban's address", async () => {
-        expect(await copiedReference(null)).toBe(`etherpk:/g/g-1/${segmentOf(KANBAN_WHOLE_KIND)}#lane=doing`)
+        expect(await copiedReference(null)).toBe(`etherpk:/graph/sync/g-1/${segmentOf(KANBAN_WHOLE_KIND)}#lane=doing`)
     })
 })

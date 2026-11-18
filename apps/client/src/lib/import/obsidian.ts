@@ -11,6 +11,7 @@
  * notes template the [[Journal Template]] (ADR 0145).
  */
 
+import { mediaKindOfTarget } from '#lib/document/media-line.js'
 import { MARKDOWN_LINK } from '#lib/document/markdown-link-target.js'
 import { normaliseAliases } from '#lib/document/frontmatter/identity.js'
 
@@ -349,6 +350,8 @@ function convertEmbeds(text: string, note: ObsidianNote, links: NoteLinks, asset
                         : pipe || asset.stem
                 return `![${alt}](${asset.ref})`
             }
+            // A recording keeps the embed's form, which draws a player (media-line.ts).
+            if (mediaKindOfTarget(asset.ref)) return `![${pipe || asset.stem}](${asset.ref})`
             return `[${pipe || asset.stem}](${asset.ref})`
         }
         const target2 = target.split('#')[0]

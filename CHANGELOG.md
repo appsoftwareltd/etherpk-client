@@ -5,7 +5,7 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.35.0 - 2026-11-18
 
 ### Client
 
@@ -18,7 +18,31 @@ starts at 0.9.3.
   ready for a new scan. The scan also finds empty bullets written as a lone `-`, as Logseq writes
   them, which showed as a dash, and gives them the space that makes them bullets. A Logseq import
   now writes them that way too.
+- **A graph's address says where the graph is kept.** A folder graph is at
+  `/graph/folder/<folder name>`, a synced graph at `/graph/sync/<id>`, and the demo at
+  `/graph/browser/demo-graph`. A link to a page in a folder graph now opens in a browser that has
+  never opened the folder: EtherPK asks you to choose the folder once, then opens the page. If you
+  have opened two folders with the same name, it asks which one the link is for, and shows each
+  graph's name, colour and when you added it. An installed app that is already open goes to the linked page. Old `/g/…` addresses are sent on to
+  the new ones in this release and stop working in the next.
+- **Task and lane references carry the same address.** Copy agent instruction writes
+  `etherpk:/graph/sync/<id>/…` or `etherpk:/graph/folder/<folder name>/…`, and the Headless Client
+  now checks a folder's reference against the folder it serves. References copied earlier are
+  still read in this release. Update the Headless Client with the Client: an older one cannot read
+  the new references.
+- **The `AGENTS.md` in a graph folder tells an agent how to link to a page**, so an agent can end
+  its message with a link you can open.
+- **Audio and video play in your notes.** A video (`.webm`, `.mp4`) or audio file (`.mp3`, `.m4a`,
+  `.wav`, `.ogg`, `.opus`, `.flac`) written as `![name](../assets/file.webm)` on a line of its own
+  has a player under it, with play, seek, volume, speed and full screen, and the same player opens
+  the file in a tab. A file you drop or paste is written that way. The file is read when you
+  press play. A published site shows the browser's own player, and the Headless Client publishes
+  the same. An Obsidian import turns `![[clip.mp4]]` into a player line.
+- **A graph kept in a folder is a folder graph.** The Graphs page, the Graphs menu and the docs
+  no longer call it "local". The badge on such a graph reads **Folder**, and the user docs page is
+  now **Folder Graphs**, at `folder-graphs.html`.
 - **Fixes.**
+  - A folder chosen in two tabs at the same moment becomes one graph, where it could become two.
   - Each group's **Approve all** in the formatting scan has the same fill as **Approve**, and asks
     for its confirmation straight away, without waiting for you to open a page's changes.
   - The formatting scan no longer reports a page as changed since the scan when nobody edited it,
@@ -38,7 +62,7 @@ starts at 0.9.3.
   bullet in an outline, instead of running them together on one line. With one file to a line, a
   click to the right of a file's buttons puts the cursor on that line and shows the link's Markdown.
 - **Fixes.**
-  - Adding files that a local graph already holds says they were reused, for every one of them. It
+  - Adding files that a folder graph already holds says they were reused, for every one of them. It
     used to count most of them as uploaded again when several were added at once.
   - The same file added twice in one go is stored once.
   - A file dropped to the left of a bullet lands at the start of the bullet's text, instead of
@@ -97,7 +121,7 @@ starts at 0.9.3.
   - The Command Bar's buttons work after selected text is replaced by a change from outside the
     editor, such as a file changed on disk or another person's edit. They used to do nothing.
   - Opening or reloading a mirrored graph shows one "Mirrored to" notice, not two.
-  - On a local graph, a file deleted or renamed outside EtherPK while the folder is being checked no
+  - On a folder graph, a file deleted or renamed outside EtherPK while the folder is being checked no
     longer stops the other changes from being picked up.
 
 ## 0.31.0 - 2026-11-16
@@ -306,7 +330,7 @@ No changes to the Client or the Headless Client themselves.
   one page, **Welcome to EtherPK**, with a few things to try. It is the tab in front when the graph first opens, with the
   journal entry for today as the tab beside it, and it is in **Favourites**. Delete it when you are done with it and it does not come back. An import, a folder that already
   holds notes and a graph you join do not get one.
-- **Choosing a first graph.** With no graphs yet, the **Graphs** page shows two panels, **Create a Local Graph** and
+- **Choosing a first graph.** With no graphs yet, the **Graphs** page shows two panels, **Create a Folder Graph** and
   **Create a Synced Graph**, each saying what it gives you, and a short list under them, **All graphs get**, of what
   the two share. On the managed service the synced panel states the price and the trial, as the account site
   publishes them. **New synced graph** is never greyed out: without a plan that includes synced graphs it leads to
@@ -390,12 +414,12 @@ No changes to the Client or the Headless Client themselves.
   Mermaid diagram that sets no theme of its own are grey too. A Find match in a PDF uses the editor's Find
   colours. Links and everything else in the link blue stay as they were.
 - **Put your graphs in order.** On the Graphs page, drag a graph by the grip on its card, or press the up
-  and down arrow keys on the grip. Each Sync Server's group and your local graphs keep their own order,
+  and down arrow keys on the grip. Each Sync Server's group and your folder graphs keep their own order,
   and the Graphs menu and the share sheet follow it. A synced group's order follows your account to your
   other devices. Local order stays in the browser.
-- **The Graphs page and the Graphs menu are laid out differently.** Synced graphs come above local graphs
+- **The Graphs page and the Graphs menu are laid out differently.** Synced graphs come above folder graphs
   on both. Each graph on the Graphs page is a separate card, and a coloured graph's card takes its toolbar
-  colour. The Graphs menu lists synced and local graphs under separate labels.
+  colour. The Graphs menu lists synced and folder graphs under separate labels.
 - **Error messages about syncing are in plain words.** They say what failed and what to try next. The
   underlying error goes to the browser console.
 - **Kanban cards show their priority.** A card in a P1, P2 or P3 section carries that label, so you can
@@ -415,10 +439,10 @@ No changes to the Client or the Headless Client themselves.
   why it was not kept.
 - **Fixes.**
   - A map's search box no longer pushes the map's buttons off the edge of a narrow map.
-  - A local graph opened from its address or a restored tab shows **Grant access** when the browser needs a
+  - A folder graph opened from its address or a restored tab shows **Grant access** when the browser needs a
     click before it will ask for the folder. It used to fail with a message about the sync server. If you
     refuse, the screen says so and offers **Back to graphs**.
-  - Any other failure to open a local graph describes the folder, not the sync server.
+  - Any other failure to open a folder graph describes the folder, not the sync server.
   - The `#` menu no longer opens with the cursor inside a task tag, where choosing a row split the tag
     (`#P1 2`), or after you set a status or priority from a task's right-click menu.
   - The `/` menu opens only when you type `/` or press the slash button. It no longer opens when the cursor
@@ -472,7 +496,7 @@ No changes to the Client or the Headless Client themselves.
 
 - **Copy agent instruction.** **Copy task reference** and **Copy lane reference** are now **Copy agent
   instruction**, on tasks and on Kanban lanes, and what they copy depends on where the graph is. On a
-  local graph it names the task's file, so an agent can work from it with or without the Headless
+  folder graph it names the task's file, so an agent can work from it with or without the Headless
   Client. The first copy asks where the graph's folder is, and you can skip that. On a synced graph it
   tells an agent with no Headless Client to stop and send you to the graph's **Agents** settings. On a
   graph kept in the browser, it says an agent cannot reach it, and that tab says what to do instead.
@@ -763,7 +787,7 @@ package were not published, and 0.17.1 publishes the same code under a new numbe
   of the line. Bookmarks are listed in a **Bookmarks** section of the graph sidebar, below
   Favourites, and a click opens the document at the line. A bookmark stays with its line as the
   text around it changes and follows its document through a rename. You can give one a label, and
-  **Remove all** has **Undo**. On a local graph bookmarks are kept in `etherpk/bookmarks.json`.
+  **Remove all** has **Undo**. On a folder graph bookmarks are kept in `etherpk/bookmarks.json`.
   Protected pages have no bookmarks.
 - **Favourites, quick notes and bookmarks are your own on a synced graph.** Each member of a shared
   graph has their own, and EtherPK does not show them to the other members. The first time you open the graph,
@@ -1204,13 +1228,13 @@ package were not published, and 0.17.1 publishes the same code under a new numbe
 
 ### Client
 
-- **A site needs a folder of its own.** **Choose folder…** on the Publish tab refuses a local
+- **A site needs a folder of its own.** **Choose folder…** on the Publish tab refuses a folder
   graph's folder, a Local Mirror's folder, a folder inside one and a folder that holds one, and
   says why: a publish removes the files it did not write from its folder. A folder chosen earlier
   is checked again before each publish.
 - **Settings → Agents shows the agent skill**, with its install command and a copy button, for
   local and synced graphs alike.
-- **The `AGENTS.md` in a local graph's folder** now says that a journal entry can carry
+- **The `AGENTS.md` in a folder graph's folder** now says that a journal entry can carry
   `aliases`, `public`, `publications` and `slug`, names a blog's `recent` setting, and asks agents
   to keep an empty `journals/` or `pages/` folder with a `.gitkeep` file in it.
 
@@ -1244,7 +1268,7 @@ package were not published, and 0.17.1 publishes the same code under a new numbe
   **New page** row for a name that has no page yet. Open it with Ctrl+K (⌘K on a Mac), Alt+F or
   the Search button.
 - **Graph Kanban.** A Kanban board of every task in the graph, not only one page's tasks, at
-  `/g/<graph>/kanban`. Open it from the sidebar's Graph Kanban button or **Graph Kanban** in the
+  `/graph/<where>/<name>/kanban`. Open it from the sidebar's Graph Kanban button or **Graph Kanban** in the
   `/` menu. It works as any board does, and each card names the document its task is in.
   Desktop only, as every board is.
 - **Graph Map View is now Graph Map**, on its button, its tab and its `/` menu row.

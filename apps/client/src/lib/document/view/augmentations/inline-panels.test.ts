@@ -240,7 +240,7 @@ describe('where a block the panel puts in lands', () => {
     })
 
     it('never nests the next block inside the first after Mod+Z and Mod+Shift+Z, on an empty bullet or beneath a line with text', () => {
-        // A Filesystem graph undoes with CodeMirror's history, and the panel's own effects are not in it.
+        // A Folder graph undoes with CodeMirror's history, and the panel's own effects are not in it.
         const withHistory = (doc: string, line: number) => {
             const s = EditorState.create({ doc, extensions: [editorAnalysis(), history(), inlinePanelsField, isProtectedDocumentFacet.of(() => false)] })
             return s.update({ effects: addInlinePanel.of({ id: 1, lineStart: s.doc.line(line + 1).from, mode: 'line' }) }).state

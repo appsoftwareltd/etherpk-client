@@ -76,7 +76,7 @@ export interface ProtectedAssetUsage {
     unread: number
 }
 
-/** Whether a [[Server Backend]] graph may destroy bytes right now. Always ready on a filesystem graph. */
+/** Whether a [[Server Backend]] graph may destroy bytes right now. Always ready on a folder graph. */
 export type AssetByteReadiness = { ready: true } | { ready: false; reason: 'offline' | 'behind' }
 
 export interface AssetDeleteInputs {

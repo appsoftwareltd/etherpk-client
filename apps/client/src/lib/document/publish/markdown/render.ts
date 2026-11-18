@@ -15,6 +15,7 @@ import { isSafeAssetName } from '../../../storage/fs/asset-names'
 import { isExtensionFenceInfo } from '../../extension-fence'
 import { MAP_FENCE_INFO, readMapBody } from '../../map-text'
 import { displayMaxWidth, parseImageDisplaySizeHint } from '../../view/augmentations/image-display-size'
+import { mediaKindOfTarget } from '../../media-line'
 import { publishSlug } from '../../wikilink/derive'
 import { listItemEndRule } from './list-item-end-rule'
 import { markRule } from './mark-rule'
@@ -169,6 +170,13 @@ function plainText(tokens: readonly Token[]): string {
     return lines.join('\n')
 }
 
+/** The browser's own player for a recording in the graph's files written as `target`, or null when it is none. */
+function mediaElement(asset: string | null, target: string, src: string, label: string): string | null {
+    const media = asset === null ? null : mediaKindOfTarget(target)
+    if (media === null) return null
+    return `<${media} controls preload="metadata" src="${escapeHtml(src)}" aria-label="${escapeHtml(label)}"></${media}>`
+}
+
 export function createDocumentRenderer(options: RendererOptions): DocumentRenderer {
     const md = new MarkdownIt({ html: true, linkify: true, typographer: false })
     // markdown-it refuses `file:` links as unsafe; the editor renders them (they copy their path,
@@ -184,22 +192,30 @@ export function createDocumentRenderer(options: RendererOptions): DocumentRender
     // Per-render state the rules below write into; reset by `render`.
     let state = { toc: [] as TocItem[], ids: new Set<string>(), hasMath: false, hasMermaid: false, mermaidFallback: false, assets: [] as string[] }
 
+    /** Where the site serves the asset `name`, noted as one the page uses; null when it is none or is not published. */
+    function publishedAsset(name: string | null): string | null {
+        const href = name === null ? null : options.assetHref(name)
+        if (name === null || href === null) return null
+        if (!state.assets.includes(name)) state.assets.push(name)
+        return href
+    }
+
     const defaultImage = md.renderer.rules.image
     md.renderer.rules.image = (tokens, idx, opts, env, self) => {
         const token = tokens[idx]
         const src = String(token.attrGet('src') ?? '')
         const name = assetNameOf(src)
-        if (name !== null) {
-            const href = options.assetHref(name)
-            if (href !== null) {
-                token.attrSet('src', href)
-                if (!state.assets.includes(name)) state.assets.push(name)
-            }
-        }
+        const href = publishedAsset(name)
+        if (href !== null) token.attrSet('src', href)
         // The alt as the editor shows it: the display-size hint stripped, and applied as a cap
         // that, as in the editor, never reaches past the theme's content column.
         const alt = self.renderInlineAsText(token.children ?? [], opts, env)
         const parsed = parseImageDisplaySizeHint(alt)
+        // Image syntax over a recording in the graph's files: the browser's own player, since the
+        // editor's is not shipped to a published site. The original target decides, not the
+        // rewritten one, so a recording on another site stays the image syntax it was written as.
+        const player = mediaElement(name, src, href ?? src, parsed.cleanAlt)
+        if (player !== null) return player
         token.attrSet('alt', parsed.cleanAlt)
         if (parsed.maxWidth !== undefined) {
             const style = [`max-width:${displayMaxWidth(parsed.maxWidth)}`]

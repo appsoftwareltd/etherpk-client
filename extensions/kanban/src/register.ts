@@ -3,8 +3,8 @@
  * (ADR 0113, ADR 0121):
  *
  * - the View for `kanban.board`, which its manifest declares with the board's address
- *   (`/g/<graph>/k/<concept>`) and its tab title, and the same View for `kanban.whole`, the
- *   Graph Kanban (`/g/<graph>/kanban`),
+ *   (`/graph/<where>/<name>/k/<concept>`) and its tab title, and the same View for `kanban.whole`, the
+ *   Graph Kanban (`/graph/<where>/<name>/kanban`),
  * - the Commands and menu rows that open a board, act on a card and open any task in the Task
  *   Editor (kanban-commands.ts),
  * - the Events that keep open boards right: a rename moves a Task Detail and hands a board's

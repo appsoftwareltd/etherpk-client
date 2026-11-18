@@ -1,14 +1,14 @@
 <script lang="ts">
     /**
      * The knowledge-graph picker: list the graphs this browser knows, open one, create a
-     * Local graph from a folder, or create/join a synced (Server-backed, E2EE) graph. Backend
+     * Folder graph from a folder, or create/join a synced (Server-backed, E2EE) graph. Backend
      * is fixed at creation (ADR 0007).
      *
      * Two tabs: Graphs, and Sync (`?tab=sync`). A device can hold connections to several Sync
      * Servers at once (ADR 0111), and this page shows them all: the Graphs tab has a group per
      * server, and the Sync tab a sub-tab per server (`&server=<host>`) with its account, its keys
      * and its copies in this browser. No server is "the current one": each is a SyncServerView,
-     * and every action names the server it acts on. Local folder graphs belong to no server.
+     * and every action names the server it acts on. Folder graphs belong to no server.
      */
     import { onMount, tick, untrack } from "svelte";
 
@@ -58,10 +58,10 @@
         type GraphAssetTools,
         filesystemAssetTools,
     } from "#lib/storage/fs/asset-orphans.js";
-    import { readKnownGraphFolders } from "#lib/storage/folder-ownership.js";
+    import { graphUrl } from "#lib/navigation/document-url.js";
+    import { graphAddressOf } from "#lib/navigation/graph-address.js";
+    import { openChosenFolder } from "#lib/workspace/open-chosen-folder.js";
     import {
-        findFolderOwner,
-        openAsLocalGraphRefusal,
     } from "#lib/storage/synced/mirror-takeover.js";
     import { deleteAssetCopies } from "#lib/storage/synced/asset-copies.js";
     import {
@@ -197,7 +197,7 @@
     } from "#lib/workspace/sync-server-view.svelte.js";
     import {
         CUSTOM_SERVER_ICON,
-        LOCAL_GRAPHS_ICON,
+        FOLDER_GRAPHS_ICON,
         MANAGED_SERVER_ICON,
         NOT_SET_ICON,
     } from "#lib/workspace/graphs-page-icons.js";
@@ -237,7 +237,7 @@
     } from "#lib/workspace/graphs-page-agents.js";
     import { serverKeysLocked, syncedGroupRows } from "#lib/workspace/sync-server-rows.js";
     import { readGraphFolderPath } from "#lib/storage/fs/folder-path.js";
-    import { leaveWelcomeClaim, leaveWelcomeClaimForEmptyFolder } from "#lib/welcome/welcome-claims-browser.js";
+    import { leaveWelcomeClaim } from "#lib/welcome/welcome-claims-browser.js";
 
     const registry = createIdbGraphRegistry();
     const supported = isFsaSupported();
@@ -278,7 +278,7 @@
      */
     let agentsGraphPicked = $state<string | null>(readAgentsGraph());
     /**
-     * Each local graph's folder name, or null for one kept in the browser, which no agent can
+     * Each folder graph's folder name, or null for one kept in the browser, which no agent can
      * reach. Asked of the handles when the list is read: telling the two apart is asynchronous.
      */
     let localFolders = $state.raw<Record<string, string | null>>({});
@@ -637,7 +637,7 @@
         settings: GraphSettings;
         session: SyncedMetaSession;
     } | null>(null);
-    // Graph Settings for a local (filesystem) graph — the same dialog over the folder's adapter.
+    // Graph Settings for a folder graph — the same dialog over the folder's adapter.
     let localSettings = $state<{
         record: GraphRecord;
         settings: GraphSettings;
@@ -668,8 +668,8 @@
      */
     let initialRefreshDone = $state(false);
 
-    /** Local folder graphs, apart from the demo: they belong to no Sync Server. */
-    const localGraphs = $derived(
+    /** Folder graphs, apart from the demo: they belong to no Sync Server. */
+    const folderGraphs = $derived(
         applyGraphOrder(
             ordinaryGraphs.filter((graph) => graph.backend !== "server"),
             graphOrderOf(null),
@@ -708,7 +708,7 @@
         }),
     );
     const agentsLocals = $derived(
-        localGraphs.map(
+        folderGraphs.map(
             (graph): AgentsPickerLocal => ({
                 id: graph.id,
                 name: graph.name,
@@ -774,7 +774,7 @@
     }
 
     /**
-     * Ask each local graph's handle whether it is a folder on disk, which an agent can open, or a
+     * Ask each folder graph's handle whether it is a folder on disk, which an agent can open, or a
      * folder in the browser's own storage, which it cannot. Kept from one read of the list to the
      * next, so the Agents tab does not blink while the answers come back.
      */
@@ -815,7 +815,7 @@
     const firstRunKnown = $derived(
         listReady &&
             (registryUnreadable ||
-                localGraphs.length > 0 ||
+                folderGraphs.length > 0 ||
                 heldCopies.length > 0 ||
                 initialRefreshDone),
     );
@@ -827,7 +827,7 @@
     const firstRun = $derived(
         firstRunKnown &&
             !registryUnreadable &&
-            localGraphs.length === 0 &&
+            folderGraphs.length === 0 &&
             heldCopies.length === 0 &&
             servers.every((server) => server.graphs.length === 0),
     );
@@ -838,7 +838,7 @@
     const mayBeFirstRun = $derived(
         listReady &&
             !registryUnreadable &&
-            localGraphs.length === 0 &&
+            folderGraphs.length === 0 &&
             heldCopies.length === 0,
     );
     /** What the two choice panels say and do for a browser with no graph of its own. */
@@ -1028,7 +1028,7 @@
     /**
      * Read everything again: the servers held, each one's account, this browser's graphs, and each
      * server's list, invites and vault. The accounts are checked alongside the first registry read,
-     * so local graphs never wait on a slow server.
+     * so folder graphs never wait on a slow server.
      */
     async function refresh() {
         reconcileServers();
@@ -2075,36 +2075,14 @@
     async function openFolder() {
         try {
             const handle = await pickGraphDirectory();
-            // Checked before anything is written into the folder. A synced graph's mirror is put
-            // back to match that graph on its next pass, so work done in it (or in a folder
-            // overlapping it) as a local graph would be lost or mixed with the mirror's; a folder
-            // already open as a local graph is opened as that graph, not registered twice.
-            const owner = await findFolderOwner(
-                handle,
-                await readKnownGraphFolders(),
-            );
-            if (owner?.kind === "mirror") {
-                setStatus(openAsLocalGraphRefusal(handle.name, owner), "error");
+            // A mirror's folder is refused, a folder already open as a graph opens as that
+            // graph, and any other is registered (open-chosen-folder.ts).
+            const outcome = await openChosenFolder(handle, registry);
+            if (outcome.kind === "refused") {
+                setStatus(outcome.message, "error");
                 return;
             }
-            if (owner?.kind === "local-graph" && owner.relation === "same") {
-                await queueHistoryWrite(() => goto(`/g/${owner.graphId}`));
-                return;
-            }
-            const adapter = createWebFsDirectoryAdapter(handle);
-            await adapter.ensureSkeleton();
-            const id = crypto.randomUUID();
-            await registry.insertGraph({
-                id,
-                name: handle.name,
-                backend: "filesystem",
-                createdAt: Date.now(),
-                handle,
-            });
-            // A folder with no notes in it starts with the Welcome page (ADR 0183); one that
-            // already has notes is left as it is.
-            await leaveWelcomeClaimForEmptyFolder(id, handle, adapter);
-            await queueHistoryWrite(() => goto(`/g/${id}`));
+            await queueHistoryWrite(() => goto(graphUrl(graphAddressOf(outcome.graph))));
         } catch (err) {
             // Closing the picker is a choice, not a failure: nothing is said and the page stays
             // as it was.
@@ -2259,13 +2237,13 @@
                                 `Saved your code. ${describeSyncFailure(err, "finish setup")}`,
                                 "error",
                             );
-                        void queueHistoryWrite(() => goto(`/g/${graph.id}`));
+                        void queueHistoryWrite(() => goto(graphUrl({ where: "sync", name: graph.id })));
                     },
                 });
                 return;
             }
             await commit();
-            await queueHistoryWrite(() => goto(`/g/${graph.id}`));
+            await queueHistoryWrite(() => goto(graphUrl({ where: "sync", name: graph.id })));
         } catch (err) {
             createError = describeSyncFailure(err, "create a synced graph");
         } finally {
@@ -2338,12 +2316,16 @@
 
     /** The finished toast's "Open" button - the only thing that navigates. */
     function onImported(result: { graphId: string }) {
-        void queueHistoryWrite(() => goto(`/g/${result.graphId}`));
+        void queueHistoryWrite(async () => {
+            // The address needs the record: a folder graph is named by its folder (ADR 0192).
+            const graph = await registry.getGraph(result.graphId);
+            await goto(graph ? graphUrl(graphAddressOf(graph)) : "/graphs");
+        });
     }
 
     async function openGraph(graph: GraphRecord) {
         if (graph.backend === "server") {
-            await queueHistoryWrite(() => goto(`/g/${graph.id}`));
+            await queueHistoryWrite(() => goto(graphUrl(graphAddressOf(graph))));
             return;
         }
         const granted = await ensurePermission(graph.handle);
@@ -2355,7 +2337,7 @@
             );
             return;
         }
-        await queueHistoryWrite(() => goto(`/g/${graph.id}`));
+        await queueHistoryWrite(() => goto(graphUrl(graphAddressOf(graph))));
     }
 
     /**
@@ -2727,7 +2709,7 @@
         );
     }
 
-    /** Open the shared Graph Settings dialog for a local graph: resolve the folder, read settings.json. */
+    /** Open the shared Graph Settings dialog for a folder graph: resolve the folder, read settings.json. */
     async function openLocalSettings(graph: GraphRecord) {
         try {
             const granted = await ensurePermission(graph.handle);
@@ -2758,7 +2740,7 @@
         }
     }
 
-    /** Save from the local-graph settings dialog: settings.json + the registry display name. */
+    /** Save from the folder-graph settings dialog: settings.json + the registry display name. */
     async function saveLocalSettings(result: {
         name: string;
         settings: GraphSettings;
@@ -4274,7 +4256,7 @@
                         data-testid="graphs-open-folder"
                         onclick={openFolder}
                         class={SECONDARY_BUTTON}
-                        >Open folder (Local Graph)</button
+                        >Open folder (Folder Graph)</button
                     >
                 {/if}
                 <button
@@ -4663,18 +4645,18 @@
                 <!-- Folders on this computer, and the demo: they belong to no Sync Server, and the
                      demo shows beside the first-run card too. Below the servers' groups, which can
                      hold something waiting on the person: an invite, or a sign-in. -->
-                {#if localGraphs.length > 0 || demoGraph || registryUnreadable}
+                {#if folderGraphs.length > 0 || demoGraph || registryUnreadable}
                     <section
                         data-testid="graphs-on-device"
-                        aria-labelledby="local-graphs-heading"
+                        aria-labelledby="folder-graphs-heading"
                         class="space-y-3"
                     >
                         <div>
                             <h2
-                                id="local-graphs-heading"
+                                id="folder-graphs-heading"
                                 class="flex items-center gap-2 text-lg font-semibold text-neutral-950 dark:text-white"
                             >
-                                Local graphs
+                                Folder graphs
                                 <svg
                                     class="h-5 w-5 shrink-0 text-neutral-500 dark:text-neutral-400"
                                     viewBox="0 0 24 24"
@@ -4686,7 +4668,7 @@
                                     <path
                                         stroke-linecap="round"
                                         stroke-linejoin="round"
-                                        d={LOCAL_GRAPHS_ICON}
+                                        d={FOLDER_GRAPHS_ICON}
                                     />
                                 </svg>
                             </h2>
@@ -4707,10 +4689,10 @@
                                 Your graphs could not be read from this
                                 browser's storage. Nothing has been deleted.
                             </p>
-                        {:else if localGraphs.length > 0}
+                        {:else if folderGraphs.length > 0}
                             <GraphOrderList
                                 testid="graphs-list"
-                                items={localGraphs}
+                                items={folderGraphs}
                                 idOf={(graph) => graph.id}
                                 nameOf={(graph) => graph.name}
                                 onreorder={(ids) => saveGraphOrder(null, ids)}
@@ -4791,7 +4773,7 @@
                         data-testid="synced-graphs-import-hint"
                     >
                         Synced graphs are end-to-end encrypted: their servers
-                        only ever see ciphertext. To move a local graph to
+                        only ever see ciphertext. To move a folder graph to
                         synced storage, create a new graph with
                         <button
                             type="button"
@@ -4835,7 +4817,7 @@
                             data-testid="sync-sign-in-gives"
                         >
                             {managedServer
-                                ? "You are signed out of EtherPK on this device. Sign in to see your synced graphs again. Local folder graphs are not affected."
+                                ? "You are signed out of EtherPK on this device. Sign in to see your synced graphs again. Folder graphs are not affected."
                                 : "Sign in with your EtherPK account to sync your graphs between your devices and share them, end-to-end encrypted."}
                         </p>
                         <button

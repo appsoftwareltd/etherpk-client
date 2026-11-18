@@ -84,6 +84,7 @@ export async function runFilesystemImport(
         id: graphId,
         name: deps.name,
         backend: 'filesystem',
+        where: 'folder',
         createdAt: Date.now(),
         handle: deps.handle,
     })

@@ -29,6 +29,7 @@
  *   refusal says what to run.
  */
 
+import { basename, resolve } from 'node:path'
 import { reasonLabel } from '#lib/sync/version-history/version-history-copy.js'
 import {
     backlinkSources,
@@ -77,6 +78,7 @@ import {
 } from '#lib/document/task-reference.js'
 import { ancestorChain, bulletLabel, deriveDoc, type TaskRow } from '#lib/document/index-derive.js'
 import { parseLaneReference } from '#lib/document/lane-reference.js'
+import { graphAddressPath, referencesGraph, type GraphAddress } from '#lib/navigation/graph-address.js'
 import { isTemplate, templateBody } from '#lib/document/templates/template-page.js'
 import { renderTemplate, templateContextFor } from '#lib/document/templates/template-variables.js'
 import { type ConceptFacts, createGraphModel, type GraphFilter, shortestPath, visibleGraph } from '@appsoftwareltd/etherpk-extension-graph-view/model'
@@ -812,14 +814,13 @@ function taskSelection(graph: HeadlessGraph, args: TasksArgs): { concept: string
     if (args.reference !== undefined) {
         const lane = parseLaneReference(args.reference)
         if (!lane) {
-            throw new ToolError('invalid_argument', 'reference is not a lane reference. Pass the text Copy agent instruction wrote, or its etherpk:/g/…#lane= address; for one task, use read_task.')
+            throw new ToolError('invalid_argument', 'reference is not a lane reference. Pass the text Copy agent instruction wrote, or its etherpk:/graph/…#lane= address; for one task, use read_task.')
         }
         if (args.concept !== undefined || args.statuses !== undefined) {
             throw new ToolError('invalid_argument', 'A lane reference names the concept and status itself: pass reference without concept or statuses.')
         }
-        // A folder graph's id is local to each app that opened it, so only a synced graph is checked.
-        if (graph.backend.kind === 'synced' && lane.graphId !== graph.graphId) {
-            throw new ToolError('other_graph', `That lane reference is for another graph. This server serves "${graph.name}" (${graph.graphId}); ask the user to connect the graph the reference is from.`)
+        if (!referencesGraph(lane.graph, servedAddress(graph))) {
+            throw new ToolError('other_graph', `That lane reference is for another graph. This server serves "${graph.name}" (${graphAddressPath(servedAddress(graph))}); ask the user to connect the graph the reference is from.`)
         }
         return { concept: lane.concept, statuses: [lane.status], asBoard: true }
     }
@@ -1507,12 +1508,20 @@ export async function setTask(graph: HeadlessGraph, args: SetTaskArgs) {
     }
 }
 
+/**
+ * The [[Graph Address]] of the graph served (ADR 0192), which a reference is checked against and
+ * written with: a synced graph by its id, a folder by its own name, as a browser that opened the
+ * folder names it. The folder's id here is a key for this computer's caches and is in no address.
+ */
+export function servedAddress(graph: Pick<HeadlessGraph, 'backend' | 'graphId'>): GraphAddress {
+    return graph.backend.kind === 'synced' ? { where: 'sync', name: graph.graphId } : { where: 'folder', name: basename(resolve(graph.backend.path)) }
+}
+
 /** Where a Task Reference is resolved in this graph: its documents, read live, and its index. */
 function referenceSources(graph: HeadlessGraph): TaskReferenceSources {
     const hidden = hiddenKeys(graph)
     return {
-        // A folder graph's id is its own on each computer, so a reference is not checked against it.
-        graphId: graph.backend.kind === 'synced' ? graph.graphId : null,
+        graph: servedAddress(graph),
         // A hidden document answers to no name and holds no task to find, as for every other read.
         resolveDocument: (name) => {
             const identity = resolveIdentity(graph, name)
@@ -1529,7 +1538,7 @@ function referenceSources(graph: HeadlessGraph): TaskReferenceSources {
 /** The Task Reference to the task at `line` of `concept`, whose label is `label`. */
 async function referenceFor(graph: HeadlessGraph, concept: string, line: number, label: string): Promise<string> {
     const fingerprint = await taskFingerprint(label)
-    return taskReferenceId({ graphId: graph.graphId, document: concept, line, fingerprint })
+    return taskReferenceId({ graph: servedAddress(graph), document: concept, line, fingerprint })
 }
 
 /**
@@ -1540,13 +1549,13 @@ async function referenceFor(graph: HeadlessGraph, concept: string, line: number,
 async function requireReferencedTask(graph: HeadlessGraph, reference: string, purpose: 'read' | 'write' = 'read'): Promise<ResolvedTaskReference> {
     const parsed = parseTaskReference(reference)
     if (!parsed) {
-        throw new ToolError('invalid_argument', 'That is not a task reference: one is etherpk:/g/<graph>/d/<document>#task=<line>-<fingerprint>, as Copy agent instruction in EtherPK writes it.')
+        throw new ToolError('invalid_argument', 'That is not a task reference: one is etherpk:/graph/sync/<graph id>/d/<document>#task=<line>-<fingerprint>, or etherpk:/graph/folder/<folder name>/d/… for a graph folder, as Copy agent instruction in EtherPK writes it.')
     }
     await graph.store.refresh()
     const found = await resolveTaskReference(parsed, referenceSources(graph))
     if (found.ok) return found
     if (found.code === 'other_graph') {
-        throw new ToolError('other_graph', `That task reference is for another graph. This server serves "${graph.name}" (${found.servedGraphId}); ask the user to connect the graph the reference is from.`)
+        throw new ToolError('other_graph', `That task reference is for another graph. This server serves "${graph.name}" (${graphAddressPath(found.served)}); ask the user to connect the graph the reference is from.`)
     }
     if (found.code === 'task_ambiguous') {
         const where = found.candidates.map((candidate) => `"${candidate.document}" line ${candidate.line}`).join(', ')

@@ -4,7 +4,7 @@
  * not, so the destination lives here, per graph and publication, the way a [[Local Mirror]]'s
  * folder does (`mirror-folder-idb.ts`) and for the same reasons: its own database at version 1,
  * per device, never shared, never authoritative. A repository is per device too, although it is
- * only a name: a Filesystem graph's id differs on every device, so nothing keyed by it could
+ * only a name: a Folder graph's id differs on every device, so nothing keyed by it could
  * follow the person, and keyed by publication id alone two graphs' `blog` would share one.
  * Browser-only.
  */

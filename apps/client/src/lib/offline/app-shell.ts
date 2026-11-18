@@ -38,8 +38,14 @@ export function appCacheName(version: string): string {
  * dev harnesses are left to the network.
  */
 export function isAppPagePath(pathname: string): boolean {
-    return pathname === '/' || pathname === '/graphs' || pathname === '/share' || /^\/g\/[^/]+(\/.*)?$/.test(pathname)
+    return pathname === '/' || pathname === '/graphs' || pathname === '/share' || WORKSPACE_ADDRESS.test(pathname)
 }
+
+/**
+ * A workspace address (ADR 0192), `/graph/<where>/<name>/…`, and the shape before it,
+ * `/g/<id>/…`, which a page sends on to the new one for one release (MAINTENANCE.md).
+ */
+const WORKSPACE_ADDRESS = /^\/(?:graph\/(?:folder|sync|browser)|g)\/[^/]+(\/.*)?$/
 
 /** The static files the app needs to look like itself; the rest (the demo graph, marketing images) stay on the server. */
 const SHELL_FILES = new Set(['/favicon.ico', '/favicon.svg', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/site.webmanifest'])

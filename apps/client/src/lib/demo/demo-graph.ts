@@ -13,6 +13,7 @@
  */
 import { discardIndexPool, type DiscardIndexPoolResult } from '#lib/document/index-pool-discard.js'
 import { indexOwnerLockName } from '#lib/document/index-pool-names.js'
+import type { GraphAddress } from '#lib/navigation/graph-address.js'
 import type { DirectoryAdapter } from '#lib/storage/fs/directory-adapter.js'
 import type { GraphRegistry } from '#lib/storage/graph-registry.js'
 import { opfsGraphFolderName } from '#lib/storage/fs/opfs-graph-folder.js'
@@ -21,6 +22,9 @@ import type { DemoBundleManifest } from './bundle-manifest'
 import { type DemoFile, type SeedProgress, materializeDemoGraph } from './seed'
 
 export const DEMO_GRAPH_ID = 'demo-graph'
+
+/** Where the demo is: in the browser's private storage, under its own id (ADR 0192). */
+export const DEMO_GRAPH_ADDRESS = { where: 'browser', name: DEMO_GRAPH_ID } as const satisfies GraphAddress
 
 /** The OPFS folder the demo's files live in; the workspace's dev OPFS convention, reused. */
 export const DEMO_GRAPH_FOLDER = opfsGraphFolderName(DEMO_GRAPH_ID)
@@ -38,7 +42,7 @@ export function planDemoOpen(state: { hasRecord: boolean; hasFolder: boolean; re
 }
 
 export type DemoOpenOutcome =
-    /** The demo graph is registered and its folder is complete; open `/g/<id>`. */
+    /** The demo graph is registered and its folder is complete; open it at {@link DEMO_GRAPH_ADDRESS}. */
     | { kind: 'ready'; plan: DemoOpenPlan }
     /** Another tab holds the demo open, so nothing was touched. */
     | { kind: 'held' }
@@ -106,6 +110,7 @@ export async function openDemoGraph(
             id: DEMO_GRAPH_ID,
             name: deps.manifest.name,
             backend: 'filesystem',
+            where: 'browser',
             createdAt: deps.now(),
             handle,
         })

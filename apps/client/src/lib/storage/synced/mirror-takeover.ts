@@ -8,13 +8,13 @@
  * owns and destructive for any other, and a native folder picker makes the wrong folder an easy
  * slip. The check looks at all four folders the mirror manages, since a folder with just an
  * assets/ (a website project, a Markdown vault's attachments) has files to lose too. It also
- * tells a local graph's own folder apart from your own old mirror: one generic "already has
+ * tells a folder graph's own folder apart from your own old mirror: one generic "already has
  * content" dialog for both would teach people to click through it.
  *
  * So, in order:
  *
  * 1. **Refuse a folder this device knows belongs to something else**, recognised by handle, never
- *    by name: a local graph's own folder or another graph's mirror (`isSameEntry`), a folder inside
+ *    by name: a folder graph's own folder or another graph's mirror (`isSameEntry`), a folder inside
  *    one (`resolve`), or a folder whose journals/, pages/, assets/ or etherpk/ is one - the mirror
  *    writes into those four and nowhere else, so a graph folder further down is left alone. Two
  *    graphs in one folder delete each other's files, and confirming is never the right answer.
@@ -35,9 +35,9 @@ import { assetFileFates, isMirrorMetadataFileName } from './local-mirror'
 import { type MirrorDocument, type MirrorFile, claimedConcept, planMirrorNames } from './mirror-names'
 import { assetIdFromRef } from './server-asset-store'
 
-/** A graph whose folder this device knows: a local graph's own folder, or a synced graph's mirror. */
+/** A graph whose folder this device knows: a folder graph's own folder, or a synced graph's mirror. */
 export interface FolderGraph {
-    kind: 'local-graph' | 'mirror'
+    kind: 'folder-graph' | 'mirror'
     graphId: string
     name: string
 }
@@ -102,7 +102,7 @@ export type MirrorTakeover =
 const MANAGED: readonly Subdir[] = ['journals', 'pages', 'assets', 'etherpk']
 
 /**
- * The folders this device knows belong to something: every local graph's folder, and every
+ * The folders this device knows belong to something: every folder graph's folder, and every
  * other graph's mirror. `exceptMirrorOf` is the graph choosing a folder: its own mirror record
  * is no reason to refuse its own folder. A mirror record whose graph this device no longer holds
  * (deleted, left or forgotten here) mirrors nothing any more, and is ignored.
@@ -116,7 +116,7 @@ export function knownFolders(
     const out: KnownFolder[] = []
     for (const graph of graphs) {
         if (graph.backend !== 'filesystem' || !graph.handle) continue
-        out.push({ handle: graph.handle, owner: { kind: 'local-graph', graphId: graph.id, name: graph.name } })
+        out.push({ handle: graph.handle, owner: { kind: 'folder-graph', graphId: graph.id, name: graph.name } })
     }
     for (const mirror of mirrors) {
         if (mirror.graphId === exceptMirrorOf || !mirror.handle) continue
@@ -289,21 +289,21 @@ export function takeoverConfirmation(folder: string, impact: MirrorFolderImpact)
 export function takeoverRefusal(folder: string, owner: FolderOwner): MirrorTakeover & { kind: 'refuse' } {
     const name = `“${owner.name}”`
     const held = `“${folder}/${owner.relation === 'holds' ? owner.subfolder : ''}”`
-    if (owner.kind === 'local-graph') {
+    if (owner.kind === 'folder-graph') {
         const [title, what] =
             owner.relation === 'same'
                 ? [
-                      'This is a local graph’s folder',
-                      `“${folder}” is the folder of your local graph ${name}. Mirroring a synced graph into it would delete and overwrite that graph’s pages.`,
+                      'This is a folder graph’s folder',
+                      `“${folder}” is the folder of your folder graph ${name}. Mirroring a synced graph into it would delete and overwrite that graph’s pages.`,
                   ]
                 : owner.relation === 'inside'
                   ? [
-                        'This folder is inside a local graph’s folder',
-                        `“${folder}” is inside the folder of your local graph ${name}. Mirroring a synced graph there would write its files into that graph’s folder.`,
+                        'This folder is inside a folder graph’s folder',
+                        `“${folder}” is inside the folder of your folder graph ${name}. Mirroring a synced graph there would write its files into that graph’s folder.`,
                     ]
                   : [
-                        'This folder holds a local graph’s folder',
-                        `${held} is the folder of your local graph ${name}. Mirroring a synced graph into “${folder}” would write into that graph’s folder and delete files in it.`,
+                        'This folder holds a folder graph’s folder',
+                        `${held} is the folder of your folder graph ${name}. Mirroring a synced graph into “${folder}” would write into that graph’s folder and delete files in it.`,
                     ]
         return { kind: 'refuse', title, message: `${what} Choose another folder, ideally an empty one.` }
     }
@@ -331,13 +331,13 @@ export function takeoverRefusal(folder: string, owner: FolderOwner): MirrorTakeo
 
 /**
  * The Graphs page's answer when **Open folder** is given a folder that is a synced graph's
- * mirror: working in it as a local graph would be undone by that mirror's next pass.
+ * mirror: working in it as a folder graph would be undone by that mirror's next pass.
  */
-export function openAsLocalGraphRefusal(folder: string, mirror: FolderOwner): string {
+export function openAsFolderGraphRefusal(folder: string, mirror: FolderOwner): string {
     const what =
         mirror.relation === 'same'
-            ? `“${folder}” is where “${mirror.name}” is mirrored on this device, so changes made to it as a local graph would be undone the next time that mirror runs.`
-            : `“${folder}” overlaps the folder where “${mirror.name}” is mirrored on this device, and a local graph there would mix its files with the mirror’s.`
+            ? `“${folder}” is where “${mirror.name}” is mirrored on this device, so changes made to it as a folder graph would be undone the next time that mirror runs.`
+            : `“${folder}” overlaps the folder where “${mirror.name}” is mirrored on this device, and a folder graph there would mix its files with the mirror’s.`
     return `${what} Choose another folder, or first stop mirroring “${mirror.name}” under its Settings > Mirror and Export.`
 }
 

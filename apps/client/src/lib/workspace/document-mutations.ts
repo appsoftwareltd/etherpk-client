@@ -215,7 +215,7 @@ export interface DocumentMutationDependencies {
 
 /**
  * The exact confirmation copy for a document removal. `keptDays` is how long a synced graph keeps
- * a [[Deleted Document]] (ADR 0184): absent on a Filesystem graph, `unknown` while it is being read.
+ * a [[Deleted Document]] (ADR 0184): absent on a Folder graph, `unknown` while it is being read.
  */
 export function deleteDocumentMessage(concept: string, references: number | null, keptDays?: number | 'unknown'): string {
     const links =

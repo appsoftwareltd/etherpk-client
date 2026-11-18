@@ -12,7 +12,7 @@ import { createNodeDirectoryAdapter } from './node-directory-adapter'
 import { editDocument, readDocument, search } from './tools'
 
 /**
- * A local graph folder served headlessly ([[2026-09-18 Headless Client Serves A Local Folder]]):
+ * A graph folder served headlessly ([[2026-09-18 Headless Client Serves A Local Folder]]):
  * the filesystem store over a directory adapter, the same index and tools as a synced graph, and
  * the two things a folder needs that a relay gave for free - finding edits made behind the
  * process's back, and knowing a write has reached the disk before saying so.

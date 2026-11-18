@@ -24,6 +24,14 @@ export interface GraphRecord {
     createdAt: number
     /** The directory handle (a `FileSystemDirectoryHandle`); opaque to this layer. */
     handle: unknown
+    /**
+     * Where a Filesystem Backend graph's folder is: a folder the person chose (`folder`, the
+     * default), or one inside the browser's private storage (`browser`), which is the [[Demo Graph]]
+     * and the graphs development and the test suite make. It decides the [[Graph Address]]
+     * (ADR 0192). A record written before the field existed has none, and the registry reads it
+     * from how the folder is stored (graph-registry-opfs-paths.ts).
+     */
+    where?: 'folder' | 'browser'
     /** Required for Server records. Prevents cached names leaking across account switches. */
     serverScope?: ServerGraphScope
     /** Last successful membership check. False hides a graph without deleting its local cache. */
@@ -68,7 +76,7 @@ export function newGraphId(newId: () => string): string {
 
 export interface GraphRegistry {
     /**
-     * The graphs to show: filesystem graphs, and synced ones of each server's confirmed account
+     * The graphs to show: folder graphs, and synced ones of each server's confirmed account
      * that the account still belongs to - on a device connected to several Sync Servers, all of
      * them at once (ADR 0111).
      */

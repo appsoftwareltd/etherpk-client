@@ -79,9 +79,9 @@ describe('graphOpened', () => {
 describe('isDemoPath', () => {
     it('is the demo route and every page of the demo graph', () => {
         expect(isDemoPath('/demo')).toBe(true)
-        expect(isDemoPath(`/g/${DEMO_GRAPH_ID}`)).toBe(true)
-        expect(isDemoPath(`/g/${DEMO_GRAPH_ID}/d/Garden`)).toBe(true)
+        expect(isDemoPath(`/graph/browser/${DEMO_GRAPH_ID}`)).toBe(true)
+        expect(isDemoPath(`/graph/browser/${DEMO_GRAPH_ID}/d/Garden`)).toBe(true)
         expect(isDemoPath('/graphs')).toBe(false)
-        expect(isDemoPath('/g/other-graph')).toBe(false)
+        expect(isDemoPath('/graph/browser/other-graph')).toBe(false)
     })
 })

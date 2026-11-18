@@ -33,7 +33,7 @@ function makeHarness(): Harness {
         onChange: () => engine.sync(),
     })
     const engine = createHistoryEngine({
-        graphId: 'g1',
+        graph: { where: 'sync', name: 'g1' },
         controller: () => controller,
         pushUrl: (url, state) => pushed.push({ url, state }),
         replaceUrl: (url, state) => replaced.push({ url, state }),
@@ -54,7 +54,7 @@ describe('seed', () => {
         h.engine.seed()
         expect(h.pushed).toHaveLength(0)
         expect(h.replaced).toHaveLength(1)
-        expect(h.replaced[0].url).toBe('/g/g1/d/today')
+        expect(h.replaced[0].url).toBe('/graph/sync/g1/d/today')
         expect(h.replaced[0].state.panelId).toBe('document:today')
     })
 })
@@ -65,7 +65,7 @@ describe('sync', () => {
         h.engine.seed()
         h.controller.openView({ kind: 'document', target: 'Alpha' })
         expect(h.pushed).toHaveLength(1)
-        expect(h.pushed[0].url).toBe('/g/g1/d/Alpha')
+        expect(h.pushed[0].url).toBe('/graph/sync/g1/d/Alpha')
         expect(h.pushed[0].state.panelId).toBe('document:Alpha')
         expect(h.pushed[0].state.paneId).toBeTruthy()
     })
@@ -76,7 +76,7 @@ describe('sync', () => {
         h.controller.openView({ kind: 'document', target: 'Alpha' })
         h.controller.focusView({ kind: 'document', target: 'today' })
         expect(h.pushed).toHaveLength(2)
-        expect(h.pushed[1].url).toBe('/g/g1/d/today')
+        expect(h.pushed[1].url).toBe('/graph/sync/g1/d/today')
     })
 
     it('is idempotent for the already-current panel', () => {
@@ -105,7 +105,7 @@ describe('sync', () => {
         // Replaced in place, never pushed: a close is not a Visit, and a reload of the old
         // address would reopen the page just closed.
         expect(h.pushed).toHaveLength(0)
-        expect(h.cleared).toEqual(['/g/g1'])
+        expect(h.cleared).toEqual(['/graph/sync/g1'])
     })
 
     it('clears the address when its page closes behind a View that has none', () => {
@@ -115,7 +115,7 @@ describe('sync', () => {
         // The page is still open behind the unaddressed View, so the address still names it.
         expect(h.cleared).toHaveLength(0)
         h.controller.closeView({ kind: 'document', target: 'today' })
-        expect(h.cleared).toEqual(['/g/g1'])
+        expect(h.cleared).toEqual(['/graph/sync/g1'])
     })
 
     it('pushes the next page opened after the address was cleared', () => {
@@ -123,7 +123,7 @@ describe('sync', () => {
         h.engine.seed()
         h.controller.closeView({ kind: 'document', target: 'today' })
         h.controller.openView({ kind: 'document', target: 'Alpha' })
-        expect(h.pushed.map((entry) => entry.url)).toEqual(['/g/g1/d/Alpha'])
+        expect(h.pushed.map((entry) => entry.url)).toEqual(['/graph/sync/g1/d/Alpha'])
         expect(h.cleared).toHaveLength(1)
     })
 
@@ -224,7 +224,7 @@ describe('an Asset tab is a Visit too', () => {
         h.controller.openView(asset)
         h.engine.sync()
 
-        expect(h.pushed.at(-1)?.url).toBe('/g/g1/a/chart.a1b2c3d4.png')
+        expect(h.pushed.at(-1)?.url).toBe('/graph/sync/g1/a/chart.a1b2c3d4.png')
         expect(h.pushed.at(-1)?.state.panelId).toBe('asset:chart.a1b2c3d4.png')
     })
 
@@ -259,7 +259,7 @@ describe('an Asset tab is a Visit too', () => {
         h.controller.openView({ kind: 'theme', target: 'docs-theme' })
         h.engine.sync()
 
-        expect(h.pushed.at(-1)?.url).toBe('/g/g1/t/docs-theme')
+        expect(h.pushed.at(-1)?.url).toBe('/graph/sync/g1/t/docs-theme')
         expect(h.pushed.at(-1)?.state.panelId).toBe('theme:docs-theme')
     })
 

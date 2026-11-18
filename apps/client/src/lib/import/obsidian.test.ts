@@ -143,6 +143,19 @@ describe('convertObsidian', () => {
         expect(shot?.unreferenced).toBe(false)
     })
 
+    it('keeps an embedded recording an embed, which the editor draws a player under', async () => {
+        const graph = await convertObsidian([
+            src('attachments/Garden walk.mp4', new Uint8Array([1, 2])),
+            src('attachments/voice note.mp3', new Uint8Array([3, 4])),
+            src('files/doc.pdf', new Uint8Array([8])),
+            src('user.md', '![[Garden walk.mp4]]\n![[voice note.mp3|The plan]]\n![[doc.pdf]]'),
+        ])
+        const text = doc(graph, 'user').text
+        expect(text).toMatch(/^!\[garden-walk\]\(\.\.\/assets\/garden-walk\.[0-9a-f]{8}\.mp4\)$/m)
+        expect(text).toMatch(/^!\[The plan\]\(\.\.\/assets\/voice-note\.[0-9a-f]{8}\.mp3\)$/m)
+        expect(text).toMatch(/^\[doc\]\(\.\.\/assets\/doc\.[0-9a-f]{8}\.pdf\)$/m)
+    })
+
     it('reads a size hint only from a pipe that is all width, or width and height, and any other pipe as the alt text', async () => {
         const graph = await convertObsidian([
             src('attachments/Shot.png', new Uint8Array([1])),

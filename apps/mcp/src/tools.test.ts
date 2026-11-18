@@ -40,7 +40,12 @@ import {
     setTask,
     tasks,
     uploadAsset,
+    servedAddress,
 } from './tools'
+import { graphAddressPath } from '#lib/navigation/graph-address.js'
+
+/** The served graph's address as a reference writes it (ADR 0192). */
+const at = (g: Parameters<typeof servedAddress>[0]): string => graphAddressPath(servedAddress(g))
 
 /**
  * The tools over both backends, from one set of assertions: a real server document store, sync
@@ -371,7 +376,7 @@ describe('tasks', () => {
         const g = await graph('g-lane-board')
         await seed(g, 'Shed', '- [ ] #D Build the shed\n  - [ ] #D Fix the roof')
         await indexed(g, async () => (await tasks(g, { statuses: ['doing'] })).total === 2)
-        const lane = await tasks(g, { reference: `etherpk:/g/${g.graphId}/k/Shed#lane=doing` })
+        const lane = await tasks(g, { reference: `etherpk:${at(g)}/k/Shed#lane=doing` })
         expect(lane.tasks.map((t) => t.text)).toEqual(['#D Build the shed'])
     })
 
@@ -385,13 +390,13 @@ describe('tasks', () => {
             `EtherPK Kanban lane from the graph "Home" (${g.graphId})`,
             'Board: Kitchen Garden',
             'Lane: Doing (3 tasks)',
-            `Reference: etherpk:/g/${g.graphId}/k/Kitchen%20Garden#lane=doing`,
+            `Reference: etherpk:${at(g)}/k/Kitchen%20Garden#lane=doing`,
             'This is not a web address.',
         ].join('\n')
         const lane = await tasks(g, { reference: copied })
         expect(lane.tasks.map((t) => t.text).sort()).toEqual(['#D #D-2026-07-01 weed the rows', '#D #P1 water the beans', '#D sharpen the hoe'])
 
-        const whole = await tasks(g, { reference: `etherpk:/g/${g.graphId}/kanban#lane=doing` })
+        const whole = await tasks(g, { reference: `etherpk:${at(g)}/kanban#lane=doing` })
         expect(whole.total).toBe(4)
         // The rest of the filter still narrows it.
         expect((await tasks(g, { reference: copied, priorities: [1] })).tasks.map((t) => t.text)).toEqual(['#D #P1 water the beans'])
@@ -400,11 +405,14 @@ describe('tasks', () => {
     it("refuses a lane reference that is no reference, that conflicts with the filter, or is another graph's", async () => {
         const g = await graph('g-lane-refused')
         await rejectsWith(tasks(g, { reference: 'the Doing lane' }), 'invalid_argument')
-        await rejectsWith(tasks(g, { reference: `etherpk:/g/${g.graphId}/k/Garden#lane=doing`, statuses: ['open'] }), 'invalid_argument')
-        await rejectsWith(tasks(g, { reference: `etherpk:/g/${g.graphId}/k/Garden#lane=doing`, concept: 'Shed' }), 'invalid_argument')
-        const elsewhere = 'etherpk:/g/another-graph/k/Garden#lane=doing'
-        if (g.backend.kind === 'synced') await rejectsWith(tasks(g, { reference: elsewhere }), 'other_graph')
-        else expect((await tasks(g, { reference: elsewhere })).total).toBe(0)
+        await rejectsWith(tasks(g, { reference: `etherpk:${at(g)}/k/Garden#lane=doing`, statuses: ['open'] }), 'invalid_argument')
+        await rejectsWith(tasks(g, { reference: `etherpk:${at(g)}/k/Garden#lane=doing`, concept: 'Shed' }), 'invalid_argument')
+        const other = g.backend.kind === 'synced' ? '/graph/sync/another-graph' : '/graph/folder/another-folder'
+        await rejectsWith(tasks(g, { reference: `etherpk:${other}/k/Garden#lane=doing` }), 'other_graph')
+        // The shape before ADR 0192 carried an id: a synced graph's is checked, a folder's cannot be.
+        const old = 'etherpk:/g/another-graph/k/Garden#lane=doing'
+        if (g.backend.kind === 'synced') await rejectsWith(tasks(g, { reference: old }), 'other_graph')
+        else expect((await tasks(g, { reference: old })).total).toBe(0)
     })
 })
 
@@ -1109,7 +1117,7 @@ describe('task references', () => {
 
     it('comes with every task listed, as an etherpk: reference naming its document, line and words', async () => {
         const { g, reference } = await withTask('g-ref-list')
-        expect(reference).toMatch(new RegExp(`^etherpk:/g/${g.graphId}/d/Plan#task=2-[0-9a-f]{12}$`))
+        expect(reference).toMatch(new RegExp(`^etherpk:${at(g)}/d/Plan#task=2-[0-9a-f]{12}$`))
     })
 
     it('lists the subtasks at any depth with what changes them, and none for a task with none (ADR 0174)', async () => {
@@ -1227,18 +1235,29 @@ describe('task references', () => {
         const g = await graph('g-ref-protected')
         await seed(g, 'Bank', PROTECTED)
         await g.settle()
-        const reference = taskReferenceId({ graphId: g.graphId, document: 'Bank', line: 0, fingerprint: await taskFingerprint('pay the bill') })
+        const reference = taskReferenceId({ graph: servedAddress(g), document: 'Bank', line: 0, fingerprint: await taskFingerprint('pay the bill') })
         await rejectsWith(readTask(g, { reference }), 'task_not_found')
         await rejectsWith(setTask(g, { reference, changes: { status: 'done' } }), 'protected_document')
         await rejectsWith(addTaskNote(g, { reference, text: 'paid' }), 'protected_document')
         expect(await text(g, 'Bank')).toBe(PROTECTED_TEXT)
     })
 
-    it("checks a synced graph's reference against the graph served, and a folder's not at all", async () => {
+    it('checks a reference against the graph served: a synced graph by id, a folder by its name', async () => {
         const { g, reference } = await withTask('g-ref-graph')
-        const elsewhere = reference.replace(`/g/${g.graphId}/`, '/g/another-graph/')
-        if (g.backend.kind === 'synced') await rejectsWith(readTask(g, { reference: elsewhere }), 'other_graph')
-        else expect(await readTask(g, { reference: elsewhere })).toMatchObject({ line: 2, foundBy: 'at_line' })
+        expect(reference.startsWith(`etherpk:${at(g)}/d/`)).toBe(true)
+        const other = g.backend.kind === 'synced' ? '/graph/sync/another-graph' : '/graph/folder/another-folder'
+        await rejectsWith(readTask(g, { reference: reference.replace(at(g), other) }), 'other_graph')
+    })
+
+    it('still reads a reference of the shape before ADR 0192, checking only a synced id', async () => {
+        const { g, reference } = await withTask('g-ref-old')
+        const old = (id: string) => reference.replace(at(g), `/g/${id}`)
+        if (g.backend.kind === 'synced') {
+            expect(await readTask(g, { reference: old(g.graphId) })).toMatchObject({ line: 2, foundBy: 'at_line' })
+            await rejectsWith(readTask(g, { reference: old('another-graph') }), 'other_graph')
+        } else {
+            expect(await readTask(g, { reference: old('another-graph') })).toMatchObject({ line: 2, foundBy: 'at_line' })
+        }
     })
 })
 

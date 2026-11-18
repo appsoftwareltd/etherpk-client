@@ -1,6 +1,6 @@
 ---
 name: etherpk
-description: "EtherPK graph folders: plain markdown with [[wikilinks]] that the EtherPK app opens as a local graph and publishes as a static website. Use to create a blog, docs site or wiki folder in EtherPK format; to write or edit pages, journal entries, tasks or frontmatter in a folder that holds journals/ and pages/ or an AGENTS.md written by EtherPK; to set up, check or publish a publication (public and publications frontmatter, a page with a publication mapping, etherpk-mcp publish); or when the user names an EtherPK synced graph or the etherpk MCP tools are connected."
+description: "EtherPK graph folders: plain markdown with [[wikilinks]] that the EtherPK app opens as a folder graph and publishes as a static website. Use to create a blog, docs site or wiki folder in EtherPK format; to write or edit pages, journal entries, tasks or frontmatter in a folder that holds journals/ and pages/ or an AGENTS.md written by EtherPK; to set up, check or publish a publication (public and publications frontmatter, a page with a publication mapping, etherpk-mcp publish); or when the user names an EtherPK synced graph or the etherpk MCP tools are connected."
 license: Elastic-2.0
 ---
 
@@ -21,7 +21,7 @@ Work through the steps in order. Each one ends on a check.
 | --- | --- |
 | The user names a synced EtherPK graph, or the `etherpk` MCP tools serve one (`graph_info` says it is synced) | **MCP.** A synced graph has no folder on this computer. Read and write it through the `etherpk` tools only, as their own instructions describe, and use step 5 for its publications. |
 | A folder with `etherpk/graph.json` | A **Local Mirror** of a synced graph. EtherPK rewrites every file in it from the server, so work on that graph through the MCP route. |
-| A folder with `journals/` and `pages/` | An existing **local graph**. Go to step 3. When the `etherpk` MCP tools serve this folder (`graph_info` shows its path), edit and search through them, since they keep the format intact. |
+| A folder with `journals/` and `pages/` | An existing **folder graph**. Go to step 3. When the `etherpk` MCP tools serve this folder (`graph_info` shows its path), edit and search through them, since they keep the format intact. |
 | No folder yet, and the user wants a blog, docs site or wiki | Make one in step 2. |
 
 When the MCP route applies and the `etherpk` tools are not connected, tell the user to open
@@ -112,7 +112,12 @@ section to match the version the user runs, so where it and this skill differ, f
   board reaches a subtask through its parent's card when the parent is on the same board, so write a
   checklist as tasks under a task, and a project's tasks under a plain `- [[Concept]]` bullet
   (`AGENTS.md`, Subtasks).
-- Put images in `assets/` and embed them as `![Alt text](../assets/<file>)`.
+- Put images in `assets/` and embed them as `![Alt text](../assets/<file>)`. A video (`.webm`, `.mp4`) or audio
+  file (`.mp3`, `.m4a`, `.wav`, `.ogg`, `.opus`, `.flac`) is embedded the same way, on a line of its
+  own, and gets a player.
+- When you finish a page the user will want to read, end your message with its link:
+  `<EtherPK address>/graph/folder/<folder name>/d/<page title>` (`AGENTS.md`, Giving the user a
+  link to a page).
 - To draw over an image, place it in an `excalidraw.drawing` fence and add shapes after it
   (`AGENTS.md`, Drawings). Add lines to a drawing and never change the ones already there.
 - The publication's `theme:` sets the look. Left out, a docs site uses `etherpk-docs` and a blog
@@ -148,9 +153,9 @@ wants.
 Tell the user how to open and publish the folder:
 
 - **Open it in EtherPK.** In Chrome or Edge on the same computer, go to
-  <https://app.etherpk.com> (or their own EtherPK), select **Open folder (Local Graph)** on the
+  <https://app.etherpk.com> (or their own EtherPK), select **Open folder (Folder Graph)** on the
   Graphs page and pick the folder. Their edits and yours show up in each other.
-  <https://docs.etherpk.com/local-graphs>
+  <https://docs.etherpk.com/folder-graphs>
 - **Publish it.** In EtherPK: **Settings → Publish**, **Choose folder…**, then **Publish to
   folder**. Or from a terminal:
 

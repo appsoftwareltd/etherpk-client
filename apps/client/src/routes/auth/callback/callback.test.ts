@@ -157,10 +157,10 @@ describe('GET /auth/callback', () => {
         for (const error of ['login_required', 'temporarily_unavailable']) {
             const { outcome, values } = await callback(corporate(async () => { throw new Error('no exchange') }), {
                 query: `?error=${error}&state=state-1`,
-                stored: { ...transaction, interaction: 'silent', returnPath: '/g/demo-graph' },
+                stored: { ...transaction, interaction: 'silent', returnPath: '/graph/sync/demo-graph' },
             })
 
-            expect(outcome).toMatchObject({ status: 303, location: '/g/demo-graph' })
+            expect(outcome).toMatchObject({ status: 303, location: '/graph/sync/demo-graph' })
             expect(values.get('__Host-etherpk-client-sso-attempted')).toBe('1')
             expect(values.get('__Host-etherpk-client-sso-checked')).toBe('1')
         }
@@ -230,12 +230,12 @@ describe('GET /auth/callback', () => {
 // transaction of their own; one used to overwrite the other, and both ended on error pages.
 describe('two sign-ins at once', () => {
     it('lets each callback find its own transaction, and leaves the other attempt\'s alone', async () => {
-        const other = { ...transaction, state: 'state-2', returnPath: '/g/other-graph' }
+        const other = { ...transaction, state: 'state-2', returnPath: '/graph/sync/other-graph' }
         const { outcome, values } = await callback(corporate(async () => Response.json({
             access_token: 'access-1', refresh_token: 'refresh-1', id_token: 'id-1', expires_in: 900,
         })), { query: '?code=code-2&state=state-2', stored: transaction, also: [other] })
 
-        expect(outcome).toMatchObject({ status: 303, location: '/g/other-graph' })
+        expect(outcome).toMatchObject({ status: 303, location: '/graph/sync/other-graph' })
         expect(values.has(transactionCookieName('state-1'))).toBe(true)
         expect(values.has(transactionCookieName('state-2'))).toBe(false)
     })

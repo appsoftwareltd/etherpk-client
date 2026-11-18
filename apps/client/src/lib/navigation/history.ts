@@ -27,6 +27,7 @@ import type { LayoutController, ViewRef } from '#lib/layout/index.js'
 import { parseViewKey, viewKey } from '#lib/layout/index.js'
 
 import { graphUrl, viewUrl } from './document-url'
+import type { GraphAddress } from './graph-address'
 import type { ViewPosition } from './position'
 
 /** What a history entry carries (via `page.state.etherpkVisit`). */
@@ -40,7 +41,8 @@ export interface VisitState {
 }
 
 export interface HistoryEngineOptions {
-    graphId: string
+    /** The address of the graph the workspace has open: every Visit's address begins with it. */
+    graph: GraphAddress
     /** Read lazily — the workspace recreates controllers on presenter swaps. */
     controller: () => LayoutController | undefined
     pushUrl(url: string, state: VisitState): void
@@ -69,7 +71,7 @@ function canonicalKey(panelId: string): string {
 }
 
 export function createHistoryEngine(options: HistoryEngineOptions): HistoryEngine {
-    const { graphId } = options
+    const { graph } = options
     // Unique per tab across reloads (ids key sessionStorage snapshots).
     let visitCounter = Date.now()
     let current: VisitState | null = null
@@ -91,7 +93,7 @@ export function createHistoryEngine(options: HistoryEngineOptions): HistoryEngin
     function mainVisit() {
         const active = options.controller()?.activeView()
         if (!active || active.region !== 'main') return null
-        const url = viewUrl(graphId, active.view)
+        const url = viewUrl(graph, active.view)
         return url === null ? null : { ...active, url }
     }
 
@@ -119,7 +121,7 @@ export function createHistoryEngine(options: HistoryEngineOptions): HistoryEngin
                 const controller = options.controller()
                 if (current && controller && !controller.isOpen(parseViewKey(canonicalKey(current.panelId)))) {
                     current = null
-                    options.replaceUrlWithoutVisit(graphUrl(graphId))
+                    options.replaceUrlWithoutVisit(graphUrl(graph))
                 }
                 return
             }

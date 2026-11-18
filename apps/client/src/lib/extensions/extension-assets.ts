@@ -56,7 +56,7 @@ function named(name: string, type: string): string {
 
 /**
  * The id a synced graph writes into an asset's name to keep names apart (`plan.<uuid>.png`), as a
- * Filesystem graph writes a content hash; the hash is taken out by `displayAssetName`.
+ * Folder graph writes a content hash; the hash is taken out by `displayAssetName`.
  */
 const ASSET_ID_SEGMENT = /\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\.[^.]+$|$)/
 

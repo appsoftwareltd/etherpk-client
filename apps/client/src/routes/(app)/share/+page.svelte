@@ -16,7 +16,7 @@
      * got: saved on this device, then synced once the relay acknowledges it. Nothing else opens,
      * so on a phone the user is back in the app they shared from in a moment. Otherwise - a folder
      * graph, a locked vault, no sync configured, any failure before the note is saved - the text
-     * is stashed and the page navigates to `/g/<id>`, replacing this entry so Back leaves the app
+     * is stashed and the page navigates to `/graph/<where>/<name>`, replacing this entry so Back leaves the app
      * rather than re-running the share; the workspace adds the note once the graph is open, with
      * its unlock prompt, folder permission button and every open notice reused.
      *
@@ -28,6 +28,8 @@
 
     import { afterNavigate, goto } from "$app/navigation";
     import { isDemoGraph } from "#lib/demo/demo-graph.js";
+    import { graphUrl } from "#lib/navigation/document-url.js";
+    import { graphAddressOf } from "#lib/navigation/graph-address.js";
     import { NoteFileError, storeNoteFiles } from "#lib/document/quick-note-file-store.js";
     import { MAX_QUICK_NOTE_LENGTH } from "#lib/document/quick-notes.js";
     import { landShareDirectly, routeShare, shareFileStore, shareNamesFor, type ShareRoute } from "#lib/document/share-landing.js";
@@ -162,7 +164,7 @@
     let copyError = $state("");
 
     const backendTag = (graph: GraphRecord) =>
-        isDemoGraph(graph.id) ? "Demo" : graph.backend === "server" ? "Synced" : "Local";
+        isDemoGraph(graph.id) ? "Demo" : graph.backend === "server" ? "Synced" : "Folder";
 
     const panelHeading = $derived.by(() => {
         if (!landing) return "";
@@ -467,7 +469,7 @@
             ...(filesId ? { filesId, ...(task ? { task } : {}) } : {}),
         });
         forgetArrivedFiles(arrived);
-        void goto(`/g/${graph.id}`, { replace: true });
+        void goto(graphUrl(graphAddressOf(graph)), { replace: true });
     }
 
     /** The share's files are stored, or kept again for the workspace: the copy they arrived as can go. */
@@ -495,7 +497,7 @@
     async function openGraph(graph: GraphRecord) {
         cancelSyncWait?.abort();
         await landingDone;
-        await goto(`/g/${graph.id}`);
+        await goto(graphUrl(graphAddressOf(graph)));
     }
 
 </script>

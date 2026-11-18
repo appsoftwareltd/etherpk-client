@@ -70,7 +70,7 @@ describe('Copy name', () => {
     afterEach(() => vi.unstubAllGlobals())
 
     it('is offered on a document tab with no file behind it: a synced graph, or a document not written yet', () => {
-        // No `hasFilePath` is what a Server graph supplies; a Filesystem graph answers false for
+        // No `hasFilePath` is what a Server graph supplies; a Folder graph answers false for
         // a Draft, which has no file until its first edit. Either way the tab has a name.
         const { labels } = setup()
         expect(labels(tab('Alpha')).at(-1)).toBe(COPY_NAME)

@@ -44,7 +44,7 @@ export interface SavedAsset {
     /**
      * True when the graph already held these bytes and the reference points at the existing
      * asset (nothing was stored). Both backends report it, so the Activity toast can say
-     * "already in this graph, reused": a local graph reads the hash back out of the names in
+     * "already in this graph, reused": a folder graph reads the hash back out of the names in
      * `assets/`, a synced graph asks the server with a blinded token (ADR 0053).
      */
     reused?: boolean
@@ -157,6 +157,19 @@ export function isImageExt(ext: string): boolean {
     return IMAGE_EXTS.has(ext.replace(/^\./, '').toLowerCase())
 }
 
+/** The video formats the app plays, by extension ([[2026-11-18 Audio And Video Players]]). */
+export const VIDEO_EXTS = ['webm', 'mp4'] as const
+/** The audio formats the app plays, by extension. */
+export const AUDIO_EXTS = ['mp3', 'm4a', 'wav', 'ogg', 'opus', 'flac'] as const
+
+/** Whether a file with this extension (with or without a leading dot) is played, and as what. */
+export function mediaKindOfExt(ext: string): 'audio' | 'video' | null {
+    const bare = ext.replace(/^\./, '').toLowerCase()
+    if ((VIDEO_EXTS as readonly string[]).includes(bare)) return 'video'
+    if ((AUDIO_EXTS as readonly string[]).includes(bare)) return 'audio'
+    return null
+}
+
 /** The on-disk asset name: `kebab-stem.<hash>.ext` (stem falls back to `asset` when slugging empties it). */
 export function assetFileName(originalName: string, hash: string): string {
     const { stem, ext } = splitNameExt(originalName)
@@ -210,6 +223,12 @@ const MIME_TYPES: Record<string, string> = {
     json: 'application/json',
     md: 'text/markdown',
     mp3: 'audio/mpeg',
+    m4a: 'audio/mp4',
+    wav: 'audio/wav',
+    ogg: 'audio/ogg',
+    // Opus in its own file is an Ogg container.
+    opus: 'audio/ogg',
+    flac: 'audio/flac',
     mp4: 'video/mp4',
     webm: 'video/webm',
     zip: 'application/zip',
@@ -256,7 +275,8 @@ export function displayNameForRef(ref: string): string {
 }
 
 /**
- * The markdown to embed a saved asset: an inline image, or a plain link that downloads on click.
+ * The markdown to embed a saved asset: an inline image, a recording in the same image form (the
+ * editor draws a player under it, `media-line.ts`), or a plain link that downloads on click.
  * For an image, an optional `displaySize` (e.g. `300` or `300x200`) is added as a `|` display-size
  * hint; the caller is responsible for passing a valid spec (see `normalizeDisplaySize`).
  */
@@ -264,7 +284,10 @@ export function buildAssetMarkdown(
     asset: { ref: string; stem: string; isImage: boolean },
     displaySize?: string,
 ): string {
-    if (!asset.isImage) return `[${asset.stem}](${asset.ref})`
+    if (!asset.isImage) {
+        const played = mediaKindOfExt(splitNameExt(asset.ref.split(/[?#]/)[0]).ext) !== null
+        return `${played ? '!' : ''}[${asset.stem}](${asset.ref})`
+    }
     const alt = displaySize ? `${asset.stem}|${displaySize}` : asset.stem
     return `![${alt}](${asset.ref})`
 }

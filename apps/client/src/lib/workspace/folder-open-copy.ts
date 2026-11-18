@@ -1,5 +1,5 @@
 /**
- * Turn a Filesystem graph's failed open into a sentence the person can act on: what happened, why,
+ * Turn a Folder graph's failed open into a sentence the person can act on: what happened, why,
  * what next. A folder graph has no sync server, so `describeSyncFailure`'s fallback ("the sync server
  * could not be reached") sends people to check a connection that has nothing to do with it.
  *

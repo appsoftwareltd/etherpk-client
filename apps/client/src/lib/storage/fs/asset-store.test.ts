@@ -1,17 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-    assetFileName,
-    assetHashFromName,
-    assetNameFromRef,
-    buildAssetMarkdown,
-    createAssetStore,
-    displayAssetName,
-    isBareAssetId,
-    isImageExt,
-    mimeTypeForExt,
-    splitNameExt,
-} from './asset-store'
+import { assetFileName, assetHashFromName, assetNameFromRef, buildAssetMarkdown, createAssetStore, displayAssetName, isBareAssetId, isImageExt, mimeTypeForExt, splitNameExt, AUDIO_EXTS, VIDEO_EXTS, mediaKindOfExt } from './asset-store'
 import type { DirectoryAdapter } from './directory-adapter'
 import { createMemoryDirectoryAdapter } from './memory-adapter'
 
@@ -375,5 +364,31 @@ describe('createAssetStore.resolve', () => {
 
         expect(blob.type).toBe('image/png')
         store.dispose()
+    })
+})
+
+describe('audio and video assets', () => {
+    it('knows which files are played, whatever the case and with or without the dot', () => {
+        for (const ext of ['webm', 'mp4', '.MP4']) expect(mediaKindOfExt(ext)).toBe('video')
+        for (const ext of ['mp3', 'm4a', 'wav', 'ogg', 'opus', 'flac', '.FLAC']) expect(mediaKindOfExt(ext)).toBe('audio')
+        for (const ext of ['png', 'pdf', 'mov', 'aac', '']) expect(mediaKindOfExt(ext)).toBeNull()
+    })
+
+    it('names the MIME type of each, so a folder graph can hand the browser one', () => {
+        expect(mimeTypeForExt('webm')).toBe('video/webm')
+        expect(mimeTypeForExt('mp4')).toBe('video/mp4')
+        expect(mimeTypeForExt('mp3')).toBe('audio/mpeg')
+        expect(mimeTypeForExt('m4a')).toBe('audio/mp4')
+        expect(mimeTypeForExt('wav')).toBe('audio/wav')
+        expect(mimeTypeForExt('ogg')).toBe('audio/ogg')
+        expect(mimeTypeForExt('opus')).toBe('audio/ogg')
+        expect(mimeTypeForExt('flac')).toBe('audio/flac')
+        for (const ext of [...VIDEO_EXTS, ...AUDIO_EXTS]) expect(mimeTypeForExt(ext), ext).not.toBe('')
+    })
+
+    it('writes a saved recording in the image form, which draws a player, and never with a size hint', () => {
+        expect(buildAssetMarkdown({ ref: '../assets/planting.9c8d7e6f.webm', stem: 'planting', isImage: false })).toBe('![planting](../assets/planting.9c8d7e6f.webm)')
+        expect(buildAssetMarkdown({ ref: '../assets/voice-note.1a2b3c4d.mp3', stem: 'voice-note', isImage: false }, '800')).toBe('![voice-note](../assets/voice-note.1a2b3c4d.mp3)')
+        expect(buildAssetMarkdown({ ref: '../assets/seed-list.5e6f7a8b.pdf', stem: 'seed-list', isImage: false })).toBe('[seed-list](../assets/seed-list.5e6f7a8b.pdf)')
     })
 })

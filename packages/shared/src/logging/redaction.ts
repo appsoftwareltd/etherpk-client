@@ -157,12 +157,19 @@ export function redactUrlQuery<T extends string | null | undefined>(url: T): T {
  * - Better Auth's password-reset link, `/api/auth/reset-password/:token`. It is the only
  *   better-auth 1.6.15 route with a credential in the path (`/callback/:id`,
  *   `/oauth2/callback/:providerId` and `/oauth2/client/:id` carry identifiers, not secrets).
- * - A Client document address, `/g/<graphId>/d/<document name>`. The name is the user's
- *   content, and on an encrypted graph the server otherwise never learns it.
+ * - A Client workspace address (ADR 0192). On a synced graph, or one kept in the browser,
+ *   `/graph/<where>/<id>/<segment>/<rest>` keeps its first segment (`d`, `a`, `k`…) and loses the
+ *   rest: a document's name or the concept of a Kanban Board is the user's content, and on an
+ *   encrypted graph the server otherwise never learns it. On a folder graph the folder's name is
+ *   the user's too, so everything after `/graph/folder/` goes.
+ * - The workspace address before ADR 0192, `/g/<id>/<segment>/<rest>`, while its redirect
+ *   exists (MAINTENANCE.md).
  */
 const SENSITIVE_PATH_PREFIXES: RegExp[] = [
     /^(\/api\/auth\/reset-password\/)./i,
-    /^(\/g\/[^/]+\/d\/)./i,
+    /^(\/graph\/folder\/)./i,
+    /^(\/graph\/(?:sync|browser)\/[^/]+\/[^/]+\/)./i,
+    /^(\/g\/[^/]+\/[^/]+\/)./i,
 ]
 
 /**

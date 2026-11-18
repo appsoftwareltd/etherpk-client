@@ -82,14 +82,14 @@ describe('the managed section', () => {
     it('points at the published user docs, for what it does not say itself', () => {
         expect(section).toContain('https://docs.etherpk.com')
         expect(section).toContain('https://docs.etherpk.com/protected-documents')
-        expect(section).toContain('https://docs.etherpk.com/local-graphs')
+        expect(section).toContain('https://docs.etherpk.com/folder-graphs')
     })
 
     it('tells a reader nested inside a larger project to point that project here', () => {
         expect(section).toMatch(/larger project/i)
     })
 
-    it('never mentions a CRDT, a sync server or an account: this folder is a local graph', () => {
+    it('never mentions a CRDT, a sync server or an account: this folder is a folder graph', () => {
         // A coding agent reading a local folder has no server to talk to; saying so would only
         // invite it to look for one.
         expect(section).not.toMatch(/\bCRDT\b/)

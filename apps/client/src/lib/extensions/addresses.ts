@@ -14,6 +14,7 @@
 import type { ExtensionManifest, ViewRef } from '@appsoftwareltd/etherpk-extension-api'
 
 import { encodeConceptPath } from '#lib/navigation/concept-path.js'
+import { graphAddressPath, type GraphAddress } from '#lib/navigation/graph-address.js'
 
 /** The segment every Extension Directory extension's addresses start with. */
 export const DIRECTORY_SEGMENT = 'x'
@@ -42,7 +43,7 @@ interface Address {
 
 export interface AddressBook {
     /** The URL naming an extension's View, or null when its kind declares no address. */
-    url(graphId: string, view: ViewRef): string | null
+    url(graph: GraphAddress, view: ViewRef): string | null
     /**
      * The View an address names: its first segment and the rest of the path, already decoded
      * ('' when there is none). Null when no extension declares the segment, or the rest does not
@@ -99,11 +100,11 @@ export function createAddressBook(extensions: readonly AddressedExtension[] | ((
     const current = typeof extensions === 'function' ? extensions : () => extensions
     const addresses = () => addressesOf(current())
     return {
-        url(graphId, view) {
+        url(graph, view) {
             const address = addresses().find((candidate) => candidate.kind === view.kind)
             if (!address) return null
             const prefix = address.directoryId === null ? '' : `${DIRECTORY_SEGMENT}/${address.directoryId}/`
-            const base = `/g/${encodeURIComponent(graphId)}/${prefix}${address.segment}`
+            const base = `${graphAddressPath(graph)}/${prefix}${address.segment}`
             return 'concept' in address.target ? `${base}/${encodeConceptPath(view.target)}` : base
         },
         view(segment, rest) {

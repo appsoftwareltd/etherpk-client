@@ -1,12 +1,13 @@
 <script lang="ts">
     /**
-     * The workspace route group: `/g/[graphId]`, `/g/[graphId]/d/[...concept]`, the
+     * The workspace route group: `/graph/[where]/[name]`, `…/d/[...concept]`, the
      * Asset tab and Theme editor addresses (`/a/[assetId]`, `/t/[themeId]`) all share this
      * single GraphWorkspace mount, so shallow-routed Visit URL changes AND real navigations
      * between the pages never remount the Layout (ADR 0023). Settings is not a route: it is
      * a query param on whichever of these is beneath it (`?settings=<tab>`).
-     * Keyed by graph id: a cross-graph navigation rebuilds the workspace (onMount
-     * does the building, and Svelte reuses the component otherwise).
+     * Keyed by Graph Address: a cross-graph navigation rebuilds the workspace (onMount
+     * does the building, and Svelte reuses the component otherwise). The gate turns the
+     * address into a graph this browser holds before the workspace mounts (ADR 0192).
      */
     import { onMount, type Snippet } from 'svelte'
 
@@ -14,7 +15,8 @@
     import { ensurePersistentStorage } from '#lib/storage/storage-persistence.js'
     import { appHeaderHiddenOnPhone } from '#lib/workspace/app-header.svelte.js'
     import DemoBar from '#lib/demo/ui/DemoBar.svelte'
-    import GraphWorkspace from '#lib/workspace/GraphWorkspace.svelte'
+    import { graphAddressPath } from '#lib/navigation/graph-address.js'
+    import GraphAddressGate from '#lib/workspace/GraphAddressGate.svelte'
 
     import type { LayoutData } from './$types'
 
@@ -26,7 +28,7 @@
     // height is reserved, is decided there by viewport width.
     const HEADER_HEIGHT = '3.5rem'
     const DEMO_BAR_HEIGHT = '2.25rem'
-    const demo = $derived(isDemoGraph(data.graphId))
+    const demo = $derived(data.address.where === 'browser' && isDemoGraph(data.address.name))
 
     // Ask the browser not to evict the graph registry, Local Cache and Derived Index under disk
     // pressure. Asked here, where a graph opens, and not on the public pages: Firefox answers with
@@ -37,14 +39,14 @@
         void ensurePersistentStorage().then((outcome) => {
             if (outcome.supported && !outcome.persisted) {
                 console.warn(
-                    '[storage] Persistent storage was not granted; this browser may evict local graph data under disk pressure.',
+                    '[storage] Persistent storage was not granted; this browser may evict folder graph data under disk pressure.',
                 )
             }
         })
     })
 </script>
 
-{#key data.graphId}
+{#key graphAddressPath(data.address)}
     {#if demo}
         <div class="demo-chrome">
             <DemoBar top={HEADER_HEIGHT} />
@@ -55,9 +57,8 @@
         style:--header-height={HEADER_HEIGHT}
         style:--demo-bar-height={DEMO_BAR_HEIGHT}
     >
-        <GraphWorkspace
-            graphId={data.graphId}
-            opfs={data.opfs}
+        <GraphAddressGate
+            address={data.address}
             autosaveMs={data.autosaveMs}
             indexingIconMs={data.indexingIconMs}
             server={data.server}

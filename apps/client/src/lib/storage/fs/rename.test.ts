@@ -190,7 +190,7 @@ describe('renamePage — refusals', () => {
 /**
  * A rename rewrites each document's block from its parsed YAML. A block that does not parse reads
  * as empty, so the rewrite would replace it with a bare title and drop every key it held - from
- * the file, which on a local graph is the only copy. The rename is refused instead, before any
+ * the file, which on a folder graph is the only copy. The rename is refused instead, before any
  * step writes, and every file stays exactly as it was.
  */
 describe('renamePage — a block whose YAML does not parse', () => {

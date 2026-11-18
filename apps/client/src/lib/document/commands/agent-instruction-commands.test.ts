@@ -31,10 +31,10 @@ function deps(options: { refuse?: boolean; reach?: AgentReach } = {}) {
     const notices: Array<[string, string]> = []
     const reachedFor: Array<string | null> = []
     const value: AgentInstructionCommandDeps = {
-        graphId: () => 'g-1',
+        graph: () => ({ where: 'sync', name: 'g-1' }),
         reach: async (document) => {
             reachedFor.push(document)
-            return options.reach ?? { kind: 'synced', graphName: 'Work', agentsUrl: 'https://app.example.com/g/g-1?settings=agents' }
+            return options.reach ?? { kind: 'synced', graphName: 'Work', agentsUrl: 'https://app.example.com/graph/sync/g-1?settings=agents' }
         },
         writeClipboard: async (text) => {
             if (options.refuse) throw new Error('Clipboard access was denied')
@@ -53,9 +53,9 @@ describe('copying the instruction for a task', () => {
         expect(lines.slice(0, 3)).toEqual([
             'EtherPK task from the graph "Work" (g-1)',
             'Task: Send the quote',
-            `Reference: etherpk:/g/g-1/d/Acme#task=3-${await taskFingerprint('Send the quote')}`,
+            `Reference: etherpk:/graph/sync/g-1/d/Acme#task=3-${await taskFingerprint('Send the quote')}`,
         ])
-        expect(parseTaskReference(copied[0])).toMatchObject({ graphId: 'g-1', document: 'Acme', line: 3 })
+        expect(parseTaskReference(copied[0])).toMatchObject({ graph: { where: 'sync', name: 'g-1' }, document: 'Acme', line: 3 })
         expect(notices).toEqual([['info', 'Copied an agent instruction for "Send the quote". Paste it to your agent.']])
     })
 
@@ -71,7 +71,7 @@ describe('copying the instruction for a task', () => {
         expect(reachedFor).toEqual(['Acme'])
     })
 
-    it('writes the variant for a local graph', async () => {
+    it('writes the variant for a folder graph', async () => {
         const reach: AgentReach = { kind: 'folder', folderName: 'notes', folderPath: '/path/to/notes', file: { subdir: 'pages', fileName: 'Acme.md' } }
         const { value, copied, notices } = deps({ reach })
         await copyTaskInstruction({ document: 'Acme', line: 3, label: 'Send the quote' }, value)
@@ -80,7 +80,7 @@ describe('copying the instruction for a task', () => {
     })
 
     it('copies and warns on a graph an agent cannot reach', async () => {
-        const { value, copied, notices } = deps({ reach: { kind: 'browser', graphName: 'Demo', agentsUrl: 'https://app.example.com/g/g-1?settings=agents' } })
+        const { value, copied, notices } = deps({ reach: { kind: 'browser', graphName: 'Demo', agentsUrl: 'https://app.example.com/graph/sync/g-1?settings=agents' } })
         expect(await copyTaskInstruction({ document: 'Acme', line: 3, label: 'Send the quote' }, value)).toBe(true)
         expect(copied[0]).toContain('kept inside this browser')
         expect(notices).toEqual([['info', 'Copied, but an agent cannot reach this graph because it is kept in this browser.']])
@@ -88,7 +88,7 @@ describe('copying the instruction for a task', () => {
 
     it('copies nothing with no graph open', async () => {
         const { value, copied } = deps()
-        expect(await copyTaskInstruction({ document: 'Acme', line: 3, label: 'Send the quote' }, { ...value, graphId: () => null })).toBe(false)
+        expect(await copyTaskInstruction({ document: 'Acme', line: 3, label: 'Send the quote' }, { ...value, graph: () => null })).toBe(false)
         expect(copied).toEqual([])
     })
 
@@ -119,9 +119,9 @@ describe('copying the instruction for a lane', () => {
             'EtherPK Kanban lane from the graph "Work" (g-1)',
             'Board: Garden',
             'Lane: Doing (2 tasks)',
-            'Reference: etherpk:/g/g-1/k/Garden#lane=doing',
+            'Reference: etherpk:/graph/sync/g-1/k/Garden#lane=doing',
         ])
-        expect(parseLaneReference(copied[0])).toEqual({ graphId: 'g-1', concept: 'Garden', status: 'doing' })
+        expect(parseLaneReference(copied[0])).toEqual({ graph: { where: 'sync', name: 'g-1' }, concept: 'Garden', status: 'doing' })
         expect(notices).toEqual([['info', 'Copied an agent instruction for the Doing lane of Garden. Paste it to your agent.']])
     })
 
@@ -138,7 +138,7 @@ describe('copying the instruction for a lane', () => {
     })
 
     it('asks how to reach the graph with no document in mind, and warns on one an agent cannot reach', async () => {
-        const { value, notices, reachedFor } = deps({ reach: { kind: 'browser', graphName: 'Demo', agentsUrl: 'https://app.example.com/g/g-1?settings=agents' } })
+        const { value, notices, reachedFor } = deps({ reach: { kind: 'browser', graphName: 'Demo', agentsUrl: 'https://app.example.com/graph/sync/g-1?settings=agents' } })
         await copyLaneInstruction({ concept: 'Garden', status: 'doing', label: 'Doing', count: 2 }, value)
         expect(reachedFor).toEqual([null])
         expect(notices).toEqual([['info', 'Copied, but an agent cannot reach this graph because it is kept in this browser.']])
@@ -151,7 +151,7 @@ describe('copying the instruction for a lane', () => {
         await commands.execute(TASK_COPY_LANE_REFERENCE, { concept: 'Garden', status: 'test', label: 'Test', count: 1 })
         await commands.execute(TASK_COPY_LANE_REFERENCE, { concept: 'Garden', status: 'later', label: 'Later', count: 1 })
         await commands.execute(TASK_COPY_LANE_REFERENCE, undefined)
-        expect(copied.map((text) => text.split('\n')[3])).toEqual(['Reference: etherpk:/g/g-1/k/Garden#lane=test'])
+        expect(copied.map((text) => text.split('\n')[3])).toEqual(['Reference: etherpk:/graph/sync/g-1/k/Garden#lane=test'])
     })
 })
 
@@ -188,7 +188,7 @@ describe('Copy agent instruction on a menu', () => {
 
         await commands.execute(TASK_COPY_REFERENCE, taskLine)
         expect(copied).toHaveLength(1)
-        expect(copied[0].split('\n').slice(1, 3)).toEqual(['Task: water the beans', `Reference: etherpk:/g/g-1/d/Garden#task=0-${await taskFingerprint('water the beans')}`])
+        expect(copied[0].split('\n').slice(1, 3)).toEqual(['Task: water the beans', `Reference: etherpk:/graph/sync/g-1/d/Garden#task=0-${await taskFingerprint('water the beans')}`])
     })
 
     it('follows a wikilink on a task line, after the link\'s own rows', () => {

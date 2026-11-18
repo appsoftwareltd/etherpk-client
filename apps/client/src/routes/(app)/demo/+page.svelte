@@ -14,7 +14,8 @@
     import manifest from "virtual:demo-graph";
     import { showNotice } from "#lib/activity/notices.js";
     import { tryClaimLock } from "#lib/cross-tab-lock.js";
-    import { DEMO_GRAPH_ID, openDemoGraph } from "#lib/demo/demo-graph.js";
+    import { DEMO_GRAPH_ADDRESS, DEMO_GRAPH_ID, openDemoGraph } from "#lib/demo/demo-graph.js";
+    import { graphUrl } from "#lib/navigation/document-url.js";
     import { fetchDemoBundle, type SeedProgress } from "#lib/demo/seed.js";
     import { todayISO } from "#lib/document/calendar/month-grid-core.js";
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
@@ -62,7 +63,7 @@
                 // The notice rail lives in the app layout, so this outlasts the navigation.
                 showNotice({ id: "demo-reset-notice", tone: "info", text: "The demo is back as it shipped." });
             }
-            await goto(`/g/${DEMO_GRAPH_ID}`, { replace: true });
+            await goto(graphUrl(DEMO_GRAPH_ADDRESS), { replace: true });
         } catch (err) {
             phase = { kind: "error", reset, message: (err as Error).message };
         }

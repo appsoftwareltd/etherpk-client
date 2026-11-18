@@ -13,13 +13,13 @@ import { freeTagsIn, parseTaskLine, parseTaskTags, taskDisplay } from '#lib/docu
 
 /**
  * The View kind a board is registered under, which the manifest declares with its address
- * (`/g/<graph>/k/<concept>`) and its tab title, `Kanban: <concept>`.
+ * (`/graph/<where>/<name>/k/<concept>`) and its tab title, `Kanban: <concept>`.
  */
 export const KANBAN_VIEW_KIND = 'kanban.board'
 
 /**
  * The View kind of the **Graph Kanban**, the board of every task in the graph: one per graph, at
- * `/g/<graph>/kanban`, titled "Graph Kanban", its target fixed by the manifest.
+ * `/graph/<where>/<name>/kanban`, titled "Graph Kanban", its target fixed by the manifest.
  */
 export const KANBAN_WHOLE_KIND = 'kanban.whole'
 

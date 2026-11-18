@@ -1,5 +1,5 @@
 /**
- * A local graph folder, open in a process with no editor: the client's filesystem store over a
+ * A graph folder, open in a process with no editor: the client's filesystem store over a
  * directory adapter, with the same derived index, persistence and semantic search a synced
  * graph gets from `assembleHeadlessGraph` ([[2026-09-18 Headless Client Serves A Local Folder]]).
  *

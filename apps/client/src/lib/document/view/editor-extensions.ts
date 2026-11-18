@@ -47,6 +47,7 @@ import { interactiveFenceAugmentation } from './augmentations/interactive-fence'
 import { inlinePanelsAugmentation } from './augmentations/inline-panels'
 import { protectedFenceAugmentation } from './augmentations/protected-fence'
 import { imageEmbedAugmentation } from './augmentations/image-embed'
+import { mediaEmbedAugmentation } from './augmentations/media-embed'
 import { linkCursorAugmentation } from './augmentations/link-cursor'
 import { markdownFormatAugmentation } from './augmentations/markdown-format'
 import { markdownLinkAugmentation } from './augmentations/markdown-link'
@@ -284,6 +285,13 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
             }),
         },
         { name: 'asset-link', extension: assetLinkAugmentation({ store }) },
+        // A player under an audio or video line. The line itself stays the asset link above.
+        {
+            name: 'media-embed',
+            extension: mediaEmbedAugmentation({
+                resolveAsset: (ref) => store()?.resolve(ref) ?? Promise.resolve(null),
+            }),
+        },
         { name: 'markdown-link', extension: markdownLinkAugmentation() },
         { name: 'asset-drop', extension: assetDropAugmentation({ store }) },
         // A Plain Paste (the browser's paste-as-plain-text shortcut) is the text as it is: before every

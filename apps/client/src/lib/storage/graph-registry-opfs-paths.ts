@@ -1,6 +1,6 @@
 /**
- * How the registry keeps a Filesystem graph whose folder is in the Origin Private File System:
- * the [[Demo Graph]] (ADR 0069) and the dev `?fs=opfs` graphs.
+ * How the registry keeps a graph whose folder is in the Origin Private File System:
+ * the [[Demo Graph]] (ADR 0069) and the graphs development makes at `/graph/browser/<id>`.
  *
  * A Filesystem record's `handle` is a `FileSystemDirectoryHandle`, which Chromium and Firefox can
  * store in IndexedDB. WebKit cannot: no Safari release, and so no browser on iOS, can put a
@@ -72,7 +72,8 @@ export function withOpfsFoldersByPath(
                 }
                 if (!root) continue
                 try {
-                    out.push({ ...record, handle: await folderAt(root, record.handle.opfsPath) })
+                    // A record from before `where` existed: a folder stored by its path is in the browser.
+                    out.push({ ...record, where: record.where ?? 'browser', handle: await folderAt(root, record.handle.opfsPath) })
                 } catch (error) {
                     // The folder is the graph, so a graph whose folder is gone (the browser evicted
                     // it) is not listed: there is nothing to open. The demo's own route checks for its

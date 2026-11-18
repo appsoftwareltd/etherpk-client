@@ -54,7 +54,7 @@ describe('the Agents tab commands', () => {
         })
     })
 
-    it('spell serve --folder for a local graph, quoting a path with spaces where a shell reads it', () => {
+    it('spell serve --folder for a folder graph, quoting a path with spaces where a shell reads it', () => {
         expect(registerFolderCommand('codex', '/home/me/Field Notes', LATEST, 'Field Notes')).toBe("codex mcp add etherpk-field-notes -- npx @appsoftwareltd/etherpk-mcp serve --folder '/home/me/Field Notes'")
         for (const tool of ['cursor', 'other'] as const) {
             const block = JSON.parse(registerFolderCommand(tool, '/home/me/Field Notes', LATEST, 'Field Notes')) as { mcpServers: Record<string, { command: string; args: string[] }> }
@@ -127,11 +127,11 @@ describe('the optional setups and the publish command', () => {
         expect(publishCommand({ kind: 'synced', graphId: 'g-1', graphName: null, serverBaseUrl: 'https://sync.example.com/', headlessClient: LATEST, createSetupCode: noSetupCode })).toBe(
             'npx @appsoftwareltd/etherpk-mcp publish --sync-server https://sync.example.com --graph g-1 --publication <publication> --out <folder>',
         )
-        expect(publishCommand({ kind: 'local', folderName: 'Notes', folderPath: '/home/me/My Notes', headlessClient: LATEST })).toBe(
+        expect(publishCommand({ kind: 'folder', folderName: 'Notes', folderPath: '/home/me/My Notes', headlessClient: LATEST })).toBe(
             "npx @appsoftwareltd/etherpk-mcp publish --folder '/home/me/My Notes' --publication <publication> --out <folder>",
         )
         // Without a known path there is nothing to spell.
-        expect(publishCommand({ kind: 'local', folderName: 'Notes', folderPath: null, headlessClient: LATEST })).toBeNull()
+        expect(publishCommand({ kind: 'folder', folderName: 'Notes', folderPath: null, headlessClient: LATEST })).toBeNull()
     })
 
     // The Agent Skill is installed from the Client's Public Repository by the skills CLI, which

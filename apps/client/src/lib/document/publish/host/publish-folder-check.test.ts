@@ -8,7 +8,7 @@ import { findPublishFolderOverlap, publishFolderOverlapMessage } from './publish
  * Choosing a [[Publish Folder]] in the Publish tab. A publish deletes, from the folder it writes
  * into, the files under assets/ and theme/ and the top-level pages it did not produce, so a folder
  * that is a graph's folder, sits inside one or holds one would lose that graph's files. The
- * folders this device knows belong to a graph are its local graphs and the Local Mirrors.
+ * folders this device knows belong to a graph are its folder graphs and the Local Mirrors.
  */
 
 /** A stand-in for a `FileSystemDirectoryHandle`, by path, as the Mirror's own check is tested. */
@@ -29,14 +29,14 @@ function handle(path: string, options: { throws?: boolean } = {}) {
 }
 
 const known: KnownFolder[] = [
-    { handle: handle('/home/notes'), owner: { kind: 'local-graph', graphId: 'fs1', name: 'Notes' } },
+    { handle: handle('/home/notes'), owner: { kind: 'folder-graph', graphId: 'fs1', name: 'Notes' } },
     { handle: handle('/home/team-mirror'), owner: { kind: 'mirror', graphId: 'sv1', name: 'Team' } },
 ]
 
 describe('findPublishFolderOverlap', () => {
     it('refuses a graph folder itself, recognised by handle rather than by name', async () => {
         expect(await findPublishFolderOverlap(handle('/home/notes'), known)).toEqual({
-            kind: 'local-graph',
+            kind: 'folder-graph',
             graphId: 'fs1',
             name: 'Notes',
             relation: 'same',
@@ -66,14 +66,14 @@ describe('findPublishFolderOverlap', () => {
 
 describe('publishFolderOverlapMessage', () => {
     it('says what the folder is, why that is refused, and what to do', () => {
-        expect(publishFolderOverlapMessage('notes', { kind: 'local-graph', graphId: 'fs1', name: 'Notes', relation: 'same' })).toBe(
-            '“notes” is the folder of your local graph “Notes”. A publish deletes the files it did not write from the folder it publishes into, so a site needs a folder of its own, outside any graph. Choose another folder.',
+        expect(publishFolderOverlapMessage('notes', { kind: 'folder-graph', graphId: 'fs1', name: 'Notes', relation: 'same' })).toBe(
+            '“notes” is the folder of your folder graph “Notes”. A publish deletes the files it did not write from the folder it publishes into, so a site needs a folder of its own, outside any graph. Choose another folder.',
         )
         expect(publishFolderOverlapMessage('site', { kind: 'mirror', graphId: 'sv1', name: 'Team', relation: 'inside' })).toContain(
             '“site” is inside the folder where “Team” is mirrored on this device.',
         )
-        expect(publishFolderOverlapMessage('home', { kind: 'local-graph', graphId: 'fs1', name: 'Notes', relation: 'contains' })).toContain(
-            '“home” holds the folder of your local graph “Notes”.',
+        expect(publishFolderOverlapMessage('home', { kind: 'folder-graph', graphId: 'fs1', name: 'Notes', relation: 'contains' })).toContain(
+            '“home” holds the folder of your folder graph “Notes”.',
         )
     })
 })

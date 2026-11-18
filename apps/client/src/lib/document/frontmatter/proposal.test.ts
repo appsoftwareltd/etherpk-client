@@ -69,7 +69,7 @@ describe('proposeFrontmatter', () => {
         expect(proposeFrontmatter({ text: named, registry: page('Kanban'), backend: 'filesystem', fileStem: 'Kanban', blockIsNew: true })).toEqual([
             { property: 'aliases', policy: 'silent', from: [], to: ['Board'] },
         ])
-        // On a local graph a document without a block has no aliases, so a new block without the
+        // On a folder graph a document without a block has no aliases, so a new block without the
         // key changes nothing there either; its missing title still names the file, as before.
         expect(proposeFrontmatter({ text: typed, registry: page('Kanban'), backend: 'filesystem', fileStem: 'Kanban', blockIsNew: true })).toEqual([])
     })
@@ -82,7 +82,7 @@ describe('proposeFrontmatter', () => {
         ])
         // The title stays: on a synced graph no block is no claim about it.
         expect(proposeFrontmatter({ text: '- body', registry: page('Kanban'), backend: 'server', blockRemoved: true })).toEqual([])
-        // On a local graph the saved file already has no aliases once the block is gone.
+        // On a folder graph the saved file already has no aliases once the block is gone.
         expect(
             proposeFrontmatter({ text: '- body', registry: page('Kanban', ['Old']), backend: 'filesystem', fileStem: 'Kanban', blockRemoved: true }),
         ).toEqual([])
@@ -98,7 +98,7 @@ describe('proposeFrontmatter', () => {
         ])
     })
 
-    it('on a local graph a block without a title names the file, so it proposes the file name', () => {
+    it('on a folder graph a block without a title names the file, so it proposes the file name', () => {
         const text = '---\ncolour: blue\n---\n'
         expect(proposeFrontmatter({ text, registry: page('Kanban 2'), backend: 'filesystem', fileStem: 'kanban-2' })).toEqual([
             { property: 'title', policy: 'confirm', from: 'Kanban 2', to: 'kanban-2' },

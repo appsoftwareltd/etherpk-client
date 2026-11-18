@@ -4,7 +4,7 @@ import { queueHistoryWrite } from './history-writes'
 describe('queueHistoryWrite', () => {
     it('starts each write only after the one queued before it has finished', async () => {
         const steps: string[] = []
-        let address = '/g/garden'
+        let address = '/graph/sync/garden'
         const slowWrite = (to: string) => async () => {
             steps.push(`start ${to} from ${address}`)
             await new Promise((resolve) => setTimeout(resolve, 5))
@@ -12,14 +12,14 @@ describe('queueHistoryWrite', () => {
             steps.push(`end ${to}`)
         }
 
-        void queueHistoryWrite(slowWrite('/g/garden/d/Kitchen'))
+        void queueHistoryWrite(slowWrite('/graph/sync/garden/d/Kitchen'))
         await queueHistoryWrite(() => slowWrite(`${address}?settings=general`)())
 
         expect(steps).toEqual([
-            'start /g/garden/d/Kitchen from /g/garden',
-            'end /g/garden/d/Kitchen',
-            'start /g/garden/d/Kitchen?settings=general from /g/garden/d/Kitchen',
-            'end /g/garden/d/Kitchen?settings=general',
+            'start /graph/sync/garden/d/Kitchen from /graph/sync/garden',
+            'end /graph/sync/garden/d/Kitchen',
+            'start /graph/sync/garden/d/Kitchen?settings=general from /graph/sync/garden/d/Kitchen',
+            'end /graph/sync/garden/d/Kitchen?settings=general',
         ])
     })
 

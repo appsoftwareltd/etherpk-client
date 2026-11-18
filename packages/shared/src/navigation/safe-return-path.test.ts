@@ -6,7 +6,7 @@ const fallback = '/account'
 describe('safeReturnPath', () => {
     it('keeps a path on this origin, with its query and fragment', () => {
         expect(safeReturnPath('/billing?checkout=cancelled', fallback)).toBe('/billing?checkout=cancelled')
-        expect(safeReturnPath('/g/abc/d/My%20Page#heading', fallback)).toBe('/g/abc/d/My%20Page#heading')
+        expect(safeReturnPath('/graph/sync/abc/d/My%20Page#heading', fallback)).toBe('/graph/sync/abc/d/My%20Page#heading')
         expect(safeReturnPath('/', fallback)).toBe('/')
         // A dot segment that stays on this origin resolves rather than being refused.
         expect(safeReturnPath('/graphs/../account', fallback)).toBe('/account')

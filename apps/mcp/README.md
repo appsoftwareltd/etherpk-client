@@ -30,7 +30,7 @@ npx @appsoftwareltd/etherpk-mcp login --sync-server https://sync.etherpk.com --c
 claude mcp add --scope user etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server https://sync.etherpk.com --graph <graph id>
 ```
 
-### A local graph folder
+### A graph folder
 
 No sign-in and no Sync Server:
 
@@ -232,7 +232,7 @@ install the package globally once with `npm install -g @appsoftwareltd/etherpk-m
 | `login --sync-server <url> [--code <Agent Setup Code>] [--recovery-code]` | Sign this computer in as a device of your account, unlock your Encryption Keys, and list the graphs the account can reach. |
 | `graphs [--sync-server <url>]` | List the synced graphs each signed-in account can reach, with name, id and your role. |
 | `serve --graph <id or name> [--sync-server <url>] [--no-semantic]` | Serve one synced graph to the agent over stdio. |
-| `serve --folder <path> [--no-semantic]` | Serve a local graph folder the same way. |
+| `serve --folder <path> [--no-semantic]` | Serve a graph folder the same way. |
 | `running` | List the graphs served on this computer, with each one's background process, agents and log. |
 | `stop [--graph <id or name> [--sync-server <url>] \| --folder <path> \| --all]` | Save a graph and end its background process, or every graph's when none is named. |
 | `logout [--sync-server <url> \| --all]` | Revoke that server's token, forget it and the Encryption Keys, stop its graphs' background processes and delete its cached graphs. `--all` does this for every server and clears the whole cache, the semantic runtime and model included. |
@@ -252,7 +252,7 @@ install the package globally once with `npm install -g @appsoftwareltd/etherpk-m
 | `--pat <token>` | `login` | An account-wide access token instead of an Agent Setup Code. `login` swaps it for an agent token and revokes it. |
 | `--recovery-code` | `login` | Unlock with your Recovery Code instead of Device Approval. Pressing `r` while `login` waits does the same. |
 | `--graph <id or name>` | `serve`, `publish`, `stop` | The synced graph. Not with `--folder`. |
-| `--folder <path>` | `serve`, `publish`, `stop` | The local graph folder. Not with `--graph` or `--sync-server`. |
+| `--folder <path>` | `serve`, `publish`, `stop` | The graph folder. Not with `--graph` or `--sync-server`. |
 | `--no-semantic` | `serve` | Keep this agent text-only even when semantic search is set up. |
 | `--all` | `logout`, `stop` | Every server, or every graph. |
 | `--publication <id>` | `publish` | Which publication of the graph. |

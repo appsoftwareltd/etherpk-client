@@ -15,7 +15,7 @@ describe('the frames an extension may show (ADR 0137)', () => {
             'https://player.vimeo.com.example.com/video/1',
             'https://user:secret@player.vimeo.com/video/1',
             'blob:https://app.example.com/1',
-            '/g/graph/d/Garden',
+            '/graph/sync/graph/d/Garden',
             'javascript:alert(1)',
             'not a link',
         ]) {

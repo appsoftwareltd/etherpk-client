@@ -26,26 +26,26 @@ function server(overrides: Partial<ChoiceServer> = {}): ChoiceServer {
 const FREE = server({ syncPlusRequired: true, createBlockedReason: 'Synced graphs need Sync+. Start it from Billing to create one.' })
 const ENDED = server({ syncPlusRequired: true, planEnded: true, createBlockedReason: 'Synced graphs need Sync+. Restart it from Billing to create one.' })
 
-describe('the Local Graph panel', () => {
+describe('the Folder Graph panel', () => {
     it('comes first with a button that opens the folder flow where the browser can open folders', () => {
         const panels = graphChoicePanels(input())
-        expect(panels.order).toEqual(['local', 'synced'])
-        expect(panels.local.button).toEqual({ label: 'Choose a folder', action: { kind: 'open-folder' } })
-        expect(panels.local.help).toBe('For a new graph, choose a new, empty folder.')
-        expect(panels.local.available).toBe(true)
+        expect(panels.order).toEqual(['folder', 'synced'])
+        expect(panels.folder.button).toEqual({ label: 'Choose a folder', action: { kind: 'open-folder' } })
+        expect(panels.folder.help).toBe('For a new graph, choose a new, empty folder.')
+        expect(panels.folder.available).toBe(true)
     })
 
     it('moves second, with a stated reason and no button, where the browser cannot open folders', () => {
         const panels = graphChoicePanels(input({ folderSupported: false }))
-        expect(panels.order).toEqual(['synced', 'local'])
-        expect(panels.local.button).toBeNull()
-        expect(panels.local.available).toBe(false)
-        expect(panels.local.help).toBe(FOLDER_UNAVAILABLE_REASON)
+        expect(panels.order).toEqual(['synced', 'folder'])
+        expect(panels.folder.button).toBeNull()
+        expect(panels.folder.available).toBe(false)
+        expect(panels.folder.help).toBe(FOLDER_UNAVAILABLE_REASON)
         expect(FOLDER_UNAVAILABLE_REASON).toBe('Needs Chrome or Edge on a computer, or Chrome on Android.')
     })
 
     it('lists four points', () => {
-        expect(graphChoicePanels(input()).local.bullets).toHaveLength(4)
+        expect(graphChoicePanels(input()).folder.bullets).toHaveLength(4)
     })
 })
 

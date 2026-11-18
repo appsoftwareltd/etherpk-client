@@ -11,11 +11,13 @@ const { DIRECTORY_SEGMENT, DECLARED_SEGMENTS } = import.meta.env
 export const params = defineParams({
     /**
      * The first segment of an address an extension declares for one of its View kinds (ADR 0121):
-     * `k` in `/g/<graph>/k/<concept>`, `graph-view` in `/g/<graph>/graph-view`, and `x`, under which
-     * every Extension Directory extension's addresses are (`/g/<graph>/x/<id>/…`, ADR 0123), whether
+     * `k` in `<graph address>/k/<concept>`, `graph-view` in `<graph address>/graph-view`, and `x`, under
+     * which every Extension Directory extension's addresses are (`<graph address>/x/<id>/…`, ADR 0123), whether
      * or not it is installed on this device. Any other segment does not match, so an unknown address
      * is a 404 rather than an empty workspace, and the Client's own routes (`d`, `a`, `t`) are never
      * reached here, being static.
      */
+    /** Where a graph is kept, the second segment of a Graph Address (ADR 0192): `/graph/<where>/<name>`. */
+    graphWhere: (param) => (param === 'folder' || param === 'sync' || param === 'browser' ? param : undefined),
     extensionAddress: (param) => (param === DIRECTORY_SEGMENT || DECLARED_SEGMENTS.has(param) ? param : undefined),
 })

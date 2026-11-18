@@ -136,7 +136,7 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       background process, which holds the graph open, and every serve passes its agent's
       session to that process.
   ${CMD} serve --folder <path> [--no-semantic]
-      Serve a local graph folder the same way: no sign-in, no server. The agent gets search,
+      Serve a graph folder the same way: no sign-in, no server. The agent gets search,
       backlinks, tasks and format-safe edits over the folder's markdown, alongside the files
       themselves. Edits made in an editor or by the agent directly are picked up as they land.
       The folder must already be a graph, with pages/ and journals/ folders in it (EtherPK
@@ -768,7 +768,7 @@ function graphRequest(command: 'serve' | 'publish', args: ServeArgs): GraphReque
     const folder = args.folder?.trim()
     const wanted = args.graph?.trim()
     if (folder && (wanted || args['sync-server'])) fail(`${command} takes either --folder <path> or --graph <id or name> (with an optional --sync-server), not both.`)
-    if (!folder && !wanted) fail(`${command} needs --graph <id or name>, or --folder <path> for a local graph folder.`)
+    if (!folder && !wanted) fail(`${command} needs --graph <id or name>, or --folder <path> for a graph folder.`)
     return folder ? { kind: 'folder', path: resolve(folder) } : { kind: 'synced', wanted: wanted!, server: args['sync-server'] }
 }
 
@@ -982,7 +982,7 @@ async function hostCommand(args: ServeArgs & { name?: string }): Promise<void> {
 }
 
 /**
- * A local graph folder: no sign-in and no server ([[2026-09-18 Headless Client Serves A Local
+ * A graph folder: no sign-in and no server ([[2026-09-18 Headless Client Serves A Local
  * Folder]]). The folder is what it is; the CLI never creates a skeleton in whatever directory
  * was mistyped. The index lives under the cache root, keyed by the folder's path.
  */

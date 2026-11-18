@@ -1,6 +1,6 @@
 /**
  * The OPFS folder that holds a graph's files when they live in the origin's private file system
- * rather than a folder the user picked: the dev folder path (`?fs=opfs`) and the [[Demo Graph]].
+ * rather than a folder the user picked: the dev folder path (`/graph/browser/<id>`) and the [[Demo Graph]].
  * One spelling, because the index-pool sweep (index-pool-discard.ts) spares a pool whose graph
  * has such a folder, and a second copy of the name drifting from the first would sweep the demo's
  * index on every visit to the Graphs page.

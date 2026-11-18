@@ -37,7 +37,7 @@ describe('registerShareCommands', () => {
         expect(share).toHaveBeenCalledTimes(1)
     })
 
-    it('leaves Share out, not greyed, for a Local Graph or a Player', async () => {
+    it('leaves Share out, not greyed, for a Folder Graph or a Player', async () => {
         const { commands, share, tabRows, menuRows } = setup(() => false)
 
         expect(tabRows(DOCUMENT_TAB)).toEqual([])

@@ -142,7 +142,7 @@
         protection?: ProtectionTabProps | null;
         /** The Spelling tab (ADR 0095); null outside an open graph, where there is nothing to check. */
         spelling?: SpellingTabProps | null;
-        /** Mirror tab. Null hides it: a Filesystem graph, or the dialog opened outside an open graph. */
+        /** Mirror tab. Null hides it: a Folder graph, or the dialog opened outside an open graph. */
         mirror?: MirrorTabProps | null;
         /** Agents tab (ADR 0070, ADR 0072). Null hides it: the dialog opened outside an open graph. */
         agents?: AgentsTabProps | null;
@@ -164,7 +164,7 @@
         formatting?: FormattingSectionProps | null;
         /**
          * The [[Duplicate Name]] review (ADR 0157), at the top of the Maintenance tab, on the phone
-         * layout too. Null hides it: a Filesystem graph, or the dialog opened outside an open graph.
+         * layout too. Null hides it: a Folder graph, or the dialog opened outside an open graph.
          */
         duplicateNames?: DuplicateNamesSession | null;
         /**
@@ -251,7 +251,7 @@
     );
     // The Mirror dot in the toolbar opens this dialog to say something about the mirror, so it
     // has to land on that tab; arriving on General with no hint would be a dead end. A tab this
-    // graph does not offer (Mirror on a Filesystem graph, a stale address) falls back to General
+    // graph does not offer (Mirror on a Folder graph, a stale address) falls back to General
     // rather than an empty panel. Derived, not seeded once: the workspace moves an open dialog
     // by changing the prop, and a pick here is an assignment the next prop change overrides.
     let activeTab = $derived<Tab>(

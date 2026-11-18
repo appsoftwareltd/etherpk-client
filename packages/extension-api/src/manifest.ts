@@ -41,8 +41,8 @@ export interface ViewDeclaration {
     resident?: { side: 'left' | 'right'; desktopOnly?: boolean }
     /**
      * A short address of the View's own, followed by the target when `target` is `concept`: for an
-     * extension from the Extension Directory `/g/<graph>/x/<extension id>/<segment>`, and for one that
-     * comes with EtherPK `/g/<graph>/<segment>`. A View kind whose address takes a concept follows
+     * extension from the Extension Directory `/graph/<where>/<name>/x/<extension id>/<segment>`, and for one that
+     * comes with EtherPK `/graph/<where>/<name>/<segment>`. A View kind whose address takes a concept follows
      * that concept through a rename.
      */
     address?: { segment: string; target?: 'concept' }

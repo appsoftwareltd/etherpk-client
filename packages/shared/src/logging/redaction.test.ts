@@ -58,9 +58,10 @@ describe('redactQueryString', () => {
 
     it('redacts a document name carried in a return path', () => {
         // The Client's silent sign-in sends /auth/login?redirect=<the page being opened>.
-        expect(redactQueryString('?redirect=%2Fg%2Fabc%2Fd%2FPrivate%20Diary&prompt=none')).toBe(
-            '?redirect=/g/abc/d/[redacted]&prompt=none',
+        expect(redactQueryString('?redirect=%2Fgraph%2Fsync%2Fabc%2Fd%2FPrivate%20Diary&prompt=none')).toBe(
+            '?redirect=/graph/sync/abc/d/[redacted]&prompt=none',
         )
+        expect(redactQueryString('?redirect=%2Fgraph%2Ffolder%2FPrivate%20Notes%2Fd%2FDiary')).toBe('?redirect=/graph/folder/[redacted]')
         expect(redactQueryString('?redirect=%2Fgraphs%3Fmanaged%3Dconnected')).toBe('?redirect=%2Fgraphs%3Fmanaged%3Dconnected')
     })
 
@@ -142,24 +143,55 @@ describe('redactPath', () => {
 
     it('redacts the document name in a Client document address', () => {
         // Document names are the user's content; the Client server never needs them in a log.
-        expect(redactPath('/g/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/d/Journal/2026-09-24')).toBe(
-            '/g/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/d/[redacted]',
+        expect(redactPath('/graph/sync/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/d/Journal/2026-09-24')).toBe(
+            '/graph/sync/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/d/[redacted]',
         )
     })
+
+    // Every address shape a workspace route accepts (ADR 0192). A rule missed here writes a
+    // person's words into a log, and no screen or other test would show it.
+    it.each([
+        // A document, an asset and a theme, on a synced graph and one kept in the browser.
+        ['/graph/sync/abc/d/Garden/Beds', '/graph/sync/abc/d/[redacted]'],
+        ['/graph/browser/abc/d/Garden', '/graph/browser/abc/d/[redacted]'],
+        ['/graph/sync/abc/a/asset-1', '/graph/sync/abc/a/[redacted]'],
+        ['/graph/sync/abc/t/theme-1', '/graph/sync/abc/t/[redacted]'],
+        // An extension's View about a concept, built in or from the Extension Directory.
+        ['/graph/sync/abc/k/Garden%20Board', '/graph/sync/abc/k/[redacted]'],
+        ['/graph/sync/abc/m/Allotment', '/graph/sync/abc/m/[redacted]'],
+        ['/graph/sync/abc/x/some-extension/board/Garden', '/graph/sync/abc/x/[redacted]'],
+        // A folder graph: the folder's name is the person's own word too.
+        ['/graph/folder/Private%20Notes', '/graph/folder/[redacted]'],
+        ['/graph/folder/Private%20Notes/d/Garden', '/graph/folder/[redacted]'],
+        ['/graph/folder/Private%20Notes/kanban', '/graph/folder/[redacted]'],
+        // The shape before ADR 0192, while its redirect exists.
+        ['/g/abc/d/Garden', '/g/abc/d/[redacted]'],
+        ['/g/abc/k/Garden%20Board', '/g/abc/k/[redacted]'],
+    ])('keeps a person\'s words out of %s', (path, logged) => {
+        expect(redactPath(path)).toBe(logged)
+        expect(redactPath(path.toUpperCase())).not.toContain('GARDEN')
+        expect(redactPath(path.toUpperCase())).not.toContain('PRIVATE')
+    })
+
+    it.each(['/graph/sync/abc', '/graph/browser/abc', '/graph/sync/abc/kanban', '/graph/sync/abc/graph-view', '/graphs', '/g/abc'])(
+        'keeps %s, which names no document',
+        (path) => {
+            expect(redactPath(path)).toBe(path)
+        },
+    )
 
     it('leaves every other path byte-for-byte intact', () => {
         expect(redactPath('/api/auth/reset-password')).toBe('/api/auth/reset-password')
         expect(redactPath('/api/v1/sync/graphs/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b')).toBe(
             '/api/v1/sync/graphs/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
         )
-        expect(redactPath('/g/abc/t/theme-1')).toBe('/g/abc/t/theme-1')
     })
 })
 
 describe('redactUrl', () => {
     it('redacts both the path and the query of a redirect target', () => {
-        expect(redactUrl('https://app.test/g/abc/d/Private%20Diary?code=1&x=2')).toBe(
-            'https://app.test/g/abc/d/[redacted]?code=[redacted]&x=2',
+        expect(redactUrl('https://app.test/graph/sync/abc/d/Private%20Diary?code=1&x=2')).toBe(
+            'https://app.test/graph/sync/abc/d/[redacted]?code=[redacted]&x=2',
         )
         expect(redactUrl('/api/auth/reset-password/tok?callbackURL=/x')).toBe(
             '/api/auth/reset-password/[redacted]?callbackURL=/x',

@@ -7,7 +7,7 @@
  * - A synced graph is reached only through the [[Headless Client]]. An agent without it has nothing
  *   to read, so it is told to stop: searching the disk finds the sign-in rather than the notes, and
  *   a [[Local Mirror]] is overwritten.
- * - A [[Local Graph]] is plain files, so the [[Headless Client]] is optional. The agent gets the
+ * - A [[Folder Graph]] is plain files, so the [[Headless Client]] is optional. The agent gets the
  *   file, and finds the task by its words. A reference counts body lines and a file also holds
  *   frontmatter, so no line number is given.
  * - A graph in the browser's private storage, such as the [[Demo Graph]], is out of an agent's reach.
@@ -80,7 +80,7 @@ function syncedLines(reach: Extract<AgentReach, { kind: 'synced' }>, tools: stri
     return [`${NOT_AN_ADDRESS} Use the EtherPK MCP server connected to ${reach.graphName ? `"${reach.graphName}"` : 'that graph'}: ${tools}`, noServer(reach.agentsUrl)]
 }
 
-/** A sentence that opens with the tools for a local graph, which an agent may or may not have. */
+/** A sentence that opens with the tools for a folder graph, which an agent may or may not have. */
 function folderToolsSentence(tools: string): string {
     return `${NOT_AN_ADDRESS} If an EtherPK MCP server for this graph is connected, use it: ${tools}`
 }
@@ -97,7 +97,7 @@ function fileLine(reach: Extract<AgentReach, { kind: 'folder' }>): string[] {
 
 /** The text a person copies from a task. The same wherever it is copied from: a task is a task, whichever View showed it. */
 export function formatTaskInstruction(reference: TaskReference, label: string, reach: AgentReach): string {
-    const head = [`EtherPK task from ${graphSource(reference.graphId, reach)}`, `Task: ${taskTextAsWritten(label)}`]
+    const head = [`EtherPK task from ${graphSource(reference.graph.name, reach)}`, `Task: ${taskTextAsWritten(label)}`]
     const line = `Reference: ${taskReferenceId(reference)}`
     if (reach.kind === 'browser') return [...head, outOfReach(reach.agentsUrl)].join('\n')
     if (reach.kind === 'synced') return [...head, line, ...syncedLines(reach, TASK_TOOLS)].join('\n')
@@ -127,9 +127,9 @@ export function laneSelectionInFiles(status: TaskStatus): string {
  * the tools gets the selection in words, which stays true whatever has moved since.
  */
 export function formatLaneInstruction(reference: LaneReference, lane: LaneShown, reach: AgentReach): string {
-    const { concept, status, graphId } = reference
+    const { concept, status, graph } = reference
     const head = [
-        `EtherPK Kanban lane from ${graphSource(graphId, reach)}`,
+        `EtherPK Kanban lane from ${graphSource(graph.name, reach)}`,
         `Board: ${concept ?? 'Graph Kanban'}`,
         `Lane: ${lane.laneLabel} (${lane.count === 1 ? '1 task' : `${lane.count} tasks`})`,
     ]

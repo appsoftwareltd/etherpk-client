@@ -156,7 +156,7 @@ describe('Open in task editor on a task outside a board', () => {
     function withClientRows(isDesktop = true) {
         const found = setup(isDesktop)
         found.services.menuTask = (target) => menuTargetTask(target as never)
-        registerAgentInstructionCommands(found.commands, found.contributions, { graphId: () => 'g1', reach: async () => ({ kind: 'synced', graphName: null, agentsUrl: 'https://app.example.com/g/g1?settings=agents' }), writeClipboard: async () => {}, notify: () => {} })
+        registerAgentInstructionCommands(found.commands, found.contributions, { graph: () => ({ where: 'sync', name: 'g1' }), reach: async () => ({ kind: 'synced', graphName: null, agentsUrl: 'https://app.example.com/graph/sync/g1?settings=agents' }), writeClipboard: async () => {}, notify: () => {} })
         return found
     }
 

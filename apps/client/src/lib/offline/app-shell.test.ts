@@ -16,13 +16,17 @@ import {
 
 describe('isAppPagePath', () => {
     it('names the pages a person opens to work, which a cold start offline must reach', () => {
-        for (const path of ['/', '/graphs', '/share', '/g/0d4c', '/g/0d4c/d/Garden', '/g/0d4c/d/Garden/Beans', '/g/0d4c/a/7f3e', '/g/0d4c/t/dark']) {
+        for (const path of ['/', '/graphs', '/share', '/graph/sync/0d4c', '/graph/sync/0d4c/d/Garden', '/graph/sync/0d4c/d/Garden/Beans', '/graph/sync/0d4c/a/7f3e', '/graph/sync/0d4c/t/dark', '/graph/folder/Garden%20Notes', '/graph/folder/reports/d/Beans', '/graph/browser/demo-graph/k/Board']) {
             expect(isAppPagePath(path), path).toBe(true)
         }
     })
 
+    it('still names an address of the shape before ADR 0192, which is sent on to the new one', () => {
+        expect(isAppPagePath('/g/0d4c/d/Garden')).toBe(true)
+    })
+
     it('leaves out the public pages, the shell itself, sign-in, the server routes and the dev harnesses', () => {
-        for (const path of ['/home', '/privacy', '/terms', '/marketing', SHELL_PATH, '/auth/login', '/api/csp-report', '/extensions/maps/1.0.0/main.js', '/dev/editor', '/demo', '/graphsx', '/g']) {
+        for (const path of ['/home', '/privacy', '/terms', '/marketing', SHELL_PATH, '/auth/login', '/api/csp-report', '/extensions/maps/1.0.0/main.js', '/dev/editor', '/demo', '/graphsx', '/graph', '/graph/sync', '/graph/cloud/0d4c', '/g']) {
             expect(isAppPagePath(path), path).toBe(false)
         }
     })

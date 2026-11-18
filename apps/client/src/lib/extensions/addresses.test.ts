@@ -24,16 +24,16 @@ const book = createAddressBook([
 
 describe('the address book', () => {
     it('names a concept View by its segment and the concept, each path segment encoded', () => {
-        expect(book.url('g1', { kind: 'kanban.board', target: 'Projects/Q4 plan' })).toBe('/g/g1/k/Projects/Q4%20plan')
+        expect(book.url({ where: 'sync', name: 'g1' }, { kind: 'kanban.board', target: 'Projects/Q4 plan' })).toBe('/graph/sync/g1/k/Projects/Q4%20plan')
     })
 
     it('names a one-per-graph View by its segment alone', () => {
-        expect(book.url('g 1', { kind: 'graph-view.whole', target: 'whole' })).toBe('/g/g%201/graph-view')
+        expect(book.url({ where: 'sync', name: 'g 1' }, { kind: 'graph-view.whole', target: 'whole' })).toBe('/graph/sync/g%201/graph-view')
     })
 
     it('gives no address to a kind that declares none, or a kind no extension declares', () => {
-        expect(book.url('g1', { kind: 'graph-view.local', target: 'local' })).toBeNull()
-        expect(book.url('g1', { kind: 'document', target: 'Home' })).toBeNull()
+        expect(book.url({ where: 'sync', name: 'g1' }, { kind: 'graph-view.local', target: 'local' })).toBeNull()
+        expect(book.url({ where: 'sync', name: 'g1' }, { kind: 'document', target: 'Home' })).toBeNull()
     })
 
     it('reads an address back into the View it names', () => {
@@ -75,9 +75,9 @@ describe('the addresses of an extension from the Extension Directory', () => {
     const directoryBook = createAddressBook(() => [...builtIns(), orchard])
 
     it('are under /x/ and its id, so they never meet the Client’s own or another extension’s', () => {
-        expect(directoryBook.url('g1', { kind: 'orchard.trees', target: 'Apple tree' })).toBe('/g/g1/x/orchard/trees/Apple%20tree')
-        expect(directoryBook.url('g1', { kind: 'orchard.map', target: 'map' })).toBe('/g/g1/x/orchard/map')
-        expect(directoryBook.url('g1', { kind: 'kanban.board', target: 'Projects' })).toBe('/g/g1/k/Projects')
+        expect(directoryBook.url({ where: 'sync', name: 'g1' }, { kind: 'orchard.trees', target: 'Apple tree' })).toBe('/graph/sync/g1/x/orchard/trees/Apple%20tree')
+        expect(directoryBook.url({ where: 'sync', name: 'g1' }, { kind: 'orchard.map', target: 'map' })).toBe('/graph/sync/g1/x/orchard/map')
+        expect(directoryBook.url({ where: 'sync', name: 'g1' }, { kind: 'kanban.board', target: 'Projects' })).toBe('/graph/sync/g1/k/Projects')
     })
 
     it('read back into the View they name', () => {

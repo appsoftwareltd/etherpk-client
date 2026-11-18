@@ -28,7 +28,7 @@ export interface AgentsPickerServer {
     }>
 }
 
-/** A local graph. `folderName` is null for one kept in the browser, which no agent can reach. */
+/** A folder graph. `folderName` is null for one kept in the browser, which no agent can reach. */
 export interface AgentsPickerLocal {
     id: string
     name: string
@@ -41,14 +41,14 @@ export interface AgentsPickerLocal {
 export interface AgentsGraphChoice {
     value: string
     label: string
-    /** The heading the option sits under: its server, or Local graphs. */
+    /** The heading the option sits under: its server, or Folder graphs. */
     group: string
 }
 
 const SERVER_PREFIX = 'server:'
 
 /**
- * The picker's options, in the Graphs tab's order: each server's graphs, then the local graphs. A
+ * The picker's options, in the Graphs tab's order: each server's graphs, then the folder graphs. A
  * signed-out server hides its graphs, so it gets one option standing in for them, which shows why
  * and offers the way back in.
  */
@@ -59,7 +59,7 @@ export function agentsGraphChoices(servers: readonly AgentsPickerServer[], local
             if (server.authState === 'signed-out') return [{ value: `${SERVER_PREFIX}${server.origin}`, label: 'Signed out', group }]
             return server.rows.map((row) => ({ value: row.id, label: row.label, group }))
         }),
-        ...locals.map((graph) => ({ value: graph.id, label: graph.name, group: 'Local graphs' })),
+        ...locals.map((graph) => ({ value: graph.id, label: graph.name, group: 'Folder graphs' })),
     ]
 }
 
@@ -172,7 +172,7 @@ export function agentsTabPropsFor(value: string, context: AgentsTabContext): Age
     const local = context.locals.find((graph) => graph.id === value)
     if (!local) return null
     if (local.folderName === null) return { kind: 'browser' }
-    return { kind: 'local', folderName: local.folderName, folderPath: local.folderPath, headlessClient: context.headlessClient }
+    return { kind: 'folder', folderName: local.folderName, folderPath: local.folderPath, headlessClient: context.headlessClient }
 }
 
 /**

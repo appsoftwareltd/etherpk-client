@@ -57,10 +57,10 @@ describe('managed Client automatic SSO', () => {
     // A cacheable 303 would be replayed from the HTTP cache on Back and Forward, without its
     // cookies, until the browser gives up with ERR_TOO_MANY_REDIRECTS.
     it('answers the silent check with a redirect no cache may keep', () => {
-        const response = managedClientSsoCheckResponse(new URL('https://app.example.com/g/demo-graph'))
+        const response = managedClientSsoCheckResponse(new URL('https://app.example.com/graph/sync/demo-graph'))
 
         expect(response.status).toBe(303)
-        expect(response.headers.get('location')).toBe('/auth/login?redirect=%2Fg%2Fdemo-graph&prompt=none')
+        expect(response.headers.get('location')).toBe('/auth/login?redirect=%2Fgraph%2Fsync%2Fdemo-graph&prompt=none')
         expect(response.headers.get('cache-control')).toBe('no-store')
     })
 

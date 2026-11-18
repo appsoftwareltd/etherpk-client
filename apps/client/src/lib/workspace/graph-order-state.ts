@@ -28,7 +28,7 @@ function orders(): GraphOrderStore {
 const subscribe = createSubscriber((update) => orders().subscribe(update))
 
 /**
- * The saved order of the group on `origin`, or of Local Graphs when it is null. Read inside a
+ * The saved order of the group on `origin`, or of Folder Graphs when it is null. Read inside a
  * template or a derived, it updates when the order changes here, in another tab or from the account.
  */
 export function graphOrderOf(origin: string | null): string[] {
@@ -36,7 +36,7 @@ export function graphOrderOf(origin: string | null): string[] {
     return orders().read(origin)
 }
 
-/** Save `shown` as the sequence of the group on `origin`, or of Local Graphs when it is null. */
+/** Save `shown` as the sequence of the group on `origin`, or of Folder Graphs when it is null. */
 export function saveGraphOrder(origin: string | null, shown: readonly string[]): void {
     orders().write(origin, shown)
 }

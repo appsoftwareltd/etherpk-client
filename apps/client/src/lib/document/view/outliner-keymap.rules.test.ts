@@ -34,10 +34,11 @@ import { assetLinkSpec } from './augmentations/asset-link'
 import { linkClickCaret, markdownLinkSpec } from './augmentations/markdown-link'
 import { imageClickCaret, imageClickSpec, imageEmbedAugmentation } from './augmentations/image-embed'
 import { imageWidthChange } from './augmentations/image-resize'
+import { mediaEmbedAugmentation, mediaWidgetPos } from './augmentations/media-embed'
 import { markdownTableAugmentation } from './augmentations/markdown-table'
 import { guideThreadsFor } from './augmentations/outline-guides'
 import { blockRange } from './block-actions'
-import { bulletFoldRange, foldedBulletLines, foldOfBullet, hasFoldedDescendant, toggleBulletFoldSpec, unfoldBranchSpec } from './augmentations/outline-folds'
+import { bulletFoldRange, foldedBulletLines, foldOfBullet, hasFoldedDescendant, outlineFolds, toggleBulletFoldSpec, unfoldBranchSpec } from './augmentations/outline-folds'
 import { outlineBaseIn } from './augmentations/outline-base'
 import { commandMenuShown, slashCompletion } from './augmentations/slash-complete'
 import { refreshOpenPopovers } from './augmentations/popover-menu'
@@ -1352,6 +1353,104 @@ describe('a click on a rendered image puts the caret at the end of its markdown 
             expect(doc.slice(0, pos) + '§' + doc.slice(pos)).toBe(row.after)
         })
     }
+})
+
+// A media line, `![alt](../assets/clip.webm)` over a recording in the graph's files, has a player
+// drawn under it (augmentations/media-embed.ts, media-line.ts). The line itself stays the asset
+// link it is, so the player is there whether the caret is on the line or not, and is the same
+// player before and after: a recording that is playing is not stopped by an edit to its label.
+// Precedent: Obsidian and Logseq play an embedded recording in the note. The player itself, with
+// real media: tests-client/media-player.test.ts.
+describe('a media line has a player under it (Obsidian)', () => {
+    const mediaAugmentation = mediaEmbedAugmentation({ resolveAsset: async () => null })
+
+    /** The player widgets under line `n`, as CodeMirror holds them. */
+    function playersUnder(state: EditorState, n: number): WidgetType[] {
+        const line = state.doc.line(n)
+        const found: WidgetType[] = []
+        for (const source of state.facet(EditorView.decorations)) {
+            if (typeof source === 'function') continue
+            source.between(line.to, line.to, (from, _to, deco) => {
+                if (from === line.to && deco.spec.widget && deco.spec.block) found.push(deco.spec.widget as WidgetType)
+            })
+        }
+        return found
+    }
+
+    for (const row of [
+        { rule: 'a video on its own line', text: '![Adding a clip](../assets/add-a-clip.webm)\n- other¦', players: 1 },
+        { rule: 'an audio file on its own line', text: '![A voice note](../assets/voice-note.mp3)\n- other¦', players: 1 },
+        { rule: 'a recording that is a bullet’s only content', text: '- ![clip](../assets/clip.mp4)\n- other¦', players: 1 },
+        { rule: 'the caret on the line: its markdown shows and the player stays', text: '![clip](../assets/clip.mp4)¦\n- other', players: 1 },
+        { rule: 'a link to the file is a link', text: '[clip](../assets/clip.mp4)\n- other¦', players: 0 },
+        { rule: 'a recording in a sentence is a link', text: 'see ![clip](../assets/clip.mp4) here\n- other¦', players: 0 },
+        { rule: 'a recording on another site is not played', text: '![clip](https://example.com/clip.mp4)\n- other¦', players: 0 },
+        { rule: 'a picture is the image embed’s', text: '![chart](../assets/chart.png)\n- other¦', players: 0 },
+        { rule: 'a media line inside a code fence is code', text: '```\n![clip](../assets/clip.mp4)\n```\n- other¦', players: 0, line: 2 },
+    ]) {
+        it(row.rule, () => {
+            const editor = editorFixture(row.text, { caret: '¦', extensions: [mediaAugmentation] })
+            expect(playersUnder(editor.state, row.line ?? 1)).toHaveLength(row.players)
+        })
+    }
+
+    /** Where every player in the document sits, as document offsets. */
+    function playerPositions(state: EditorState): number[] {
+        const found: number[] = []
+        for (const source of state.facet(EditorView.decorations)) {
+            if (typeof source === 'function') continue
+            source.between(0, state.doc.length, (from, _to, deco) => {
+                if (deco.spec.widget && deco.spec.block && (deco.spec.widget as WidgetType).constructor.name === 'MediaWidget') found.push(from)
+            })
+        }
+        return found
+    }
+
+    it('a media line inside a folded bullet has no player, and gets it back when the bullet is unfolded', () => {
+        const editor = editorFixture('- parent¦\n  - ![clip](../assets/clip.mp4)\n- next', { caret: '¦', extensions: [mediaAugmentation, outlineFolds()] })
+        expect(playerPositions(editor.state)).toEqual([editor.state.doc.line(2).to])
+        editor.dispatch(editor.state.update(toggleBulletFoldSpec(editor.state, 1)!))
+        expect(playerPositions(editor.state)).toEqual([])
+        editor.dispatch(editor.state.update(toggleBulletFoldSpec(editor.state, 1)!))
+        expect(playerPositions(editor.state)).toEqual([editor.state.doc.line(2).to])
+    })
+
+    it('a folded bullet that is itself a media line keeps its player, after the fold', () => {
+        const editor = editorFixture('- ![clip](../assets/clip.mp4)¦\n  - child\n- next', { caret: '¦', extensions: [mediaAugmentation, outlineFolds()] })
+        editor.dispatch(editor.state.update(toggleBulletFoldSpec(editor.state, 1)!))
+        expect(playerPositions(editor.state)).toEqual([editor.state.doc.line(2).to])
+    })
+
+    it('where a player goes among folds (mediaWidgetPos)', () => {
+        expect(mediaWidgetPos(40, [])).toBe(40)
+        expect(mediaWidgetPos(40, [{ from: 8, to: 40 }]), 'the last line of a fold').toBeNull()
+        expect(mediaWidgetPos(40, [{ from: 8, to: 90 }]), 'the middle of a fold').toBeNull()
+        expect(mediaWidgetPos(40, [{ from: 40, to: 60 }]), 'its own fold').toBe(60)
+        expect(mediaWidgetPos(40, [{ from: 40, to: 60 }, { from: 8, to: 60 }]), 'its own fold inside an outer one').toBeNull()
+        expect(mediaWidgetPos(40, [{ from: 50, to: 60 }]), 'a fold further down').toBe(40)
+    })
+
+    it('a part of a document shows no player for a media line outside the part', () => {
+        const doc = '- [ ] Build the shed\n  - ![clip](../assets/clip.mp4)\n![other](../assets/other.mp4)'
+        const from = doc.indexOf('  - ')
+        const to = doc.indexOf('\n![other]')
+        const part = editorFixture(doc + '¦', { caret: '¦', extensions: [mediaAugmentation, shownRange(() => ({ from, to, nestedUnder: 1 }))] })
+        expect(playerPositions(part.state)).toEqual([to])
+        const nothing = editorFixture(doc + '¦', { caret: '¦', extensions: [mediaAugmentation, shownRange(() => null)] })
+        expect(playerPositions(nothing.state)).toEqual([])
+    })
+
+    it('keeps the same player when the label is edited, and makes a new one for another file', () => {
+        const editor = editorFixture('![clip¦](../assets/clip.mp4)\n- other', { caret: '¦', extensions: [mediaAugmentation] })
+        const [before] = playersUnder(editor.state, 1)
+        editor.type(' of the garden')
+        expect(editor.state.doc.line(1).text).toBe('![clip of the garden](../assets/clip.mp4)')
+        const [after] = playersUnder(editor.state, 1)
+        expect(after.eq(before)).toBe(true)
+
+        const other = editorFixture('![clip](../assets/walk.mp4)\n- other¦', { caret: '¦', extensions: [mediaAugmentation] })
+        expect(playersUnder(other.state, 1)[0].eq(before)).toBe(false)
+    })
 })
 
 // A clicked image shows its markdown only while the caret is on its line: however the caret leaves

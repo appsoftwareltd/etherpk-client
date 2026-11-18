@@ -171,7 +171,7 @@ describe('the MCP server', () => {
     it('says how to read a task reference, to look at its images, and to leave its status alone unless asked', async () => {
         const { client } = await connected()
         const instructions = client.getInstructions() ?? ''
-        expect(instructions).toContain('etherpk:/g/<graph>/d/<document>#task=<line>-<fingerprint>')
+        expect(instructions).toContain('etherpk:/graph/sync/<graph id>/d/<document>#task=<line>-<fingerprint>')
         expect(instructions).toContain('not a web address')
         expect(instructions).toContain('read each with read_asset')
         expect(instructions).toContain('Leave its status as it is unless the user asks')
@@ -190,7 +190,7 @@ describe('the MCP server', () => {
     // A whole lane of a Kanban board, handed over to work through or triage: the tasks tool lists it.
     it('says how to list the tasks of a lane reference, and that the tasks tool takes one', async () => {
         const { client } = await connected()
-        expect(client.getInstructions()).toContain('etherpk:/g/<graph>/k/<concept>#lane=<status>')
+        expect(client.getInstructions()).toContain('etherpk:/graph/sync/<graph id>/k/<concept>#lane=<status>')
         const tool = (await client.listTools()).tools.find((t) => t.name === 'tasks')
         expect(tool?.description).toContain('lane reference')
         expect(tool?.inputSchema.properties).toHaveProperty('reference')

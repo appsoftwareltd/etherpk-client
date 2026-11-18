@@ -194,9 +194,9 @@ describe('linkPieces', () => {
  */
 describe('a url on a dotless host', () => {
     it('links localhost and an intranet name when they carry a scheme', () => {
-        const doc = 'dev http://localhost:5174/g/4b28/d/2026-09-02 and https://intranet/page'
+        const doc = 'dev http://localhost:5174/graph/sync/4b28/d/2026-09-02 and https://intranet/page'
         expect(links(doc)).toEqual([
-            'http://localhost:5174/g/4b28/d/2026-09-02 → http://localhost:5174/g/4b28/d/2026-09-02',
+            'http://localhost:5174/graph/sync/4b28/d/2026-09-02 → http://localhost:5174/graph/sync/4b28/d/2026-09-02',
             'https://intranet/page → https://intranet/page',
         ])
         expect(hidden(doc)).toEqual([])

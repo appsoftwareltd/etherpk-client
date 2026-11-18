@@ -18,8 +18,8 @@
  *   registry entries with the same title or date. The mirror writes both rather than losing one;
  *   the rename that makes them two concepts happens on Import.
  *
- * **The file name follows the title, exactly as a local graph names its own files**, so a mirror
- * imported as a local graph is indistinguishable from one that was always local. A file found
+ * **The file name follows the title, exactly as a folder graph names its own files**, so a mirror
+ * imported as a folder graph is indistinguishable from one that was always local. A file found
  * under any other name - an earlier mirror lower-cased and hyphenated everything - is renamed to
  * the name the title gives it. Ownership is still read from the folder: a mirror file says which
  * concept it holds (the title it carries, else its own stem), which is how the planner knows

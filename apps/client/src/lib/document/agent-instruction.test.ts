@@ -9,7 +9,7 @@ import type { TaskStatus } from './index-db'
 // reach the graph, which depends on where the graph is, and the Headless Client reads the
 // reference out of the whole text, so every variant must read back.
 
-const AGENTS_URL = 'https://app.example.com/g/g-1?settings=agents'
+const AGENTS_URL = 'https://app.example.com/graph/sync/g-1?settings=agents'
 const synced: AgentReach = { kind: 'synced', graphName: 'Home', agentsUrl: AGENTS_URL }
 const browser: AgentReach = { kind: 'browser', graphName: 'Demo', agentsUrl: AGENTS_URL }
 const folder = (over: Partial<Extract<AgentReach, { kind: 'folder' }>> = {}): AgentReach => ({
@@ -24,8 +24,8 @@ const STOP = `If you have no EtherPK MCP server for this graph, stop. Do not sea
 const OUT_OF_REACH = `This graph is kept inside this browser, so an agent cannot reach it. Tell the user that the Agents tab in EtherPK's Settings explains how to work with an agent. They can open it at ${AGENTS_URL}`
 
 describe('the instruction for a task', () => {
-    const reference: TaskReference = { graphId: 'g-1', document: 'Garden', line: 14, fingerprint: '3fa9c1e07b2d' }
-    const id = 'etherpk:/g/g-1/d/Garden#task=14-3fa9c1e07b2d'
+    const reference: TaskReference = { graph: { where: 'sync', name: 'g-1' }, document: 'Garden', line: 14, fingerprint: '3fa9c1e07b2d' }
+    const id = 'etherpk:/graph/sync/g-1/d/Garden#task=14-3fa9c1e07b2d'
     const label = '#P1 water the beans'
 
     it('tells an agent on a synced graph to use its MCP server, and to stop without one', () => {
@@ -44,7 +44,7 @@ describe('the instruction for a task', () => {
         expect(lines[3]).toContain('Use the EtherPK MCP server connected to that graph:')
     })
 
-    it('gives an agent on a local graph the file, and the tools only if it has them', () => {
+    it('gives an agent on a folder graph the file, and the tools only if it has them', () => {
         expect(formatTaskInstruction(reference, label, folder()).split('\n')).toEqual([
             'EtherPK task from the graph folder "notes"',
             'Task: water the beans',
@@ -93,22 +93,22 @@ describe('the instruction for a task', () => {
     })
 
     it("reads the etherpk: reference before anything shaped like one in the task's words", () => {
-        const words = 'Compare /g/g-2/d/Other#task=1-aaaaaaaaaaaa with the plan'
+        const words = 'Compare /graph/sync/g-2/d/Other#task=1-aaaaaaaaaaaa with the plan'
         expect(parseTaskReference(formatTaskInstruction(reference, words, synced))).toEqual(reference)
     })
 })
 
 describe('the instruction for a lane', () => {
     const lane = { laneLabel: 'Doing', count: 3 }
-    const board: LaneReference = { graphId: 'g-1', concept: 'Kitchen Garden', status: 'doing' }
-    const whole: LaneReference = { graphId: 'g-1', concept: null, status: 'open' }
+    const board: LaneReference = { graph: { where: 'sync', name: 'g-1' }, concept: 'Kitchen Garden', status: 'doing' }
+    const whole: LaneReference = { graph: { where: 'sync', name: 'g-1' }, concept: null, status: 'open' }
 
     it("names the graph, the board, the lane and how to list the lane's tasks, and to stop without an MCP server", () => {
         expect(formatLaneInstruction(board, lane, synced).split('\n')).toEqual([
             'EtherPK Kanban lane from the graph "Home" (g-1)',
             'Board: Kitchen Garden',
             'Lane: Doing (3 tasks)',
-            'Reference: etherpk:/g/g-1/k/Kitchen%20Garden#lane=doing',
+            'Reference: etherpk:/graph/sync/g-1/k/Kitchen%20Garden#lane=doing',
             'This is not a web address. Use the EtherPK MCP server connected to "Home": tasks with concept "Kitchen Garden" and statuses ["doing"] lists the lane\'s tasks (or pass this whole text as reference); read_task, set_task and add_task_note work on each task.',
             STOP,
         ])
@@ -116,7 +116,7 @@ describe('the instruction for a lane', () => {
 
     it('names the Graph Kanban, which lists by status alone', () => {
         const lines = formatLaneInstruction(whole, { laneLabel: 'Open', count: 1 }, synced).split('\n')
-        expect(lines.slice(1, 4)).toEqual(['Board: Graph Kanban', 'Lane: Open (1 task)', 'Reference: etherpk:/g/g-1/kanban#lane=open'])
+        expect(lines.slice(1, 4)).toEqual(['Board: Graph Kanban', 'Lane: Open (1 task)', 'Reference: etherpk:/graph/sync/g-1/kanban#lane=open'])
         expect(lines[4]).toContain('tasks with statuses ["open"] lists')
     })
 
@@ -127,20 +127,20 @@ describe('the instruction for a lane', () => {
         expect(lines[4]).toMatch(/^This is not a web address\. Use the EtherPK MCP server connected to that graph: /)
     })
 
-    it('tells an agent on a local graph which tasks to find in the files', () => {
+    it('tells an agent on a folder graph which tasks to find in the files', () => {
         expect(formatLaneInstruction(board, lane, folder({ file: null })).split('\n')).toEqual([
             'EtherPK Kanban lane from the graph folder "notes"',
             'Board: Kitchen Garden',
             'Lane: Doing (3 tasks)',
             'Folder: /path/to/notes',
-            'Reference: etherpk:/g/g-1/k/Kitchen%20Garden#lane=doing',
+            'Reference: etherpk:/graph/sync/g-1/k/Kitchen%20Garden#lane=doing',
             'This is not a web address. If an EtherPK MCP server for this graph is connected, use it: tasks with concept "Kitchen Garden" and statuses ["doing"] lists the lane\'s tasks (or pass this whole text as reference); read_task, set_task and add_task_note work on each task. Otherwise, in the graph folder, find the unticked tasks tagged #D that are about [[Kitchen Garden]]. AGENTS.md at the top of the folder says what makes a task about a concept.',
         ])
     })
 
     it('leaves the concept out on the Graph Kanban, and the folder line when its path is not known', () => {
         const lines = formatLaneInstruction(whole, { laneLabel: 'Open', count: 1 }, folder({ file: null, folderPath: null })).split('\n')
-        expect(lines[3]).toBe('Reference: etherpk:/g/g-1/kanban#lane=open')
+        expect(lines[3]).toBe('Reference: etherpk:/graph/sync/g-1/kanban#lane=open')
         expect(lines[4]).toContain('Otherwise, in the graph folder, find the unticked tasks with no #W, #D or #T. Follow AGENTS.md at the top of the folder.')
     })
 

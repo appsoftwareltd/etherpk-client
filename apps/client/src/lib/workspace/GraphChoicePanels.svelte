@@ -96,51 +96,51 @@
     </ul>
 {/snippet}
 
-{#snippet localPanel(local: GraphChoicePanels["local"])}
+{#snippet folderPanel(panel: GraphChoicePanels["folder"])}
     <!-- Where the browser cannot open a folder the panel stays, so the choice is known to exist,
          but it offers nothing to press: its reason is text, in full contrast. -->
     <section
-        data-testid="graph-choice-local"
-        data-available={local.available}
-        aria-labelledby="graph-choice-local-heading"
-        class="{PANEL} {local.available
+        data-testid="graph-choice-folder"
+        data-available={panel.available}
+        aria-labelledby="graph-choice-folder-heading"
+        class="{PANEL} {panel.available
             ? 'border-neutral-200 bg-white dark:border-white/10 dark:bg-white/5'
             : 'border-dashed border-neutral-300 bg-neutral-50 dark:border-white/15 dark:bg-transparent'}"
     >
         <h2
-            id="graph-choice-local-heading"
-            class="text-lg font-semibold {local.available
+            id="graph-choice-folder-heading"
+            class="text-lg font-semibold {panel.available
                 ? 'text-neutral-950 dark:text-white'
                 : 'text-neutral-600 dark:text-neutral-400'}"
         >
-            Create a Local Graph
+            Create a Folder Graph
         </h2>
         <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
             A folder on this device.
         </p>
-        {@render bulletList(local.bullets, !local.available)}
-        <div data-testid="graph-choice-local-help" class="mt-5">
-            {#if local.available}
+        {@render bulletList(panel.bullets, !panel.available)}
+        <div data-testid="graph-choice-folder-help" class="mt-5">
+            {#if panel.available}
                 <p
-                    data-testid="graph-choice-local-hint"
+                    data-testid="graph-choice-folder-hint"
                     class="text-sm text-neutral-700 dark:text-neutral-300"
                 >
-                    {local.help}
+                    {panel.help}
                 </p>
             {:else}
                 <p
-                    data-testid="graph-choice-local-unavailable"
+                    data-testid="graph-choice-folder-unavailable"
                     class="text-sm font-medium text-neutral-800 dark:text-neutral-200"
                 >
-                    {local.help}
+                    {panel.help}
                 </p>
             {/if}
         </div>
         <!-- With no button the row still holds its place beside the Synced panel's buttons; stacked
              on a narrow screen it takes no room. -->
-        <div data-testid="graph-choice-local-actions" class={local.button ? "mt-3" : "md:mt-3"}>
-            {#if local.button}
-                {@render choiceButton(local.button, PRIMARY, "graphs-open-folder", false)}
+        <div data-testid="graph-choice-folder-actions" class={panel.button ? "mt-3" : "md:mt-3"}>
+            {#if panel.button}
+                {@render choiceButton(panel.button, PRIMARY, "graphs-open-folder", false)}
             {/if}
         </div>
     </section>
@@ -166,7 +166,7 @@
         </p>
         {@render bulletList(synced.bullets, false)}
         <!-- The plan, or why the button cannot open the naming dialog now. Empty when neither
-             applies; the row keeps its place beside the Local panel's line. -->
+             applies; the row keeps its place beside the Folder panel's line. -->
         <div data-testid="graph-choice-synced-help" class="mt-5">
             {#if synced.plan}
                 <p
@@ -208,8 +208,8 @@
         </p>
         <div data-testid="graph-choice-panels" class="grid gap-4 md:grid-cols-2 md:gap-y-0">
             {#each panels.order as kind (kind)}
-                {#if kind === "local"}
-                    {@render localPanel(panels.local)}
+                {#if kind === "folder"}
+                    {@render folderPanel(panels.folder)}
                 {:else}
                     {@render syncedPanel(panels.synced)}
                 {/if}

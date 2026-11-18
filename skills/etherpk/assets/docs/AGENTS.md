@@ -1,7 +1,7 @@
 <!-- BEGIN ETHERPK - DO NOT EDIT THIS SECTION. It is managed by EtherPK and rewritten on every open; put your own notes above or below it. -->
 ## EtherPK knowledge graph
 
-This folder is a **Local knowledge graph** kept by [EtherPK](https://etherpk.com), a personal
+This folder is a **Folder Graph** kept by [EtherPK](https://etherpk.com), a personal
 knowledge management app: daily journal entries, titled pages and the files they embed, all as
 plain GitHub-flavoured markdown. The files here *are* the notes. EtherPK has no copy of them
 anywhere else, so an edit made here is the edit, and a corrupted file is corrupted for good.
@@ -311,11 +311,15 @@ table cannot sit inside a code block or the frontmatter.
 
 ```markdown
 ![Quarterly chart|300](../assets/quarterly-chart.a1b2c3d4.png)
+![Planting the beans](../assets/planting-the-beans.9c8d7e6f.webm)
 [Q3 report](../assets/q3-report.5e6f7a8b.pdf)
 ```
 
-- An image is `![alt](...)` - anything else is `[label](...)`. An optional display-size hint
-  after a `|` in the alt caps the rendered size: `|300` is a maximum width, `|640x480` a
+- An image is `![alt](...)`, and so is a video (`.webm`, `.mp4`) or an audio file (`.mp3`, `.m4a`,
+  `.wav`, `.ogg`, `.opus`, `.flac`): EtherPK draws a player under the line. Anything else is
+  `[label](...)`. A picture or a player shows only when the line holds nothing else, or is a
+  bullet's only content, so give each a line of its own. HTML such as `<video>` is shown as text.
+- An optional display-size hint after a `|` in an image's alt caps the rendered size: `|300` is a maximum width, `|640x480` a
   maximum width and height. It never enlarges.
 - EtherPK names the files it stores `<kebab-name>.<8 hex chars of content hash>.<ext>` and
   de-duplicates by content. To add an asset yourself, copy the file into `assets/` under any
@@ -372,10 +376,31 @@ AQQAAAGY...
   `dictionary.txt` is the one edit you may make there), and do not edit inside the
   EtherPK section of this file.
 
+### Giving the user a link to a page
+
+EtherPK opens a document of this folder at an address made from the folder's name and the
+document's name:
+
+```text
+<EtherPK address>/graph/folder/<folder name>/d/<document name>
+https://app.etherpk.com/graph/folder/reports/d/Garden%20Notes
+```
+
+- `<EtherPK address>` is where the user runs EtherPK: `https://app.etherpk.com`, unless they have
+  given you another address.
+- `<folder name>` is the name of the folder this file is in, never its path.
+- `<document name>` is a page's `title:`, or a journal entry's day (`2026-06-02`).
+- Percent-encode the folder name and the document name (a space is `%20`). A `/` in a page's
+  title stays a `/`.
+- The link opens in Chrome or Edge on a device that has this folder. The first time, EtherPK asks
+  the user to choose the folder, then opens the document.
+- When you finish work the user will want to read, such as a page you wrote, end your message
+  with its link.
+
 ### Further reading
 
 - Agents and these files: <https://docs.etherpk.com/using-ai-agents-with-your-notes>
-- Local graphs and this folder: <https://docs.etherpk.com/local-graphs>
+- Folder graphs and this folder: <https://docs.etherpk.com/folder-graphs>
 - This layout, as a reference: <https://docs.etherpk.com/graph-folder-layout>
 - Titles, aliases and frontmatter: <https://docs.etherpk.com/titles-aliases-and-frontmatter>
 - Images and files: <https://docs.etherpk.com/images-and-files>

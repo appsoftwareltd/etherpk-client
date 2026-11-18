@@ -24,7 +24,9 @@
     import { afterNavigate } from "$app/navigation";
     import { page } from "$app/state";
     import { inkFor } from "#lib/contrast-ink.js";
-    import { createIdbGraphRegistry, type GraphGroup } from "#lib/storage/index.js";
+    import { graphUrl } from "#lib/navigation/document-url.js";
+    import { graphAddressOf, parseGraphAddressPath, sameGraphAddress } from "#lib/navigation/graph-address.js";
+    import { createIdbGraphRegistry, type GraphGroup, type GraphRecord } from "#lib/storage/index.js";
     import { iconSvg } from "#lib/surface/icons.js";
     import { serverHost } from "#lib/sync/sync-connections.js";
     import { graphAccentFor } from "#lib/workspace/graph-accent.svelte.js";
@@ -48,8 +50,10 @@
         loaded = true;
     }
 
-    function isCurrent(id: string): boolean {
-        return page.url.pathname === `/g/${id}` || page.url.pathname.startsWith(`/g/${id}/`);
+    /** Whether the page is in this graph: its address begins with the graph's own (ADR 0192). */
+    function isCurrent(graph: GraphRecord): boolean {
+        const here = parseGraphAddressPath(page.url.pathname)?.address;
+        return here !== undefined && sameGraphAddress(here, graphAddressOf(graph));
     }
 
     /** A group's graphs with their colours, in list order: live for the open graph, cached for the rest. */
@@ -59,7 +63,7 @@
 
     /** What the group is called. A server is named only where there is another to tell it from. */
     function labelOf(group: GraphGroup): string {
-        if (group.origin === null) return "Local graphs";
+        if (group.origin === null) return "Folder graphs";
         const servers = groups.filter((other) => other.origin !== null).length;
         return servers > 1 ? `Synced graphs on ${serverHost(group.origin)}` : "Synced graphs";
     }
@@ -109,12 +113,12 @@
                     {label}
                 </p>
                 {#each rows as { graph, accent }, index (graph.id)}
-                    {@const current = isCurrent(graph.id)}
+                    {@const current = isCurrent(graph)}
                     <!-- Inline styles win over the classes, so on a coloured row the theme's own
                          highlight and hover are simply left off rather than fought; a brightness
                          shift stands in for hover there. -->
                     <a
-                        href="/g/{graph.id}"
+                        href={graphUrl(graphAddressOf(graph))}
                         aria-current={current ? "page" : undefined}
                         class="flex items-center gap-2 px-3 py-2 text-sm transition-colors {current ? 'font-semibold' : 'font-medium'} {accent
                             ? `${cornerClass(rows, index)} hover:brightness-95 dark:hover:brightness-110`

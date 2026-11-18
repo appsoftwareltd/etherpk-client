@@ -122,7 +122,7 @@ describe('planMirrorNames', () => {
 
     it('renames a file written under an older rule to the name its title gives it', () => {
         // An earlier mirror lower-cased and hyphenated everything. A folder like that, imported
-        // as a local graph, would not look like one a local graph had written - so the file
+        // as a folder graph, would not look like one a folder graph had written - so the file
         // follows the title, and the planner says which file to rename rather than write afresh.
         const existing = folder({
             pages: [

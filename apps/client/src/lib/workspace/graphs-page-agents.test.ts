@@ -52,20 +52,20 @@ const context = (servers: AgentsPickerServer[], locals: AgentsPickerLocal[] = []
 })
 
 describe("the Graphs page Agents tab's graph picker", () => {
-    it('lists each server’s graphs, then the local graphs, in the order the Graphs tab shows them', () => {
+    it('lists each server’s graphs, then the folder graphs, in the order the Graphs tab shows them', () => {
         expect(agentsGraphChoices([managed, custom], [folder, inBrowser])).toEqual([
             { value: 'g-garden', label: 'Garden', group: 'Synced graphs on sync.example.test' },
             { value: 'g-unnamed', label: 'Graph g-unname…', group: 'Synced graphs on sync.example.test' },
             { value: 'g-kitchen', label: 'Kitchen', group: 'Synced graphs on notes.example.org' },
-            { value: 'l-shed', label: 'Shed', group: 'Local graphs' },
-            { value: 'l-attic', label: 'Attic', group: 'Local graphs' },
+            { value: 'l-shed', label: 'Shed', group: 'Folder graphs' },
+            { value: 'l-attic', label: 'Attic', group: 'Folder graphs' },
         ])
     })
 
     it('stands a signed-out server in for the graphs it hides', () => {
         expect(agentsGraphChoices([{ ...managed, authState: 'signed-out', rows: [] }], [folder])).toEqual([
             { value: 'server:https://sync.example.test', label: 'Signed out', group: 'Synced graphs on sync.example.test' },
-            { value: 'l-shed', label: 'Shed', group: 'Local graphs' },
+            { value: 'l-shed', label: 'Shed', group: 'Folder graphs' },
         ])
     })
 
@@ -120,10 +120,10 @@ describe('what the Graphs page Agents tab shows for the chosen graph', () => {
         expect(agentsTabPropsFor('g-kitchen', ctx)).toMatchObject({ kind: 'synced', serverBaseUrl: 'https://notes.example.org/', createSetupCode: null })
     })
 
-    it('is the local graph’s own tab for a folder, and says an agent cannot reach a graph kept in the browser', () => {
+    it('is the folder graph’s own tab for a folder, and says an agent cannot reach a graph kept in the browser', () => {
         const ctx = context([], [folder, inBrowser])
         expect(agentsTabPropsFor('l-shed', ctx)).toEqual({
-            kind: 'local',
+            kind: 'folder',
             folderName: 'shed-notes',
             folderPath: '/home/me/shed-notes',
             headlessClient: '@appsoftwareltd/etherpk-mcp',

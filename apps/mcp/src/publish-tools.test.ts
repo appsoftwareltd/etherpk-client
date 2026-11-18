@@ -358,7 +358,7 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
  * it or holds it would lose the graph's files to that rule, so the publish refuses before it
  * renders anything. A synced graph has no folder on this machine to overlap.
  */
-describe('a publish folder that overlaps a local graph folder', () => {
+describe('a publish folder that overlaps a graph folder', () => {
     afterEach(async () => {
         await Promise.all(open.splice(0).map((g) => g.dispose()))
     })

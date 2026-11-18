@@ -165,7 +165,7 @@ export interface WorkspaceServices {
     index?: RemoteGraphIndex
     settings?: GraphSettings
     /**
-     * The open synced graph's [[Version History]] (ADR 0184). Absent on a Filesystem graph, and on a
+     * The open synced graph's [[Version History]] (ADR 0184). Absent on a Folder graph, and on a
      * synced graph opened without the Sync Server's HTTP API.
      */
     versions?: VersionHistory

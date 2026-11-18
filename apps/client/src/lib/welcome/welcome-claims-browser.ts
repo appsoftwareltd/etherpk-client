@@ -24,7 +24,7 @@ export function leaveWelcomeClaim(graphId: string): void {
 }
 
 /**
- * Called when a folder is first registered as a Local Graph. A folder that holds no notes gets the
+ * Called when a folder is first registered as a Folder Graph. A folder that holds no notes gets the
  * Welcome page on its first open. A folder that has notes anywhere in it is left as it is, and so
  * is one that cannot be read: this never fails the open.
  */

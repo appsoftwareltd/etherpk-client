@@ -13,6 +13,7 @@
  */
 
 import { documentUrl, graphUrl } from '../navigation/document-url'
+import { graphAddressOf } from '../navigation/graph-address'
 import {
     INSTALLED_LAUNCH_PARAM,
     SHORTCUT_PARAM,
@@ -24,14 +25,14 @@ import {
 
 import type { GraphRecord } from './graph-registry'
 
-export type GraphTarget = { kind: 'open'; id: string } | { kind: 'picker' } | { kind: 'home' }
+export type GraphTarget = { kind: 'open'; graph: GraphRecord } | { kind: 'picker' } | { kind: 'home' }
 
 /**
  * The address the root resolver sends the person on to, from the target `resolveGraphTarget`
  * chose and the query string `/` was opened with.
  *
  * - The installed-launch marker and the shortcut name are for this decision and the request log
- *   only, so neither is carried on. Every other parameter is (dev's `?fs=opfs`).
+ *   only, so neither is carried on. Every other parameter is (dev's `?autosaveMs=`).
  * - An installed launch never lands on the public home: with no graphs it opens the Graphs page,
  *   whose first-run card is where a new graph starts.
  * - A shortcut opens in the graph `/` would have resumed: `today` as today's [[Journal Entry]],
@@ -42,13 +43,14 @@ export function rootDestination(target: GraphTarget, search: string, today: () =
     const shortcut = launchShortcutFrom(search)
     const rest = withoutParams(search, [INSTALLED_LAUNCH_PARAM, SHORTCUT_PARAM])
     if (target.kind === 'open') {
-        if (shortcut === 'today') return `${documentUrl(target.id, today())}${rest}`
+        const address = graphAddressOf(target.graph)
+        if (shortcut === 'today') return `${documentUrl(address, today())}${rest}`
         if (shortcut) {
             const params = new URLSearchParams(rest)
             params.set(WORKSPACE_LAUNCH_PARAM, shortcut)
-            return `${graphUrl(target.id)}?${params}`
+            return `${graphUrl(address)}?${params}`
         }
-        return `${graphUrl(target.id)}${rest}`
+        return `${graphUrl(address)}${rest}`
     }
     if (target.kind === 'home' && !shortcut && !isInstalledLaunch(search)) return `/home${rest}`
     return '/graphs'
@@ -59,9 +61,8 @@ export function resolveGraphTarget(
     lastGraphId: string | null,
 ): GraphTarget {
     if (graphs.length === 0) return { kind: 'home' }
-    if (graphs.length === 1) return { kind: 'open', id: graphs[0].id }
-    if (lastGraphId && graphs.some((g) => g.id === lastGraphId)) {
-        return { kind: 'open', id: lastGraphId }
-    }
+    if (graphs.length === 1) return { kind: 'open', graph: graphs[0] }
+    const last = lastGraphId ? graphs.find((g) => g.id === lastGraphId) : undefined
+    if (last) return { kind: 'open', graph: last }
     return { kind: 'picker' }
 }

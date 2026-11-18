@@ -435,7 +435,7 @@
             </p>
             <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                 {managed
-                    ? "Your synced graphs there are hidden until you sign in. Local folder graphs are not affected."
+                    ? "Your synced graphs there are hidden until you sign in. Folder graphs are not affected."
                     : "The token may have been revoked, or it expired. Synced graphs from this server stay hidden until you add a new token."}
             </p>
             {#if managed}

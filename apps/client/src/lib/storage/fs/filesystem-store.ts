@@ -199,7 +199,7 @@ export interface FilesystemDocumentStore extends DocumentStore {
      * whole-graph re-derivation. External edits made while the graph is open are
      * deliberately NOT chased by scanning: they are caught for open documents by
      * `reconcile()` (which names them), and for everything else at the next open, which
-     * fully re-verifies a filesystem graph (ADR 0041 §6). A stale row until then is the
+     * fully re-verifies a folder graph (ADR 0041 §6). A stale row until then is the
      * accepted price of not re-reading the graph per keystroke.
      */
     onChange(listener: StoreChangeListener): () => void

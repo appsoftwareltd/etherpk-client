@@ -61,9 +61,9 @@ export function publishFolderOverlapMessage(folder: string, overlap: PublishFold
                   contains: `holds the folder where ${name} is mirrored on this device`,
               }[overlap.relation]
             : {
-                  same: `is the folder of your local graph ${name}`,
-                  inside: `is inside the folder of your local graph ${name}`,
-                  contains: `holds the folder of your local graph ${name}`,
+                  same: `is the folder of your folder graph ${name}`,
+                  inside: `is inside the folder of your folder graph ${name}`,
+                  contains: `holds the folder of your folder graph ${name}`,
               }[overlap.relation]
     return (
         `“${folder}” ${what}. ` +

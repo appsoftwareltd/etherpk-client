@@ -5,7 +5,7 @@
      * It shows one of two things, decided entirely by the plan it is handed — it makes no
      * judgement of its own:
      *
-     * - **The last reference.** Removing it deletes the file: for good on a Filesystem graph, and
+     * - **The last reference.** Removing it deletes the file: for good on a Folder graph, and
      *   for the retention period on a synced one (ADR 0184), which the message says. The primary
      *   action is styled destructively. When protected documents went unchecked (locked, or
      *   their text could not be read), a warning says so above the button, and the delete is still
@@ -33,7 +33,7 @@
         onchoose: (choice: AssetDeleteChoice) => void;
         /** Open a document holding one of the other references. */
         onopendocument: (concept: string) => void;
-        /** How long a synced graph keeps a deleted file (ADR 0184); absent on a Filesystem graph. */
+        /** How long a synced graph keeps a deleted file (ADR 0184); absent on a Folder graph. */
         keptDays?: number | "unknown";
     } = $props();
 

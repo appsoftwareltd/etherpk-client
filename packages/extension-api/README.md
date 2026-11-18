@@ -491,7 +491,7 @@ concept. `region` is where the kind opens: `main`, `left-sidebar` or `right-side
 one View per graph gives a fixed `target` instead.
 
 An `address` gives the View a URL. For an extension from the Extension Directory, the URL is
-`/g/<graph>/x/<extension id>/<segment>`, followed by the concept when `target` is `concept`. A link
+`/graph/<where>/<name>/x/<extension id>/<segment>`, followed by the concept when `target` is `concept`. A link
 to it opens the View. On a device without the extension, it opens a page that names the extension
 and offers to install it, if the directory lists it.
 

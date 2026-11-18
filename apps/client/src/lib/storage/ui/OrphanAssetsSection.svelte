@@ -1,7 +1,7 @@
 <script lang="ts">
     /**
      * Orphaned-asset scan and cleanup (CONTEXT.md → Orphaned Asset), shared by the Graph
-     * Settings dialog (workspace cog) and the filesystem graph's settings page. The
+     * Settings dialog (workspace cog) and the folder graph's settings page. The
      * caller supplies backend-appropriate {@link GraphAssetTools}; deletion is two-step
      * (armed confirm) because it is permanent.
      *

@@ -5,7 +5,7 @@
      * real document Views, opens today's journal, and wires external-change
      * reconciliation + the dirty-buffer conflict prompt. Mounted by the
      * `(workspace)` route group's +layout (keyed by graph id there), so both
-     * `/g/[graphId]` and `/g/[graphId]/d/[...concept]` share one instance and
+     * `/graph/[where]/[name]` and `/graph/[where]/[name]/d/[...concept]` share one instance and
      * Visit URL rewrites never remount it (ADR 0023).
      *
      * The graph is opened once; the presenter is chosen by viewport. Below the
@@ -31,10 +31,12 @@
         createVisitSnapshots,
         focusEditor,
         focusEditorIfEmpty,
+        graphUrl,
         restorePosition,
         type HistoryEngine,
         type ReadingPositionStore,
     } from "#lib/navigation/index.js";
+    import type { GraphAddress } from "#lib/navigation/graph-address.js";
     import {
         LAYOUT_VERSION,
         type LayoutController,
@@ -740,12 +742,16 @@
 
     let {
         graphId: routeGraphId,
+        graphAddress: routeGraphAddress,
         opfs,
         autosaveMs,
         indexingIconMs,
         server,
     }: {
         graphId: string;
+        /** The [[Graph Address]] the route was opened at (ADR 0192): every address this workspace writes begins with it. */
+        graphAddress: GraphAddress;
+        /** Dev only: open over a private-storage folder made for the id, without the registry. */
         opfs: boolean;
         autosaveMs?: number;
         /** Dev and e2e only: the indexing icon's show delay, 0 to show it at once. */
@@ -762,6 +768,8 @@
     // tabs under the next graph.
     // svelte-ignore state_referenced_locally
     const graphId = routeGraphId;
+    // svelte-ignore state_referenced_locally
+    const graphAddress = routeGraphAddress;
 
     let session: ReturnType<typeof createGraphSession>;
     const health = createWorkspaceHealth();
@@ -1524,7 +1532,7 @@
     /**
      * The open synced graph's [[Version History]] (ADR 0184): the recorder the store calls before a
      * delete, a rename or a merge, and the history the views read. Undefined until the graph's HTTP
-     * API is known, and on a Filesystem graph: a store write before then makes no version.
+     * API is known, and on a Folder graph: a store write before then makes no version.
      */
     let graphVersions = $state.raw<GraphVersions | undefined>(undefined);
     /** Whether this account owns the open synced graph, once the Sync Server has said. */
@@ -2358,7 +2366,7 @@
     } | null>(null);
     /**
      * How long this synced graph keeps a deleted document or file (ADR 0184), for the delete
-     * confirmations: undefined on a Filesystem graph, `unknown` until the Sync Server has said.
+     * confirmations: undefined on a Folder graph, `unknown` until the Sync Server has said.
      */
     let graphKeptDays = $state<number | "unknown" | undefined>(undefined);
 
@@ -3196,7 +3204,7 @@
                 renderer = undefined;
                 mobileRenderer = undefined;
                 void queueHistoryWrite(() =>
-                    goto(`/g/${graphId}${withoutSettingsTab(page.url.search)}`, { shallow: true, replace: true }),
+                    goto(`${graphUrl(graphAddress)}${withoutSettingsTab(page.url.search)}`, { shallow: true, replace: true }),
                 );
                 await attempt.wait(tick());
                 await mountPresenter(attempt, freshLayout().model);
@@ -3533,7 +3541,7 @@
         if (!documents || !index) return;
         const found = await resolveTaskReference(reference, {
             // The address chose this graph already.
-            graphId: null,
+            graph: graphAddress,
             resolveDocument: (name) => canonicalConceptName(name),
             async readBody(document) {
                 try {
@@ -3904,7 +3912,7 @@
      * The Settings → Agents tab. A synced graph (ADR 0072): its id and the Sync Server the device
      * is connected to, for the Headless Client's login and serve commands - the same origin the
      * account menu's "Access tokens" link uses; null when the device has no sync configuration
-     * (the dev gate's server graphs), since there is no server for an agent to sign in to. A local
+     * (the dev gate's server graphs), since there is no server for an agent to sign in to. A folder
      * graph (ADR 0070): where its folder and AGENTS.md are.
      */
     /** A synced graph's own name, as its export names it, or null when it has none. */
@@ -3937,7 +3945,7 @@
         }
         if (fsFolderName === undefined) return { kind: "browser" };
         return {
-            kind: "local",
+            kind: "folder",
             folderName: fsFolderName,
             folderPath: readGraphFolderPath(graphId) || null,
             headlessClient,
@@ -4149,7 +4157,7 @@
         });
     }
 
-    /** The open graph's Version History for the workspace services: none on a Filesystem graph. */
+    /** The open graph's Version History for the workspace services: none on a Folder graph. */
     function versionHistoryService(): VersionHistory | undefined {
         return graphVersions?.history;
     }
@@ -5157,7 +5165,7 @@
         // a board's lane, on the clipboard with how an agent reaches this graph, to hand to it.
         // Said, since a clipboard shows nothing of its own.
         const detachAgentInstructions = registerAgentInstructionCommands(commandRegistry, contributions, {
-            graphId: () => graphId,
+            graph: () => graphAddress,
             reach: agentReach,
             writeClipboard: (text) => navigator.clipboard.writeText(text),
             notify: (text) => notify(text),
@@ -5289,9 +5297,9 @@
         backlinksPreferences = createBacklinksPreferencesStore(graphId);
         const snapshots = createVisitSnapshots();
         navEngine = createHistoryEngine({
-            graphId,
+            graph: graphAddress,
             controller: () => controller,
-            // Preserve the query string (?fs=opfs, ?autosaveMs=… in dev/e2e —
+            // Preserve the query string (?autosaveMs=… in dev/e2e —
             // documentUrl builds a bare path and pushState resolves against the
             // current URL, so the search would otherwise be silently dropped) -
             // all but the Settings param: a Visit is a View becoming active, and
@@ -6437,7 +6445,7 @@
      * dialog closes, whichever way it closes.
      */
     async function agentReach(document: string | null): Promise<AgentReach> {
-        const agentsUrl = agentsSettingsUrl(location.origin, graphId);
+        const agentsUrl = agentsSettingsUrl(location.origin, graphAddress);
         if (isServerStore) return { kind: "synced", graphName: syncedGraphName(), agentsUrl };
         if (fsFolderName === undefined) return { kind: "browser", graphName: graphDisplayName || null, agentsUrl };
         const folderPath = await folderPathOrAskOnce(graphId, () => new Promise((answered) => (folderPathPrompt = { skippable: true, answered })));
@@ -6937,7 +6945,7 @@
      * plain cog and the command land on the tab this graph's Settings was last on, so a run of
      * edits to one tab does not start from General each time. Resolved here, so the address
      * never says "settings" without saying which tab; the dialog still falls back to General
-     * if the tab is not offered (a Filesystem graph has no Mirror tab) and says so.
+     * if the tab is not offered (a Folder graph has no Mirror tab) and says so.
      */
     function openGraphSettings(tab?: SettingsTab, options: { publishReport?: string; agentsSubTab?: string } = {}) {
         // The toolbar shows before the first Layout has mounted, and seed() then writes the first
@@ -7179,7 +7187,7 @@
     /**
      * Enable a Local Mirror (ADR 0008): pick a directory and continuously write the graph's
      * materialized markdown and assets to it, for Data Ownership. Server-master, faithful
-     * (deletes strays), so the folder is checked before anything is written: a local graph's
+     * (deletes strays), so the folder is checked before anything is written: a folder graph's
      * folder or another graph's mirror is refused by name, and a folder holding anything in
      * journals/, pages/, assets/ or etherpk/ gets a confirmation that counts what goes.
      */
@@ -7569,7 +7577,7 @@
         ).catch(() => null);
     }
 
-    /** The archive's top-level folder: the graph's name as a local graph would name its folder. */
+    /** The archive's top-level folder: the graph's name as a folder graph would name its folder. */
     function exportStem(): string {
         return graphExportStem(
             serverGraph?.getMeta().name || graphDisplayName,
@@ -8623,7 +8631,7 @@
         oncancel={() => (mirrorTakeover = null)}
     />
 {:else if mirrorTakeover?.kind === "refuse"}
-    <!-- A folder that already belongs to a local graph or another graph's mirror is never taken
+    <!-- A folder that already belongs to a folder graph or another graph's mirror is never taken
          over: confirming would delete that graph's files. The way forward is another folder. -->
     <ConfirmDialog
         open={true}

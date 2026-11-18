@@ -1,7 +1,7 @@
 /**
  * The index kept current a document at a time, against a full rebuild (ADR 0041, and the name
  * reconciliation of 2026-10-04). After any run of creates, edits, alias changes, renames, merges,
- * deletes and, on a local graph, page files changed on disk, the rows the workspace's index holds
+ * deletes and, on a folder graph, page files changed on disk, the rows the workspace's index holds
  * must be exactly the rows a full rebuild over the same store writes.
  *
  * Why the two can be equal at all: every derived row is a function of ONE document, its title,
@@ -118,9 +118,9 @@ interface Store extends IndexSource {
 
 interface Graph {
     store: Store
-    /** Write everything pending: a local graph's autosaves, a synced graph's updates. */
+    /** Write everything pending: a folder graph's autosaves, a synced graph's updates. */
     flush(): Promise<void>
-    /** A local graph's folder: where another program writes a page file. */
+    /** A folder graph's folder: where another program writes a page file. */
     adapter?: DirectoryAdapter
     reconcile?(): Promise<void>
     dispose(): Promise<void>
@@ -128,7 +128,7 @@ interface Graph {
 
 let graphs = 0
 
-async function localGraph(): Promise<Graph> {
+async function folderGraph(): Promise<Graph> {
     const adapter = createMemoryDirectoryAdapter({ now: () => Date.now() })
     await adapter.ensureSkeleton()
     const store = createFilesystemDocumentStore(adapter, { autosaveMs: 5 })
@@ -384,8 +384,8 @@ async function property(makeGraph: () => Promise<Graph>, onDisk: boolean, runs: 
 }
 
 describe('the incremental index holds what a full rebuild would', () => {
-    it('on a local graph, through edits, names, renames, merges, deletes and files changed on disk', async () => {
-        await property(localGraph, true, 40)
+    it('on a folder graph, through edits, names, renames, merges, deletes and files changed on disk', async () => {
+        await property(folderGraph, true, 40)
     }, 240_000)
 
     it('on a synced graph, through edits, names, renames, merges and deletes', async () => {

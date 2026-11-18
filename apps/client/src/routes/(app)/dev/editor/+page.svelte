@@ -103,7 +103,7 @@
     if (folds) setActiveFoldMemory(folds)
 
     // The Command + Contribution registries so the `/` Command Menu has commands to offer
-    // (mirrors the /g/[graphId] composition root). Editor commands reach the focused editor
+    // (mirrors the /graph/[where]/[name] composition root). Editor commands reach the focused editor
     // through the active-view accessor that DocumentView publishes on mount.
     const commandRegistry = createCommandRegistry()
     const contributions = createContributionRegistry()

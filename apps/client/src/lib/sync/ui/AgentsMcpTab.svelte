@@ -182,20 +182,20 @@
             Use to allow an AI agent on your device to read and modify a graph. This graph is kept inside this browser, so an agent cannot reach it.
         </p>
         <p class="text-sm text-neutral-950 dark:text-neutral-100">
-            To work with an agent, open a local graph, which is a folder of plain files an agent can open like any other project, or a synced graph, which an
+            To work with an agent, open a folder graph, which is a folder of plain files an agent can open like any other project, or a synced graph, which an
             agent reaches through the EtherPK Headless Client. You can do either from the
             <a href="/graphs" class={LINK}>Graphs page</a>.
         </p>
         {@render optional(null)}
     </div>
-{:else if agents.kind === "local"}
+{:else if agents.kind === "folder"}
     <!-- The folder is the integration, so nothing has to be connected. The MCP server is
          the one extra, and comes before what the folder's AGENTS.md covers. -->
-    <div class="space-y-4" data-testid="agents-tab-local">
+    <div class="space-y-4" data-testid="agents-tab-folder">
         {@render heading()}
         {@render intro("this graph")}
         <p class="text-sm text-neutral-600 dark:text-neutral-400">
-            The MCP server is optional on a local graph. The graph is a folder, so the agent can open its files like any other project, and the MCP server adds
+            The MCP server is optional on a folder graph. The graph is a folder, so the agent can open its files like any other project, and the MCP server adds
             search, backlinks and task tools. The MCP can see a count of protected documents, but no names or text.
         </p>
         <p class="text-sm text-neutral-950 dark:text-neutral-100">
@@ -224,7 +224,7 @@
                 )}
             </div>
         {:else}
-            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-local-no-path">
+            <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-folder-no-path">
                 To hand an agent a full path, or to serve the folder to an agent over MCP with search, backlinks and tasks,
                 {inGraph ? "set" : "open this graph and set"}
                 <span class="font-medium">Folder path on this device</span>
@@ -235,7 +235,7 @@
         {/if}
         <p class="text-sm text-neutral-950 dark:text-neutral-100">
             EtherPK keeps an <code class="font-mono">AGENTS.md</code>
-            at the top of the folder (<code class="font-mono" data-testid="agents-local-folder">{agents.folderName}</code>), beside
+            at the top of the folder (<code class="font-mono" data-testid="agents-folder-name">{agents.folderName}</code>), beside
             <code class="font-mono">journals/</code>,
             <code class="font-mono">pages/</code> and
             <code class="font-mono">assets/</code>. Agents read a file of that name before they touch anything, and this one tells them how the notes are
@@ -252,7 +252,7 @@
         {#if agents.folderPath}
             <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 Path on this device:
-                <code class="font-mono" data-testid="agents-local-path">{agents.folderPath}/AGENTS.md</code>
+                <code class="font-mono" data-testid="agents-folder-path">{agents.folderPath}/AGENTS.md</code>
             </p>
         {/if}
         {@render optional(agents.folderPath ? agents : null)}

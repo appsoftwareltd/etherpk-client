@@ -59,9 +59,9 @@ describe('the frontmatter controller', () => {
         expect(h.log).toEqual(['aliases:Kanban:'])
     })
 
-    // A local graph's listing reads aliases from the last saved file, so it can still hold ones the
+    // A folder graph's listing reads aliases from the last saved file, so it can still hold ones the
     // person just cut with the old block. The file is the truth there: nothing is carried back.
-    it('on a local graph a block the episode created changes nothing unless it names aliases', async () => {
+    it('on a folder graph a block the episode created changes nothing unless it names aliases', async () => {
         const h = harness('---\ntags: [x]\n---\nbody', { kind: 'page', concept: 'Kanban', aliases: ['Board'], fileStem: 'Kanban' })
         h.deps.backend = () => 'filesystem'
         await h.controller.episodeEnded('Kanban', { blockIsNew: true })

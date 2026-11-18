@@ -46,7 +46,7 @@ export interface FrontmatterStore extends DocumentStore {
 export async function rewriteFrontmatter(store: FrontmatterStore, concept: string, rewrite: (text: string) => string): Promise<boolean> {
     await store.whenReady?.(concept)
     // Edits still inside a Filesystem store's autosave are written first, so its listing - which
-    // a local graph reads from the file - agrees with the text before any aliases are carried.
+    // a folder graph reads from the file - agrees with the text before any aliases are carried.
     await store.flushDocument?.(concept)
     const handle = store.open(concept)
     const text = handle.getText()

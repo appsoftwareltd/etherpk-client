@@ -6,7 +6,7 @@
      * Backend]], the random asset id on a [[Server Backend]] — never the reference that opened
      * it, so one Asset is one tab however its references happen to be labelled (ADR 0054's
      * identity rule). The tab therefore opens titled from the target with its id segment
-     * stripped - the file name on a filesystem graph, a bare uuid on a synced one - and
+     * stripped - the file name on a folder graph, a bare uuid on a synced one - and
      * retitles itself to the true decrypted name once the bytes arrive, which is the only
      * moment that name is known. The retitle goes through the workspace's `retitleView`
      * service rather than the renderer, which a presenter swap replaces under this View.

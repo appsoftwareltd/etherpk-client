@@ -17,6 +17,7 @@ import {
     registerCommandMenuItem,
     registerContextMenuItem,
 } from '../../surface'
+import type { GraphAddress } from '../../navigation/graph-address'
 import { getActiveEditorView } from '../active-editor'
 import { TASK_STATUSES, type TaskStatus } from '../index-db'
 import { type AgentReach, formatLaneInstruction, formatTaskInstruction } from '../agent-instruction'
@@ -31,10 +32,11 @@ export const TASK_COPY_LANE_REFERENCE = 'task.copyLaneReference'
 
 export interface AgentInstructionCommandDeps {
     /** The open graph's id, or null with no graph open. */
-    graphId(): string | null
+    /** The address of the open graph, or null when none is open. */
+    graph(): GraphAddress | null
     /**
      * How an agent can reach the open graph, and where `document` is in it (null for no one
-     * document). May wait on the person, who is asked once where a local graph's folder is.
+     * document). May wait on the person, who is asked once where a folder graph's folder is.
      */
     reach(document: string | null): Promise<AgentReach>
     writeClipboard(text: string): Promise<void>
@@ -56,11 +58,11 @@ async function copyInstruction(text: string, what: string, reach: AgentReach, de
 
 /** Copy the instruction for `task`, and say so. False when nothing was copied: no graph is open, or the clipboard refused. */
 export async function copyTaskInstruction(task: CaretTask, deps: AgentInstructionCommandDeps): Promise<boolean> {
-    const graphId = deps.graphId()
-    if (graphId === null) return false
+    const graph = deps.graph()
+    if (graph === null) return false
     const fingerprint = await taskFingerprint(task.label)
     const reach = await deps.reach(task.document)
-    const text = formatTaskInstruction({ graphId, document: task.document, line: task.line, fingerprint }, task.label, reach)
+    const text = formatTaskInstruction({ graph, document: task.document, line: task.line, fingerprint }, task.label, reach)
     return copyInstruction(text, `"${taskWords(task.label)}"`, reach, deps)
 }
 
@@ -74,10 +76,10 @@ export interface LaneToCopy {
 
 /** Copy the instruction for `lane`, and say so. False when nothing was copied: no graph is open, or the clipboard refused. */
 export async function copyLaneInstruction(lane: LaneToCopy, deps: AgentInstructionCommandDeps): Promise<boolean> {
-    const graphId = deps.graphId()
-    if (graphId === null) return false
+    const graph = deps.graph()
+    if (graph === null) return false
     const reach = await deps.reach(null)
-    const text = formatLaneInstruction({ graphId, concept: lane.concept, status: lane.status }, { laneLabel: lane.label, count: lane.count }, reach)
+    const text = formatLaneInstruction({ graph, concept: lane.concept, status: lane.status }, { laneLabel: lane.label, count: lane.count }, reach)
     return copyInstruction(text, `the ${lane.label} lane of ${lane.concept ?? 'the Graph Kanban'}`, reach, deps)
 }
 

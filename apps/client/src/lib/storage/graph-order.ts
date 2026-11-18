@@ -1,6 +1,6 @@
 /**
  * Graph Order: the sequence a person chooses for the graphs in one group of the Graphs page. Each
- * group has its own: the graphs on one Sync Server, or the Local Graphs on this device.
+ * group has its own: the graphs on one Sync Server, or the Folder Graphs on this device.
  *
  * What is saved is a list of graph ids, so it never has to match what a device holds. A device
  * passes over an id it does not hold, a graph it holds with no place goes after the ones that have
@@ -41,7 +41,7 @@ export function mergeGraphOrder(saved: readonly string[], shown: readonly string
     return places.map((id) => (showing.has(id) ? shown[next++] : id))
 }
 
-/** One group of graphs: those on the server at `origin`, or the Local Graphs when it is null. */
+/** One group of graphs: those on the server at `origin`, or the Folder Graphs when it is null. */
 export interface GraphGroup {
     origin: string | null
     graphs: GraphRecord[]
@@ -57,7 +57,7 @@ export interface GraphGroupOptions {
 const recordId = (graph: GraphRecord) => graph.id
 
 /**
- * Graphs in the groups they show in: synced groups first, then Local Graphs with the demo last,
+ * Graphs in the groups they show in: synced groups first, then Folder Graphs with the demo last,
  * each group in its Graph Order. A group with no graphs is left out.
  */
 export function groupGraphs(graphs: readonly GraphRecord[], options: GraphGroupOptions): GraphGroup[] {
@@ -92,7 +92,7 @@ function parseOrder(raw: string | null | undefined): string[] {
 }
 
 export interface GraphOrderStore {
-    /** The saved order of the group on `origin`, or of Local Graphs when it is null. */
+    /** The saved order of the group on `origin`, or of Folder Graphs when it is null. */
     read(origin: string | null): string[]
     /** Save `shown` as the group's sequence, keeping the places of the ids it does not name. */
     write(origin: string | null, shown: readonly string[]): void
