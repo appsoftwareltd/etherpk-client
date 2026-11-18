@@ -8,7 +8,7 @@ import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 import { type FencedBlockRange, fencedBlocks } from '../fenced-code'
 import { changedLineIndices, joinLines, type SourceLine, splitLines } from './line-diff'
 
-export type FormattingCheckId = 'no-break-space-indent' | 'bullet-marker' | 'indentation' | 'blank-line-after-list' | 'line-endings' | 'unclosed-fence'
+export type FormattingCheckId = 'no-break-space-indent' | 'bullet-marker' | 'empty-bullet' | 'indentation' | 'blank-line-after-list' | 'line-endings' | 'unclosed-fence'
 
 /**
  * A document's whole text, frontmatter included, as every check reads it: split into lines once,

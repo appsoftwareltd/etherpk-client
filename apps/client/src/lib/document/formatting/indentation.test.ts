@@ -53,6 +53,24 @@ describe('indentation off the two-space grid', () => {
         expect(find(text)).toMatchObject({ fixed, reason: 'off the two-space grid' })
     })
 
+    it('flags bullets indented under a heading with no bullet above them, and puts them at the heading\'s indent', () => {
+        const text = ['## [[Shed]]', '  - **Tools**', '    - spade', '    - ', '  - Paint', '    - green', '- ## Garden', '  - beans', '  - '].join('\n')
+        expect(find(text)).toMatchObject({
+            reason: 'bullets indented under a heading, with no bullet above them',
+            lines: [1, 2, 3, 4, 5],
+            fixed: ['## [[Shed]]', '- **Tools**', '  - spade', '  - ', '- Paint', '  - green', '- ## Garden', '  - beans', '  - '].join('\n'),
+        })
+    })
+
+    it('names the heading for a section that moves only once the walk has evened it out', () => {
+        expect(find('## Shed\n    - a\n  - b')).toMatchObject({ fixed: '## Shed\n- a\n- b', reason: 'bullets indented under a heading, with no bullet above them' })
+    })
+
+    it('names the grid, not a heading, for a code comment after a four-space list, or a heading inside a bullet', () => {
+        expect(find('- a\n    - b\n      ```sh\n      # note\n      ```')?.reason).toBe('off the two-space grid')
+        expect(find('- a\n  ## Shed\n      - b')?.reason).toBe('off the two-space grid')
+    })
+
     it('keeps a tab inside the code, and every line ending', () => {
         expect(find('- a\r\n\t- ```\r\n\t  x\ty\r\n\t  ```\r\n')?.fixed).toBe('- a\r\n  - ```\r\n    x\ty\r\n    ```\r\n')
     })

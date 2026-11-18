@@ -9,7 +9,23 @@ starts at 0.9.3.
 
 ### Client
 
+- **Bullets indented under a heading are put at column 0.** Bullets under a heading that were
+  indented with no bullet above them, as another editor can leave a page, are now found by the
+  formatting scan's indentation check, and its fix moves the section under the heading to column 0
+  as a whole. Import and paste put such bullets at column 0 too.
+- **Approve all and Dismiss in the formatting scan.** Under the count of issues, **Approve all**
+  fixes every issue the scan can fix, after one confirmation, and **Dismiss** clears the results
+  ready for a new scan. The scan also finds empty bullets written as a lone `-`, as Logseq writes
+  them, which showed as a dash, and gives them the space that makes them bullets. A Logseq import
+  now writes them that way too.
 - **Fixes.**
+  - Each group's **Approve all** in the formatting scan has the same fill as **Approve**, and asks
+    for its confirmation straight away, without waiting for you to open a page's changes.
+  - The formatting scan no longer reports a page as changed since the scan when nobody edited it,
+    as when the page had been opened in the editor or one of the scan's own fixes brought an issue
+    back. Approve all goes round again for such issues, and the count left after fixing says which
+    issues have to be fixed by hand.
+  - Keyboard focus stays on a formatting scan button while it waits for a scan or fixes to finish.
   - In Firefox, selected text in the PDF reader is marked in grey, as in other browsers, instead of
     the system's highlight colour.
 

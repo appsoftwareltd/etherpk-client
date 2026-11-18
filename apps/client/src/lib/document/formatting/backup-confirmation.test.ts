@@ -9,8 +9,8 @@ import { BACKUP_CONFIRMATION_PHRASE, isBackupConfirmation } from './backup-confi
 
 describe('isBackupConfirmation', () => {
     it.each([
-        ['the phrase as shown', 'Export completed and checked'],
-        ['lower case', 'export completed and checked'],
+        ['the phrase as shown', 'export completed and checked'],
+        ['a capital first letter', 'Export completed and checked'],
         ['any mix of case', 'EXPORT Completed AND checked'],
         ['spaces around it', '  Export completed and checked '],
         ['more than one space between words', 'Export  completed and   checked'],
@@ -31,6 +31,10 @@ describe('isBackupConfirmation', () => {
         ['a different phrase', 'Export complete and checked'],
     ])('refuses %s', (_name, typed) => {
         expect(isBackupConfirmation(typed)).toBe(false)
+    })
+
+    it('shows the phrase in lower case, so nobody wonders whether the capitals matter', () => {
+        expect(BACKUP_CONFIRMATION_PHRASE).toBe(BACKUP_CONFIRMATION_PHRASE.toLowerCase())
     })
 
     it('accepts the phrase it shows', () => {

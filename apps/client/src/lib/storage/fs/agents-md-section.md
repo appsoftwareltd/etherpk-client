@@ -184,7 +184,8 @@ continues a parent after its children. EtherPK reads such a line as its own eith
 markdown readers take it into the bullet above unless the blank line is there.
 
 Headings (`#`, `##`, ...) and plain paragraphs are ordinary markdown and also nest blocks by
-heading level. Numbered lists, `*` bullets and `+` bullets are not outliner blocks.
+heading level. A heading nests by its level, not by indentation, so the bullets under a heading at
+the top level start at column 0, never indented with no bullet above them. Numbered lists, `*` bullets and `+` bullets are not outliner blocks.
 
 **Inline marks.** Standard Markdown: `**bold**`, `*italic*` or `_italic_`, `~~strikethrough~~`,
 `\`inline code\``, plus `==highlight==` (the Obsidian and Logseq spelling - Logseq's `^^text^^` is not

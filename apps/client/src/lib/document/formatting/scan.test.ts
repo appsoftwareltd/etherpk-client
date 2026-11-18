@@ -8,12 +8,16 @@ import { describe, expect, it } from 'vitest'
 
 import type { SpliceOutcome } from '../types'
 import type { TextSplice } from '../wikilink/rename'
-import { type DocumentRead, type FormattingIssue, type FormattingSource, approveAll, approveIssue, revealLineOf, scanGraph } from './scan'
+import { type DocumentRead, type FormattingIssue, type FormattingSource, approveAll, approveEverything, approveIssue, recheckPage, revealLineOf, scanGraph } from './scan'
 
 type Page = string | { unread: 'syncing' | 'unreadable' }
 
 /** A graph in memory, written the way the stores write: only when the text is as expected. */
-function fakeSource(pages: Record<string, Page>, options: { chunkSize?: number; outcome?: (key: string) => SpliceOutcome | Error | undefined } = {}) {
+function fakeSource(
+    pages: Record<string, Page>,
+    options: { chunkSize?: number; outcome?: (key: string) => SpliceOutcome | Error | undefined; syncingAfterWrite?: boolean } = {},
+) {
+    const written = new Set<string>()
     const store = new Map<string, Page>(Object.entries(pages))
     const reads: string[][] = []
     const source: FormattingSource & { store: Map<string, Page>; reads: string[][] } = {
@@ -28,7 +32,9 @@ function fakeSource(pages: Record<string, Page>, options: { chunkSize?: number; 
             const out = new Map<string, DocumentRead>()
             for (const key of keys) {
                 const page = store.get(key)
-                if (page === undefined) out.set(key, { kind: 'gone' })
+                // A synced store that cannot yet confirm its own write says the page is still syncing.
+                if (options.syncingAfterWrite && written.has(key)) out.set(key, { kind: 'unread', reason: 'syncing' })
+                else if (page === undefined) out.set(key, { kind: 'gone' })
                 else if (typeof page === 'string') out.set(key, { kind: 'text', text: page })
                 else out.set(key, { kind: 'unread', reason: page.unread })
             }
@@ -45,6 +51,7 @@ function fakeSource(pages: Record<string, Page>, options: { chunkSize?: number; 
             let text = page
             for (const s of [...splices].reverse()) text = text.slice(0, s.from) + s.insert + text.slice(s.to)
             store.set(key, text)
+            written.add(key)
             return 'written'
         },
     }
@@ -193,6 +200,52 @@ describe('approveIssue', () => {
     })
 })
 
+describe('after a fix is written', () => {
+    it("re-checks the page's other issues against the fix, even while the store cannot confirm its write", async () => {
+        const source = fakeSource({ a: '* a\r\n' }, { syncingAfterWrite: true })
+        const { issues } = await scanGraph(source, { signal: never })
+        await approveIssue(source, issues, issue(issues, 'bullet-marker', 'a'))
+        expect(issue(issues, 'line-endings', 'a')).toMatchObject({ status: 'pending', scannedText: '- a\r\n' })
+
+        await approveIssue(source, issues, issue(issues, 'line-endings', 'a'))
+        expect(issue(issues, 'line-endings', 'a').status).toBe('fixed')
+        expect(source.store.get('a')).toBe('- a\n')
+    })
+
+    it('puts a fixed issue back to pending, not changed, when another of the scan\'s own fixes brings it back', () => {
+        const document = { key: 'a', concept: 'Page a', kind: 'page' as const }
+        const fixed: FormattingIssue = { id: 'bullet-marker:a', check: 'bullet-marker', document, scannedText: '* a', finding: { lines: [0], fixed: '- a', reason: '' }, status: 'fixed' }
+        const issues = [fixed]
+        recheckPage(issues, document, '- a\n* b')
+        expect(fixed).toMatchObject({ status: 'pending', scannedText: '- a\n* b' })
+    })
+
+    it('does not call a page changed when opening it in the editor only turned its line endings into line feeds', async () => {
+        // The editor's buffer holds every line ending as \n, and an open page is read and written through it.
+        const source = fakeSource({ a: '* a\r\n* b\r\n' })
+        const { issues } = await scanGraph(source, { signal: never })
+        source.store.set('a', '* a\n* b\n')
+        const bullets = issue(issues, 'bullet-marker', 'a')
+        await approveIssue(source, issues, bullets)
+        expect(bullets).toMatchObject({ status: 'pending', scannedText: '* a\n* b\n' })
+        expect(issue(issues, 'line-endings', 'a').status).toBe('resolved')
+
+        await approveIssue(source, issues, bullets)
+        expect(bullets.status).toBe('fixed')
+        expect(source.store.get('a')).toBe('- a\n- b\n')
+    })
+
+    it('marks a fixed issue changed when a refused write shows someone else brought it back', () => {
+        const document = { key: 'a', concept: 'Page a', kind: 'page' as const }
+        const fixed: FormattingIssue = { id: 'bullet-marker:a', check: 'bullet-marker', document, scannedText: '* a', finding: { lines: [0], fixed: '- a', reason: '' }, status: 'fixed' }
+        const refused: FormattingIssue = { id: 'line-endings:a', check: 'line-endings', document, scannedText: '- a\r\n', finding: { lines: [0], fixed: '- a\n', reason: '' }, status: 'pending' }
+        const issues = [fixed, refused]
+        recheckPage(issues, document, '- a\r\n* typed later\r\n', refused)
+        expect(fixed.status).toBe('changed')
+        expect(refused.status).toBe('changed')
+    })
+})
+
 describe('approveAll', () => {
     it("fixes a check's pending issues one by one, leaves skipped ones, and counts what changed", async () => {
         const source = fakeSource({ a: '* a', b: '* b', c: '* c', d: '- d\r\n' })
@@ -207,6 +260,55 @@ describe('approveAll', () => {
         expect(source.store.get('b')).toBe('* b')
         expect(issue(issues, 'bullet-marker', 'c').status).toBe('changed')
         expect(issue(issues, 'line-endings', 'd').status).toBe('pending')
+    })
+})
+
+describe('approveEverything', () => {
+    it("fixes every check's pending issues in registry order, one page at a time, and leaves what it cannot fix", async () => {
+        const source = fakeSource({
+            a: '* a\r\n', // bullet-marker, then line-endings, on one page
+            b: '- b\n\t- c', // indentation
+            c: '* c', // skipped, so left alone
+            d: '- d\n  ```js', // only reported
+            e: '- e\n    * f', // the bullet fix brings an indentation issue to light, which is fixed too
+            f: '* f', // changed after the scan, so shown again rather than written
+        })
+        const { issues } = await scanGraph(source, { signal: never })
+        issue(issues, 'bullet-marker', 'c').status = 'skipped'
+        source.store.set('f', '* f\n* typed later')
+
+        const checks: string[] = []
+        const progress: [number, number][] = []
+        const tally = await approveEverything(source, issues, {
+            onCheck: (check) => checks.push(check),
+            onProgress: (done, total) => progress.push([done, total]),
+        })
+
+        expect(checks).toEqual(['bullet-marker', 'indentation', 'line-endings'])
+        expect(source.store.get('a')).toBe('- a\n')
+        expect(source.store.get('b')).toBe('- b\n  - c')
+        expect(source.store.get('c')).toBe('* c')
+        expect(source.store.get('d')).toBe('- d\n  ```js')
+        expect(source.store.get('e')).toBe('- e\n  - f')
+        expect(source.store.get('f')).toBe('* f\n* typed later')
+        expect(issue(issues, 'bullet-marker', 'f').status).toBe('changed')
+        expect(tally).toEqual({ total: 6, fixed: 5, changed: 1 })
+        // Progress counts up to a total that grows when a fix brings another issue to light.
+        expect(progress[0]).toEqual([0, 5])
+        expect(progress.at(-1)).toEqual([6, 6])
+    })
+})
+
+describe('approveEverything until the fixes settle', () => {
+    it('goes round again when a fix leaves its own check more to do, and leaves nothing to approve', async () => {
+        // The bullet fix makes `*` a `-` bullet, and the parser then reads the `+` after it as an item of its own.
+        const source = fakeSource({ a: '-\r\n     * + # b \t\n' })
+        const { issues } = await scanGraph(source, { signal: never })
+        const tally = await approveEverything(source, issues)
+        expect(issues.filter((i) => i.status === 'pending' && i.finding.fixed !== null)).toEqual([])
+        expect(issues.filter((i) => i.status === 'changed')).toEqual([])
+        expect(tally.changed).toBe(0)
+        expect(tally.fixed).toBe(tally.total)
     })
 })
 

@@ -98,6 +98,71 @@ describe('normaliseIndentUnit', () => {
         expect(normaliseIndentUnit(text)).toBe('---\ntitle: x\ntags:\n    - a\n\t- b\n---\n- c\n  - d')
     })
 
+    it('the section under a top-level heading that starts with an indented bullet moves to column 0 as a whole', () => {
+        expect(normaliseIndentUnit('## Shed\n  - tools\n    - spade\n    - \n  - paint')).toBe('## Shed\n- tools\n  - spade\n  - \n- paint')
+        // Its soft lines and fenced block move with it, and the code keeps its own indentation.
+        expect(normaliseIndentUnit('# Shed\n  - tools\n    soft\n    ```\n      x\n    ```')).toBe('# Shed\n- tools\n  soft\n  ```\n    x\n  ```')
+        // A sub-heading at the bullets' indent moves with them, so it stays beside them, not inside a
+        // block, and its own bullets then start at column 0 under it.
+        expect(normaliseIndentUnit('## Shed\n  - tools\n  ### Paint\n    - green')).toBe('## Shed\n- tools\n### Paint\n- green')
+        // The section ends at the first line shallower than it; a blank line does not end it.
+        expect(normaliseIndentUnit('## Shed\n\n  - tools\n\n  - paint\n- ## Garden\n  - beans')).toBe('## Shed\n\n- tools\n\n- paint\n- ## Garden\n  - beans')
+    })
+
+    it('leaves a heading section that is already at column 0, under an indented heading, or would cut a fenced block', () => {
+        for (const text of [
+            '## Shed\n- tools\n  - spade',
+            '- ## Paint\n  - green',
+            '- shed\n  ## Tools\n    - spade',
+            '## Shed\nintro\n  - tools',
+        ]) {
+            expect(normaliseIndentUnit(text)).toBe(text)
+        }
+    })
+
+    it('leaves a section holding a fence line the editor pairs with nothing to the walk, as before', () => {
+        // CommonMark may read the fence as a block reaching past the section, so it is not shifted.
+        for (const text of ['## Shed\n  - tools\n\n  ```\nx\n  ```\n  - more', '## Shed\n  - tools\n  ~~~\n  x\n  ~~~']) {
+            const once = normaliseIndentUnit(text)
+            expect(once.split('\n')[1]).toBe('  - tools')
+            expect(normaliseIndentUnit(once)).toBe(once)
+        }
+    })
+
+    it('moves whitespace-only lines with their section, so they close the same branches', () => {
+        // The `  ` line closed tools, so rake is its sibling, not its child.
+        expect(normaliseIndentUnit('## Shed\n  - tools\n    - spade\n  \n    - rake')).toBe('## Shed\n- tools\n  - spade\n\n- rake')
+        // The `    ` line closed spade, so rake is tools' child beside spade.
+        expect(normaliseIndentUnit('## Shed\n  - tools\n    - spade\n    \n      - rake')).toBe('## Shed\n- tools\n  - spade\n  \n  - rake')
+        expect(normaliseIndentUnit('## Shed\n    - tools\n  \n      soft')).toBe('## Shed\n- tools\n\n  soft')
+    })
+
+    it('writes a whitespace-only line that closed a branch no deeper than the branch now starts', () => {
+        // The `      ` line closes the inner beans, so note is peas' line; once beans moves left by two
+        // the line must move too, or it would no longer close it and note would become beans' line.
+        const text = '- peas\n    - beans\n    \n      note'
+        const fixed = normaliseIndentUnit(text)
+        expect(fixed).toBe('- peas\n  - beans\n  \n      note')
+        expect(outlineLines(fixed.split('\n')).map((l) => l.owner)).toEqual(outlineLines(text.split('\n')).map((l) => l.owner))
+        // Off the grid a bullet can move right; the line must still land past it, so b stays a's child.
+        const odd = 'note\n - a\n   ### S\n  \n    - b'
+        const once = normaliseIndentUnit(odd)
+        expect(normaliseIndentUnit(once)).toBe(once)
+        expect(outlineLines(once.split('\n')).map((l) => l.depth)[4]).toBe(2)
+    })
+
+    it('keeps a line shallower than the first bullet a sibling, never a child', () => {
+        expect(normaliseIndentUnit('    - a\n  - b')).toBe('- a\n- b')
+        expect(normaliseIndentUnit('    - c\n      - d\n  - b')).toBe('- c\n  - d\n- b')
+        expect(normaliseIndentUnit('## Shed\n    - a\n  - b\n    - c')).toBe('## Shed\n- a\n- b\n  - c')
+        expect(normaliseIndentUnit('### Paint\n   - beans\n - peas')).toBe('### Paint\n- beans\n- peas')
+    })
+
+    it('reads a moved sub-heading as the outline does: beside the bullets, owned by none of them', () => {
+        const fixed = normaliseIndentUnit('## Shed\n  - tools\n  ### Paint\n    - green').split('\n')
+        expect(outlineLines(fixed).map((l) => l.owner)).toEqual([-1, 1, -1, 3])
+    })
+
     it('a bullet under an indented prose line stays one unit under it', () => {
         expect(normaliseIndentUnit('    prose\n            - a')).toBe('    prose\n      - a')
         expect(normaliseIndentUnit('prose\n    - a\n        - b')).toBe('prose\n  - a\n    - b')
@@ -117,6 +182,12 @@ describe('normaliseIndentUnit', () => {
             '- a\n      - b\n    - c\n      soft',
             'prose\n    - a\n        - b\n\n    - c',
             '- a\n    ```\n    - x\n    ```\n    - b',
+            '## Shed\n  - tools\n    - spade',
+            '  ## Shed\n    - tools',
+            '## Shed\n  ## Paint\n    - green',
+            '    - a\n      ## Shed\n        - b',
+            '\t- a\n\t\t## Shed\n\t\t\t- b',
+            '## Shed\n  - tools\n  ### Paint\n    - green',
         ]) {
             const once = normaliseIndentUnit(text)
             expect(normaliseIndentUnit(once)).toBe(once)

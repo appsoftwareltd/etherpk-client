@@ -13,7 +13,7 @@ import { cancelActivity, dismissActivity, runActivity, type ActivityOutcome } fr
 
 import { isBackupConfirmation } from '../backup-confirmation'
 import type { FormattingCheckId } from '../checks'
-import { approveAll, approveIssue, type FormattingIssue, type FormattingSource, type ScanReport, scanGraph } from '../scan'
+import { approveAll, approveEverything, approveIssue, type ApproveTally, type FormattingIssue, type FormattingSource, type ScanReport, scanGraph } from '../scan'
 
 export interface FormattingSessionOptions {
     source: FormattingSource
@@ -24,11 +24,8 @@ export interface FormattingSessionOptions {
 }
 
 /** The result of the last Approve all, shown under its group. */
-export interface ApproveAllTally {
+export interface ApproveAllTally extends ApproveTally {
     check: FormattingCheckId
-    total: number
-    fixed: number
-    changed: number
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
@@ -53,11 +50,13 @@ export class FormattingScanSession {
     report = $state<ScanReport | null>(null)
     /** Why the last scan failed, while `phase` is `failed`. */
     error = $state<string | null>(null)
-    /** Checks with a diff the person has opened: what enables their Approve all. */
-    reviewed = $state<Partial<Record<FormattingCheckId, true>>>({})
     /** The check whose Approve all is running. */
     approvingAll = $state<FormattingCheckId | null>(null)
     lastApproveAll = $state<ApproveAllTally | null>(null)
+    /** How far the Approve all over every check has got, while it runs. */
+    everything = $state<{ done: number; total: number } | null>(null)
+    /** The result of the last Approve all over every check, shown under the summary. */
+    lastEverything = $state<ApproveTally | null>(null)
     /**
      * What the person has typed to say they exported the graph and checked the export. A scan
      * waits for the phrase (`backup-confirmation.ts`). It is kept with the results, so closing
@@ -76,7 +75,7 @@ export class FormattingScanSession {
 
     /** Whether any approval is writing: a new scan waits for them, so their results are not lost. */
     get busy(): boolean {
-        return this.phase === 'scanning' || this.approvingAll !== null || (this.report?.issues.some((issue) => issue.status === 'applying') ?? false)
+        return this.phase === 'scanning' || this.approvingAll !== null || this.everything !== null || (this.report?.issues.some((issue) => issue.status === 'applying') ?? false)
     }
 
     /** Whether the confirmation phrase has been typed, which is what lets a scan start. */
@@ -94,6 +93,7 @@ export class FormattingScanSession {
         this.done = 0
         this.total = 0
         this.lastApproveAll = null
+        this.lastEverything = null
         const name = this.#options.graphName()
         // Assigned inside the run; declared through `as` so the checks after it are not narrowed to null.
         let report = null as ScanReport | null
@@ -127,7 +127,6 @@ export class FormattingScanSession {
         if (this.#disposed) return
         if (report) {
             this.report = report
-            this.reviewed = {}
             this.phase = 'done'
         } else {
             this.error = failure instanceof Error ? failure.message : String(failure)
@@ -157,6 +156,43 @@ export class FormattingScanSession {
         }
     }
 
+    /**
+     * Approve every pending issue of every check, check by check. `approvingAll` names the check
+     * being fixed, so its group shows it and every other Approve all waits.
+     */
+    async approveEverything(): Promise<void> {
+        if (!this.report || this.busy) return
+        this.everything = { done: 0, total: 0 }
+        this.lastApproveAll = null
+        this.lastEverything = null
+        try {
+            this.lastEverything = await approveEverything(this.#options.source, this.report.issues, {
+                onCheck: (check) => (this.approvingAll = check),
+                onProgress: (done, total) => (this.everything = { done, total }),
+            })
+        } finally {
+            this.approvingAll = null
+            this.everything = null
+        }
+    }
+
+    /**
+     * Put the results away, ready for a new scan. The typed confirmation stays, as it does for a
+     * second scan, and nothing is written: a new scan finds whatever is left.
+     */
+    dismiss(): void {
+        if (this.busy) return
+        if (this.#activityId) dismissActivity(this.#activityId)
+        this.#activityId = null
+        this.report = null
+        this.phase = 'idle'
+        this.error = null
+        this.done = 0
+        this.total = 0
+        this.lastApproveAll = null
+        this.lastEverything = null
+    }
+
     /** Skipping only hides the issue: nothing is written, and Show again brings it back. */
     skip(issue: FormattingIssue): void {
         if (issue.status === 'pending' || issue.status === 'changed' || issue.status === 'unconfirmed' || issue.status === 'failed') issue.status = 'skipped'
@@ -164,10 +200,6 @@ export class FormattingScanSession {
 
     showAgain(issue: FormattingIssue): void {
         if (issue.status === 'skipped') issue.status = 'pending'
-    }
-
-    markReviewed(check: FormattingCheckId): void {
-        if (!this.reviewed[check]) this.reviewed[check] = true
     }
 
     /**

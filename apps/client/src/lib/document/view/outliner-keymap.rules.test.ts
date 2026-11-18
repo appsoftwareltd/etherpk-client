@@ -3450,6 +3450,23 @@ describe('a line copied with nothing selected pastes as a whole line above the c
 // claimed as its one line, trimmed, and copied beds as one line each, kept as written. A Plain Paste
 // never reaches this route, so the text stays text (Logseq): the route order is asserted in
 // editor-extensions.test.ts and pressed for real in tests-client/plain-paste.test.ts.
+// A heading nests what follows by its level, not by indentation, so pasted bullets indented under a
+// pasted heading, with no bullet above them, start their own group at the heading's indent, as the
+// editor writes bullets under a heading (ADR 0067; the Formatting Scan's indentation fix does the same).
+describe('pasted bullets under a pasted heading start at the heading’s indent', () => {
+    const rows: { rule: string; precedent: Rule['precedent']; before: string; text: string; after: string }[] = [
+        { rule: 'on an empty line, with a fenced block that moves with its bullet', precedent: 'EtherPK', before: '|', text: '## Shed\n  - tools\n    ```\n    x\n    ```\n  - paint', after: '## Shed\n- tools\n  ```\n  x\n  ```\n- paint|' },
+        { rule: '…after prose', precedent: 'EtherPK', before: 'intro\n|', text: '## Shed\n  - tools\n  - paint', after: 'intro\n## Shed\n- tools\n- paint|' },
+    ]
+    for (const row of rows) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = editorFixture(row.before)
+            editor.paste(row.text, 'input.paste')
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+})
+
 describe('pasting text an extension claims', () => {
     const link = 'https://garden.example/plot'
     const beds = 'garden-beds: north, south'

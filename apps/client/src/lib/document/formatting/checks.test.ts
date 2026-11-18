@@ -8,38 +8,9 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
 import { FORMATTING_CHECKS, findIssues } from './checks'
+import { documentText } from './document-text.arbitrary'
 import { checkedText } from './finding'
 import { lineSplices, splitLines } from './line-diff'
-
-/** Text built from the pieces the checks read, so random documents hit their cases often. */
-const documentText = fc
-    .array(
-        fc.constantFrom(
-            '- ',
-            '* ',
-            '+ ',
-            '1. ',
-            '> ',
-            '# ',
-            '---',
-            '```',
-            '````',
-            '```js',
-            'a',
-            'b ',
-            ' ',
-            '  ',
-            '\t',
-            '\u{a0}',
-            '\u{3000}',
-            '\n',
-            '\r\n',
-            '\r',
-            '[ ] ',
-        ),
-        { maxLength: 60 },
-    )
-    .map((parts) => parts.join(''))
 
 function applySplices(text: string, splices: readonly { from: number; to: number; insert: string }[]): string {
     let out = text
@@ -49,16 +20,16 @@ function applySplices(text: string, splices: readonly { from: number; to: number
 
 describe('the registry', () => {
     it('lists the checks in the order a page shows their issues, the report-only one last', () => {
-        expect(FORMATTING_CHECKS.map((c) => c.id)).toEqual(['no-break-space-indent', 'bullet-marker', 'indentation', 'blank-line-after-list', 'line-endings', 'unclosed-fence'])
+        expect(FORMATTING_CHECKS.map((c) => c.id)).toEqual(['no-break-space-indent', 'bullet-marker', 'empty-bullet', 'indentation', 'blank-line-after-list', 'line-endings', 'unclosed-fence'])
     })
 
     it("finds a page's issues in that order", () => {
-        const text = '* a\r\n\t- b\r\n- c\r\nd\r\n\u{a0}- e\r\n```js'
-        expect(findIssues(text).map((f) => f.check)).toEqual(['no-break-space-indent', 'bullet-marker', 'indentation', 'blank-line-after-list', 'line-endings', 'unclosed-fence'])
+        const text = '* a\r\n\t- b\r\n-\r\n- c\r\nd\r\n\u{a0}- e\r\n```js'
+        expect(findIssues(text).map((f) => f.check)).toEqual(['no-break-space-indent', 'bullet-marker', 'empty-bullet', 'indentation', 'blank-line-after-list', 'line-endings', 'unclosed-fence'])
     })
 
     it('finds nothing on a page EtherPK wrote', () => {
-        expect(findIssues('---\ntitle: A\n---\n- a\n  - b\n    ```js\n    x\n    ```\n- c\n')).toEqual([])
+        expect(findIssues('---\ntitle: A\n---\n- a\n  - b\n    ```js\n    x\n    ```\n- c\n- \n')).toEqual([])
     })
 })
 

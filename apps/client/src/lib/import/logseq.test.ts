@@ -163,6 +163,11 @@ describe('convertLogseq', () => {
         expect(text).toContain('- already ==done==')
     })
 
+    it('writes an empty block as an empty bullet with its space, which the editor reads as a bullet', async () => {
+        const graph = await convertLogseq([src('pages/garden.md', '- beds\n  - north\n  -\n-')])
+        expect(doc(graph, 'garden').text).toContain('- beds\n  - north\n  - \n- ')
+    })
+
     it('leaves fence interiors verbatim', async () => {
         const graph = await convertLogseq([
             src('pages/code.md', '- ```js\n  const tag = "#not-a-tag"\n  ```\n- after #real'),
@@ -500,7 +505,7 @@ describe('convertLogseq templates', () => {
         const graph = await convertLogseq([
             src('pages/Garden.md', '- Season\n  template:: Season\n\t- template:: Spring\n\t\t- sow the beans\n\t- Autumn'),
         ])
-        expect(doc(graph, '[[Templates]] Season').text).toContain('---\n- Season\n  -\n    - sow the beans\n  - Autumn')
+        expect(doc(graph, '[[Templates]] Season').text).toContain('---\n- Season\n  - \n    - sow the beans\n  - Autumn')
         expect(doc(graph, '[[Templates]] Spring').text).toContain('---\n- sow the beans')
     })
 

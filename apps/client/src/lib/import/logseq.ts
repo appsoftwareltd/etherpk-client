@@ -307,7 +307,8 @@ function convertBody(lines: string[], ctx: InlineContext): string[] {
             }
         }
 
-        const bullet = /^(\s*)([-*])\s+(.*)$/.exec(line)
+        // An empty block is a lone `-` in Logseq; written `- `, with its space, it stays a bullet in the editor.
+        const bullet = /^(\s*)([-*])(?:\s+|$)(.*)$/.exec(line)
         if (bullet) {
             const [, indent, marker, content] = bullet
             const parsed = parseLogseqTask(content)

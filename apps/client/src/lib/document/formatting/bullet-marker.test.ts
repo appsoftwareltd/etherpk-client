@@ -18,7 +18,8 @@ describe('bullets written with * or +', () => {
         ['a nested * item under a - bullet', '- a\n  * b', '- a\n  - b', [1]],
         ['a * task, which becomes a task', '* [ ] task', '- [ ] task', [0]],
         ['a quoted * item', '> * quoted', '> - quoted', [0]],
-        ['an empty * item', '* a\n*\n* c', '- a\n-\n- c', [0, 1, 2]],
+        // An empty bullet is `- ` with its space, as the editor writes it, or the `-` reads as text.
+        ['an empty * item', '* a\n*\n* c', '- a\n- \n- c', [0, 1, 2]],
         ['items on Windows lines, endings kept', 'x\r\n\r\n* a\r\n* b', 'x\r\n\r\n- a\r\n- b', [2, 3]],
     ])('flags %s and writes -', (_name, text, fixed, lines) => {
         expect(find(text)).toMatchObject({ fixed, lines })

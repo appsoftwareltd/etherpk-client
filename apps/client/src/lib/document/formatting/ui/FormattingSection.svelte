@@ -26,8 +26,8 @@
 
     /** Diffs open in this view, by issue id. */
     let expanded = $state<Record<string, boolean>>({});
-    /** The check whose Approve all is waiting for its confirmation. */
-    let confirming = $state<FormattingCheckId | null>(null);
+    /** The Approve all waiting for its confirmation: one check's, or `everything`'s under the summary. */
+    let confirming = $state<FormattingCheckId | "everything" | null>(null);
 
     const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
@@ -53,6 +53,28 @@
         if (open.length === 0) return `No issues left to review (${checked} checked).`;
         const pages = new Set(open.map((issue) => issue.document.key)).size;
         return `${plural(open.length, "issue", "issues")} on ${plural(pages, "page", "pages")} (${checked} checked).`;
+    });
+
+    /** Pending issues with a fix, across every check: what the Approve all under the summary applies. */
+    const approvable = $derived(report?.issues.filter((issue) => issue.status === "pending" && fixable(issue)) ?? []);
+    const approvablePages = $derived(new Set(approvable.map((issue) => issue.document.key)).size);
+
+    /**
+     * Of the issues left to review, those no Approve can fix (an unclosed code block): said under
+     * the summary, so a count that stays after Approve all is explained.
+     */
+    const byHand = $derived.by(() => {
+        const open = report?.issues.filter((issue) => OPEN.has(issue.status)) ?? [];
+        const count = open.filter((issue) => !fixable(issue)).length;
+        if (count === 0) return "";
+        if (count === open.length) {
+            return count === 1
+                ? "It has no automatic fix, so open its page to fix it by hand."
+                : "None of them has an automatic fix, so open each page to fix them by hand.";
+        }
+        return count === 1
+            ? "1 of them has no automatic fix, so open that page to fix it by hand."
+            : `${count.toLocaleString()} of them have no automatic fix, so open those pages to fix them by hand.`;
     });
 
     const syncing = $derived(report?.unread.filter((entry) => entry.reason === "syncing") ?? []);
@@ -81,9 +103,7 @@
     }
 
     function toggleDiff(issue: FormattingIssue) {
-        const next = !expanded[issue.id];
-        expanded[issue.id] = next;
-        if (next) session.markReviewed(issue.check);
+        expanded[issue.id] = !expanded[issue.id];
     }
 
     /** Where focus goes when the control that held it has gone: the row's status line. */
@@ -94,6 +114,7 @@
     }
 
     async function approve(issue: FormattingIssue) {
+        if (session.approvingAll !== null) return;
         await session.approve(issue);
         await keepFocusIn(issue, "[data-issue-status]");
     }
@@ -112,7 +133,57 @@
         onopenpage(issue.document.concept, revealLineOf(issue));
     }
 
+    async function askApproveEverything() {
+        if (session.busy) return;
+        confirming = "everything";
+        await tick();
+        root?.querySelector<HTMLElement>(`[data-confirm="everything"] [data-confirm-title]`)?.focus();
+    }
+
+    async function cancelApproveEverything() {
+        confirming = null;
+        await tick();
+        root?.querySelector<HTMLElement>("[data-approve-everything]")?.focus();
+    }
+
+    /**
+     * Focus waits on the button that shows the progress ("Fixing… 12 of 40") while the fixes run,
+     * since the confirmation that held it has gone, then moves to the result.
+     */
+    async function runApproveEverything() {
+        confirming = null;
+        const running = session.approveEverything();
+        await tick();
+        root?.querySelector<HTMLElement>("[data-approve-everything]")?.focus();
+        await running;
+        await tick();
+        root?.querySelector<HTMLElement>("[data-everything-result]")?.focus();
+    }
+
+    /**
+     * Every scan button starts the same scan. Focus goes to the main one, which stays focusable
+     * while the scan runs (it is `aria-disabled`, not `disabled`) and shows its progress; a Try
+     * again or a Scan again in a line that the new results take away would leave focus nowhere.
+     */
+    async function startScan() {
+        const running = session.scan();
+        await tick();
+        root?.querySelector<HTMLElement>("[data-scan]")?.focus();
+        await running;
+    }
+
+    /** Put the results away; focus goes to the scan button, which now starts a new scan. */
+    async function dismiss() {
+        if (session.busy) return;
+        confirming = null;
+        expanded = {};
+        session.dismiss();
+        await tick();
+        root?.querySelector<HTMLElement>("[data-scan]")?.focus();
+    }
+
     async function askApproveAll(check: FormattingCheckId) {
+        if (session.busy) return;
         confirming = check;
         await tick();
         root?.querySelector<HTMLElement>(`[data-confirm="${check}"] [data-confirm-title]`)?.focus();
@@ -126,7 +197,10 @@
 
     async function runApproveAll(check: FormattingCheckId) {
         confirming = null;
-        await session.approveAll(check);
+        const running = session.approveAll(check);
+        await tick();
+        root?.querySelector<HTMLElement>(`[data-approve-all="${check}"]`)?.focus(); // shows "Fixing…" meanwhile
+        await running;
         await tick();
         root?.querySelector<HTMLElement>(`[data-approve-all-result="${check}"]`)?.focus();
     }
@@ -155,24 +229,38 @@
     }
 
     /** Escape in the confirmation cancels it, rather than closing Settings under it. */
-    function onConfirmKeydown(event: KeyboardEvent, check: FormattingCheckId) {
+    function onConfirmKeydown(event: KeyboardEvent, check: FormattingCheckId | "everything") {
         if (event.key !== "Escape") return;
         event.stopPropagation();
-        void cancelApproveAll(check);
+        void (check === "everything" ? cancelApproveEverything() : cancelApproveAll(check));
     }
 
+    /** The line that says why Scan again, Approve all and Dismiss wait, while fixes are being written. */
+    const busyReasonId = `${uid}-busy-reason`;
+    const fixing = $derived(session.busy && session.phase !== "scanning");
+
+    /**
+     * A button waiting for something in progress is `aria-disabled` rather than `disabled`, so the
+     * one just pressed keeps keyboard focus while it shows the progress; its handler, and the session
+     * under it, ignore a press meanwhile. `disabled` is kept for a button that cannot work yet (the
+     * phrase is not typed), with the reason beside it.
+     */
     const button =
-        "rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40";
+        "rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 enabled:not-aria-disabled:hover:bg-neutral-50 dark:enabled:not-aria-disabled:hover:bg-white/5 disabled:opacity-40 aria-disabled:opacity-40 aria-disabled:cursor-default";
+    /**
+     * The fill an Approve carries. Disabled, it greys by colour rather than fading, so the label
+     * stays readable (ADR 0106); the border is there in both states, so nothing shifts as it enables.
+     */
     const primary =
-        "rounded-lg bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40";
+        "rounded-lg border border-transparent bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-white dark:text-neutral-900 enabled:not-aria-disabled:hover:bg-neutral-800 dark:enabled:not-aria-disabled:hover:bg-neutral-200 disabled:border-neutral-300 disabled:bg-neutral-100 disabled:text-neutral-600 dark:disabled:border-neutral-700 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-300 aria-disabled:cursor-default aria-disabled:border-neutral-300 aria-disabled:bg-neutral-100 aria-disabled:text-neutral-600 dark:aria-disabled:border-neutral-700 dark:aria-disabled:bg-neutral-800 dark:aria-disabled:text-neutral-300";
 </script>
 
 <section bind:this={root} class="space-y-3" aria-labelledby="{uid}-heading" data-testid="formatting-section">
     <h3 id="{uid}-heading" class="text-sm font-medium text-neutral-500 dark:text-neutral-400">Formatting</h3>
     <p class="text-sm text-neutral-600 dark:text-neutral-300">
         The scan finds text that EtherPK reads differently from the way it writes it, e.g., tabs and uneven
-        indentation, bullets written with * or +, no-break spaces in indentation, Windows line endings and unclosed
-        code blocks. Fixing indentation can change how a page's bullets nest in the editor, so that they nest the way
+        indentation, bullets written with * or +, empty bullets with no space after the -, no-break spaces in
+        indentation, Windows line endings and unclosed code blocks. Fixing indentation can change how a page's bullets nest in the editor, so that they nest the way
         the author meant. Nothing changes until you approve a fix.
     </p>
     <div
@@ -217,10 +305,12 @@
     <div class="flex flex-wrap items-center gap-2">
         <button
             type="button"
-            onclick={() => session.scan()}
-            disabled={session.busy || !session.backupConfirmed}
-            aria-describedby={scanReason}
+            onclick={startScan}
+            disabled={!session.backupConfirmed}
+            aria-disabled={session.busy}
+            aria-describedby={fixing ? busyReasonId : scanReason}
             class={button}
+            data-scan
             data-testid="formatting-scan"
         >
             {session.phase === "scanning"
@@ -240,8 +330,10 @@
             Type the phrase above to turn on the scan.
         </p>
     {/if}
-    {#if session.busy && session.phase !== "scanning"}
-        <p class="text-sm text-neutral-500 dark:text-neutral-400">A new scan can start once the fixes in progress finish.</p>
+    {#if fixing}
+        <p id={busyReasonId} class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="formatting-busy-reason">
+            Scan again, Approve all and Dismiss wait until the fixes in progress finish.
+        </p>
     {/if}
 
     <p class="sr-only" aria-live="polite">{announcement}</p>
@@ -249,8 +341,13 @@
     {#if session.phase === "failed"}
         <div class="space-y-2" data-testid="formatting-failed">
             <p class="text-sm text-red-600 dark:text-red-400">The scan failed, so nothing was changed ({session.error}).</p>
-            <button type="button" onclick={() => session.scan()} disabled={session.busy || !session.backupConfirmed} aria-describedby={scanReason} class={button}
-                >Try again</button
+            <button
+                type="button"
+                onclick={startScan}
+                disabled={!session.backupConfirmed}
+                aria-disabled={session.busy}
+                aria-describedby={scanReason}
+                class={button}>Try again</button
             >
         </div>
     {/if}
@@ -263,6 +360,9 @@
                 </p>
             {/if}
             <p class="text-sm text-neutral-600 dark:text-neutral-300" data-testid="formatting-result">{summary}</p>
+            {#if byHand}
+                <p class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="formatting-by-hand">{byHand}</p>
+            {/if}
             {#if report.protectedCount > 0}
                 <p class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="formatting-protected">
                     {report.protectedCount === 1
@@ -277,10 +377,11 @@
                         : `${syncing.length.toLocaleString()} pages were not checked because they have not finished syncing.`}
                     <button
                         type="button"
-                        onclick={() => session.scan()}
-                        disabled={session.busy || !session.backupConfirmed}
+                        onclick={startScan}
+                        disabled={!session.backupConfirmed}
+                        aria-disabled={session.busy}
                         aria-describedby={scanReason}
-                        class="font-medium text-neutral-700 dark:text-neutral-200 underline underline-offset-2 disabled:opacity-40"
+                        class="font-medium text-neutral-700 dark:text-neutral-200 underline underline-offset-2 disabled:opacity-40 aria-disabled:opacity-40 aria-disabled:cursor-default"
                         >Scan again</button
                     >
                 </p>
@@ -292,6 +393,66 @@
                 </p>
             {/if}
         </div>
+
+        {#if session.phase !== "scanning"}
+            <div class="flex flex-wrap items-center gap-2" data-testid="formatting-actions">
+                {#if approvable.length > 0 || session.everything}
+                    <button
+                        type="button"
+                        onclick={askApproveEverything}
+                        aria-disabled={session.busy}
+                        aria-describedby={fixing ? busyReasonId : undefined}
+                        class={primary}
+                        data-approve-everything
+                        data-testid="formatting-approve-everything"
+                        >{session.everything
+                            ? session.everything.total > 0
+                                ? `Fixing… ${session.everything.done.toLocaleString()} of ${session.everything.total.toLocaleString()}`
+                                : "Fixing…"
+                            : "Approve all"}</button
+                    >
+                {/if}
+                <button
+                    type="button"
+                    onclick={dismiss}
+                    aria-disabled={session.busy}
+                    aria-describedby={fixing ? busyReasonId : undefined}
+                    class={button}
+                    data-testid="formatting-dismiss">Dismiss</button
+                >
+            </div>
+            {#if confirming === "everything"}
+                {@const issues = plural(approvable.length, "issue", "issues")}
+                {@const pages = plural(approvablePages, "page", "pages")}
+                <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+                <div
+                    class="space-y-2 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-900 dark:text-amber-100"
+                    role="group"
+                    aria-labelledby="{uid}-confirm-everything"
+                    data-confirm="everything"
+                    data-testid="formatting-approve-everything-confirm"
+                    onkeydown={(event) => onConfirmKeydown(event, "everything")}
+                >
+                    <p id="{uid}-confirm-everything" class="font-medium" tabindex="-1" data-confirm-title>Fix {issues} on {pages}?</p>
+                    <p>
+                        Approving all of them rewrites {pages}, and you can't undo the changes here. Skipped issues, and those that
+                        are only reported, are left as they are. {backupAdvice}
+                    </p>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" onclick={runApproveEverything} class={primary} data-testid="formatting-approve-everything-go">Fix {issues}</button>
+                        <button type="button" onclick={cancelApproveEverything} class={button}>Cancel</button>
+                    </div>
+                </div>
+            {/if}
+            {#if session.lastEverything}
+                {@const tally = session.lastEverything}
+                <p class="text-sm text-neutral-600 dark:text-neutral-300" tabindex="-1" data-everything-result data-testid="formatting-approve-everything-result">
+                    Fixed {tally.fixed.toLocaleString()} of {plural(tally.total, "issue", "issues")}.{tally.changed > 0
+                        ? ` ${plural(tally.changed, "page", "pages")} changed since the scan and ${tally.changed === 1 ? "is" : "are"} shown again below.`
+                        : ""}
+                </p>
+            {/if}
+        {/if}
 
         {#each groups as group (group.check.id)}
             {@const check = group.check}
@@ -311,17 +472,12 @@
                     </h4>
                     {#if canFix && pending.length > 0}
                         <div class="flex flex-wrap items-center gap-2">
-                            {#if !session.reviewed[check.id]}
-                                <span class="text-sm text-neutral-500 dark:text-neutral-400" id="{uid}-approve-all-why-{check.id}"
-                                    >Show the changes for one page in the group first.</span
-                                >
-                            {/if}
                             <button
                                 type="button"
                                 onclick={() => askApproveAll(check.id)}
-                                disabled={!session.reviewed[check.id] || session.approvingAll !== null || session.phase === "scanning"}
-                                aria-describedby={session.reviewed[check.id] ? undefined : `${uid}-approve-all-why-${check.id}`}
-                                class={button}
+                                aria-disabled={session.busy}
+                                aria-describedby={fixing ? busyReasonId : undefined}
+                                class={primary}
                                 data-approve-all={check.id}
                                 data-testid="formatting-approve-all"
                                 >{session.approvingAll === check.id ? "Fixing…" : `Approve all ${pending.length.toLocaleString()}`}</button
@@ -401,7 +557,7 @@
                                             <button
                                                 type="button"
                                                 onclick={() => approve(issue)}
-                                                disabled={issue.status === "applying" || session.approvingAll !== null}
+                                                aria-disabled={issue.status === "applying" || session.approvingAll !== null}
                                                 class={primary}
                                                 data-approve
                                                 data-testid="formatting-approve"
@@ -414,7 +570,7 @@
                                             <button
                                                 type="button"
                                                 onclick={() => skip(issue)}
-                                                disabled={issue.status === "applying"}
+                                                aria-disabled={issue.status === "applying"}
                                                 class={button}
                                                 data-testid="formatting-skip">Skip</button
                                             >

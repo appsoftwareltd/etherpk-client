@@ -25,7 +25,7 @@
 
 import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
-import { type FencedBlockRange, fencedBlocks } from './fenced-code'
+import { type FencedBlockRange, fencedBlocks, fenceLineInfo } from './fenced-code'
 
 /** Spaces per nesting level in the markdown source. */
 export const INDENT_UNIT = 2
@@ -106,6 +106,20 @@ interface Visit {
 }
 
 /**
+ * How far a whitespace-only line at `indent` moves. One that closed a branch lands past the node
+ * still open (`open`) and no deeper than where the closed branch now starts, so it closes the same
+ * branches once they have moved; else, and when no column lies between the two (only off the
+ * two-space grid, where a bullet can move right), it moves with the bullet that owns it.
+ */
+function blankDelta(indent: number, closed: Node | null, open: Node | null, owner: Node | null): number {
+    const byOwner = owner ? owner.written - owner.raw : 0
+    if (!closed) return byOwner
+    const floor = open ? open.written + 1 : 0
+    if (floor > closed.written) return byOwner
+    return Math.min(Math.max(indent, floor), closed.written) - indent
+}
+
+/**
  * The structural walk under both {@link outlineLines} and {@link normaliseIndentUnit}: visits each
  * line in order with the node stack resolved, reporting the line's owner (the nearest open bullet
  * whose block the line is inside) and the delta that would put it on the grid.
@@ -125,8 +139,11 @@ function walk(lines: readonly string[], blocks: readonly FencedBlockRange[], mea
     for (const b of blocks) starts.set(b.start, b)
     const stack: Node[] = []
     const top = (): Node | null => (stack.length ? stack[stack.length - 1] : null)
-    const popTo = (indent: number) => {
-        while (stack.length && stack[stack.length - 1].raw >= indent) stack.pop()
+    /** Close the nodes at or past `indent`, and return the shallowest of them, if any. */
+    const popTo = (indent: number): Node | null => {
+        let closed: Node | null = null
+        while (stack.length && stack[stack.length - 1].raw >= indent) closed = stack.pop()!
+        return closed
     }
     /** The nearest open bullet on the stack, or null when only prose nodes (or nothing) remain. */
     const owningBullet = (): Node | null => {
@@ -140,11 +157,13 @@ function walk(lines: readonly string[], blocks: readonly FencedBlockRange[], mea
         const block = starts.get(i)
         const span = block ? block.end - i + 1 : 1
         const indent = measure(line)
-        popTo(indent)
+        const closed = popTo(indent)
         if (isBlank(line) && !block) {
-            // Indent decides: what this blank is not shallower than owns it.
+            // Indent decides: what this blank is not shallower than owns it. A whitespace-only line
+            // that closed a branch is written no deeper than where that branch now starts, so it
+            // closes the same branches once they have moved (and stays empty when it was).
             const owner = owningBullet()
-            visit(i, { depth: top()?.depth ?? 0, owner: owner ? owner.bullet : -1, delta: owner ? owner.written - owner.raw : 0, span })
+            visit(i, { depth: top()?.depth ?? 0, owner: owner ? owner.bullet : -1, delta: blankDelta(indent, closed, top(), owner), span })
             continue
         }
         if (isBullet(line)) {
@@ -211,8 +230,104 @@ function relead(line: string, within: number, delta: number): string {
 }
 
 /**
+ * A section shifted left as a whole when it starts with a bullet indented with no bullet above it:
+ * `## H` then `  - a` then `    - b` becomes `## H`, `- a`, `  - b`. A heading nests what follows
+ * by its `#` level, not by indentation, and the editor writes the bullets under a heading at
+ * column 0; to the outline walk an indented bullet would be the heading's child instead, and stay
+ * indented with no parent.
+ *
+ * A section starts after a heading at column 0 with a bullet and runs to the next non-blank line at
+ * column 0. It moves only when no line in it is shallower than that first bullet, and then every
+ * line moves left by the bullet's indent (a fenced block only up to its fence column, so code keeps
+ * its own indentation). That keeps every line where it was relative to every other, as the outline
+ * reads them: a sub-heading or a paragraph beside the bullets stays beside them, never inside a
+ * bullet's block. A section with a shallower line, one that a fenced block crosses, or one that
+ * holds a fence line the editor pairs with nothing is left to the walk, as before: CommonMark may
+ * read such a fence line as a fence the shift would open or close differently. Returns `lines`
+ * itself when nothing moves.
+ */
+export function dedentHeadingSections(lines: readonly string[], blocks: readonly FencedBlockRange[] = fencedBlocks(lines)): readonly string[] {
+    const first = frontmatterLines(lines)
+    // Shifting a section moves every line of it alike, so its fenced blocks pair as before and
+    // `blocks` stays true. The scan reads the shifted lines as it goes: a sub-heading the shift
+    // brought to column 0 is a top-level heading, whose own section comes next.
+    let out: string[] | null = null
+    const at = (i: number) => (out ?? lines)[i]
+    for (let h = first; h < lines.length; h++) {
+        if (!isHeading(at(h)) || indentColumns(at(h)) > 0 || insideBlock(blocks, h)) continue
+        const section = sectionUnder(at, lines.length, h)
+        if (!section || !movable(at, lines, blocks, section)) continue
+        out ??= lines.slice()
+        shiftSection(out, blocks, section)
+    }
+    return out ?? lines
+}
+
+/** The lines a section spans (`end` exclusive) and how far it moves. */
+interface Section {
+    start: number
+    end: number
+    shift: number
+}
+
+/**
+ * The section after the heading on line `h`: from its first non-blank line, which must be a bullet
+ * indented past column 0, to the next non-blank line at column 0. Null when there is none to move.
+ */
+function sectionUnder(at: (i: number) => string, length: number, h: number): Section | null {
+    let start = h + 1
+    while (start < length && isBlank(at(start))) start++
+    if (start >= length || !isBullet(at(start))) return null
+    let end = start
+    while (end < length && (isBlank(at(end)) || indentColumns(at(end)) > 0)) end++
+    return end === start ? null : { start, end, shift: indentColumns(at(start)) }
+}
+
+/** Whether a section moves: nothing in it shallower than its first bullet, no fenced block across its edges, no loose fence line. */
+function movable(at: (i: number) => string, lines: readonly string[], blocks: readonly FencedBlockRange[], { start, end, shift }: Section): boolean {
+    for (let k = start; k < end; k++) if (!isBlank(at(k)) && indentColumns(at(k)) < shift) return false
+    if (blocks.some((b) => (b.start < start && b.end >= start) || (b.start < end && b.end >= end))) return false
+    return !holdsLooseFence(lines, blocks, start, end)
+}
+
+/** Move every line of the section left by its shift, in place: a fenced block only up to its fence column. */
+function shiftSection(out: string[], blocks: readonly FencedBlockRange[], { start, end, shift }: Section): void {
+    for (let k = start; k < end; k++) {
+        const block = blocks.find((b) => b.start === k)
+        if (block) {
+            const within = indentColumns(out[k])
+            for (let j = k; j <= block.end; j++) out[j] = relead(out[j], within, -shift)
+            k = block.end
+            continue
+        }
+        // A whitespace-only line moves too: the walk reads it as closing the branches it is not
+        // deeper than, so left behind it would close different ones. Floored at column 0, it still
+        // closes every node of the section, as each is at least `shift` deep.
+        out[k] = relead(out[k], Infinity, -shift)
+    }
+}
+
+/** A tilde fence line: text to the editor, which pairs backtick fences only, but a fence to CommonMark. */
+const TILDE_FENCE = /^\s*(?:-\s)?~{3,}/
+
+/** Whether a line from `start` to `end` (exclusive) is a fence line no fenced block pairs. */
+function holdsLooseFence(lines: readonly string[], blocks: readonly FencedBlockRange[], start: number, end: number): boolean {
+    for (let k = start; k < end; k++) {
+        if ((fenceLineInfo(lines[k]) !== null || TILDE_FENCE.test(lines[k])) && !insideBlock(blocks, k)) return true
+    }
+    return false
+}
+
+/** Whether line `i` is inside a fenced block, its fences included. */
+function insideBlock(blocks: readonly FencedBlockRange[], i: number): boolean {
+    return blocks.some((b) => i >= b.start && i <= b.end)
+}
+
+/**
  * The document with every bullet on the Indent Unit grid: each bullet one unit under its parent
- * (a top-level bullet at column 0, over-nesting collapsed), its continuation lines, soft lines and
+ * (a top-level bullet at column 0, over-nesting collapsed, and the section under a top-level
+ * heading shifted to column 0 when it starts indented: {@link dedentHeadingSections}), its
+ * continuation lines, soft lines and
  * fenced block moved by the same amount so their indentation beyond the content column is kept
  * (an indented code block inside a bullet stays code). Tabs in leading whitespace become columns
  * (inside a fenced block only up to the fence column: a tab in the code is code); a line owned
@@ -220,7 +335,29 @@ function relead(line: string, within: number, delta: number): string {
  * the grid comes back byte-identical, so callers may compare by reference.
  */
 export function normaliseIndentUnit(text: string): string {
-    const lines = text.split('\n')
+    const split = text.split('\n')
+    const once = regrid(dedentHeadingSections(split))
+    // A section the first step left because a line was shallower than its first bullet can be even
+    // once the walk has put its bullets on the grid; shifting it then gives what a second run would.
+    const sections = dedentHeadingSections(once)
+    const lines = sections === once ? once : regrid(sections)
+    return lines === split ? text : lines.join('\n')
+}
+
+/**
+ * Whether {@link normaliseIndentUnit} moves a section under a top-level heading: before the walk, or
+ * after it has evened out a section with a line shallower than its first bullet. The Formatting
+ * Scan names its indentation issue by it.
+ */
+export function movesHeadingSection(text: string): boolean {
+    const split = text.split('\n')
+    if (dedentHeadingSections(split) !== split) return true
+    const once = regrid(split)
+    return dedentHeadingSections(once) !== once
+}
+
+/** The walk's half of {@link normaliseIndentUnit}: `lines` with every bullet on the grid, or `lines` itself when none moves. */
+function regrid(lines: readonly string[]): readonly string[] {
     const out = lines.slice()
     const frontmatter = frontmatterLines(lines)
     let changed = false
@@ -235,5 +372,5 @@ export function normaliseIndentUnit(text: string): string {
             }
         }
     })
-    return changed ? out.join('\n') : text
+    return changed ? out : lines
 }

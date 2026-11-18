@@ -4,7 +4,8 @@
  * own words, that they have exported the graph and checked the export.
  */
 
-export const BACKUP_CONFIRMATION_PHRASE = 'Export completed and checked'
+/** Shown in lower case, so nobody wonders whether the capitals matter; any case is accepted. */
+export const BACKUP_CONFIRMATION_PHRASE = 'export completed and checked'
 
 /**
  * Single quotes, straight or curly. The copy shows the phrase in single quotes, so a person may

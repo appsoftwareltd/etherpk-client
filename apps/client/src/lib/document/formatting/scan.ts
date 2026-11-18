@@ -151,9 +151,22 @@ function openIssuesOn(issues: readonly FormattingIssue[], key: string): Formatti
 /**
  * Bring a page's issues up to date with its current text: each check's issue takes the new
  * finding, becomes `resolved` when the check no longer finds anything, and a finding with no issue
- * yet is added. `refused` is the issue whose write found the page changed. An issue with a write
- * in flight is left to that write; a fixed one stays fixed unless its check finds something again.
+ * yet is added. An issue with a write in flight is left to that write.
+ *
+ * `refused` is the issue whose write found the page changed: the text is someone else's edit, so
+ * that issue, and a fixed one whose check finds something again, are `changed`. Without it, the
+ * text is the scan's own fix, and a fixed issue whose check finds something again goes back to
+ * `pending`: another fix on the page brought it back, which nobody else did.
  */
+/**
+ * Where an issue whose check still finds something on the re-checked page goes (`recheckPage`): a
+ * skipped one stays skipped, and one already `changed` stays so until it is approved again.
+ */
+function stillFound(existing: FormattingIssue, refused: FormattingIssue | undefined): IssueStatus {
+    if (existing === refused || (refused && existing.status === 'fixed')) return 'changed'
+    return existing.status === 'skipped' || existing.status === 'changed' ? existing.status : 'pending'
+}
+
 export function recheckPage(issues: FormattingIssue[], document: ScanDocument, text: string, refused?: FormattingIssue): void {
     const found = new Map(findIssues(text).map(({ check, finding }) => [check, finding]))
     for (const check of FORMATTING_CHECKS) {
@@ -171,8 +184,7 @@ export function recheckPage(issues: FormattingIssue[], document: ScanDocument, t
         existing.scannedText = text
         existing.finding = finding
         existing.error = undefined
-        if (existing === refused || existing.status === 'fixed') existing.status = 'changed'
-        else if (existing.status !== 'skipped' && existing.status !== 'changed') existing.status = 'pending'
+        existing.status = stillFound(existing, refused)
     }
 }
 
@@ -181,18 +193,22 @@ function settlePage(issues: readonly FormattingIssue[], key: string, status: 'go
     for (const issue of openIssuesOn(issues, key)) issue.status = status
 }
 
-/** Read the page again after a write and re-check its issues against what it now holds. */
-async function refreshPage(source: FormattingSource, issues: FormattingIssue[], document: ScanDocument, refused?: FormattingIssue): Promise<void> {
+/** Read the page again after a refused write and re-check its issues against what it now holds. */
+async function refreshPage(source: FormattingSource, issues: FormattingIssue[], document: ScanDocument, refused: FormattingIssue): Promise<void> {
     const read = (await source.read([document.key], new AbortController().signal)).get(document.key)
     if (!read || read.kind === 'gone') return settlePage(issues, document.key, 'gone')
     if (read.kind === 'unread') {
         // The page cannot be trusted as read; its issues keep their diffs, which a write will refuse
         // if they are stale. The refused one says why it has nothing new to show.
-        if (refused) refused.status = 'unconfirmed'
+        refused.status = 'unconfirmed'
         return
     }
     if (containsCipherFence(read.text)) return settlePage(issues, document.key, 'protected')
-    recheckPage(issues, document, read.text, refused)
+    // Opening a page in the editor reads its line endings as line feeds, and an open page is read
+    // and written through the editor's buffer. Nobody edited the page, so it is re-checked as it now
+    // is without being called changed, and the refused fix is offered again for the text it holds.
+    const onlyLineEndings = read.text === refused.scannedText.replace(/\r\n?/g, '\n')
+    recheckPage(issues, document, read.text, onlyLineEndings ? undefined : refused)
 }
 
 /**
@@ -215,8 +231,13 @@ export async function approveIssue(source: FormattingSource, issues: FormattingI
     }
     switch (outcome) {
         case 'written':
+            // The write was a compare-and-set from `expected`, so the page now holds exactly the fix.
+            // Re-checking against it, rather than reading it back, keeps the page's other issues in
+            // step even while a synced store cannot yet confirm its own write, when a read would say
+            // the page is still syncing (or give the text from before it) and the next fix on the
+            // page would be refused as changed.
             issue.status = 'fixed'
-            return refreshPage(source, issues, issue.document)
+            return recheckPage(issues, issue.document, fixed)
         case 'changed':
             issue.status = 'pending' // back in the re-check's hands, which marks it changed or resolved
             return refreshPage(source, issues, issue.document, issue)
@@ -240,19 +261,77 @@ export function revealLineOf(issue: FormattingIssue): number {
     return Math.max(0, (issue.finding.lines[0] ?? 0) - frontmatter)
 }
 
-/**
- * Approve every pending issue of one check, one at a time. Issues that changed since the scan
- * come back re-checked and are never applied blind; skipped ones are left alone.
- */
-export async function approveAll(source: FormattingSource, issues: FormattingIssue[], check: FormattingCheckId): Promise<{ total: number; fixed: number; changed: number }> {
-    const targets = issues.filter((i) => i.check === check && i.status === 'pending' && i.finding.fixed !== null)
-    for (const target of targets) {
-        // An earlier fix can have re-checked this one's page since the list was taken.
-        if (target.status === 'pending') await approveIssue(source, issues, target)
-    }
+/** What an Approve all did: the issues it tried, how many it fixed, and how many changed since the scan. */
+export interface ApproveTally {
+    total: number
+    fixed: number
+    changed: number
+}
+
+/** A pending issue with a fix: what an Approve all applies. */
+function approvable(issue: FormattingIssue): boolean {
+    return issue.status === 'pending' && issue.finding.fixed !== null
+}
+
+function tallyOf(targets: readonly FormattingIssue[]): ApproveTally {
     return {
         total: targets.length,
         fixed: targets.filter((i) => i.status === 'fixed').length,
         changed: targets.filter((i) => i.status === 'changed').length,
     }
+}
+
+/** Approve `targets` one at a time, calling `onEach` with each once it is done. */
+async function approveEach(source: FormattingSource, issues: FormattingIssue[], targets: readonly FormattingIssue[], onEach?: (target: FormattingIssue) => void): Promise<void> {
+    for (const target of targets) {
+        // An earlier fix can have re-checked this one's page since the list was taken.
+        if (target.status === 'pending') await approveIssue(source, issues, target)
+        onEach?.(target)
+    }
+}
+
+/**
+ * Approve every pending issue of one check, one at a time. Issues that changed since the scan
+ * come back re-checked and are never applied blind; skipped ones are left alone.
+ */
+export async function approveAll(source: FormattingSource, issues: FormattingIssue[], check: FormattingCheckId): Promise<ApproveTally> {
+    const targets = issues.filter((i) => i.check === check && approvable(i))
+    await approveEach(source, issues, targets)
+    return tallyOf(targets)
+}
+
+/**
+ * Approve every pending issue of every check, check by check in registry order, which is the order
+ * the fixes build on each other (`checks.ts`). Each check's issues are taken when it starts, so one
+ * that an earlier fix brought to light is fixed too. A fix can also bring back an issue of a check
+ * already done, or leave its own check something more to do, so the checks are gone through again
+ * while the last pass fixed something and there is something left, up to one pass per check, which
+ * is as many as the fixes need to settle (`checks.test.ts`). `onCheck` says which check is being
+ * fixed, and `onProgress` counts fixes tried out of a total that grows when a fix brings another to
+ * light. The tally counts each issue once, by where it ends.
+ */
+export async function approveEverything(
+    source: FormattingSource,
+    issues: FormattingIssue[],
+    options: { onCheck?: (check: FormattingCheckId) => void; onProgress?: (done: number, total: number) => void } = {},
+): Promise<ApproveTally> {
+    const tried = new Set<FormattingIssue>()
+    let attempts = 0
+    // The fixes left to try in this pass: pending ones of this check and the checks after it.
+    const remaining = (from: number) => issues.filter((i) => approvable(i) && FORMATTING_CHECKS.findIndex((c) => c.id === i.check) >= from).length
+    const report = (from: number) => options.onProgress?.(attempts, attempts + remaining(from))
+    report(0)
+    for (let pass = 0; pass < FORMATTING_CHECKS.length && issues.some(approvable); pass++) {
+        for (const [index, check] of FORMATTING_CHECKS.entries()) {
+            const targets = issues.filter((i) => i.check === check.id && approvable(i))
+            if (targets.length === 0) continue
+            options.onCheck?.(check.id)
+            await approveEach(source, issues, targets, (target) => {
+                tried.add(target)
+                attempts++
+                report(index)
+            })
+        }
+    }
+    return tallyOf([...tried])
 }
