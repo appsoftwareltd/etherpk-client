@@ -110,6 +110,7 @@ export {
 export {
     type DeviceStorageReport,
     type StoragePersistence,
+    browserAsksBeforePersisting,
     describeDeviceStorage,
     ensurePersistentStorage,
 } from './storage-persistence'

@@ -82,8 +82,14 @@ export interface GraphChoicePanels {
     synced: SyncedChoicePanel
 }
 
+/**
+ * What a folder graph needs of the browser, as the end of a sentence. The Folder panel and the
+ * Import dialog both say it, in these words, so the two never disagree.
+ */
+export const FOLDER_BROWSER_NEED = 'the File System Access API: Chrome or Edge on desktop, or Chrome on Android.'
+
 /** The Folder panel's help line where the browser cannot open a folder: short, the same facts as the notice. */
-export const FOLDER_UNAVAILABLE_REASON = 'Needs the File System Access API: Chrome or Edge on desktop, or Chrome on Android.'
+export const FOLDER_UNAVAILABLE_REASON = `Needs ${FOLDER_BROWSER_NEED}`
 
 /** Which browsers open a Folder Graph, said where a folder was asked for and this browser cannot give one. */
 export const FOLDER_GRAPHS_NEED =

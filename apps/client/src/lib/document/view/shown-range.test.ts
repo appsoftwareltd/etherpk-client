@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { EXTERNAL } from './cm-document'
 import { refusalIn } from './edit-refused'
 import { anchorLine, lineAnchor } from './line-anchor'
-import { shownRange, shownRangeIn } from './shown-range'
+import { lineShownIn, shownRange, shownRangeIn } from './shown-range'
 import { EditorView } from '@codemirror/view'
 import { TASK_PART_NAMES, type TaskPart, taskPartRange } from './task-part-range'
 import { editorFixture } from './testing/editor-state-fixture'
@@ -30,6 +30,16 @@ describe('a shown range', () => {
         expect(shownRangeIn(description.state)).toEqual({ from: lineStart(SHED, '    - measure'), to: lineStart(SHED, '    - Comments') - 1, nestedUnder: 2 })
         const comments = showing('comments', SHED, lineStart(SHED, 'level'))
         expect(shownRangeIn(comments.state)).toEqual({ from: lineStart(SHED, '      - level'), to: lineStart(SHED, '- Kitchen') - 1, nestedUnder: SHED.split('\n').indexOf('    - Comments') + 1 })
+    })
+
+    it('says which lines it shows: every line in an editor of the whole document, none when nothing is shown', () => {
+        const comments = showing('comments', SHED, lineStart(SHED, 'level'))
+        const lines = SHED.split('\n').map((_, i) => lineShownIn(comments.state, i + 1))
+        expect(lines).toEqual([false, false, false, false, true, false])
+        const whole = editorFixture(`${SHED}|`)
+        expect(SHED.split('\n').every((_, i) => lineShownIn(whole.state, i + 1))).toBe(true)
+        const nothing = showing('description', '- intro\n- [ ] Build the shed\n- Kitchen', 2)
+        expect([1, 2, 3].some((line) => lineShownIn(nothing.state, line))).toBe(false)
     })
 
     it('is null for a task with no description, and refuses every edit of the person then', () => {

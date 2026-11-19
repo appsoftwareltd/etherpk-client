@@ -162,7 +162,7 @@ describe('the MCP server', () => {
     it('tells the agent a synced graph has no folder and that its sign-in is not to be read', async () => {
         const { client } = await connected()
         const instructions = client.getInstructions() ?? ''
-        expect(instructions).toContain('no folder on this computer')
+        expect(instructions).toContain('no folder on this device')
         expect(instructions).toContain('Never read, print, copy or search ~/.config/etherpk')
     })
 
@@ -220,7 +220,7 @@ describe('the MCP server', () => {
         })
 
         await client.connect(clientSide)
-        expect(client.getInstructions()).toContain('no folder on this computer')
+        expect(client.getInstructions()).toContain('no folder on this device')
         expect((await client.listTools()).tools.length).toBeGreaterThan(10)
 
         let answered = false

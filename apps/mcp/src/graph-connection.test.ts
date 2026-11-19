@@ -135,7 +135,7 @@ describe('what is said about an offline copy', () => {
     })
 
     it('the log says when the connection went and how long it was gone', () => {
-        expect(connectionChangeLine({ connection: { state: 'offline', since, unsentDocuments: 0 }, offlineForMs: null })).toBe("lost the connection to the Sync Server; the tools answer from this computer's copy.")
+        expect(connectionChangeLine({ connection: { state: 'offline', since, unsentDocuments: 0 }, offlineForMs: null })).toBe("lost the connection to the Sync Server; the tools answer from this device's copy.")
         expect(connectionChangeLine({ connection: { state: 'connected', since }, offlineForMs: null })).toBe('connected to the Sync Server.')
         expect(connectionChangeLine({ connection: { state: 'connected', since }, offlineForMs: 25 * MINUTE })).toBe('connected to the Sync Server again, after 25 minutes offline.')
     })

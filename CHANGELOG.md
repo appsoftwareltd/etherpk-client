@@ -5,6 +5,31 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.38.0 - 2026-11-19
+
+### Client
+
+- **Tags on Kanban cards keep their `#`.** A card shows a tag such as `maintenance` as
+  `#maintenance`, as the task line writes it, so it no longer looks like the scheduled date's pill.
+- **Firefox explains before it asks to keep data.** Firefox asks whether EtherPK may use
+  persistent storage, in a prompt by the address bar. EtherPK now says why first, once, as a graph
+  opens, and its **Continue** button brings up Firefox's prompt. **Ask Firefox to keep it** on the
+  Graphs page's **This Device** tab asks again.
+- **Import is easier to find.** A browser with no graph of its own shows an **Already have notes?**
+  panel with an **Import** button, and names EtherPK exports and folder graphs as sources too.
+- **Fixes.**
+  - The task editor's description and comments no longer show a stray fold arrow when the mouse
+    is above or below their lines.
+  - The Import dialog says what a local folder needs in the same words as the Graphs page.
+
+### Headless Client
+
+- **Fixes.**
+  - `login` says "Logged in." once it has worked and ends with the address of the Agents tab in
+    EtherPK. `semantic setup` says that `serve` embeds each graph next, in the background, and how
+    to see progress.
+  - Messages, errors and the tools' descriptions say "device" where they said "computer".
+
 ## 0.37.0 - 2026-11-19
 
 ### Client

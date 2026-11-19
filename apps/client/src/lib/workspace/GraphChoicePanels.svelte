@@ -53,6 +53,9 @@
     const TEXT_LINK = `text-left font-medium text-neutral-800 underline underline-offset-2 hover:text-neutral-950 pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center dark:text-neutral-100 dark:hover:text-white ${FOCUS}`;
     const JOIN = "pointer-coarse:hidden";
     const CHECK_ICON = "M4.5 12.75l6 6 9-13.5";
+    /** What Import can bring in. EtherPK's own export and folder graphs are named, as people moving between devices or from a folder to a synced graph look for them. */
+    const IMPORT_SOURCES =
+        "Import a Logseq graph, an Obsidian vault, an AS Notes workspace, or an EtherPK export or folder graph.";
 </script>
 
 {#snippet choiceButton(button: ChoiceButton, style: string, testid: string, busy: boolean)}
@@ -215,25 +218,33 @@
                 {/if}
             {/each}
         </div>
-        <div class="space-y-1 text-sm text-neutral-600 dark:text-neutral-400">
-            <p data-testid="first-run-other-ways">
-                <span class="pointer-coarse:block">
-                    Already have notes?
-                    <button
-                        type="button"
-                        data-testid="graphs-import"
-                        onclick={onimport}
-                        class={TEXT_LINK}>Import from Logseq, Obsidian or AS Notes</button
-                    ><span class={JOIN}>.</span>
-                </span>
-                {#if demoAvailable}
-                    <span class="pointer-coarse:block">
-                        Just looking?
-                        <a href="/demo" data-testid="graphs-try-demo" class={TEXT_LINK}>Try the demo</a
-                        ><span class={JOIN}>.</span>
-                    </span>
-                {/if}
+        <!-- Import, for people who arrive with notes: a quiet panel of its own, so it reads as a third
+             way in beside the two panels above, with its button after the words that say what it
+             takes. On a narrow screen the button wraps under the words. -->
+        <section
+            data-testid="first-run-import"
+            aria-label="Import notes"
+            class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-white/10 dark:bg-white/5"
+        >
+            <p
+                data-testid="first-run-import-text"
+                class="min-w-0 flex-1 basis-72 text-sm text-neutral-700 dark:text-neutral-300"
+            >
+                <span class="font-medium text-neutral-950 dark:text-white">Already have notes?</span>
+                {IMPORT_SOURCES}
             </p>
+            <button type="button" data-testid="graphs-import" onclick={onimport} class={SECONDARY}
+                >Import</button
+            >
+        </section>
+        <div class="space-y-1 text-sm text-neutral-600 dark:text-neutral-400">
+            {#if demoAvailable}
+                <p data-testid="first-run-other-ways">
+                    Just looking?
+                    <a href="/demo" data-testid="graphs-try-demo" class={TEXT_LINK}>Try the demo</a
+                    ><span class={JOIN}>.</span>
+                </p>
+            {/if}
             <p data-testid="first-run-docs">
                 Not sure which to choose?
                 <span class={JOIN}>Read</span>
@@ -307,8 +318,9 @@
                     </div>
                 {/each}
             </div>
+            <!-- The Import panel's place. -->
             <div
-                class="h-5 w-96 max-w-full rounded bg-neutral-100 motion-safe:animate-pulse dark:bg-white/5"
+                class="h-15 w-full rounded-xl border border-neutral-200 bg-neutral-50 motion-safe:animate-pulse dark:border-white/10 dark:bg-white/5"
             ></div>
         </div>
     </div>

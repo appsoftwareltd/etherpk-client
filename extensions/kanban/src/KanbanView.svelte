@@ -1907,9 +1907,11 @@
                                                                 {dueLabel(card)}
                                                             </span>
                                                         {/if}
-                                                        <!-- The card's Free Tags, after its dates, as the Tasks View draws them (ADR 0166). -->
+                                                        <!-- The card's Free Tags, after its dates (ADR 0166). Each is written with its `#`, as the
+                                                             task line and the Board Filter write it, which sets it apart from the
+                                                             scheduled date's pill of the same style. -->
                                                         {#each card.freeTags as freeTag (freeTag)}
-                                                            <span class={TAG_PILL_CLASSES} data-testid="kanban-card-free-tag">{freeTag}</span>
+                                                            <span class={TAG_PILL_CLASSES} data-testid="kanban-card-free-tag">#{freeTag}</span>
                                                         {/each}
                                                     </span>
                                                 </button>

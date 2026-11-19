@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { FOLDER_UNAVAILABLE_REASON } from '../workspace/graph-choice-panels'
 import { FOLDER_NEEDS, importDestinations } from './import-destinations'
 
 const SIGN_IN = 'Sign in with an EtherPK account that has Sync+ to import into a synced graph.'
@@ -26,7 +27,9 @@ describe('importDestinations', () => {
             notice: `The new graph will be a synced graph. A local folder ${FOLDER_NEEDS}`,
             none: null,
         })
-        expect(FOLDER_NEEDS).toBe('needs Chrome or Edge on a computer, or Chrome on Android.')
+        // The same words as the Graphs page's Folder panel, so the two never disagree.
+        expect(FOLDER_NEEDS).toBe('needs the File System Access API: Chrome or Edge on desktop, or Chrome on Android.')
+        expect(`N${FOLDER_NEEDS.slice(1)}`).toBe(FOLDER_UNAVAILABLE_REASON)
     })
 
     it('with neither, selects nothing and gives the reason for each', () => {

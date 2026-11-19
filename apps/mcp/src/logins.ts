@@ -104,7 +104,7 @@ export async function upgradeToAgentToken(opts: {
                 secrets: { token: agentToken, ...(current.vaultKey ? { vaultKey: current.vaultKey } : {}) },
                 keychain: inKeychain(stored) ? keychain : null,
             })
-            say(`etherpk-mcp: replaced the access token for ${current.syncServer} with an agent token for this computer, kept in ${where}. An agent token can do only what an agent needs, and the old token has been revoked.`)
+            say(`etherpk-mcp: replaced the access token for ${current.syncServer} with an agent token for this device, kept in ${where}. An agent token can do only what an agent needs, and the old token has been revoked.`)
             return { ...current, pat: agentToken }
         })
     } catch (error) {

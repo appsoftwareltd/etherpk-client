@@ -141,10 +141,38 @@ describe('unlockByDeviceApproval', () => {
         // The instruction names the Client, not the Server, says any page will do, and that any
         // device with the account's keys unlocked can approve.
         expect(said.join('\n')).toContain('open EtherPK at https://app.example.test')
-        expect(said.join('\n')).toMatch(/any page/)
-        expect(said.join('\n')).toContain("on any device where this account's\nEncryption Keys are unlocked")
+        expect(said.join('\n')).toMatch(/Any page will do/)
+        expect(said.join('\n')).toContain('on any other device where your Encryption Keys are unlocked')
         // Every such device shows the prompt, and none answers until the person chooses one.
         expect(said.join('\n')).toContain('choose Show the code')
+    })
+
+    it('prints the instruction as one line, for the terminal to wrap, and offers r after the waiting line', async () => {
+        const said: string[] = []
+        const api = {
+            createDeviceApproval: async () => ({ id: 'appr-5' }),
+            pollDeviceApproval: async () => ({ status: 'rejected' }),
+        } as unknown as SyncApi
+        const io = { say: (l: string) => said.push(l), sleep: async () => {}, codesMatch: () => false, clientUrl: 'https://app.example.test', offersRecoveryCode: true }
+        await expect(unlockByDeviceApproval(api, io)).rejects.toThrow('rejected')
+        // A hard break mid-sentence wraps badly on any terminal narrower or wider than the break.
+        const instruction = said.find((line) => line.includes('open EtherPK at https://app.example.test'))
+        expect(instruction).toContain('choose Show the code')
+        expect(instruction).toMatch(/\.$/)
+        const waiting = said.indexOf('Waiting (up to ten minutes)…')
+        expect(said.slice(waiting, waiting + 3)).toEqual(['Waiting (up to ten minutes)…', '', 'Press r to type your Recovery Code instead.'])
+        // A terminal prints markdown as typed: no asterisks.
+        expect(said.join('\n')).not.toContain('*')
+    })
+
+    it('does not offer r when nothing reads the key', async () => {
+        const said: string[] = []
+        const api = {
+            createDeviceApproval: async () => ({ id: 'appr-6' }),
+            pollDeviceApproval: async () => ({ status: 'rejected' }),
+        } as unknown as SyncApi
+        await expect(unlockByDeviceApproval(api, { say: (l) => said.push(l), sleep: async () => {}, codesMatch: () => false })).rejects.toThrow('rejected')
+        expect(said.join('\n')).not.toContain('Press r')
     })
 
     it('shows no code until an unlocked device answers', async () => {

@@ -1268,7 +1268,7 @@ describe('task references', () => {
         await editDocument(g, { concept: 'Plan', old: 'Send the quote', new: 'Send the new quote' })
         await rejectsWith(readTask(g, { reference }), 'task_not_found')
         // The tools know only this copy, so the refusal leaves room for an edit still on its way.
-        await expect(readTask(g, { reference })).rejects.toThrow('or the change has not reached this computer yet')
+        await expect(readTask(g, { reference })).rejects.toThrow('or the change has not reached this device yet')
         await rejectsWith(setTask(g, { reference, changes: { status: 'done' } }), 'task_not_found')
         expect((await readDocument(g, 'Plan')).text).toContain('- [ ] #P1 Send the new quote')
         await rejectsWith(readTask(g, { reference: 'Send the quote' }), 'invalid_argument')

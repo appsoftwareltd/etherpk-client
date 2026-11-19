@@ -9,10 +9,13 @@
  *   would have done in an editor showing the whole document. A join above is a key that would have
  *   joined a line onto the line above the part, a move out one that would have taken a shown line out
  *   of the part, and so on.
+ * - The fold chevron is drawn only for a shown bullet, over a shown row, and there for the bullet a
+ *   whole-document editor would draw it for (`augmentations/fold-controls.ts`).
  */
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
+import { chevronLine } from './augmentations/fold-controls'
 import { type EditRefusal, type ShownRangeEdge } from './edit-refused'
 import { anchoredLine, anchorLine, lineAnchor } from './line-anchor'
 import { shownRange, shownRangeIn } from './shown-range'
@@ -244,6 +247,38 @@ describe('an editor showing part of a task, under any keys', () => {
         )
     })
 })
+
+describe('the fold chevron in an editor showing part of a task', () => {
+    it('is for a shown bullet over a shown row, and there the same bullet as in a whole-document editor', () => {
+        fc.assert(
+            fc.property(taskDocument, fc.nat(), (task, partPick) => {
+                const parts = partsOf(task)
+                fc.pre(parts.length > 0)
+                const text = render(task)
+                const { editor } = showing(text, parts[partPick % parts.length])
+                const whole = editorFixture(`|${text}`).state
+                const lines = shownLinesOf(task, parts[partPick % parts.length])
+                const shown = (line: number) => lines.has(line)
+                for (let line = 1; line <= editor.state.doc.lines; line++) {
+                    const expected = chevronLine(whole, line)
+                    const want = shown(line) && expected !== null && shown(expected) ? expected : null
+                    expect(chevronLine(editor.state, line), `line ${line} of ${JSON.stringify(text)}`).toBe(want)
+                }
+            }),
+            fuzz(300),
+        )
+    })
+})
+
+/** The 1-based lines `part` covers in `render(task)`, counted from the document model, not the editor. */
+function shownLinesOf(task: TaskDocument, part: TaskPart): Set<number> {
+    const descriptionFrom = 3
+    const commentsFrom = descriptionFrom + task.description.length + 1
+    const contextFrom = commentsFrom + (task.comments ?? 0)
+    const [from, count] =
+        part === 'description' ? [descriptionFrom, task.description.length] : part === 'comments' ? [commentsFrom, task.comments ?? 0] : [contextFrom, task.context]
+    return new Set(Array.from({ length: count }, (_, i) => from + i))
+}
 
 /** Put the caret at the start or the end of a shown line's text. */
 function placeCaret(editor: HeadlessEditor, start: { line: number; atEnd: boolean }): void {

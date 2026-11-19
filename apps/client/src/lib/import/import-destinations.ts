@@ -4,6 +4,8 @@
  * source should never then find that neither destination can be used.
  */
 
+import { FOLDER_BROWSER_NEED } from '../workspace/graph-choice-panels'
+
 export type ImportDestination = 'folder' | 'synced'
 
 export interface ImportDestinations {
@@ -15,8 +17,8 @@ export interface ImportDestinations {
     none: { synced: string; folder: string } | null
 }
 
-/** What a local folder needs of the browser, as the end of a sentence. */
-export const FOLDER_NEEDS = 'needs Chrome or Edge on a computer, or Chrome on Android.'
+/** What a local folder needs of the browser, as the end of a sentence: the Graphs page's own words. */
+export const FOLDER_NEEDS = `needs ${FOLDER_BROWSER_NEED}`
 
 export function importDestinations(state: {
     /** The browser can write to a folder the person chooses. */

@@ -64,7 +64,7 @@ describe('semantic setup', () => {
         const said: string[] = []
         expect(await semanticSetupStatus(env, files)).toMatchObject({ runtime: false, model: false })
 
-        const status = await setupSemantic({ env, say: (line) => said.push(line), files, ...io })
+        const status = await setupSemantic({ env, say: (line) => said.push(line), files, command: 'npx @appsoftwareltd/etherpk-mcp', ...io })
         expect(status).toMatchObject({ runtime: true, model: true })
         expect(io.installs).toHaveLength(1)
         expect(io.installs[0]).toContain(`${RUNTIME.name}@${RUNTIME.version}`)
@@ -72,6 +72,15 @@ describe('semantic setup', () => {
         expect(io.fetched).toHaveLength(3)
         expect(await readFile(join(status.modelDir, 'model.onnx'), 'utf8')).toBe('onnx-bytes')
         expect(await readdir(status.modelDir)).not.toContainEqual(expect.stringMatching(/\.tmp$/))
+        // The outcome first, then what happens next: serve embeds each graph in the background,
+        // and semantic status shows how far it has got.
+        const report = said.slice(said.indexOf('Semantic search is set up.'))
+        expect(report[0]).toBe('Semantic search is set up.')
+        expect(report[1]).toBe('')
+        expect(report[2]).toMatch(/serve embeds .* in the background/)
+        expect(report[2]).toContain('a few minutes')
+        expect(report[2]).toContain('npx @appsoftwareltd/etherpk-mcp semantic status')
+        expect(report.join('\n')).toContain(`Model: ${MODEL.id} (${MODEL.dims} dimensions)`)
 
         // Idempotent: nothing is fetched or installed again, and the report says so.
         await setupSemantic({ env, say: (line) => said.push(line), files, ...io })

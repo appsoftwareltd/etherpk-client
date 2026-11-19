@@ -79,6 +79,7 @@ import {
     unlockByRecoveryCode,
     type QuitSignal,
 } from './login'
+import { agentSetupLine, loginSummary, SWITCHING_TO_RECOVERY_CODE } from './login-summary'
 import { createMcpServer } from './mcp-server'
 import { chromiumStartFailure, chromiumStatus, setupDiagrams } from './diagrams'
 import {
@@ -113,9 +114,9 @@ const CMD = /[\\/]_npx[\\/]/.test(process.argv[1] ?? '') ? 'npx @appsoftwareltd/
 const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one synced graph)
 
   ${CMD} login --sync-server <url> [--code <Agent Setup Code>] [--recovery-code]
-      Sign in this computer as a device of your account. Create an Agent Setup Code in EtherPK
+      Sign in this device as one of your account's devices. Create an Agent Setup Code in EtherPK
       (the Graphs page's Agents tab, or a synced graph's Settings > Agents, or <url>/account/tokens) and pass it with --code: it works once, within 10
-      minutes, and gets this computer an Agent Token limited to the routes an agent needs. Then
+      minutes, and gets this device an Agent Token limited to the routes an agent needs. Then
       unlock your Encryption Keys by Device Approval: confirm the matching code in EtherPK on
       any device where your Encryption Keys are unlocked, then press y. Press r while waiting,
       or pass --recovery-code, to type your Recovery Code instead (or ETHERPK_RECOVERY_CODE,
@@ -129,7 +130,7 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
   ${CMD} serve --graph <id or name> [--sync-server <url>] [--no-semantic]
       Serve one synced graph to an agent over stdio. For Claude Code:
         claude mcp add --scope user etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server <url> --graph <id>
-      Once "semantic setup" has run on this computer, serve also keeps a search-by-meaning
+      Once "semantic setup" has run on this device, serve also keeps a search-by-meaning
       store of the graph current (the agent's search tool gains mode: semantic) - pass
       --no-semantic to leave it off for this registration.
       Any number of agents can serve the same graph at once. The first one starts the graph's
@@ -143,7 +144,7 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       makes them when it opens a folder) - its index is kept under the cache directory, never
       in the folder.
   ${CMD} running
-      List the graphs served on this computer: each one's background process, its agents and
+      List the graphs served on this device: each one's background process, its agents and
       its log. A background process stops on its own once no agent has used it for five
       minutes (ETHERPK_MCP_HOST_IDLE_SECONDS sets another time).
   ${CMD} stop [--graph <id or name> [--sync-server <url>] | --folder <path> | --all]
@@ -156,7 +157,7 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
   ${CMD} semantic setup
       Let the agent search by meaning. Installs a ~300 MB native runtime (onnxruntime-node,
       with your npm) and downloads a 23 MB embedding model into the cache directory, once
-      per computer. Nothing leaves this computer when the model runs - notes are never sent
+      per device. Nothing leaves this device when the model runs - notes are never sent
       to a service to be embedded.
   ${CMD} semantic status | remove
       Whether it is set up here, or delete it (logout --all deletes it too).
@@ -182,7 +183,7 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       out of public logs.
   ${CMD} diagrams setup
       Let a publish draw Mermaid diagrams, maps and drawings. Downloads a Chromium (about 170 MB) into the
-      cache directory with Playwright's installer, once per computer - a publish whose pages hold
+      cache directory with Playwright's installer, once per device - a publish whose pages hold
       diagrams, maps or drawings refuses until this has run. Set ETHERPK_CHROMIUM=<path> to use a browser
       already on this machine instead (NixOS needs this).
   ${CMD} diagrams status
@@ -379,7 +380,8 @@ async function login(args: { 'sync-server'?: string; pat?: string; code?: string
     }
     const vaultKey = await (args['recovery-code'] ? byRecoveryCode() : approveOrFallBack(account, byRecoveryCode)).catch(abandon)
 
-    if (accessTokenKind(token) === 'standard') {
+    const exchangedAccessToken = accessTokenKind(token) === 'standard'
+    if (exchangedAccessToken) {
         // A Headless Client holds only an Agent Token, which never reaches the Settings Vault: an
         // access token that cannot be swapped for one is never kept, and the login fails.
         const given = token
@@ -389,44 +391,38 @@ async function login(args: { 'sync-server'?: string; pat?: string; code?: string
             if (!(await tokenStillWorks(syncServer, given))) {
                 return fail(`Could not swap the access token for an Agent Token (${reason}), and the access token you gave no longer works. Run login again with an Agent Setup Code.`)
             }
-            return fail(`Could not swap the access token for an Agent Token (${reason}). Nothing was kept on this computer: run login again.`)
+            return fail(`Could not swap the access token for an Agent Token (${reason}). Nothing was kept on this device: run login again.`)
         })
-        console.log('')
-        console.log(`The access token you gave has been revoked. This computer now holds an Agent Token, limited to the routes an agent needs. If you used that access token anywhere else, create a new one at ${syncServer}/account/tokens.`)
     }
 
     // The token this computer held before, if it held one for this server, is not needed now.
+    let replacedEarlierLogin = false
     if (previous) {
         const before = await loginCredentials(syncServer, previous, keychain()).catch(() => null)
-        if (before && before.pat !== token && (await revokeHeldToken({ syncServer, token: before.pat }))) {
-            console.log('')
-            console.log(`Revoked the token this computer held for ${syncServer} before this login.`)
-        }
+        replacedEarlierLogin = before !== null && before.pat !== token && (await revokeHeldToken({ syncServer, token: before.pat }))
     }
 
     const where = await saveLogin({ config, path, syncServer, secrets: { token, vaultKey: toBase64Url(vaultKey) }, keychain: keychain() })
-    console.log('')
-    console.log(
-        where === path
-            ? `Encryption Keys unlocked and kept in ${path} (owner-only). Anyone who can read your files on this machine can read this account, as with a signed-in browser. Never let an agent read, print or search that file.`
-            : `Encryption Keys unlocked and kept in ${where}; ${path} names only the server. A program you run can still ask ${where} for them, so run only agents you trust with this account.`,
-    )
     const others = Object.keys(config.servers).filter((server) => server !== syncServer)
-    if (others.length > 0) {
-        console.log('')
-        console.log(`Also logged in to ${others.join(', ')} - commands now need --sync-server <url> to say which.`)
-    }
 
     // The hosts serving this server's graphs hold the token and keys this login replaces; an agent
     // still connected starts a new host, with this login, on its next call.
     const restarted = await stopHosts(process.env, 'a new login for its server', ({ status }) => status.target.kind === 'synced' && status.target.server === syncServer)
-    if (restarted.length > 0) {
+
+    // Printed once everything is done, outcome first: the housekeeping above reads as routine
+    // under "Logged in", where on its own a line such as a revoked token read as a failure.
+    for (const paragraph of loginSummary({ syncServer, configPath: path, keptIn: where, exchangedAccessToken, replacedEarlierLogin, otherServers: others, stoppedHosts: restarted.length })) {
         console.log('')
-        console.log(`Stopped the background process of ${restarted.length === 1 ? 'one graph' : `${restarted.length} graphs`} served with the previous login. Agents start a new one with this login on their next call.`)
+        console.log(paragraph)
     }
 
     console.log('')
     await listGraphs({ syncServer, pat: token, vaultKey: toBase64Url(vaultKey) }, others.length > 0)
+    const setup = agentSetupLine(account.clientUrl)
+    if (setup) {
+        console.log('')
+        console.log(setup)
+    }
 }
 
 /**
@@ -455,6 +451,8 @@ async function approveOrFallBack(
         codesMatch: () => controls.codesMatch,
         signal: controls.signal,
         clientUrl: account.clientUrl,
+        // The hint is for a person at the keys; piped input comes from a script.
+        offersRecoveryCode: interactive,
     }
     const onKey = (chunk: Buffer) => controls.onKey(chunk.toString('utf8'))
     const onInputEnd = () => controls.onInputClosed()
@@ -464,8 +462,6 @@ async function approveOrFallBack(
     const onSignal = (name: QuitSignal) => controls.onSignal(name)
     for (const name of quitSignals) process.once(name, onSignal)
     if (interactive) {
-        console.log('')
-        console.log('**Press r to type your Recovery Code instead.**')
         stdin.setRawMode(true)
     } else {
         stdin.on('end', onInputEnd)
@@ -493,13 +489,13 @@ async function approveOrFallBack(
     }
     if (!abandoned) throw new Error('unreachable')
     if (controls.mismatched) {
-        fail('The codes did not match, so the request was cancelled. Something between this computer and your other device may have interfered. Run login again, or pass --recovery-code.')
+        fail('The codes did not match, so the request was cancelled. Something between this device and your other device may have interfered. Run login again, or pass --recovery-code.')
     }
     if (controls.inputClosed) {
         fail('Device approval needs someone to confirm the code it shows. Run login in a terminal and press y when the codes match, or pass --recovery-code, or set ETHERPK_RECOVERY_CODE.')
     }
     console.log('')
-    console.log('Approval cancelled - unlocking with your Recovery Code instead.')
+    console.log(SWITCHING_TO_RECOVERY_CODE)
     return byRecoveryCode()
 }
 
@@ -548,7 +544,7 @@ async function openVaultFor(account: HeadlessAccount, login: ServerCredentials &
         return await openAccountVault(account.api, fromBase64Url(login.vaultKey))
     } catch (error) {
         if (error instanceof EnvelopeError) {
-            throw new Error(`Your Encryption Keys on ${login.syncServer} were replaced or reset on another device, so the key saved on this computer no longer opens them. Run: ${CMD} login --sync-server ${login.syncServer}`)
+            throw new Error(`Your Encryption Keys on ${login.syncServer} were replaced or reset on another device, so the key saved on this device no longer opens them. Run: ${CMD} login --sync-server ${login.syncServer}`)
         }
         throw error
     }
@@ -579,7 +575,7 @@ async function listGraphs(login: ServerCredentials, several: boolean): Promise<v
 async function semanticCommand(what: string | undefined): Promise<void> {
     switch (what) {
         case 'setup':
-            await setupSemantic({ env: process.env, say: (line) => console.log(line) })
+            await setupSemantic({ env: process.env, say: (line) => console.log(line), command: CMD })
             return
         case 'status': {
             const status = await semanticSetupStatus(process.env)
@@ -667,11 +663,11 @@ async function publishCommand(args: ServeArgs & { publication?: string; out?: st
         case 'failed':
             // A host from before dry runs, or before repositories, answers this to a request kind it does not know.
             if ((dryRun || github) && reply.message === 'The request was not understood.') {
-                return fail(`etherpk-mcp: this graph is served on this computer by an older etherpk-mcp, which cannot ${dryRun ? 'run a dry run' : 'publish to a repository'}. Run: ${CMD} stop, then try again.`)
+                return fail(`etherpk-mcp: this graph is served on this device by an older etherpk-mcp, which cannot ${dryRun ? 'run a dry run' : 'publish to a repository'}. Run: ${CMD} stop, then try again.`)
             }
             return fail(`etherpk-mcp: ${reply.message}`)
         case 'unsupported':
-            return fail(`etherpk-mcp: this graph is served on this computer by etherpk-mcp ${reply.version}, which cannot run a publish for this version (${VERSION}). Run: ${CMD} stop, then publish again.`)
+            return fail(`etherpk-mcp: this graph is served on this device by etherpk-mcp ${reply.version}, which cannot run a publish for this version (${VERSION}). Run: ${CMD} stop, then publish again.`)
         default:
             return fail(`etherpk-mcp: the graph's background process gave an answer this version does not know ("${reply.etherpk}").`)
     }
@@ -878,7 +874,7 @@ async function serve(args: ServeArgs): Promise<void> {
                     return unavailable(request, reply.message)
                 case 'unsupported':
                     socket.destroy()
-                    return unavailable(request, `This graph is served on this computer by etherpk-mcp ${reply.version}, which cannot share it with this version (${VERSION}). Run: ${CMD} stop, then restart your agents.`)
+                    return unavailable(request, `This graph is served on this device by etherpk-mcp ${reply.version}, which cannot share it with this version (${VERSION}). Run: ${CMD} stop, then restart your agents.`)
                 default:
                     socket.destroy()
                     return unavailable(request, `The graph's background process gave an answer this version does not know ("${reply.etherpk}"). Run: ${CMD} stop, then restart your agents.`)
@@ -1026,7 +1022,7 @@ async function openSyncedGraph(syncServer: string, graphId: string, named: (name
         return [] as string[]
     })
     if (swept.length > 0) {
-        console.error(`etherpk-mcp: removed this computer's copy of ${swept.length === 1 ? 'a graph' : `${swept.length} graphs`} ${account.serverBaseUrl} no longer lists for you: ${swept.join(', ')}.`)
+        console.error(`etherpk-mcp: removed this device's copy of ${swept.length === 1 ? 'a graph' : `${swept.length} graphs`} ${account.serverBaseUrl} no longer lists for you: ${swept.join(', ')}.`)
     }
     const listed = graphs.find((graph) => graph.id === graphId)
     if (!listed) throw new Error(`No synced graph on ${login.syncServer} is identified by "${graphId}". Run: ${CMD} graphs`)
@@ -1119,7 +1115,7 @@ async function startSemantic(graph: HeadlessGraph): Promise<void> {
         void start()
         return
     }
-    console.error(`etherpk-mcp: semantic search is not set up on this computer (run: ${CMD} semantic setup - this process will notice within half a minute, no restart needed). Search answers by text only until then.`)
+    console.error(`etherpk-mcp: semantic search is not set up on this device (run: ${CMD} semantic setup - this process will notice within half a minute, no restart needed). Search answers by text only until then.`)
     whenSemanticSetUp(process.env, () => {
         console.error('etherpk-mcp: semantic setup found - loading the model and building the store.')
         void start()
@@ -1135,7 +1131,7 @@ function describeHostTarget(target: HostTarget): string {
 async function runningCommand(): Promise<void> {
     const hosts = await runningHosts(process.env)
     if (hosts.length === 0) {
-        console.log('No graph is being served on this computer.')
+        console.log('No graph is being served on this device.')
         return
     }
     for (const { cacheDir, status } of hosts) {
@@ -1168,7 +1164,7 @@ async function stopCommand(args: ServeArgs & { all?: boolean }): Promise<void> {
     }
     const stopped = await stopHosts(process.env, 'stop was run', which)
     if (stopped.length === 0) {
-        console.log(path || wanted ? 'That graph is not being served on this computer.' : 'No graph is being served on this computer.')
+        console.log(path || wanted ? 'That graph is not being served on this device.' : 'No graph is being served on this device.')
         return
     }
     for (const host of stopped) {

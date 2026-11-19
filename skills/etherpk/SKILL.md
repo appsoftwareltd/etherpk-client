@@ -19,13 +19,13 @@ Work through the steps in order. Each one ends on a check.
 
 | What you find | Route |
 | --- | --- |
-| The user names a synced EtherPK graph, or the `etherpk` MCP tools serve one (`graph_info` says it is synced) | **MCP.** A synced graph has no folder on this computer. Read and write it through the `etherpk` tools only, as their own instructions describe, and use step 5 for its publications. |
+| The user names a synced EtherPK graph, or the `etherpk` MCP tools serve one (`graph_info` says it is synced) | **MCP.** A synced graph has no folder on this device. Read and write it through the `etherpk` tools only, as their own instructions describe, and use step 5 for its publications. |
 | A folder with `etherpk/graph.json` | A **Local Mirror** of a synced graph. EtherPK rewrites every file in it from the server, so work on that graph through the MCP route. |
 | A folder with `journals/` and `pages/` | An existing **folder graph**. Go to step 3. When the `etherpk` MCP tools serve this folder (`graph_info` shows its path), edit and search through them, since they keep the format intact. |
 | No folder yet, and the user wants a blog, docs site or wiki | Make one in step 2. |
 
 When the MCP route applies and the `etherpk` tools are not connected, tell the user to open
-**Settings → Agents** in EtherPK for that graph. It shows the commands that sign this computer in
+**Settings → Agents** in EtherPK for that graph. It shows the commands that sign this device in
 and connect their agent, for example:
 
 ```sh

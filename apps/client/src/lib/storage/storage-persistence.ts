@@ -46,6 +46,84 @@ export async function ensurePersistentStorage(
 }
 
 /**
+ * The browser answers `persist()` with a permission prompt of its own. Firefox does, on a
+ * computer and on Android; Chromium and Safari decide on engagement heuristics without asking.
+ * Firefox on iOS is WebKit and says `FxiOS`, not `Firefox/`, so it is left out with Safari.
+ */
+export function browserAsksBeforePersisting(userAgent: string): boolean {
+    return /\bFirefox\//.test(userAgent)
+}
+
+/**
+ * What to do about persistent storage as a graph opens:
+ *
+ * - `none`: nothing. The browser has no API, has already agreed, has been told no, or EtherPK
+ *   has explained it once and the person chose Not now (the Graphs page can ask again).
+ * - `request`: call `ensurePersistentStorage()` straight away. The browser decides without
+ *   asking anyone, so there is nothing to explain.
+ * - `explain`: show EtherPK's own dialog first. Firefox's prompt hangs off the address bar,
+ *   arrives as the graph opens and gives no reason, so people block it or leave it; the dialog
+ *   says why, and its button makes the request, so the prompt follows the reason.
+ */
+export type PersistenceStep = 'none' | 'request' | 'explain'
+
+type PermissionsLike = { query(descriptor: { name: 'persistent-storage' }): Promise<{ state: PermissionState }> }
+
+export async function persistenceStep(env: {
+    storage: StorageManagerLike | undefined
+    permissions?: PermissionsLike
+    userAgent: string
+    /** EtherPK's explanation was shown in this browser before. */
+    explained: boolean
+}): Promise<PersistenceStep> {
+    if (!(await notYetPersisted(env.storage))) return 'none'
+    if (!browserAsksBeforePersisting(env.userAgent)) return 'request'
+    const state = await persistentStoragePermission(env.permissions)
+    if (state === 'denied') return 'none'
+    if (state === 'granted') return 'request'
+    return env.explained ? 'none' : 'explain'
+}
+
+/** The browser has the API and has not yet agreed to keep this origin's storage. */
+async function notYetPersisted(storage: StorageManagerLike | undefined): Promise<boolean> {
+    if (!storage || typeof storage.persist !== 'function' || typeof storage.persisted !== 'function') return false
+    try {
+        return !(await storage.persisted())
+    } catch {
+        return false
+    }
+}
+
+/** The person's answer to the persistent-storage permission, or null where the browser will not say. */
+async function persistentStoragePermission(permissions: PermissionsLike | undefined): Promise<PermissionState | null> {
+    try {
+        return permissions ? (await permissions.query({ name: 'persistent-storage' })).state : null
+    } catch {
+        // A Permissions API that does not know the name says nothing either way.
+        return null
+    }
+}
+
+/** Where this browser remembers that EtherPK explained persistent storage, so it is explained once. */
+const EXPLAINED_KEY = 'etherpk:persistent-storage-explained'
+
+export function persistenceExplained(store: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): boolean {
+    try {
+        return store?.getItem(EXPLAINED_KEY) === '1'
+    } catch {
+        return false
+    }
+}
+
+export function markPersistenceExplained(store: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage): void {
+    try {
+        store?.setItem(EXPLAINED_KEY, '1')
+    } catch {
+        /* storage refused (a private window): the explanation may show again, which is harmless */
+    }
+}
+
+/**
  * What this device's storage looks like, for the Graphs page to say out loud. `persisted` and
  * the estimate are separate questions and either can be unanswerable, so each is `null` when
  * it is, rather than a guess.

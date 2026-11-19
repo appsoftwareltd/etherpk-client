@@ -32,3 +32,21 @@ export function touchAll(
     for (const field of fields) next[field] = true
     return next
 }
+
+/**
+ * Mark a field touched as the person leaves it, but only once they have typed in it.
+ *
+ * Clicking into an empty field and out again, tabbing past it, or pressing a Google or GitHub
+ * button while the caret is in it, is not finishing with the field: nothing was entered, so
+ * "Email is required" would be a complaint about a step the person chose to skip. A submit
+ * still reports every empty field (`touchAll`). A field that has errored stays touched, so it
+ * keeps correcting itself as the person types. `typedIn` is set from the field's input event,
+ * which a browser's autofill fires too.
+ */
+export function touchOnBlur(
+    touched: Readonly<Record<string, boolean>>,
+    field: string,
+    typedIn: Readonly<Record<string, boolean>>,
+): Record<string, boolean> {
+    return touched[field] || typedIn[field] ? { ...touched, [field]: true } : { ...touched }
+}

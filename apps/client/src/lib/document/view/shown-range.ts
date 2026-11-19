@@ -81,6 +81,14 @@ export function shownRangeIn(state: EditorState): ShownRange | null | undefined 
     return state.facet(shownRangeFacet)
 }
 
+/** Whether the editor draws 1-based `line`: always, unless it shows one run of its document and the line is outside it. */
+export function lineShownIn(state: EditorState, line: number): boolean {
+    const range = state.facet(shownRangeFacet)
+    if (range === undefined) return true
+    const { from } = state.doc.line(line)
+    return range !== null && from >= range.from && from <= range.to
+}
+
 /** The lines outside the run, as block replacements: whole lines, the line breaks between them included. */
 const hiddenLines = Facet.define<DecorationSet, DecorationSet>({ combine: (values) => values[0] ?? Decoration.none })
 

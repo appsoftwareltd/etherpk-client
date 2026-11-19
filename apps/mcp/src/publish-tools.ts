@@ -344,7 +344,7 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
             const status = await chromiumStatus(env, cmd)
             throw new ToolError(
                 'chromium_unavailable',
-                `"${publication.name}" has Mermaid diagrams, which a publish draws with a browser, and none is set up on this computer. Ask the user to run: ${status.setupCommand} (or set ETHERPK_CHROMIUM to a Chromium on this machine). Nothing was published.`,
+                `"${publication.name}" has Mermaid diagrams, which a publish draws with a browser, and none is set up on this device. Ask the user to run: ${status.setupCommand} (or set ETHERPK_CHROMIUM to a Chromium on this machine). Nothing was published.`,
             )
         }
     }
@@ -356,7 +356,7 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
             const status = await chromiumStatus(env, cmd)
             throw new ToolError(
                 'chromium_unavailable',
-                `"${publication.name}" has maps, which a publish draws as pictures with a browser, and none is set up on this computer. Ask the user to run: ${status.setupCommand} (or set ETHERPK_CHROMIUM to a Chromium on this machine). Nothing was published.`,
+                `"${publication.name}" has maps, which a publish draws as pictures with a browser, and none is set up on this device. Ask the user to run: ${status.setupCommand} (or set ETHERPK_CHROMIUM to a Chromium on this machine). Nothing was published.`,
             )
         }
     }
@@ -369,7 +369,7 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
             const status = await chromiumStatus(env, cmd)
             throw new ToolError(
                 'chromium_unavailable',
-                `"${publication.name}" has drawings, which a publish draws as pictures with a browser, and none is set up on this computer. Ask the user to run: ${status.setupCommand} (or set ETHERPK_CHROMIUM to a Chromium on this machine). Nothing was published.`,
+                `"${publication.name}" has drawings, which a publish draws as pictures with a browser, and none is set up on this device. Ask the user to run: ${status.setupCommand} (or set ETHERPK_CHROMIUM to a Chromium on this machine). Nothing was published.`,
             )
         }
     }

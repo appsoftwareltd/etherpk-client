@@ -91,11 +91,11 @@ export function offlineSince(connection: OfflineConnection, now = Date.now()): s
 /** The note an answer carries while its copy is offline; null while connected and on a folder, which has no connection. */
 export function offlineNotice(connection: GraphConnection | null, now = Date.now()): string | null {
     if (connection?.state !== 'offline') return null
-    return `This computer's copy of the graph has been ${offlineSince(connection, now)}. This answer comes from that copy: it can lack edits made elsewhere since then, and a page or task it does not find may only be newer than the copy. Tell the user before relying on it. The copy catches up when the connection returns.`
+    return `This device's copy of the graph has been ${offlineSince(connection, now)}. This answer comes from that copy: it can lack edits made elsewhere since then, and a page or task it does not find may only be newer than the copy. Tell the user before relying on it. The copy catches up when the connection returns.`
 }
 
 /** One line for the host's log. */
 export function connectionChangeLine(change: ConnectionChange): string {
-    if (change.connection.state === 'offline') return "lost the connection to the Sync Server; the tools answer from this computer's copy."
+    if (change.connection.state === 'offline') return "lost the connection to the Sync Server; the tools answer from this device's copy."
     return change.offlineForMs === null ? 'connected to the Sync Server.' : `connected to the Sync Server again, after ${durationWords(change.offlineForMs)} offline.`
 }

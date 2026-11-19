@@ -40,6 +40,7 @@ import { guideThreadsFor } from './augmentations/outline-guides'
 import { blockRange } from './block-actions'
 import { bulletFoldRange, foldedBulletLines, foldOfBullet, hasFoldedDescendant, outlineFolds, toggleBulletFoldSpec, unfoldBranchSpec } from './augmentations/outline-folds'
 import { outlineBaseIn } from './augmentations/outline-base'
+import { chevronLine } from './augmentations/fold-controls'
 import { commandMenuShown, slashCompletion } from './augmentations/slash-complete'
 import { refreshOpenPopovers } from './augmentations/popover-menu'
 import { learnedFreeTags, taskTagCompletion } from './augmentations/task-tag-complete'
@@ -58,7 +59,7 @@ import { checkboxClick } from './augmentations/task-checkbox'
 import { taskChangeSpec } from './task-change'
 import { anchorLine, lineAnchor } from './line-anchor'
 import { type ShownRangeEdge } from './edit-refused'
-import { shownRange, showsPart } from './shown-range'
+import { shownRange, shownRangeIn, showsPart } from './shown-range'
 import { requestReveal, revealFocus, revealOnlyWhileFocused } from './augmentations/reveal-policy'
 import { collapsedExtensionFences, fenceIdAt, interactiveFences } from './augmentations/interactive-fence-state'
 import { mapSizeEdits } from '../map-text'
@@ -4193,6 +4194,39 @@ describe('folds', () => {
         expect(hasFoldedDescendant(editor.state, 1)).toBe(true)
         editor.dispatch(editor.state.update(unfoldBranchSpec(editor.state, 1)!))
         expect(foldedBulletLines(editor.state)).toEqual([])
+    })
+
+    /** The state of an editor on `text` showing `part` of the task on its first line, as the Task Editor does. */
+    function showingTaskPart(part: TaskPart, text: string) {
+        const editor = editorFixture(text, { extensions: [lineAnchor(), shownRange(taskPartRange(part))] })
+        editor.dispatch(editor.state.update({ effects: anchorLine.of(0) }))
+        return editor.state
+    }
+
+    it('the chevron shows over a parent’s row, for that parent (Logseq)', () => {
+        const state = editorFixture(tree).state
+        expect(chevronLine(state, 1), 'a parent’s own row').toBe(1)
+        expect(chevronLine(state, 2), 'a parent nested in another').toBe(2)
+        expect(chevronLine(state, 3), 'a bullet with no children').toBeNull()
+    })
+
+    it('an editor showing part of a document draws no chevron for a hidden bullet, nor over a hidden row (EtherPK)', () => {
+        // The Task Editor's comments, where the mouse below the last comment is over the hidden lines
+        // after it, and a row's owner may be the hidden Comments bullet above.
+        const text = ['- [ ] Build the shed|', '  - Comments', '    - ordered the timber', '- [ ] Water the beans', '  - fill the can'].join('\n')
+        const state = showingTaskPart('comments', text)
+        expect(shownRangeIn(state)).toMatchObject({ nestedUnder: 2 })
+        expect(chevronLine(state, 3), 'the comment, which has no children').toBeNull()
+        expect(chevronLine(state, 2), 'the hidden Comments bullet').toBeNull()
+        expect(chevronLine(state, 4), 'the hidden task after the comments').toBeNull()
+        expect(chevronLine(state, 5), 'a hidden child of it').toBeNull()
+    })
+
+    it('an editor showing part of a document draws the chevron for a shown parent (EtherPK)', () => {
+        const text = ['- [ ] Build the shed|', '  - measure', '    - the floor', '  - Comments', '    - ordered the timber'].join('\n')
+        const state = showingTaskPart('description', text)
+        expect(chevronLine(state, 2), 'a shown parent').toBe(2)
+        expect(chevronLine(state, 3), 'a shown bullet with no children').toBeNull()
     })
 })
 

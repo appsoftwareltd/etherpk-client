@@ -12,7 +12,8 @@
     import { onMount, type Snippet } from 'svelte'
 
     import { isDemoGraph } from '#lib/demo/demo-graph.js'
-    import { ensurePersistentStorage } from '#lib/storage/storage-persistence.js'
+    import { ensurePersistentStorage, persistenceExplained, persistenceStep } from '#lib/storage/storage-persistence.js'
+    import PersistentStorageDialog from '#lib/workspace/PersistentStorageDialog.svelte'
     import { appHeaderHiddenOnPhone } from '#lib/workspace/app-header.svelte.js'
     import DemoBar from '#lib/demo/ui/DemoBar.svelte'
     import { graphAddressPath } from '#lib/navigation/graph-address.js'
@@ -32,16 +33,28 @@
 
     // Ask the browser not to evict the graph registry, Local Cache and Derived Index under disk
     // pressure. Asked here, where a graph opens, and not on the public pages: Firefox answers with
-    // a permission prompt, which a visitor reading the landing page has no reason to meet. Best
-    // effort and never awaited: the grant depends on the browser's engagement heuristics, so a
-    // refusal is logged for diagnosis rather than acted on.
+    // a permission prompt, which a visitor reading the landing page has no reason to meet. Where
+    // the browser decides on its own (Chromium, Safari) the request is made at once and a refusal
+    // is logged. Firefox gets EtherPK's reason first (`PersistentStorageDialog`), once, and its
+    // Continue button makes the request. The demo is left alone: nothing in it needs keeping.
+    let explainPersistence = $state(false)
     onMount(() => {
-        void ensurePersistentStorage().then((outcome) => {
-            if (outcome.supported && !outcome.persisted) {
-                console.warn(
-                    '[storage] Persistent storage was not granted; this browser may evict folder graph data under disk pressure.',
-                )
-            }
+        if (demo) return
+        void persistenceStep({
+            storage: navigator.storage,
+            permissions: navigator.permissions,
+            userAgent: navigator.userAgent,
+            explained: persistenceExplained(),
+        }).then((step) => {
+            if (step === 'explain') explainPersistence = true
+            if (step !== 'request') return
+            void ensurePersistentStorage().then((outcome) => {
+                if (outcome.supported && !outcome.persisted) {
+                    console.warn(
+                        '[storage] Persistent storage was not granted; this browser may evict folder graph data under disk pressure.',
+                    )
+                }
+            })
         })
     })
 </script>
@@ -66,6 +79,7 @@
     </div>
 {/key}
 {@render children()}
+<PersistentStorageDialog open={explainPersistence} onclose={() => (explainPersistence = false)} />
 
 <style>
     .workspace-host {

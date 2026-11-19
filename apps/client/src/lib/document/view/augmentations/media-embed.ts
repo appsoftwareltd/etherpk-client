@@ -30,7 +30,7 @@ import { type ResolvedAsset, displayNameForRef } from '#lib/storage/fs/asset-sto
 import { type MediaKind, parseMediaLine } from '../../media-line'
 import { analysisFor } from '../analysis/editor-analysis'
 import { type MediaPlayer, createMediaPlayer } from '../media/media-player'
-import { shownRangeIn } from '../shown-range'
+import { lineShownIn, shownRangeIn } from '../shown-range'
 import { BLOCK_WIDGET_SPACING, blockWidgetIndent } from './content-clamp'
 import { type FoldRange, allFolds } from './outline-folds'
 
@@ -136,16 +136,15 @@ export function mediaWidgetPos(lineEnd: number, folds: readonly FoldRange[]): nu
 function buildDecorations(state: EditorState, options: MediaEmbedOptions): DecorationSet {
     const { lines, mediaLines } = analysisFor(state)
     if (mediaLines.length === 0) return Decoration.none
-    // A part editor (shown-range.ts) shows one run of the document: null is nothing, undefined everything.
-    const shown = shownRangeIn(state)
-    if (shown === null) return Decoration.none
+    // A part editor (shown-range.ts) that shows nothing has no players to draw.
+    if (shownRangeIn(state) === null) return Decoration.none
     const folds = allFolds(state)
     const decos: Range<Decoration>[] = []
     for (const n of mediaLines) {
         const media = parseMediaLine(lines[n - 1])
         if (!media) continue
+        if (!lineShownIn(state, n)) continue
         const line = state.doc.line(n)
-        if (shown && (line.from < shown.from || line.to > shown.to)) continue
         const pos = mediaWidgetPos(line.to, folds)
         if (pos === null) continue
         decos.push(

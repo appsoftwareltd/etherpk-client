@@ -21,6 +21,7 @@ import { EditorView, keymap, layer, RectangleMarker } from '@codemirror/view'
 
 import { isBulletLine, lineIndent } from '../../outliner'
 import { analysisFor } from '../analysis/editor-analysis'
+import { lineShownIn } from '../shown-range'
 import { anchorBlockMenu, blockMenuAnchor } from '../block-menu-anchor'
 import { allFolds, isFoldableBullet, isFoldedBullet, toggleBulletFoldSpec } from './outline-folds'
 
@@ -89,11 +90,17 @@ export function hoveredDotLine(state: EditorState): number | null {
 
 const optionsField = StateField.define<FoldControlOptions>({ create: () => ({}), update: (v) => v })
 
-/** The bullet line (1-based) a mouse row shows the chevron for: the bullet whose block the row is in, when it has children. */
-function chevronLine(state: EditorState, line: number): number | null {
+/**
+ * The bullet line (1-based) a mouse row shows the chevron for: the bullet whose block the row is in,
+ * when it has children. None for a line an editor showing part of its document hides (`shown-range.ts`):
+ * above the first line the [[Task Editor]] shows and below its last, the mouse is over hidden lines,
+ * which have no place on screen for a chevron.
+ */
+export function chevronLine(state: EditorState, line: number): number | null {
     const { outline, branchEnds } = analysisFor(state)
     const owner = outline[line - 1]?.owner ?? -1
-    return owner >= 0 && branchEnds[owner] > owner ? owner + 1 : null
+    if (owner < 0 || branchEnds[owner] <= owner) return null
+    return lineShownIn(state, line) && lineShownIn(state, owner + 1) ? owner + 1 : null
 }
 
 /** The centre (viewport px) of the dot on bullet line `line`, or null when it is not laid out. */

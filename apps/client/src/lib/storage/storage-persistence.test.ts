@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { ensurePersistentStorage } from './storage-persistence'
+import { browserAsksBeforePersisting, ensurePersistentStorage, persistenceStep } from './storage-persistence'
 
 describe('ensurePersistentStorage', () => {
     it('reports an unsupported browser without touching anything', async () => {
@@ -82,5 +82,60 @@ describe('describeDeviceStorage', () => {
                 },
             }),
         ).toEqual({ supported: true, persisted: null, usage: null, quota: null })
+    })
+})
+
+const FIREFOX = 'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0'
+const FIREFOX_ANDROID = 'Mozilla/5.0 (Android 14; Mobile; rv:140.0) Gecko/140.0 Firefox/140.0'
+const CHROME = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
+const SAFARI = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'
+// Firefox on iOS is WebKit underneath and answers as Safari does: no prompt.
+const FIREFOX_IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/140.0 Mobile/15E148 Safari/605.1.15'
+
+describe('browserAsksBeforePersisting', () => {
+    it('is true for Firefox, which answers persist() with a permission prompt', () => {
+        expect(browserAsksBeforePersisting(FIREFOX)).toBe(true)
+        expect(browserAsksBeforePersisting(FIREFOX_ANDROID)).toBe(true)
+    })
+
+    it('is false for browsers that decide on their own heuristics, without asking', () => {
+        expect(browserAsksBeforePersisting(CHROME)).toBe(false)
+        expect(browserAsksBeforePersisting(SAFARI)).toBe(false)
+        expect(browserAsksBeforePersisting(FIREFOX_IOS)).toBe(false)
+    })
+})
+
+describe('persistenceStep', () => {
+    const notYet = { persisted: async () => false, persist: async () => false }
+    const permission = (state: PermissionState) => ({ query: async () => ({ state }) })
+
+    it('does nothing where the browser has no persistence API, or has already agreed', async () => {
+        expect(await persistenceStep({ storage: undefined, userAgent: FIREFOX, explained: false })).toBe('none')
+        expect(await persistenceStep({ storage: { persisted: async () => true, persist: async () => true }, userAgent: FIREFOX, explained: false })).toBe('none')
+    })
+
+    it('asks quietly where the browser does not prompt', async () => {
+        expect(await persistenceStep({ storage: notYet, userAgent: CHROME, explained: false })).toBe('request')
+        expect(await persistenceStep({ storage: notYet, userAgent: SAFARI, explained: true })).toBe('request')
+    })
+
+    it('explains first in Firefox, so its prompt does not arrive out of nowhere', async () => {
+        expect(await persistenceStep({ storage: notYet, permissions: permission('prompt'), userAgent: FIREFOX, explained: false })).toBe('explain')
+        // A browser whose Permissions API does not know the name still gets the explanation.
+        expect(await persistenceStep({ storage: notYet, userAgent: FIREFOX, explained: false })).toBe('explain')
+    })
+
+    it('explains once: after that only the Graphs page asks again', async () => {
+        expect(await persistenceStep({ storage: notYet, permissions: permission('prompt'), userAgent: FIREFOX, explained: true })).toBe('none')
+    })
+
+    it('never asks again once the person has blocked it, and asks quietly once it is allowed', async () => {
+        expect(await persistenceStep({ storage: notYet, permissions: permission('denied'), userAgent: FIREFOX, explained: false })).toBe('none')
+        expect(await persistenceStep({ storage: notYet, permissions: permission('granted'), userAgent: FIREFOX, explained: false })).toBe('request')
+    })
+
+    it('treats a Permissions API that throws as not knowing, not as a refusal', async () => {
+        const throwing = { query: async () => { throw new TypeError('not a permission name') } }
+        expect(await persistenceStep({ storage: notYet, permissions: throwing, userAgent: FIREFOX, explained: false })).toBe('explain')
     })
 })

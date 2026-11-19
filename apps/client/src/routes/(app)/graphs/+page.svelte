@@ -38,8 +38,10 @@
         applyGraphOrder,
         createIdbGraphStoragePort,
         createWebFsDirectoryAdapter,
+        browserAsksBeforePersisting,
         describeDeviceStorage,
         ensurePermission,
+        ensurePersistentStorage,
         getLastGraphId,
         isFsaSupported,
         isOnDisk,
@@ -894,6 +896,20 @@
     );
     /** Whether this browser has agreed to keep the origin's storage, and how much it uses. */
     let deviceStorage = $state.raw<DeviceStorageReport | null>(null);
+    // Firefox asks before it keeps the data, so a person who chose Not now (or let its prompt go)
+    // is offered the request again here. Other browsers decide on their own; a button would do
+    // nothing they could see.
+    let askingToKeep = $state(false);
+    async function askToKeepData() {
+        if (askingToKeep) return;
+        askingToKeep = true;
+        try {
+            await ensurePersistentStorage();
+            deviceStorage = await describeDeviceStorage();
+        } finally {
+            askingToKeep = false;
+        }
+    }
     /** Running as an installed app, which is the one thing that reliably earns persistence on a phone. */
     let installedApp = $state(false);
     const deletePlayerCount = $derived(
@@ -5334,6 +5350,16 @@
                                 encourage the browser to keep the data.
                             {/if}
                         </p>
+                        {#if browserAsksBeforePersisting(navigator.userAgent)}
+                            <button
+                                type="button"
+                                data-testid="device-storage-ask"
+                                aria-busy={askingToKeep}
+                                onclick={askToKeepData}
+                                class="inline-flex min-h-9 items-center rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5"
+                                >Ask Firefox to keep it</button
+                            >
+                        {/if}
                     {:else}
                         <p
                             class="text-sm text-neutral-500 dark:text-neutral-400"

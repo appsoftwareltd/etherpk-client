@@ -69,7 +69,7 @@ export async function setupDiagrams(env: NodeJS.ProcessEnv, say: (line: string) 
     }
     const cli = require.resolve('playwright-core/cli.js')
     const dir = env.PLAYWRIGHT_BROWSERS_PATH?.trim() || browsersDir(env)
-    say(`Installing Chromium into ${dir} (about 170 MB, once per computer - a diagram is rendered by a browser, and this is the one etherpk-mcp drives)…`)
+    say(`Installing Chromium into ${dir} (about 170 MB, once per device - a diagram is rendered by a browser, and this is the one etherpk-mcp drives)…`)
     await new Promise<void>((resolve, reject) => {
         const child = spawn(process.execPath, [cli, 'install', 'chromium'], {
             env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: dir },

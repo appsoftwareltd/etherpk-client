@@ -53,7 +53,8 @@
     import { PROTECTION_FILE } from "#lib/document/protection/protection-store.js";
 
     import { describeOversize, oversizeAssets } from "../asset-preflight";
-    import { FOLDER_NEEDS, importDestinations } from "../import-destinations";
+    import { importDestinations } from "../import-destinations";
+    import { FOLDER_UNAVAILABLE_REASON } from "#lib/workspace/graph-choice-panels.js";
     import { startImport } from "../import-activity";
     import {
         directoryHasEntries,
@@ -625,7 +626,7 @@
                             ><span class="font-medium {folderAvailable ? '' : 'text-neutral-500 dark:text-neutral-400'}">Local folder</span> -
                             plain markdown files in a new, empty folder you
                             choose.{#if !folderAvailable}
-                                <span class="block text-neutral-600 dark:text-neutral-300">A local folder {FOLDER_NEEDS}</span>{/if}</span
+                                <span data-testid="import-dest-folder-reason" class="block text-neutral-600 dark:text-neutral-300">{FOLDER_UNAVAILABLE_REASON}</span>{/if}</span
                         >
                     </label>
                     <label

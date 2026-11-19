@@ -140,6 +140,8 @@ export interface SemanticSetupIo {
     fetch?: typeof fetch
     npmInstall?: (args: string[], cwd: string, say: (line: string) => void) => Promise<void>
     files?: readonly ModelFile[]
+    /** How the person runs this program, for the command the report names. */
+    command?: string
 }
 
 /**
@@ -171,7 +173,18 @@ export async function setupSemantic(io: SemanticSetupIo): Promise<SemanticSetupS
         io.say(`Downloading ${file.name} (${Math.max(1, Math.round(file.bytes / 1e6))} MB) from ${new URL(file.url).host}…`)
         await download(io.fetch ?? fetch, file, path)
     }
-    io.say(`Semantic search is set up. Model: ${MODEL.id} (${MODEL.dims} dimensions) in ${status.modelDir}.`)
+    // What happens next is the part a person waits on: the store is built by serve, in the
+    // background (startSemantic in main.ts), not by this command.
+    io.say('Semantic search is set up.')
+    io.say('')
+    io.say(
+        'Next, serve embeds the passages of each graph it serves, in the background. This can take a few minutes on a large graph. ' +
+            'A serve that is already running starts within half a minute, otherwise the next serve starts it. ' +
+            'Until it finishes, a semantic search answers from the passages embedded so far and marks its results incomplete. ' +
+            `To see progress, run: ${io.command ?? 'etherpk-mcp'} semantic status`,
+    )
+    io.say('')
+    io.say(`Model: ${MODEL.id} (${MODEL.dims} dimensions), in ${status.modelDir}.`)
     return semanticSetupStatus(io.env, files)
 }
 
@@ -228,7 +241,7 @@ export class SemanticUnavailable extends Error {
     }
 }
 
-export const SETUP_HINT = 'run `npx @appsoftwareltd/etherpk-mcp semantic setup` on this computer once (it installs a ~300 MB runtime and a 23 MB model into the cache directory) - the next semantic search will use it, no restart needed.'
+export const SETUP_HINT = 'run `npx @appsoftwareltd/etherpk-mcp semantic setup` on this device once (it installs a ~300 MB runtime and a 23 MB model into the cache directory) - the next semantic search will use it, no restart needed.'
 
 // The runtime's surface, typed as narrowly as this module uses it: the package is loaded from
 // a path outside the bundle, so its own types are not on hand.
@@ -268,7 +281,7 @@ export function semanticThreads(env: NodeJS.ProcessEnv, requested?: number): num
 export async function loadEmbeddingModel(env: NodeJS.ProcessEnv, options: LoadOptions = {}): Promise<EmbeddingModel> {
     const status = await semanticSetupStatus(env)
     if (!status.runtime || !status.model) {
-        throw new SemanticUnavailable(`Semantic search is not set up on this computer: ${SETUP_HINT}`)
+        throw new SemanticUnavailable(`Semantic search is not set up on this device: ${SETUP_HINT}`)
     }
     const require = createRequire(join(status.runtimeDir, 'package.json'))
     let ort: OrtRuntime

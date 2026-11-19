@@ -32,6 +32,8 @@ export interface LoginIo {
     signal?: AbortSignal
     /** Where the EtherPK Client lives, to name in the instruction; null when the Server did not say. */
     clientUrl?: string | null
+    /** The wait answers to r (a terminal reads keys): say so under the waiting line. */
+    offersRecoveryCode?: boolean
 }
 
 /** The user left the approval wait on purpose (the signal fired); nothing went wrong. */
@@ -128,11 +130,18 @@ export async function unlockByDeviceApproval(api: SyncApi, io: LoginIo): Promise
     const request = await beginDeviceApproval(api)
     const where = io.clientUrl ? `open EtherPK at ${io.clientUrl}` : 'open EtherPK in a browser'
     io.say('')
-    io.say(`To approve this device, ${where} (any page - it need not be a note) on any device where this account's`)
-    io.say('Encryption Keys are unlocked. A prompt appears on each of them: choose Show the code on the one you approve')
-    io.say('from, and this terminal then shows the same code.')
+    // One line, for the terminal to wrap at its own width: a hard break mid-sentence wraps badly
+    // on any terminal narrower or wider than the break.
+    io.say(
+        `To approve this device, ${where} on any other device where your Encryption Keys are unlocked. Any page will do. ` +
+            'Each of those devices shows a prompt: choose Show the code on one of them, and this terminal shows the same code.',
+    )
     io.say('')
     io.say('Waiting (up to ten minutes)…')
+    if (io.offersRecoveryCode) {
+        io.say('')
+        io.say('Press r to type your Recovery Code instead.')
+    }
     const abandon = async () => {
         // Bounded, so quitting cannot hang on a server that has stopped answering.
         await Promise.race([

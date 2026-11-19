@@ -1613,9 +1613,9 @@ async function requireReferencedTask(graph: HeadlessGraph, reference: string, pu
  */
 function taskNotFoundMessage(connection: GraphConnection | null): string {
     if (connection?.state === 'offline') {
-        return `No task in this computer's copy of the graph has those words, but the copy has been ${offlineSince(connection)}, so the task may be newer than the copy. Tell the user, and try again once graph_info says the copy is connected.`
+        return `No task in this device's copy of the graph has those words, but the copy has been ${offlineSince(connection)}, so the task may be newer than the copy. Tell the user, and try again once graph_info says the copy is connected.`
     }
-    return 'No task in the graph has those words now: it was edited or deleted, or the change has not reached this computer yet. Ask the user for a fresh agent instruction.'
+    return 'No task in the graph has those words now: it was edited or deleted, or the change has not reached this device yet. Ask the user for a fresh agent instruction.'
 }
 
 /**
@@ -1756,7 +1756,7 @@ export async function graphInfo(graph: HeadlessGraph) {
         },
         semantic: status
             ? { state: 'open' as const, embedded: status.embedded, total: status.total, complete: status.embedded >= status.total }
-            : { state: 'not-opened' as const, note: 'The first search with mode "semantic" loads the model - if it is not set up on this computer, that search says so and names the command.' },
+            : { state: 'not-opened' as const, note: 'The first search with mode "semantic" loads the model - if it is not set up on this device, that search says so and names the command.' },
         assets: { available: graph.assets !== undefined },
     }
 }
