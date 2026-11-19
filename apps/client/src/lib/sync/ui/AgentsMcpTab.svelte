@@ -5,8 +5,9 @@
      * tab shows it for the graph chosen in its picker (ADR 0147), so the two never say different
      * things. What it is about comes in `agents` (agents-tab.ts):
      *
-     * - a synced graph: the numbered steps, with this graph's id in the registration;
-     * - a folder on disk: its AGENTS.md, and the optional MCP server over the folder;
+     * - a synced graph: the numbered steps, with this graph's id in the registration, and how to
+     *   take the graph, or every graph, away from the agent again;
+     * - a folder on disk: its AGENTS.md, and the optional MCP server over the folder and its removal;
      * - a graph kept in the browser: why no agent can reach it;
      * - on the Graphs page only, a synced graph whose commands would not work yet (its keys are
      *   locked here, or its server is signed out), with the reason and the step that changes it;
@@ -28,12 +29,14 @@
         type AgentsTabProps,
         type AgentTool,
         diagramsSetupCommand,
+        logoutEverywhereCommand,
         publishCommand,
         registerCommand,
         registerFolderCommand,
         registerNote,
         semanticSetupCommand,
         tokensPageUrl,
+        unregisterStep,
     } from "./agents-tab";
     import HeadlessClientSignIn from "./HeadlessClientSignIn.svelte";
 
@@ -52,7 +55,10 @@
         picker?: Snippet;
     } = $props();
 
-    /** Which agent the register command is spelled for; the serve command is the same for all. */
+    /**
+     * Which agent the register command, and the step that removes the graph again, are spelled
+     * for; the serve command is the same for all. Both selects show this one choice.
+     */
     let agentTool = $state<AgentTool>("claude");
     let copied = $state(false);
     /** A failed copy, said beside the command it was for. */
@@ -94,14 +100,16 @@
     </p>
 {/snippet}
 
-<!-- Which agent the registration is spelled for. -->
-{#snippet toolSelect()}
+<!-- Which agent the registration and its removal are spelled for. `name` is the select's
+     accessible name, which tells the two apart where both are shown. -->
+{#snippet toolSelect(testId: string, name: string)}
     <label class="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
         for
         <select
             bind:value={agentTool}
             class="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
-            data-testid="agents-tool"
+            aria-label={name}
+            data-testid={testId}
         >
             {#each AGENT_TOOLS as toolOption (toolOption.id)}
                 <option value={toolOption.id}>{toolOption.label}</option>
@@ -158,6 +166,47 @@
     </div>
 {/snippet}
 
+<!-- Taking access back. One graph comes out of the agent's own list of MCP servers, under the
+     name its registration added, and the agent keeps its other graphs. On a synced graph, logout
+     signs the agent's device out of every Sync Server, which takes every synced graph at once; a
+     folder has no sign-in, so it has only the first. `synced` is null for a folder. -->
+{#snippet removeAccess(graphName: string | null, synced: Extract<AgentsTabProps, { kind: "synced" }> | null)}
+    {@const removal = unregisterStep(agentTool, graphName)}
+    <div class="space-y-3 border-t border-neutral-900/10 dark:border-neutral-100/15 pt-4" data-testid="agents-remove">
+        <h3 class="text-base font-semibold text-neutral-950 dark:text-neutral-100">Remove Access</h3>
+        <ul class="space-y-3 text-sm text-neutral-950 dark:text-neutral-100">
+            <li class="space-y-1">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="font-medium">Remove this graph from the agent</span>
+                    {@render toolSelect("agents-remove-tool", "Agent to remove this graph from")}
+                </div>
+                {#if removal.command}
+                    <AgentCommandRow key="remove-graph" text={removal.command} />
+                {/if}
+                <p class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="agents-remove-graph-note">{removal.note}</p>
+            </li>
+            {#if synced}
+                <li class="space-y-1">
+                    <AgentCommandRow
+                        key="logout"
+                        label="Remove every graph from the agent's device"
+                        text={logoutEverywhereCommand(synced.headlessClient)}
+                        note="Run this on the agent's device. It revokes its Agent Token on every Sync Server, stops its background processes, and deletes the Encryption Keys and cached graphs there. Remove each graph from the agent too, or the agent keeps MCP servers that can no longer sign in."
+                    />
+                </li>
+            {/if}
+        </ul>
+        {#if synced}
+            <p class="text-sm text-neutral-600 dark:text-neutral-400">
+                To cut off a device you cannot reach, revoke its token on
+                <a href={tokensPageUrl(synced.serverBaseUrl)} target="_blank" rel="noreferrer" class={LINK} data-testid="agents-tokens-link"
+                    >the Sync Server's Access tokens page</a
+                >, where each agent's token is listed as "Agent on" its device's name.
+            </p>
+        {/if}
+    </div>
+{/snippet}
+
 <!-- Why there are no commands, and the one step that changes it. -->
 {#snippet blockedStep(blocked: AgentsBlocked)}
     <div class="space-y-3 rounded-xl border border-neutral-900/15 bg-white p-4 dark:border-neutral-100/20 dark:bg-white/5" data-testid="agents-blocked">
@@ -211,7 +260,7 @@
             <div class="space-y-1 border-t border-neutral-900/10 dark:border-neutral-100/15 pt-4">
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="text-sm font-medium text-neutral-950 dark:text-neutral-100">Optional: add the MCP server</span>
-                    {@render toolSelect()}
+                    {@render toolSelect("agents-tool", "Agent to tell about this graph")}
                 </div>
                 <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     It needs no sign-in. It keeps an index of the notes, so the agent can search them, follow links and list tasks, and its edits keep the format.
@@ -256,6 +305,9 @@
             </p>
         {/if}
         {@render optional(agents.folderPath ? agents : null)}
+        {#if agents.folderPath}
+            {@render removeAccess(agents.folderName, null)}
+        {/if}
         <p class="text-sm text-neutral-600 dark:text-neutral-400">
             <a href={GUIDE_URL} target="_blank" rel="noreferrer" class={LINK}>Read the guide</a>, including what to do when the notes folder sits inside a
             bigger project.
@@ -279,7 +331,7 @@
             <li class="space-y-1">
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="font-medium">2. Tell the agent about this graph</span>
-                    {@render toolSelect()}
+                    {@render toolSelect("agents-tool", "Agent to tell about this graph")}
                 </div>
                 {@render registration(
                     registerCommand(agentTool, agents.graphId, agents.serverBaseUrl, agents.headlessClient, agents.graphName),
@@ -296,12 +348,9 @@
             </li>
         </ol>
         {@render optional(agents)}
+        {@render removeAccess(agents.graphName, agents)}
         <p class="text-sm text-neutral-600 dark:text-neutral-400">
-            This graph's id is <code class="font-mono" data-testid="agents-graph-id">{agents.graphId}</code>. Each agent's token is listed as "Agent on" its
-            device's name on
-            <a href={tokensPageUrl(agents.serverBaseUrl)} target="_blank" rel="noreferrer" class={LINK} data-testid="agents-tokens-link"
-                >the Sync Server's Access tokens page</a
-            >. Revoke it there to cut the agent off.
+            This graph's id is <code class="font-mono" data-testid="agents-graph-id">{agents.graphId}</code>.
             <a href={GUIDE_URL} target="_blank" rel="noreferrer" class={LINK}>Read the guide</a>.
         </p>
     </div>

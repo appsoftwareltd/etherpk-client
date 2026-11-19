@@ -2025,7 +2025,11 @@ export type TaskPriorityFilter = 1 | 2 | 3 | null
 
 export const TASK_PRIORITY_FILTERS: readonly TaskPriorityFilter[] = [1, 2, 3, null]
 
-export type TaskDueWindow = 'any' | 'overdue' | 'today' | 'next7'
+/** Which due dates a task list lets through: every task, undated ones only, or dated ones in a window of today. */
+export type TaskDueWindow = 'any' | 'none' | 'overdue' | 'today' | 'next7'
+
+/** Every Due window, in the order a Due control offers them. */
+export const TASK_DUE_WINDOWS: readonly TaskDueWindow[] = ['any', 'overdue', 'today', 'next7', 'none']
 
 export type TaskGroupBy = 'document' | 'priority' | 'due'
 
@@ -2241,6 +2245,7 @@ function priorityClause(priorities: readonly TaskPriorityFilter[]): SqlClause | 
 /** The tasks due in `window` of `today`, or null for any. */
 function dueClause(window: TaskDueWindow, today: string): SqlClause | null {
     if (window === 'any') return null
+    if (window === 'none') return { sql: 't.due IS NULL', params: [] }
     if (window === 'overdue') return { sql: '(t.due IS NOT NULL AND t.due < ?)', params: [today] }
     if (window === 'today') return { sql: 't.due = ?', params: [today] }
     return { sql: '(t.due IS NOT NULL AND t.due >= ? AND t.due <= ?)', params: [today, addDays(today, 7)] }

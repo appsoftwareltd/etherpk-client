@@ -127,3 +127,4 @@ export {
     registerGraphSidebarButton,
     sidebarButtonColumns,
 } from './graph-sidebar-buttons'
+export { anchorFromArg, type MenuAnchor, MENU_GAP, MENU_MARGIN, placeMenu, visibleArea, type VisibleArea } from './menu-placement'

@@ -61,7 +61,7 @@
     import { analysisFor } from './analysis/editor-analysis'
     import { anchoredLine, anchorLine } from './line-anchor'
     import { type EditorExtensionServices, editorExtensions } from './editor-extensions'
-    import { EDIT_REFUSAL_MESSAGE, EDIT_REFUSAL_TITLE, type EditRefusal } from './edit-refused'
+    import { type EditRefusal, refusalNotice } from './edit-refused'
     import { applyEditorPosition, editorPosition, placeSelection, type RevealAlign, revealEditorPosition } from './view-position'
     import { templateAsNewText } from './template-insert'
     import { createHeldReveal } from './held-reveal'
@@ -100,6 +100,7 @@
         revealAt,
         visibility: visibilityProp,
         shownRange: shownRangeProp,
+        onopenintab,
         source: sourceProp,
     }: {
         view: ViewRef
@@ -128,6 +129,12 @@
          * revealing it.
          */
         shownRange?: ShownRangeOf
+        /**
+         * With `shownRange`: open the whole document in a tab, where an edit this editor refuses can
+         * be made. A refused edit's notice offers it as **Open in tab** (`edit-refused.ts`). The host
+         * does the opening, since it may have to close first (the Task Editor is a dialog).
+         */
+        onopenintab?: () => void
         /**
          * Embedded only: the document to edit, in place of the one the store opens for the View's
          * target. The Task Editor writes a new task's description in one held in memory until the
@@ -561,7 +568,9 @@
      * must stay in the editor. It clears on the next edit the editor accepts (the user has moved
      * on), on Dismiss, or after the shared notice delay; a repeat refusal restarts the delay.
      */
-    let editRefusal = $state<EditRefusal | null>(null)
+    let editRefusal = $state.raw<EditRefusal | null>(null)
+    /** What the notice says for the refusal showing. */
+    const refusal = $derived(editRefusal ? refusalNotice(editRefusal) : null)
     let refusalTimer: ReturnType<typeof setTimeout> | undefined
 
     function showRefusal(reason: EditRefusal): void {
@@ -574,6 +583,12 @@
         if (refusalTimer) clearTimeout(refusalTimer)
         refusalTimer = undefined
         editRefusal = null
+    }
+
+    /** The notice's Open in tab: the refused edit can be made in the whole document. */
+    function openRefusedInTab(): void {
+        clearRefusal()
+        onopenintab?.()
     }
     // [[Draft]] state (ADR 0050). `draft` is set only while this View is showing a
     // Pageless Concept that has no page yet; promoting clears it and remounts.
@@ -1210,8 +1225,8 @@
             blockMenu: (line, x, y, touch) =>
                 openContextMenu({ kind: 'block', concept: view.target, panelId, line: line.number, text: line.text, touch }, x, y),
             bookmarks: {
-                lineMenu: (line, x, y, rows) =>
-                    openContextMenu({ kind: 'line', concept: view.target, panelId, line: line.number, text: line.text, ...(rows ? { rows } : {}) }, x, y),
+                lineMenu: (line, x, y, rows, above) =>
+                    openContextMenu({ kind: 'line', concept: view.target, panelId, line: line.number, text: line.text, ...(rows ? { rows } : {}) }, x, y, { above }),
                 draft: draft !== undefined,
                 // A bookmark's line is held as a Search result's is, so the tab's activation or
                 // the text arriving does not put back the line the open first asked for.
@@ -1678,13 +1693,18 @@
             <button type="button" data-testid="draft-superseded-open" onclick={() => remount()}>Open it</button>
         </div>
     {/if}
-    {#if editRefusal}
+    {#if refusal}
         <!-- Floats over the foot of the pane rather than sitting in the flow, so the block the
              message is about does not jump under the caret. `role="status"`: announced, not
              focus-stealing, so the next keystroke still lands in the editor. -->
         <div class="document-view__refusal" data-testid="edit-refused" role="status">
-            <p><strong>{EDIT_REFUSAL_TITLE[editRefusal]}.</strong> {EDIT_REFUSAL_MESSAGE[editRefusal]}</p>
-            <button type="button" data-testid="edit-refused-dismiss" onclick={clearRefusal}>Dismiss</button>
+            <p><strong>{refusal.title}.</strong> {refusal.message}</p>
+            <div class="document-view__refusal-actions">
+                {#if refusal.opensDocument && onopenintab}
+                    <button type="button" data-testid="edit-refused-open-in-tab" onclick={openRefusedInTab}>Open in tab</button>
+                {/if}
+                <button type="button" data-testid="edit-refused-dismiss" onclick={clearRefusal}>Dismiss</button>
+            </div>
         </div>
     {/if}
     {#if seeding}
@@ -1757,8 +1777,9 @@
         bottom: calc(1rem + var(--gk-foot-height));
         z-index: 2;
         display: flex;
+        flex-wrap: wrap;
         align-items: flex-start;
-        gap: 0.75rem;
+        gap: 0.5rem 0.75rem;
         border: 1px solid var(--gk-border-strong);
         border-radius: 0.5rem;
         background: var(--gk-surface-1);
@@ -1767,9 +1788,16 @@
         font-size: 0.875rem;
         line-height: 1.4;
     }
+    /* The text takes the row beside the buttons while it has 16rem; narrower (a phone, a Task
+       Editor part), the buttons go under it rather than squeezing it into a column. */
     .document-view__refusal p {
-        flex: 1;
+        flex: 1 1 16rem;
         margin: 0;
+    }
+    .document-view__refusal-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-left: auto;
     }
     .document-view__refusal button {
         flex-shrink: 0;

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
     asCommentBullet,
     commentChange,
+    emptyCommentsRemoval,
     newTaskLines,
     readTaskStructure,
     taskComments,
@@ -215,6 +216,33 @@ describe('commentChange', () => {
 
     it('is null when the line holds no task', () => {
         expect(commentChange('- Kitchen', 0, '- level')).toBeNull()
+    })
+})
+
+describe('emptyCommentsRemoval', () => {
+    const apply = (text: string, change: { from: number; to: number; insert: string }) => text.slice(0, change.from) + change.insert + text.slice(change.to)
+
+    it('takes out a Comments block that holds only an empty comment, as Add a comment started it', () => {
+        const before = ['- [ ] Build the shed', '  - measure', '- Kitchen'].join('\n')
+        const started = apply(before, commentChange(before, 0, asCommentBullet(''))!)
+        expect(started).toBe(['- [ ] Build the shed', '  - measure', '  - Comments', '    - ', '- Kitchen'].join('\n'))
+        expect(apply(started, emptyCommentsRemoval(started, 0)!)).toBe(before)
+    })
+
+    it('takes out the block when the task has nothing else under it, and when blank or bare bullets remain', () => {
+        const text = ['- [ ] Build the shed', '  - Comments', '    -', '    ', '    - ', '- Kitchen'].join('\n')
+        expect(apply(text, emptyCommentsRemoval(text, 0)!)).toBe(['- [ ] Build the shed', '- Kitchen'].join('\n'))
+    })
+
+    it('keeps the additional context after the block', () => {
+        const text = ['- [ ] Build the shed', '  - Comments', '    - ', '  - paint it'].join('\n')
+        expect(apply(text, emptyCommentsRemoval(text, 0)!)).toBe(['- [ ] Build the shed', '  - paint it'].join('\n'))
+    })
+
+    it('is null when a comment has words, when there is no Comments bullet, and on a line with no task', () => {
+        expect(emptyCommentsRemoval(['- [ ] Build the shed', '  - Comments', '    - level'].join('\n'), 0)).toBeNull()
+        expect(emptyCommentsRemoval(['- [ ] Build the shed', '  - measure'].join('\n'), 0)).toBeNull()
+        expect(emptyCommentsRemoval('- Kitchen', 0)).toBeNull()
     })
 })
 

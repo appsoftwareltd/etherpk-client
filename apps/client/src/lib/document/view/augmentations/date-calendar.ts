@@ -17,6 +17,8 @@ import { EditorView, keymap, showTooltip, type Tooltip, type TooltipView } from 
 import { createDatePicker } from '../../calendar/date-picker'
 import { DATE_PICKER_MOVES, formatISODate, shiftMonth } from '../../calendar/month-grid-core'
 import { applyTaskTag } from '../../task-tags'
+import type { MenuAnchor } from '../../../surface'
+import { tooltipsOverWindow } from './popover-menu'
 
 /**
  * What the picked date is for. The calendar is one widget with two callers: the Command
@@ -29,8 +31,12 @@ export type DatePickerTarget =
     | { kind: 'wikilink' }
     | { kind: 'task-tag'; tag: 'due' | 'scheduled' | 'completion' }
 
-/** Open the calendar, applying the chosen date at `pos`. Focus starts at today. */
-export const openDateCalendar = StateEffect.define<{ pos: number; target?: DatePickerTarget }>()
+/**
+ * Open the calendar, applying the chosen date at `pos`. Focus starts at today. With an `anchor` (the
+ * Command Bar button that asked for it) the calendar rises from that button rather than opening under
+ * the caret.
+ */
+export const openDateCalendar = StateEffect.define<{ pos: number; target?: DatePickerTarget; anchor?: MenuAnchor }>()
 const setFocus = StateEffect.define<Date>()
 const closeCalendar = StateEffect.define<null>()
 
@@ -40,6 +46,8 @@ interface CalendarState {
     target: DatePickerTarget
     /** The currently-focused day. */
     focused: Date
+    /** The control it was opened from, which it sits above, or undefined to sit under `pos`. */
+    anchor?: MenuAnchor
 }
 
 const P = 'gk-cmd-cal'
@@ -63,6 +71,7 @@ export function dateCalendar(options: DateCalendarOptions = {}): Extension {
                         pos: e.value.pos,
                         target: e.value.target ?? { kind: 'wikilink' },
                         focused: new Date(),
+                        anchor: e.value.anchor,
                     }
                 else if (e.is(setFocus) && value) value = { ...value, focused: e.value }
                 else if (e.is(closeCalendar)) value = null
@@ -72,12 +81,24 @@ export function dateCalendar(options: DateCalendarOptions = {}): Extension {
                 return null
             return value
         },
-        provide: (f) =>
+        provide: (f) => [
             showTooltip.from(f, (cal): Tooltip | null =>
                 cal
-                    ? { pos: cal.pos, above: false, strictSide: false, arrow: false, create: render }
+                    ? {
+                          pos: cal.pos,
+                          arrow: false,
+                          create: render,
+                          // From a Command Bar button: above it, and shown even while the caret's
+                          // line is scrolled out of the editor's view (`clip`), since it belongs to
+                          // the button, not the line.
+                          ...(cal.anchor ? { above: true, strictSide: true, clip: false } : { above: false, strictSide: false }),
+                      }
                     : null,
             ),
+            // Opened from a Command Bar button: the button is outside the pane, so the calendar is
+            // placed within the window rather than hidden for being outside the pane's space.
+            tooltipsOverWindow.from(f, (cal) => cal?.anchor !== undefined),
+        ],
     })
 
     function accept(view: EditorView, iso: string): boolean {
@@ -145,8 +166,11 @@ export function dateCalendar(options: DateCalendarOptions = {}): Extension {
         }
 
         paint(view.state.field(field))
+        const anchor = view.state.field(field)?.anchor
         return {
             dom,
+            // Opened from a Command Bar button: placed against the button's box, not the caret's.
+            ...(anchor ? { getCoords: () => anchor } : {}),
             update(update) {
                 paint(update.state.field(field))
             },

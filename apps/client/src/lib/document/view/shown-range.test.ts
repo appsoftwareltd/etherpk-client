@@ -6,7 +6,7 @@ import { refusalIn } from './edit-refused'
 import { anchorLine, lineAnchor } from './line-anchor'
 import { shownRange, shownRangeIn } from './shown-range'
 import { EditorView } from '@codemirror/view'
-import { type TaskPart, taskPartRange } from './task-part-range'
+import { TASK_PART_NAMES, type TaskPart, taskPartRange } from './task-part-range'
 import { editorFixture } from './testing/editor-state-fixture'
 
 // An editor that shows one part of a task and keeps the person's edits in it (ADR 0170). The key
@@ -37,8 +37,50 @@ describe('a shown range', () => {
         const editor = showing('description', text, 2)
         expect(shownRangeIn(editor.state)).toBeNull()
         const tr = editor.state.update({ changes: { from: 0, insert: 'x' }, userEvent: 'input.type' })
-        expect(refusalIn(tr)).toBe('shown-range')
+        expect(refusalIn(tr)).toEqual({ edge: 'nothing-shown', names: TASK_PART_NAMES.description })
         expect(tr.state.doc.toString()).toBe(text)
+    })
+
+    // Whole lines inserted beside the part, at the start of the hidden line after it or the end of the
+    // one before it, are judged where they stand: the same text as lines at the part's edge, so they
+    // pass only when the lines land in the part (the line move of anchored-move.ts), never when they
+    // would add a hidden line.
+    for (const [where, insert] of [
+        ['after the part', '- stray\n'],
+        ['after the part', '    - Comments\n'],
+        ['before the part', '\n- stray'],
+    ] as const) {
+        it(`refuses whole lines typed ${where} that would be hidden: ${JSON.stringify(insert)}`, () => {
+            const editor = showing('description', SHED, lineStart(SHED, 'measure'))
+            const range = shownRangeIn(editor.state)!
+            const at = where === 'after the part' ? range.to + 1 : range.from - 1
+            const tr = editor.state.update({ changes: { from: at, insert }, userEvent: 'input.type' })
+            expect(refusalIn(tr)).toMatchObject({ edge: 'move-out' })
+            expect(tr.state.doc.toString()).toBe(SHED)
+        })
+    }
+
+    it('takes whole lines written after the part that land in it', () => {
+        const editor = showing('description', SHED, lineStart(SHED, 'measure'))
+        const range = shownRangeIn(editor.state)!
+        const tr = editor.state.update({ changes: { from: range.to + 1, insert: '    - cut\n' }, userEvent: 'input.type' })
+        expect(refusalIn(tr)).toBeNull()
+        expect(tr.state.sliceDoc(shownRangeIn(tr.state)!.from, shownRangeIn(tr.state)!.to)).toBe('    - measure\n    - cut')
+    })
+
+    // Known gap, found by shown-range.property.test.ts: deleting every comment leaves the caret on the
+    // hidden line after them, and the outliner's Enter carries no user event, so the guard takes it for
+    // a change that is not the person's own and lets it write a bullet into the page. The Task Editor
+    // hides an emptied part once it refreshes, which narrows the gap without closing it.
+    it.fails('refuses a key pressed after everything shown was deleted', () => {
+        const text = ['- [[Garden]]', '  - [ ] Build the shed', '    - Comments', '      - level', '- Kitchen'].join('\n')
+        const editor = showing('comments', text, lineStart(text, 'level'))
+        editor.key('Mod-a')
+        editor.key('Backspace')
+        expect(shownRangeIn(editor.state)).toBeNull()
+        const emptied = editor.text()
+        editor.key('Enter')
+        expect(editor.text()).toBe(emptied)
     })
 
     it('takes in a line someone else adds under the task, and leaves out a Comments bullet they start', () => {

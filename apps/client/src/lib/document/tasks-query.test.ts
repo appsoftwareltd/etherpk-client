@@ -258,6 +258,11 @@ describe('priority and due filtering', () => {
         ])
     })
 
+    it('selects the undated tasks alone with No due date, and every task with Any date', () => {
+        expect(texts(query({ due: 'none' }))).toEqual(['no dates at all'])
+        expect(texts(query({ due: 'any' }))).toHaveLength(5)
+    })
+
     it('never counts an undated task as due', () => {
         for (const due of ['overdue', 'today', 'next7'] as const) {
             expect(texts(query({ due }))).not.toContain('no dates at all')

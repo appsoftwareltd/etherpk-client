@@ -51,6 +51,7 @@ export const DUE_OPTIONS: ReadonlyArray<FilterOption<TaskDueWindow>> = [
     { value: 'overdue', label: 'Overdue' },
     { value: 'today', label: 'Due today' },
     { value: 'next7', label: 'Next 7 days' },
+    { value: 'none', label: 'No due date' },
 ]
 
 export const GROUP_BY_OPTIONS: ReadonlyArray<FilterOption<TaskGroupBy>> = [

@@ -2,9 +2,10 @@
     /**
      * One command for an agent's device, to copy: its label, the command, a copy button, a note,
      * and a failed copy's message beside the button that failed. Used by a graph's Agents tab and
-     * the Graphs page's Agents tab alike (ADR 0147).
+     * the Graphs page's Agents tab alike (ADR 0147). A row whose label or note the caller draws
+     * itself, beside a control or in a place of its own, leaves them out.
      */
-    const { key, label, text, note }: { key: string; label: string; text: string; note: string } = $props();
+    const { key, label, text, note }: { key: string; label?: string; text: string; note?: string } = $props();
 
     let copied = $state(false);
     let failed = $state(false);
@@ -23,7 +24,9 @@
     }
 </script>
 
-<span class="text-sm font-medium">{label}</span>
+{#if label}
+    <span class="text-sm font-medium">{label}</span>
+{/if}
 <div class="flex items-start gap-2">
     <pre class="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-neutral-900/10 dark:border-neutral-100/15 bg-neutral-50 dark:bg-white/5 p-3 font-mono text-sm" data-testid="agents-extra-{key}">{text}</pre>
     <button
@@ -33,7 +36,9 @@
         data-testid="agents-copy-{key}">{copied ? "Copied" : "Copy"}</button
     >
 </div>
-<p class="text-sm text-neutral-500 dark:text-neutral-400">{note}</p>
+{#if note}
+    <p class="text-sm text-neutral-500 dark:text-neutral-400">{note}</p>
+{/if}
 {#if failed}
     <p role="status" class="text-sm text-red-700 dark:text-red-400">Couldn't copy - select the command and copy it by hand.</p>
 {/if}

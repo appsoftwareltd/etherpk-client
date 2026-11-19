@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applySearchSuggestion, keySuggestions, suggestionContext, valueSuggestions } from './search-suggest'
+import { applySearchSuggestion, keyCompletion, keySuggestions, suggestionContext, valueSuggestions } from './search-suggest'
 
 const known = new Set(['public', 'status', 'publication.id'])
 const keys = [
@@ -61,5 +61,33 @@ describe('applySearchSuggestion', () => {
     it('adds a space after a value completed at the end of the box', () => {
         const context = { kind: 'value' as const, from: 0, to: 9, key: 'status', prefix: 'dr', negated: false }
         expect(applySearchSuggestion('status:dr', context, { kind: 'value', text: 'draft', documents: 2 })).toEqual({ value: 'status:draft ', caret: 13 })
+    })
+})
+
+describe('keyCompletion: the ghost text after the caret', () => {
+    const keys = [
+        { key: 'title', documents: 9 },
+        { key: 'template', documents: 4 },
+        { key: 'status', documents: 2 },
+    ]
+    const known = new Set(keys.map((info) => info.key))
+    const at = (input: string, caret = input.length) => keyCompletion(input, caret, suggestionContext(input, caret, known), keys)
+
+    it('shows the rest of the first key that starts with what is typed, with its colon', () => {
+        expect(at('t')).toMatchObject({ rest: 'itle:', suggestion: { kind: 'key', text: 'title' } })
+        expect(at('te')).toMatchObject({ rest: 'mplate:', suggestion: { text: 'template' } })
+        expect(at('title')).toMatchObject({ rest: ':' })
+    })
+
+    it('reads the typed letters in any case, and after a minus', () => {
+        expect(at('TI')?.rest).toBe('tle:')
+        expect(at('beans -st')?.rest).toBe('atus:')
+    })
+
+    it('shows nothing mid-word, after a colon, or where no key starts with what is typed', () => {
+        expect(at('title', 2)).toBeNull()
+        expect(at('status:')).toBeNull()
+        expect(at('beans')).toBeNull()
+        expect(at('')).toBeNull()
     })
 })

@@ -24,7 +24,10 @@
     import { createDocumentWatch } from "#lib/document/document-watch.js";
     import { openConceptAtLine } from "#lib/document/open-concept.js";
     import { createSettleScheduler, TASK_TEXT_FILTER_SETTLE } from "#lib/document/settle-scheduler.js";
-    import { bulletLabel, parseTaskTextFilter } from "#lib/document/index-derive.js";
+    import { bulletLabel } from "#lib/document/index-derive.js";
+    import type { TaskDueWindow, TaskPriorityFilter } from "#lib/document/index-db.js";
+    import { DUE_OPTIONS, optionLabel } from "#lib/document/task-filter-labels.js";
+    import ChoiceDropdown from "#lib/components/ChoiceDropdown.svelte";
     import { PRIORITY_LABEL_CLASSES, priorityColour } from "#lib/document/task-priority-colour.js";
     import { findIndexedTask, isTaskLine, type TaskChanges, type TaskWrite, type TaskWriteOutcome, undoTaskWrite, writeTaskChanges } from "#lib/document/task-write.js";
     import type { DocumentStore } from "#lib/document/types.js";
@@ -56,6 +59,8 @@
         type DueState,
         laneAfter,
         boardFilterCountText,
+        boardFilterNarrows,
+        boardFilterOf,
         laneCountText,
         MOVE_TARGETS,
         nextLaneWithTasks,
@@ -170,8 +175,14 @@
      * reloading shows every task again, so a board never opens looking short of tasks.
      */
     let boardFilter = $state("");
-    /** Whether the Board Filter hides anything: something other than spaces is typed. */
-    const filtering = $derived(boardFilter.trim() !== "");
+    /** The Board Filter's priority chips that are on; none on shows every priority. `null` is None. */
+    let filterPriorities = $state.raw<readonly TaskPriorityFilter[]>([]);
+    /** The Board Filter's due window. */
+    let filterDue = $state<TaskDueWindow>("any");
+    /** The Board Filter as its controls hold it. */
+    const filterChoice = $derived({ text: boardFilter, priorities: filterPriorities, due: filterDue });
+    /** Whether the Board Filter hides anything: words typed, a chip on, or a due window. */
+    const filtering = $derived(boardFilterNarrows(filterChoice));
     let filterInputEl = $state<HTMLInputElement>();
 
     /**
@@ -231,7 +242,7 @@
             const next = await readBoard(index, concept, taskDateKey(new Date()), {
                 countOnly: countOnlyLanes(collapsed, desktop.current ? null : phoneLane),
                 limitFor: (cell) => limits.get(cellId(cell)),
-                textFilter: boardFilter,
+                filter: filterChoice,
             });
             if (ticket !== wanted) return;
             board = next;
@@ -287,6 +298,28 @@
     function onFilterInput(typed: string): void {
         boardFilter = typed;
         filterSettled.schedule();
+    }
+
+    /**
+     * The chips in the order the row shows them: the priorities, then None. The colours are the
+     * Task Editor's, so a chip reads as the priority it shows.
+     */
+    const PRIORITY_CHIPS: ReadonlyArray<{ priority: TaskPriorityFilter; label: string; colour: string | null }> = [
+        { priority: 1, label: "P1", colour: priorityColour(1) },
+        { priority: 2, label: "P2", colour: priorityColour(2) },
+        { priority: 3, label: "P3", colour: priorityColour(3) },
+        { priority: null, label: "None", colour: null },
+    ];
+
+    /** Turn a priority chip on or off, and read the board through it at once: a click is no typing to wait out. */
+    function togglePriority(priority: TaskPriorityFilter): void {
+        filterPriorities = filterPriorities.includes(priority) ? filterPriorities.filter((chosen) => chosen !== priority) : [...filterPriorities, priority];
+        retry();
+    }
+
+    function chooseDue(due: TaskDueWindow): void {
+        filterDue = due;
+        retry();
     }
 
     /** Clear the Board Filter, read every task again, and leave the keyboard in the input. */
@@ -397,7 +430,7 @@
         if (to.status === "archived") return false;
         if (source === "pointer" || !desktop.current) return !(await landedInView(card.key, to.status));
         // What is typed, not the read's: the read of a filter typed a moment ago may not have landed.
-        return !passesFilter({ filter: parseTaskTextFilter(boardFilter) }, card);
+        return !passesFilter({ filter: boardFilterOf(filterChoice, taskDateKey(new Date())) }, card, to.priority);
     }
 
     /**
@@ -794,6 +827,7 @@
             freeTag: null,
             due: null,
             dueState: null,
+            scheduled: null,
             parent: null,
             inConcept: null,
             subtasks: { done: 0, total: 0 },
@@ -915,7 +949,7 @@
         cascade = { text: `Moving the tasks in ${statusLabel(from)} to ${statusLabel(to)}…`, entry: null, busy: true };
         try {
             // Today is read now, not at mount: a board is left open for days.
-            const hits = await laneTasks(index, concept, from, taskDateKey(new Date()), { textFilter: boardFilter });
+            const hits = await laneTasks(index, concept, from, taskDateKey(new Date()), { filter: filterChoice });
             const moved = await moveTasks(
                 store,
                 hits.map((hit) => ({ concept: hit.concept, line: hit.line, text: hit.text })),
@@ -1308,6 +1342,9 @@
         upcoming: "bg-(--gk-surface-2) text-(--gk-text-default)",
     };
 
+    /** The neutral pill a card draws a Free Tag and a scheduled date in. */
+    const TAG_PILL_CLASSES = "rounded bg-(--gk-surface-2) px-1.5 font-medium text-(--gk-text-default)";
+
     function dueLabel(card: BoardCard): string {
         if (card.dueState === "overdue") return `Overdue ${card.due}`;
         if (card.dueState === "today") return "Due today";
@@ -1514,10 +1551,12 @@
             </button>
         </p>
     {/if}
-    <!-- The Board Filter: one input that narrows every lane at once, each lane's count saying how
-         many of its tasks match. Above the lanes, outside their scroll, so it stays in reach. -->
-    <div class={["flex items-center gap-2", desktop.current ? "px-3 pt-3" : "px-2 pt-2"]} data-testid="kanban-filter">
-        <div class="relative min-w-0 flex-1 sm:max-w-sm">
+    <!-- The Board Filter: an input, the priority chips and a due window that narrow every lane at
+         once, each lane's count saying how many of its tasks match. Above the lanes, outside their
+         scroll, so it stays in reach. One gap between every control, and every control as tall as
+         the input (the row stretches them); on a narrow pane the row wraps. -->
+    <div class={["flex flex-wrap items-stretch gap-2", desktop.current ? "px-3 pt-3" : "px-2 pt-2"]} data-testid="kanban-filter">
+        <div class="relative min-w-48 flex-1 sm:max-w-sm">
             <!-- In-repo constant markup from the icon table, never user content. -->
             <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
             <span class="pointer-events-none absolute top-1/2 left-2.5 inline-flex size-4 -translate-y-1/2 text-(--gk-text-subtle)" aria-hidden="true">{@html iconSvg("search")}</span>
@@ -1553,8 +1592,43 @@
                 </button>
             {/if}
         </div>
+        <!-- Toggle chips: each on adds its priority, none on shows every one. Styled as the Task
+             Editor's priority chips, the dot saying which priority, an outline saying it is on. -->
+        <div class="flex gap-2" role="group" aria-label="Show only these priorities">
+            {#each PRIORITY_CHIPS as chip (chip.label)}
+                {@const on = filterPriorities.includes(chip.priority)}
+                <button
+                    type="button"
+                    class={[
+                        "inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gk-accent)",
+                        on
+                            ? "border-(--gk-text-strong) text-(--gk-text-strong) shadow-[inset_0_0_0_1px_var(--gk-text-strong)]"
+                            : "border-(--gk-control-border) text-(--gk-text-default) hover:bg-(--gk-control-hover)",
+                    ]}
+                    aria-pressed={on}
+                    aria-label={chip.priority === null ? "No priority" : chip.label}
+                    data-testid="kanban-filter-priority"
+                    data-priority={chip.priority ?? "none"}
+                    onclick={() => togglePriority(chip.priority)}
+                >
+                    <!-- None's dot is an empty ring, so its label lines up with the others'. -->
+                    <span class="size-3 shrink-0 rounded-full border border-(--gk-border-strong)" style:background-color={chip.colour ?? undefined} aria-hidden="true"></span>
+                    {chip.label}
+                </button>
+            {/each}
+        </div>
+        <ChoiceDropdown
+            label="Due"
+            summary={filterDue === "any" ? "Any due date" : optionLabel(DUE_OPTIONS, filterDue)}
+            options={DUE_OPTIONS}
+            selected={[filterDue]}
+            changed={filterDue !== "any"}
+            inline
+            testid="kanban-filter-due"
+            onChoose={chooseDue}
+        />
         <!-- How much of the board the filter shows. Always in the tree, so the input can point at it. -->
-        <span id="{uid}-filter-count" class="shrink-0 text-sm whitespace-nowrap text-(--gk-text-subtle)" data-testid="kanban-filter-count">
+        <span id="{uid}-filter-count" class="shrink-0 self-center text-sm whitespace-nowrap text-(--gk-text-subtle)" data-testid="kanban-filter-count">
             {shown === null ? "" : (boardFilterCountText(lanes) ?? "")}
         </span>
     </div>
@@ -1692,7 +1766,7 @@
                     <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-2" data-kanban-lane-body>
                         {#if lane.filter !== null && lane.total === 0 && lane.unfiltered > 0}
                             <p class="m-0 px-1 pt-2 text-sm wrap-anywhere text-(--gk-text-subtle)" data-testid="kanban-lane-filter-empty">
-                                No tasks in {lane.label} match "{boardFilter.trim()}". {lane.unfiltered === 1 ? "1 task is" : `${lane.unfiltered} tasks are`} hidden.
+                                No tasks in {lane.label} match {lane.filter.priorities === null && lane.filter.due === "any" ? `"${boardFilter.trim()}"` : "the filter"}. {lane.unfiltered === 1 ? "1 task is" : `${lane.unfiltered} tasks are`} hidden.
                             </p>
                         {/if}
                         {#if !desktop.current && shown !== null && !empty && lane.unfiltered === 0}
@@ -1818,6 +1892,12 @@
                                                                 <span class="sr-only">{card.subtasks.done} of {card.subtasks.total} subtasks finished</span>
                                                             </span>
                                                         {/if}
+                                                        {#if card.scheduled !== null}
+                                                            <!-- Before the due date, as the Tasks View and the tag run order them. Named, not
+                                                                 iconised, so it never reads as a due date; neutral, since a day to start
+                                                                 on that has passed is not a warning. -->
+                                                            <span class={TAG_PILL_CLASSES} data-testid="kanban-card-scheduled">Scheduled {card.scheduled}</span>
+                                                        {/if}
                                                         {#if card.due !== null}
                                                             <span
                                                                 class={["rounded px-1.5 font-medium", DUE_CLASSES[card.dueState ?? "upcoming"]]}
@@ -1827,9 +1907,9 @@
                                                                 {dueLabel(card)}
                                                             </span>
                                                         {/if}
-                                                        <!-- The card's Free Tags, after its date, as the Tasks View draws them (ADR 0166). -->
+                                                        <!-- The card's Free Tags, after its dates, as the Tasks View draws them (ADR 0166). -->
                                                         {#each card.freeTags as freeTag (freeTag)}
-                                                            <span class="rounded bg-(--gk-surface-2) px-1.5 font-medium text-(--gk-text-default)" data-testid="kanban-card-free-tag">{freeTag}</span>
+                                                            <span class={TAG_PILL_CLASSES} data-testid="kanban-card-free-tag">{freeTag}</span>
                                                         {/each}
                                                     </span>
                                                 </button>

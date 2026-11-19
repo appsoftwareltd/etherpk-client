@@ -6,7 +6,8 @@ import { EditorState, type Extension } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 
 import { protectedFenceAugmentation } from './augmentations/protected-fence'
-import { EDIT_REFUSAL_MESSAGE, EDIT_REFUSAL_TITLE, type EditRefusal, editRefused, refusalIn, refuseEdit } from './edit-refused'
+import { EDIT_REFUSAL_MESSAGE, EDIT_REFUSAL_TITLE, type EditRefusal, editRefused, type FrontmatterRefusal, refusalIn, refusalNotice, refuseEdit, type ShownRangeEdge } from './edit-refused'
+import { TASK_PART_NAMES, type TaskPart } from './task-part-range'
 import { editorFixture } from './testing/editor-state-fixture'
 
 const FM = '---\ntitle: K\n---\n'
@@ -73,12 +74,67 @@ describe('a refused edit', () => {
         expect(result).toEqual({ refusal: 'frontmatter-vanish', text: '---\ntitle: K\n---\nbody' })
     })
 
-    it('has one title and message per reason, each frontmatter message naming the --- line', () => {
-        const frontmatter: EditRefusal[] = ['frontmatter-seam', 'frontmatter-join', 'frontmatter-remove', 'frontmatter-grow', 'frontmatter-vanish']
-        const reasons: EditRefusal[] = [...frontmatter, 'shown-range']
-        expect(Object.keys(EDIT_REFUSAL_MESSAGE).sort()).toEqual([...reasons].sort())
-        expect(Object.keys(EDIT_REFUSAL_TITLE).sort()).toEqual([...reasons].sort())
-        for (const reason of reasons) expect(EDIT_REFUSAL_MESSAGE[reason].length).toBeLessThan(220)
-        for (const reason of frontmatter) expect(EDIT_REFUSAL_MESSAGE[reason]).toContain('---')
+    it('has one title and message per frontmatter reason, each naming the --- line', () => {
+        const frontmatter: FrontmatterRefusal[] = ['frontmatter-seam', 'frontmatter-join', 'frontmatter-remove', 'frontmatter-grow', 'frontmatter-vanish']
+        expect(Object.keys(EDIT_REFUSAL_MESSAGE).sort()).toEqual([...frontmatter].sort())
+        expect(Object.keys(EDIT_REFUSAL_TITLE).sort()).toEqual([...frontmatter].sort())
+        for (const reason of frontmatter) {
+            const notice = refusalNotice(reason)
+            expect(notice.message.length).toBeLessThan(220)
+            expect(notice.message).toContain('---')
+            // The frontmatter is in the document the editor shows: there is nowhere else to go.
+            expect(notice.opensDocument).toBe(false)
+        }
+    })
+})
+
+// An editor showing one part of a task (`shown-range.ts`): the notice names the part and says what
+// the refused key would have done, in the words the Task Editor's headings use.
+describe('the notice for an edit kept inside part of a task', () => {
+    const notice = (edge: ShownRangeEdge, part: TaskPart) => refusalNotice({ edge, names: TASK_PART_NAMES[part] })
+
+    it('names the part in its title', () => {
+        expect(notice('join-above', 'description').title).toBe('Kept in the description')
+        expect(notice('join-above', 'comments').title).toBe('Kept in the comments')
+        expect(notice('join-above', 'additionalContext').title).toBe('Kept in the additional context')
+    })
+
+    it('names the line a join above would have joined onto', () => {
+        expect(notice('join-above', 'description').message).toBe('That would join this line onto the task. To join them, open the page in a tab.')
+        expect(notice('join-above', 'comments').message).toBe('That would join this comment onto the Comments line. To join them, open the page in a tab.')
+        expect(notice('join-above', 'additionalContext').message).toBe('That would join this line onto the last comment. To join them, open the page in a tab.')
+    })
+
+    it('says a join below would pull the next line in from outside the part', () => {
+        expect(notice('join-below', 'description').message).toBe('That would join the line after the description onto this one. To join them, open the page in a tab.')
+        expect(notice('join-below', 'comments').message).toBe('That would join the line after the comments onto this one. To join them, open the page in a tab.')
+    })
+
+    it('says a line would leave the part', () => {
+        expect(notice('move-out', 'description').message).toBe('That would move this line out of the description. To move it, open the page in a tab.')
+        expect(notice('move-out', 'additionalContext').message).toBe('That would move this line out of the additional context. To move it, open the page in a tab.')
+    })
+
+    it('covers any other edit reaching past the part, and a part with nothing left in it', () => {
+        expect(notice('outside', 'comments').message).toBe('That would change lines outside the comments. To change them, open the page in a tab.')
+        expect(notice('nothing-shown', 'description')).toEqual({
+            title: 'Nothing to edit',
+            message: 'The task has no description left here. To edit the task, open the page in a tab.',
+            opensDocument: true,
+        })
+    })
+
+    it('offers the page for every edge and part, in a sentence or two without dashes', () => {
+        const edges: ShownRangeEdge[] = ['join-above', 'join-below', 'move-out', 'outside', 'nothing-shown']
+        const parts: TaskPart[] = ['description', 'comments', 'additionalContext']
+        for (const edge of edges) {
+            for (const part of parts) {
+                const { title, message, opensDocument } = notice(edge, part)
+                expect(opensDocument).toBe(true)
+                expect(message.length).toBeLessThan(140)
+                expect(message).toContain('open the page in a tab')
+                expect(`${title} ${message}`).not.toMatch(/[\u2013\u2014]| - |what is shown/)
+            }
+        }
     })
 })

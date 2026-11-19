@@ -33,6 +33,8 @@ import tseslint from 'typescript-eslint'
  */
 export const CLIENT_IMPORT_EXCEPTIONS = {
     kanban: [
+        // The Board Filter's Due control is the Tasks View's (2026-11-19).
+        '#lib/components/ChoiceDropdown.svelte',
         '#lib/components/dialog.js',
         '#lib/contrast-ink.js',
         '#lib/document/active-editor.js',
@@ -51,6 +53,8 @@ export const CLIENT_IMPORT_EXCEPTIONS = {
         '#lib/document/inline-parts.js',
         '#lib/document/open-concept.js',
         '#lib/document/settle-scheduler.js',
+        '#lib/document/task-due-window.js',
+        '#lib/document/task-filter-labels.js',
         '#lib/document/task-placement.js',
         '#lib/document/task-priority-colour.js',
         '#lib/document/task-structure.js',

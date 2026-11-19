@@ -1,6 +1,7 @@
 /**
- * The suggestion list under [[Search]]'s box while a [[Property Filter]] is typed (ADR 0107):
- * the keys the graph uses while a bare word is typed, and the values a key has after its colon.
+ * What [[Search]]'s box offers while a [[Property Filter]] is typed (ADR 0107): the rest of a key
+ * the graph uses as ghost text after the caret while a bare word is typed, and a list of the values
+ * a key has after its colon.
  *
  * Pure, so the rules are tested without a DOM; the modal owns the list's focus and keys.
  */
@@ -52,6 +53,24 @@ export function keySuggestions(context: Extract<SuggestionContext, { kind: 'key'
         .filter((info) => info.key.toLowerCase().startsWith(prefix))
         .slice(0, SUGGESTION_LIMIT)
         .map((info) => ({ kind: 'key', text: info.key, documents: info.documents }))
+}
+
+/**
+ * The ghost text [[Search]]'s box draws after the caret while a key is typed: the rest of the first
+ * key that starts with the typed letters (most used first), with its colon, and the suggestion Tab
+ * accepts. Only with the caret at the end of the word, since the ghost sits straight after it. Null
+ * when there is nothing to complete: mid-word, in a value, or where no key starts with the letters.
+ */
+export function keyCompletion(
+    input: string,
+    caret: number,
+    context: SuggestionContext | null,
+    keys: readonly PropertyKeyInfo[],
+): { rest: string; suggestion: SearchSuggestion } | null {
+    if (context?.kind !== 'key' || caret !== context.to || context.prefix === '') return null
+    const [first] = keySuggestions(context, keys)
+    if (!first) return null
+    return { rest: `${first.text.slice(context.prefix.length)}:`, suggestion: first }
 }
 
 /** A key's values that start with what was typed, ignoring case, most used first. */

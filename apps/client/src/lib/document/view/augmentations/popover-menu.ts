@@ -13,7 +13,7 @@
  * CM owns the positioning; we own the DOM.
  */
 
-import { type EditorState, type Extension, type Facet, Prec, StateEffect, StateField, type Transaction } from '@codemirror/state'
+import { type EditorState, type Extension, Facet, Prec, StateEffect, StateField, type Transaction } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, tooltips, type Tooltip, type TooltipView } from '@codemirror/view'
 
 import { setTrustedMarkup, type TrustedMarkup } from '#lib/security/trusted-types.js'
@@ -110,10 +110,23 @@ const TAILWIND_GROUP_FOLLOWING = 'mt-1 border-t border-[var(--gk-border-soft)]'
 /** Numbers each heading drawn, so every group can name its own heading (`aria-labelledby`). */
 let headingCount = 0
 
+/**
+ * True while a popover is open against a control outside the editor (a Command Bar button at the
+ * foot of the screen): the tooltip space is then the visible window, since the pane would leave the
+ * button, and the popover with it, outside the space, where CodeMirror hides a tooltip.
+ */
+export const tooltipsOverWindow = Facet.define<boolean, boolean>({ combine: (values) => values.some(Boolean) })
+
 // Share one facet across the completion extensions. The browser viewport alone is too wide
 // for a docked document: a tooltip there can spill into its neighbour and create pane overflow.
 const paneTooltips = tooltips({
     tooltipSpace(view) {
+        if (view.state.facet(tooltipsOverWindow)) {
+            const visual = window.visualViewport
+            const top = visual?.offsetTop ?? 0
+            const left = visual?.offsetLeft ?? 0
+            return { left, top, right: left + (visual?.width ?? window.innerWidth), bottom: top + (visual?.height ?? window.innerHeight) }
+        }
         // The scroller that scrolls the editor bounds it: an older day in a Journal Roll is as tall
         // as its text, and its own scroller would let a menu run off the pane (editor-scroller.ts).
         const scroll = editorScroller(view)

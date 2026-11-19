@@ -13,6 +13,7 @@ import type { EditorView } from '@codemirror/view'
 import { showNotice } from '#lib/activity/notices.js'
 
 import {
+    anchorFromArg,
     type CommandBarItem,
     type CommandMenuItem,
     type CommandRegistry,
@@ -242,17 +243,23 @@ export function registerEditorCommands(
     // desktop: Priority and Status open that menu with only their rows, Due date the calendar the
     // tag menu's "Due date…" row opens, and the last button the whole menu (Open in task editor,
     // Copy agent instruction). The rows write the line as they do from a right-click.
-    command('task.bar.priority', withWritableView((view) => void openLineMenuAtCaret(view, 'task.setPriority.')))
-    command('task.bar.status', withWritableView((view) => void openLineMenuAtCaret(view, 'task.setStatus.')))
-    command('task.bar.menu', withView((view) => void openLineMenuAtCaret(view)))
+    // Each opens its menu from the button pressed (`anchored`: the bar hands the Command the
+    // button's box), rising above the bar, rather than at the caret, which may be anywhere on screen.
+    command('task.bar.priority', withWritableView((view, arg) => void openLineMenuAtCaret(view, 'task.setPriority.', anchorFromArg(arg))))
+    command('task.bar.status', withWritableView((view, arg) => void openLineMenuAtCaret(view, 'task.setStatus.', anchorFromArg(arg))))
+    command('task.bar.menu', withView((view, arg) => void openLineMenuAtCaret(view, undefined, anchorFromArg(arg))))
     command(
         'task.bar.due',
-        withWritableView((view) => view.dispatch({ effects: openDateCalendar.of({ pos: view.state.selection.main.head, target: { kind: 'task-tag', tag: 'due' } }) })),
+        withWritableView((view, arg) =>
+            view.dispatch({
+                effects: openDateCalendar.of({ pos: view.state.selection.main.head, target: { kind: 'task-tag', tag: 'due' }, anchor: anchorFromArg(arg) ?? undefined }),
+            }),
+        ),
     )
-    barItem({ id: 'task.bar.priority', icon: 'flag', label: 'Priority', order: 0, command: 'task.bar.priority', contextualGroup: 'task', writableOnly: true })
-    barItem({ id: 'task.bar.status', icon: 'check', label: 'Status', order: 0, command: 'task.bar.status', contextualGroup: 'task', writableOnly: true })
-    barItem({ id: 'task.bar.due', icon: 'calendar', label: 'Due date', order: 0, command: 'task.bar.due', contextualGroup: 'task', writableOnly: true })
-    barItem({ id: 'task.bar.menu', icon: 'more', label: 'Task menu', order: 0, command: 'task.bar.menu', contextualGroup: 'task' })
+    barItem({ id: 'task.bar.priority', icon: 'flag', label: 'Priority', order: 0, command: 'task.bar.priority', contextualGroup: 'task', writableOnly: true, anchored: true })
+    barItem({ id: 'task.bar.status', icon: 'check', label: 'Status', order: 0, command: 'task.bar.status', contextualGroup: 'task', writableOnly: true, anchored: true })
+    barItem({ id: 'task.bar.due', icon: 'calendar', label: 'Due date', order: 0, command: 'task.bar.due', contextualGroup: 'task', writableOnly: true, anchored: true })
+    barItem({ id: 'task.bar.menu', icon: 'more', label: 'Task menu', order: 0, command: 'task.bar.menu', contextualGroup: 'task', anchored: true })
     // The bullet toggle is the first fixed button after the slash: making a line a bullet, or a
     // bullet prose again, is the block edit a phone reaches for most. Prose (a blank line included)
     // becomes a bullet and a bullet at column 0 becomes prose. A nested bullet greys it, since as

@@ -60,7 +60,7 @@
     import { pickTaskDate } from "./task-editor-dates";
     import TaskEditorAsset from "./TaskEditorAsset.svelte";
     import TaskEditorPartBox from "./TaskEditorPartBox.svelte";
-    import { addComment, addDescriptionLine, deleteTask, type ReadTask, readEditedTask, type RemovedTask, saveTaskLine, type TaskFields } from "./task-editor-writes";
+    import { addComment, addDescriptionLine, deleteTask, type ReadTask, readEditedTask, type RemovedTask, removeEmptyComments, saveTaskLine, startComments, type TaskFields } from "./task-editor-writes";
 
     const {
         concept,
@@ -149,7 +149,11 @@
     let heldText = $state(EMPTY_DESCRIPTION);
 
     let descriptionView = $state<DocumentView>();
+    let commentsView = $state<DocumentView>();
     let commentInputEl = $state<HTMLInputElement>();
+    let addCommentEl = $state<HTMLButtonElement>();
+    /** Add a comment started the Comments block in this sitting: if it is still empty on close, it goes. */
+    let commentsStarted = false;
     let additionalContextEl = $state<HTMLElement>();
     let titleEl = $state<HTMLInputElement>();
     let keepEditingEl = $state<HTMLButtonElement>();
@@ -237,7 +241,7 @@
         if (read.task.expected !== task.expected && saveState !== "saving") saveState = "stale";
         if (contextHadFocus && !parts.hasAdditionalContext) {
             await tick();
-            commentInputEl?.focus();
+            (commentInputEl ?? addCommentEl)?.focus();
         }
     }
 
@@ -384,7 +388,12 @@
 
     /** The description editor's view, with the caret at the end of what it shows. */
     function caretAtDescriptionEnd() {
-        const view = descriptionView?.editorView();
+        return caretAtPartEnd(descriptionView);
+    }
+
+    /** A part editor's view, with the caret at the end of what it shows. */
+    function caretAtPartEnd(part: DocumentView | undefined) {
+        const view = part?.editorView();
         if (!view) return null;
         const end = editing ? shownRangeIn(view.state)?.to : view.state.doc.length;
         if (end === undefined || end === null) return null;
@@ -447,6 +456,43 @@
         scheduleRefresh();
     }
 
+    /**
+     * Add a comment: start the Comments bullet with an empty comment under it and put the caret in
+     * it, in the comments' own editor, as Add a description does for the description. Left empty, it
+     * is taken out when the editor closes.
+     */
+    async function addFirstComment(): Promise<void> {
+        const at = store();
+        if (!task || !at) return;
+        const outcome = await serially(() => startComments(at, task!));
+        if (!outcome.ok) {
+            saveState = outcome.reason;
+            return;
+        }
+        commentsStarted = true;
+        parts = { ...parts, hasComments: true };
+        await tick();
+        // The button pressed has gone, so the keyboard must land in the dialog: in the comments'
+        // editor once it has the new line (a task created a moment ago may still be loading it),
+        // or else in the comment field beside it, never on the page behind.
+        let view = caretAtPartEnd(commentsView);
+        for (let frame = 0; !view && frame < 30; frame++) {
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            view = caretAtPartEnd(commentsView);
+        }
+        if (view) view.focus();
+        else commentInputEl?.focus();
+        scheduleRefresh();
+    }
+
+    /** Before the editor closes: a Comments block Add a comment started and nothing was typed into goes. */
+    async function dropEmptyComments(): Promise<void> {
+        const at = store();
+        if (!commentsStarted || !task || !at) return;
+        commentsStarted = false;
+        await serially(() => removeEmptyComments(at, task!));
+    }
+
     async function submitComment(): Promise<void> {
         const text = commentInput.trim();
         const at = store();
@@ -483,6 +529,7 @@
         titleError = null;
         createError = null;
         creating = true;
+        let created = false;
         try {
             const lines = newTaskLines({ status, priority, title, freeTags, due: dates.due, scheduled: dates.scheduled }, held.getText());
             // Today is read now, not when the board opened: a board is left open for days.
@@ -491,14 +538,18 @@
             editing = true;
             saveState = "saved";
             await load();
-            await tick();
-            titleEl?.focus();
+            created = true;
         } catch (error) {
             // Everything typed stays in the form for another try.
             createError = `The task was not created: ${error instanceof Error ? error.message : "the journal entry could not be written"}. Try again.`;
         } finally {
             creating = false;
         }
+        if (!created) return;
+        // Create task has gone with the new task's form, so the keyboard goes to the title. Only once
+        // `creating` is over: the dialog is busy until then and takes no focus.
+        await tick();
+        titleEl?.focus();
     }
 
     async function archive(): Promise<void> {
@@ -573,6 +624,7 @@
             return false;
         }
         if ((await commitTitle()) || titleUnsaved) {
+            await dropEmptyComments();
             onclose();
             return true;
         }
@@ -959,6 +1011,7 @@
                                     embedded
                                     revealAt={task.line}
                                     shownRange={taskPartRange("description")}
+                                    onopenintab={() => void openInTab()}
                                 />
                             {/key}
                         {:else if !editing}
@@ -994,46 +1047,53 @@
                     {#if !editing}
                         <p class="gk-hint m-0">Comments can be added once the task is created.</p>
                     {:else if task}
+                        <!-- The document's own editor, showing only the comments. Hidden, not unmounted,
+                             while there are none, so Add a comment shows it at once with the caret in
+                             it, as the description's does. -->
+                        <TaskEditorPartBox part="comments" label="Comments" minRem={10} hidden={!parts.hasComments} oninput={scheduleRefresh} testId="task-editor-comments">
+                            {#key task.concept}
+                                <DocumentView
+                                    bind:this={commentsView}
+                                    view={{ kind: "document", target: task.concept }}
+                                    {panelId}
+                                    {visibility}
+                                    embedded
+                                    revealAt={task.line}
+                                    shownRange={taskPartRange("comments")}
+                                    onopenintab={() => void openInTab()}
+                                />
+                            {/key}
+                        </TaskEditorPartBox>
                         {#if parts.hasComments}
-                            <TaskEditorPartBox part="comments" label="Comments" minRem={10} oninput={scheduleRefresh} testId="task-editor-comments">
-                                {#key task.concept}
-                                    <DocumentView
-                                        view={{ kind: "document", target: task.concept }}
-                                        {panelId}
-                                        {visibility}
-                                        embedded
-                                        revealAt={task.line}
-                                        shownRange={taskPartRange("comments")}
-                                    />
-                                {/key}
-                            </TaskEditorPartBox>
+                            <!-- With the section's `gap-1`, the row sits as far below the comments as one
+                                 section sits below another (the body's `gap-4`): the comments' resize
+                                 handle (12px) takes its place above it. -->
+                            <div class="flex gap-2" data-testid="task-editor-comment-row">
+                                <input
+                                    bind:this={commentInputEl}
+                                    bind:value={commentInput}
+                                    class="gk-input min-w-0 flex-1"
+                                    type="text"
+                                    autocomplete="off"
+                                    placeholder="Add a comment…"
+                                    aria-label="Add a comment"
+                                    aria-invalid={commentError !== null}
+                                    aria-describedby={commentError ? `${uid}-comment-error` : undefined}
+                                    onkeydown={(event) => {
+                                        if (event.key === "Enter" && !event.ctrlKey && !event.metaKey) {
+                                            event.preventDefault();
+                                            void submitComment();
+                                        }
+                                    }}
+                                    data-testid="task-editor-comment-input"
+                                />
+                                <button type="button" class="gk-button" onclick={() => void submitComment()} data-testid="task-editor-comment-add">Add comment</button>
+                            </div>
                         {:else}
-                            <p class="gk-hint m-0" data-testid="task-editor-no-comments">No comments yet.</p>
+                            <button type="button" bind:this={addCommentEl} class="gk-button self-start" onclick={() => void addFirstComment()} data-testid="task-editor-add-comment">
+                                Add a comment
+                            </button>
                         {/if}
-                        <!-- With the section's `gap-1`, the row sits as far below the comments as one
-                             section sits below another (the body's `gap-4`): the comments' resize
-                             handle (12px) takes the place of the `mt-3` the row has under the hint. -->
-                        <div class={["flex gap-2", !parts.hasComments && "mt-3"]} data-testid="task-editor-comment-row">
-                            <input
-                                bind:this={commentInputEl}
-                                bind:value={commentInput}
-                                class="gk-input min-w-0 flex-1"
-                                type="text"
-                                autocomplete="off"
-                                placeholder="Add a comment…"
-                                aria-label="Add a comment"
-                                aria-invalid={commentError !== null}
-                                aria-describedby={commentError ? `${uid}-comment-error` : undefined}
-                                onkeydown={(event) => {
-                                    if (event.key === "Enter" && !event.ctrlKey && !event.metaKey) {
-                                        event.preventDefault();
-                                        void submitComment();
-                                    }
-                                }}
-                                data-testid="task-editor-comment-input"
-                            />
-                            <button type="button" class="gk-button" onclick={() => void submitComment()} data-testid="task-editor-comment-add">Add comment</button>
-                        </div>
                         {#if commentError}
                             <p id="{uid}-comment-error" class="gk-error m-0" data-testid="task-editor-comment-error">{commentError}</p>
                         {/if}
@@ -1056,6 +1116,7 @@
                                     embedded
                                     revealAt={task.line}
                                     shownRange={taskPartRange("additionalContext")}
+                                    onopenintab={() => void openInTab()}
                                 />
                             {/key}
                         </TaskEditorPartBox>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { TaskPriorityFilter, TaskStatus } from './backlinks'
+import { TASK_DUE_WINDOWS } from './index-db'
 import {
     DUE_OPTIONS,
     GROUP_BY_OPTIONS,
@@ -64,7 +65,9 @@ describe('the options', () => {
 
 describe('the single-choice controls', () => {
     it('name the due windows and the groupings as the closed control shows them', () => {
-        expect(DUE_OPTIONS.map((o) => o.label)).toEqual(['Any date', 'Overdue', 'Due today', 'Next 7 days'])
+        expect(DUE_OPTIONS.map((o) => o.label)).toEqual(['Any date', 'Overdue', 'Due today', 'Next 7 days', 'No due date'])
+        // One option for every window the index answers, in the order the windows are listed.
+        expect(DUE_OPTIONS.map((o) => o.value)).toEqual(TASK_DUE_WINDOWS)
         expect(GROUP_BY_OPTIONS.map((o) => o.label)).toEqual(['By priority', 'By document', 'By due date'])
     })
 

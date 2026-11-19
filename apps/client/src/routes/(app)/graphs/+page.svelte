@@ -205,6 +205,7 @@
     import { isDemoGraph } from "#lib/demo/demo-graph.js";
     import GraphChoicePanels from "#lib/workspace/GraphChoicePanels.svelte";
     import {
+        FOLDER_UNAVAILABLE_NOTICE,
         graphChoicePanels,
         newSyncedGraphStep,
         type GraphChoiceAction,
@@ -4399,14 +4400,10 @@
     -->
     {#if !supported && firstRunKnown && !firstRun}
         <div
-            class="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-200"
+            class="rounded-lg border border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"
             data-testid="graphs-unsupported"
         >
-            <p>
-                This browser cannot open a folder. Folders need Chrome or Edge on
-                a desktop, or Chrome on Android. Synced graphs work in any
-                browser.
-            </p>
+            <p class="m-0">{FOLDER_UNAVAILABLE_NOTICE}</p>
             {#if servers.length === 0}
                 <button
                     type="button"
@@ -4414,7 +4411,7 @@
                         signsInToManagedSync()
                             ? connectManagedSync()
                             : void openSyncPanel("add")}
-                    class="mt-2 rounded-lg border border-amber-400 px-3 py-1.5 text-sm font-medium hover:bg-amber-100 dark:border-amber-500/50 dark:hover:bg-amber-900/40"
+                    class="mt-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-100 dark:hover:bg-neutral-800"
                     >{signsInToManagedSync()
                         ? "Sign in"
                         : "Connect to a Sync Server"}</button

@@ -21,6 +21,7 @@
         selected,
         multiple = false,
         changed = false,
+        inline = false,
         testid,
         onChoose,
     }: {
@@ -35,6 +36,11 @@
         multiple?: boolean;
         /** Draw the control in the accent: the owner decides what counts as changed. */
         changed?: boolean;
+        /**
+         * Sit in a row of text fields and chips: the name is never shown above it (the summary says
+         * what it is, and the accessible name keeps the label), and it is as tall as a text field.
+         */
+        inline?: boolean;
         /** The control's test id; its list is `<testid>-menu`, its name `<testid>-label`. */
         testid: string;
         /** A multiple list's option was ticked or unticked, or a single list's was chosen. */
@@ -187,7 +193,7 @@
 <div class="flex min-w-0 flex-col">
     <!-- Below the `lg` breakpoint, the phone presenter's side of LAYOUT_BREAKPOINT_PX, the name
          is left out: the room matters more there. The control's accessible name keeps it. -->
-    <span id={labelId} data-testid="{testid}-label" class="mb-1 hidden text-sm text-(--gk-text-muted) lg:block">{label}</span>
+    <span id={labelId} data-testid="{testid}-label" class={inline ? "sr-only" : "mb-1 hidden text-sm text-(--gk-text-muted) lg:block"}>{label}</span>
     <button
         bind:this={trigger}
         type="button"
@@ -197,6 +203,7 @@
         aria-labelledby="{labelId} {summaryId}"
         class={[
             "relative flex w-full min-w-0 items-center rounded-md border bg-(--gk-surface-1) py-1 pr-7 pl-2 text-left text-sm pointer-coarse:min-h-11",
+            inline && "h-full whitespace-nowrap",
             changed ? "border-(--gk-accent) text-(--gk-accent)" : "border-(--gk-border-soft) text-(--gk-text-default)",
         ]}
     >

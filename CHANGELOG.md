@@ -5,6 +5,42 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.37.0 - 2026-11-19
+
+### Client
+
+- **Remove Access on the Agents tab.** A graph's **MCP Server** tab now says how to take access
+  back: the command that removes this graph from Claude Code or Codex, or which entry to delete
+  for Cursor, VS Code and other agents, and, on a synced graph, `logout --all`, which removes every
+  synced graph from the agent's device.
+- **Clearer notes when the task editor keeps a key to its part.** When a key in the description,
+  the comments or the additional context would reach past them, the note now names the part and
+  says what the key would have done, such as joining the line onto the task. It has an **Open in
+  tab** button to make the change in the task's document.
+- **Scheduled dates on Kanban cards.** A card with a scheduled date shows it as a pill, such as
+  `Scheduled 2026-12-01`, before its due date and in the same style as its tags.
+- **Kanban Board filters by priority and due date.** Beside the filter box, the P1, P2, P3 and None
+  chips show only the priorities you turn on, and **Due** shows only overdue tasks, tasks due today,
+  tasks due in the next 7 days, or tasks with no due date. The Tasks View's **Due** menu offers
+  **No due date** too.
+- **Add a comment in the task editor.** A task with no comments has an **Add a comment** button, as
+  the description has, which opens the comments' editor with the cursor in a new comment. A comment
+  left empty is taken out when the task editor closes.
+- **Search completes a property key as grey text after the cursor.** Press **Tab** or **Right**, or
+  tap the grey text on a phone, to complete it. The list of keys no longer covers the first result.
+- **Picture actions on phones and tablets.** Copy, download, view larger, open and delete are always
+  shown over a picture on a touch screen, and are big enough to tap.
+- **Fixes.**
+  - **Esc** closes the task editor from its description and comments too. It only left the editor.
+  - **Tab** and **Shift+Tab** stay inside Search. They moved on to the page behind it.
+  - After **Create task**, the keyboard goes to the new task's title. It was left on the page behind
+    the task editor.
+  - On a phone or tablet, the Priority, Status, Due date and Task menu buttons in the bar along the
+    bottom open their menu just above the button, not next to the cursor, and a menu stays clear of
+    the on-screen keyboard.
+  - On a browser that cannot open a folder, the Graphs page says which browsers open Folder Graphs
+    in a plain grey box, in place of an amber warning.
+
 ## 0.36.0 - 2026-11-19
 
 ### Client

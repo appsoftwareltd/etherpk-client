@@ -1,7 +1,7 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
-import { type NewTask, asCommentBullet, commentChange, newTaskLines, readTaskStructure, taskComments, taskLineWithFreeTag, taskRemoval } from './task-structure'
+import { type NewTask, asCommentBullet, commentChange, emptyCommentsRemoval, newTaskLines, readTaskStructure, taskComments, taskLineWithFreeTag, taskRemoval } from './task-structure'
 import type { TaskStatus } from './task-tags'
 
 /**
@@ -148,6 +148,36 @@ describe('writing into a task’s lines', () => {
                 expect(after[change.line]).toContain(text.split('\n')[0])
             }),
             fuzz(500),
+        )
+    })
+
+    it('takes out an empty comment Add a comment started, leaving the outline as it was', () => {
+        fc.assert(
+            fc.property(outline, fc.nat(), (lines, pick) => {
+                const tasks = tasksIn(lines).filter((index) => readTaskStructure(lines, index)!.comments === null)
+                fc.pre(tasks.length > 0)
+                const index = tasks[pick % tasks.length]
+                const doc = lines.join('\n')
+                const started = commentChange(doc, index, asCommentBullet(''))!
+                const withEmpty = doc.slice(0, started.from) + started.insert + doc.slice(started.to)
+                const removal = emptyCommentsRemoval(withEmpty, index)!
+                expect(withEmpty.slice(0, removal.from) + removal.insert + withEmpty.slice(removal.to)).toBe(doc)
+            }),
+            fuzz(300),
+        )
+    })
+
+    it('never takes out a Comments block that holds a comment with words', () => {
+        fc.assert(
+            fc.property(outline, fc.nat(), words, (lines, pick, text) => {
+                const tasks = tasksIn(lines)
+                fc.pre(tasks.length > 0)
+                const index = tasks[pick % tasks.length]
+                const doc = lines.join('\n')
+                const change = commentChange(doc, index, asCommentBullet(text))!
+                expect(emptyCommentsRemoval(doc.slice(0, change.from) + change.insert + doc.slice(change.to), index)).toBeNull()
+            }),
+            fuzz(300),
         )
     })
 

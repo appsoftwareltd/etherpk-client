@@ -263,6 +263,23 @@ export function commentChange(text: string, index: number, note: string): (TextC
 }
 
 /**
+ * The change that takes out the Comments block of the task on line `index` when it holds no comment
+ * with words: only empty bullets or blank lines, as the Task Editor's Add a comment leaves it when
+ * nothing was typed. The Comments bullet goes with them, and one line break, so the text reads as it
+ * did before the block was started. Null when the task has no Comments bullet, a comment has words,
+ * or the line holds no task.
+ */
+export function emptyCommentsRemoval(text: string, index: number): TextChange | null {
+    const lines = text.split('\n')
+    const task = readTaskStructure(lines, index)
+    if (!task || task.commentsLine === null) return null
+    const last = task.comments ? task.comments.to - 1 : task.commentsLine
+    for (let at = task.commentsLine + 1; at <= last; at++) if (!EMPTY_LINE.test(lines[at])) return null
+    const from = lineEndOffset(lines, task.commentsLine - 1)
+    return { from, to: lineEndOffset(lines, last), insert: '' }
+}
+
+/**
  * The change that takes the task on line `index` out of `text`, with everything nested under it and
  * one line break, and the text it removes, which put back at `from` restores it. Null when the line
  * holds no task.

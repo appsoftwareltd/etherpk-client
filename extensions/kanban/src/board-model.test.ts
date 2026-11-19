@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseTaskTextFilter } from '#lib/document/index-derive.js'
 
 import {
+    type BoardFilterChoice,
+    boardFilterNarrows,
+    boardFilterOf,
+    EVERY_TASK,
     BOARD_LANES,
     BOARD_SECTIONS,
     type BoardCard,
@@ -29,7 +32,7 @@ import {
 
 function card(label: string, document = 'Acme', line = 0, due: string | null = null, freeTags: string[] = []): BoardCard {
     const freeTag = freeTags[0]?.toLowerCase() ?? null
-    return { key: `${document}:${line}`, document, line, text: label, label, due, dueState: due === null ? null : 'upcoming', parent: null, inConcept: null, subtasks: { done: 0, total: 0 }, freeTags, freeTag }
+    return { key: `${document}:${line}`, document, line, text: label, label, due, dueState: due === null ? null : 'upcoming', scheduled: null, parent: null, inConcept: null, subtasks: { done: 0, total: 0 }, freeTags, freeTag }
 }
 
 /**
@@ -165,7 +168,7 @@ describe('boardDocuments', () => {
 
 describe('toCard', () => {
     const hit = (text: string, around: Partial<Parameters<typeof toCard>[0]> = {}) =>
-        ({ concept: 'Shed', line: 2, text, due: null, parentTask: '#bug Paint the shed #P1', ancestorConcept: null, subtasks: { done: 0, total: 0 }, ...around }) as Parameters<typeof toCard>[0]
+        ({ concept: 'Shed', line: 2, text, due: null, scheduled: null, parentTask: '#bug Paint the shed #P1', ancestorConcept: null, subtasks: { done: 0, total: 0 }, ...around }) as Parameters<typeof toCard>[0]
 
     it('shows the words without the tag run or the Free Tags, and lists the Free Tags as written', () => {
         const shown = toCard(hit('#bug #P1 Fix the gate #needs-oil'), '2026-11-02')
@@ -186,6 +189,11 @@ describe('toCard', () => {
     it('names the concept the task sits in, and the parent task instead when it has one: never both (ADR 0174)', () => {
         expect(toCard(hit('Fix the gate', { parentTask: null, ancestorConcept: 'Acme' }), '2026-11-02')).toMatchObject({ parent: null, inConcept: 'Acme' })
         expect(toCard(hit('Fix the gate', { ancestorConcept: 'Acme' }), '2026-11-02')).toMatchObject({ parent: 'Paint the shed #P1', inConcept: null })
+    })
+
+    it('carries the scheduled date, which a card shows beside its due date', () => {
+        expect(toCard(hit('#S-2026-12-01 Fix the gate', { scheduled: '2026-12-01' }), '2026-11-02').scheduled).toBe('2026-12-01')
+        expect(toCard(hit('Fix the gate'), '2026-11-02').scheduled).toBeNull()
     })
 
     it('carries the count of the subtasks it stands for', () => {
@@ -297,7 +305,7 @@ describe('taskDetailCard', () => {
 describe('a move into a lane with a title filter', () => {
     const filtered = (snapshot: BoardSnapshot, status: string, typed: string, unfiltered: number): BoardSnapshot => ({
         ...snapshot,
-        lanes: snapshot.lanes.map((lane) => (lane.status === status ? { ...lane, filter: parseTaskTextFilter(typed), unfiltered } : lane)),
+        lanes: snapshot.lanes.map((lane) => (lane.status === status ? { ...lane, filter: boardFilterOf({ ...EVERY_TASK, text: typed }, '2026-09-29'), unfiltered } : lane)),
     })
     const quote = card('Send the quote')
     const before = filtered(board([['open', 1, [quote]]]), 'doing', 'quote', 3)
@@ -329,6 +337,52 @@ describe('a move into a lane with a title filter', () => {
         expect(unsettledMoves(target, pending, 10_000, 5000)).toEqual([])
         const stillThere = filtered(board([['open', 1, [quote]]]), 'doing', 'invoice', 4)
         expect(unsettledMoves(stillThere, pending, 10_000, 5000)).toEqual(pending)
+    })
+})
+
+describe('a move into a lane under the priority and due filters', () => {
+    const narrowed = (snapshot: BoardSnapshot, choice: Partial<BoardFilterChoice>): BoardSnapshot => ({
+        ...snapshot,
+        lanes: snapshot.lanes.map((lane) => (lane.status === 'doing' ? { ...lane, filter: boardFilterOf({ ...EVERY_TASK, ...choice }, '2026-09-29'), unfiltered: 3 } : lane)),
+    })
+    const soon = card('Send the quote', 'Acme', 0, '2026-09-30')
+    const undated = card('Call Sam', 'Acme', 1)
+    const before = board([['open', 1, [soon, undated]]])
+
+    it('draws a card dropped into a priority the filter shows, and keeps one dropped into another off the lane', () => {
+        const p1 = narrowed(before, { priorities: [1] })
+        expect(labelsAt(withPendingMoves(p1, [move(soon, 'doing', 1, null)]), 'doing', 1)).toEqual(['Send the quote'])
+        const p2 = withPendingMoves(p1, [move(soon, 'doing', 2, null)])
+        expect(labelsAt(p2, 'doing', 2)).toEqual([])
+        expect(p2.lanes[1]).toMatchObject({ total: 0, unfiltered: 4 })
+    })
+
+    it('reads the card’s due date against the due filter, an undated card passing only Any date and No due date', () => {
+        const next7 = narrowed(before, { due: 'next7' })
+        expect(labelsAt(withPendingMoves(next7, [move(soon, 'doing', 1, null)]), 'doing', 1)).toEqual(['Send the quote'])
+        expect(labelsAt(withPendingMoves(next7, [move(undated, 'doing', 1, null)]), 'doing', 1)).toEqual([])
+        const none = narrowed(before, { due: 'none' })
+        expect(labelsAt(withPendingMoves(none, [move(undated, 'doing', 1, null)]), 'doing', 1)).toEqual(['Call Sam'])
+        expect(labelsAt(withPendingMoves(none, [move(soon, 'doing', 1, null)]), 'doing', 1)).toEqual([])
+    })
+})
+
+describe('the Board Filter as searched for', () => {
+    it('is null while it hides nothing: no words, no priority chosen or every one, and Any date', () => {
+        expect(boardFilterOf(EVERY_TASK, '2026-09-29')).toBeNull()
+        expect(boardFilterOf({ text: '  ', priorities: [1, 2, 3, null], due: 'any' }, '2026-09-29')).toBeNull()
+    })
+
+    it('holds each part that narrows, and leaves the others open', () => {
+        expect(boardFilterOf({ text: '', priorities: [1, null], due: 'any' }, '2026-09-29')).toEqual({ text: null, priorities: [1, null], due: 'any', today: '2026-09-29' })
+        expect(boardFilterOf({ text: '', priorities: [], due: 'overdue' }, '2026-09-29')).toEqual({ text: null, priorities: null, due: 'overdue', today: '2026-09-29' })
+    })
+
+    it('says whether the board is narrowed, for the count beside the filter', () => {
+        expect(boardFilterNarrows(EVERY_TASK)).toBe(false)
+        expect(boardFilterNarrows({ ...EVERY_TASK, priorities: [2] })).toBe(true)
+        expect(boardFilterNarrows({ ...EVERY_TASK, due: 'today' })).toBe(true)
+        expect(boardFilterNarrows({ ...EVERY_TASK, text: '#bug' })).toBe(true)
     })
 })
 
@@ -373,7 +427,7 @@ describe('the one lane the phone layout shows', () => {
     })
 
     it('counts the tasks the Board Filter shows across the board, and says nothing without one', () => {
-        const filter = parseTaskTextFilter('beans')
+        const filter = boardFilterOf({ ...EVERY_TASK, text: 'beans' }, '2026-09-29')
         expect(boardFilterCountText([{ total: 3, unfiltered: 12, filter }, { total: 0, unfiltered: 4, filter }])).toBe('3 of 16 tasks')
         expect(boardFilterCountText([{ total: 1, unfiltered: 1, filter }])).toBe('1 of 1 task')
         expect(boardFilterCountText([{ total: 12, unfiltered: 12, filter: null }])).toBeNull()
@@ -381,6 +435,6 @@ describe('the one lane the phone layout shows', () => {
 
     it("counts a lane's tasks, and how many the Board Filter lets through when there is one", () => {
         expect(laneCountText({ total: 12, unfiltered: 12, filter: null })).toBe('12')
-        expect(laneCountText({ total: 3, unfiltered: 12, filter: parseTaskTextFilter('beans') })).toBe('3 of 12')
+        expect(laneCountText({ total: 3, unfiltered: 12, filter: boardFilterOf({ ...EVERY_TASK, text: 'beans' }, '2026-09-29') })).toBe('3 of 12')
     })
 })

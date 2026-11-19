@@ -9,9 +9,9 @@
      * The actions are the editor's overlay, made to look the same: pinned to the picture's
      * top-right corner, hidden until the pointer is over the picture or a button has focus, and
      * moved BESIDE a picture too narrow to hold them — the editor measures the image for that,
-     * and so does this (`bind:clientWidth`). Touch has no hover, so, as in the editor, the overlay
-     * is not drawn there at all and a long press raises the same actions through the [[Context
-     * Menu]]; right-click does too. Delete is on neither: the target carries no position.
+     * and so does this (`bind:clientWidth`). Touch has no hover, so there, as in the editor, the
+     * overlay is always shown, its buttons sized for a finger; a long press raises the same actions
+     * through the [[Context Menu]] too, and right-click does on a desktop. Delete is on neither: the target carries no position.
      *
      * Three states, all of them reachable: resolving, shown, and gone. "Gone" is not a bug — a
      * reference outlives its bytes (ADR 0054) — so it renders the alt text in a marked box and
@@ -270,11 +270,17 @@
         right: auto;
         left: calc(100% + 6px);
     }
-    /* Touch: no hover to reveal it, and a permanently invisible tap target over the picture would
-       be worse than none. The Context Menu, raised by long press, is the route there. */
+    /* Touch: no hover to reveal it, so it is always shown, as the resize handle is, with each
+       button big enough for a finger (36px). Only the buttons take touches, so a tap anywhere else
+       on the picture still reaches the picture. */
     @media (hover: none) {
         .overlay {
-            display: none;
+            opacity: 1;
+        }
+        .overlay :global(.action) {
+            pointer-events: auto;
+            min-width: 36px;
+            min-height: 36px;
         }
     }
     @media (prefers-reduced-motion: reduce) {

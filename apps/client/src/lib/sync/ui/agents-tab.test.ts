@@ -6,6 +6,7 @@ import {
     diagramsSetupCommand,
     headlessClientPackage,
     loginCommand,
+    logoutEverywhereCommand,
     mcpServerName,
     publishCommand,
     registerCommand,
@@ -14,6 +15,7 @@ import {
     semanticSetupCommand,
     skillInstallCommand,
     tokensPageUrl,
+    unregisterStep,
 } from './agents-tab'
 
 const LATEST = HEADLESS_CLIENT_PACKAGE
@@ -138,5 +140,33 @@ describe('the optional setups and the publish command', () => {
     // finds it at skills/etherpk there.
     it('spell the Agent Skill install from the Public Repository', () => {
         expect(skillInstallCommand()).toBe('npx skills add appsoftwareltd/etherpk-client')
+    })
+})
+
+// Taking a graph back from an agent is the registration run the other way: the same name, in the
+// same list. Every graph out at once is the Headless Client's logout.
+describe('removing an agent\'s access', () => {
+    it('removes one graph from Claude Code and Codex with their own remove commands, under the name it was added as', () => {
+        expect(unregisterStep('claude', 'Home')).toEqual({
+            command: 'claude mcp remove --scope user etherpk-home',
+            note: "Run this on the agent's device. The agent can no longer use this graph, and keeps the others.",
+        })
+        expect(unregisterStep('codex', 'Field Notes').command).toBe('codex mcp remove etherpk-field-notes')
+        expect(unregisterStep('claude', null).command).toBe('claude mcp remove --scope user etherpk')
+    })
+
+    // These tools have no remove command: the person deletes the entry the registration added.
+    it('says which entry to delete, and where, for the tools that take a JSON block', () => {
+        expect(unregisterStep('cursor', 'Home')).toEqual({ command: null, note: 'Delete the "etherpk-home" entry under mcpServers in ~/.cursor/mcp.json.' })
+        expect(unregisterStep('vscode', 'Home')).toEqual({
+            command: null,
+            note: 'In VS Code, run MCP: Open User Configuration from the Command Palette and delete the "etherpk-home" entry under servers in mcp.json.',
+        })
+        expect(unregisterStep('other', 'Home').note).toBe('Delete the "etherpk-home" entry where your agent lists its MCP servers.')
+    })
+
+    it('spells logout --all with the pinned Headless Client', () => {
+        expect(logoutEverywhereCommand(LATEST)).toBe('npx @appsoftwareltd/etherpk-mcp logout --all')
+        expect(logoutEverywhereCommand(headlessClientPackage('0.8.1'))).toBe('npx @appsoftwareltd/etherpk-mcp@0.8.1 logout --all')
     })
 })

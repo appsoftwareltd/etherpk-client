@@ -57,6 +57,31 @@ export function autofocusTarget(node: HTMLElement): HTMLElement {
 }
 
 /**
+ * Keep Tab and Shift+Tab inside `node`, a dialog carrying `tabindex="-1"`: from its last control
+ * Tab goes to its first, and Shift+Tab from its first to its last. Call from the dialog's own
+ * `keydown`. A dialog that keeps focus and its restore itself (Search) uses this alone; the rest
+ * use {@link dialogFocus}, which does all three.
+ */
+export function trapTab(node: HTMLElement, event: KeyboardEvent): void {
+    if (event.key !== 'Tab' || event.defaultPrevented) return
+    const items = focusableIn(node)
+    if (items.length === 0) {
+        // Nothing to cycle between: keep focus on the dialog rather than letting Tab
+        // wander into the page behind it.
+        event.preventDefault()
+        node.focus()
+        return
+    }
+    const edge = event.shiftKey ? items[0] : items[items.length - 1]
+    // Focus can also sit on the dialog container itself (tabindex="-1"); treat that as
+    // being at the leading edge so the first Tab enters the content.
+    const atEdge = document.activeElement === edge || document.activeElement === node
+    if (!atEdge) return
+    event.preventDefault()
+    ;(event.shiftKey ? items[items.length - 1] : items[0]).focus()
+}
+
+/**
  * The dialog focus contract (AGENTS.md rule 8): autofocus the first meaningful control, keep
  * Tab inside the dialog while it is open, and put focus back on whatever opened it.
  *
@@ -76,24 +101,7 @@ export function dialogFocus(node: HTMLElement): () => void {
     // behind it, so Tab starts from inside and the trap below engages.
     if (!node.contains(document.activeElement)) node.focus()
 
-    function onKeydown(event: KeyboardEvent) {
-        if (event.key !== 'Tab') return
-        const items = focusableIn(node)
-        if (items.length === 0) {
-            // Nothing to cycle between: keep focus on the dialog rather than letting Tab
-            // wander into the page behind it.
-            event.preventDefault()
-            node.focus()
-            return
-        }
-        const edge = event.shiftKey ? items[0] : items[items.length - 1]
-        // Focus can also sit on the dialog container itself (tabindex="-1"); treat that as
-        // being at the leading edge so the first Tab enters the content.
-        const atEdge = document.activeElement === edge || document.activeElement === node
-        if (!atEdge) return
-        event.preventDefault()
-        ;(event.shiftKey ? items[items.length - 1] : items[0]).focus()
-    }
+    const onKeydown = (event: KeyboardEvent) => trapTab(node, event)
 
     node.addEventListener('keydown', onKeydown)
     return () => {

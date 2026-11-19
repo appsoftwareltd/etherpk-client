@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { createInMemoryDocumentStore } from '#lib/document/in-memory-store.js'
 import { taskLineWith } from '#lib/document/task-write.js'
 
-import { addComment, addDescriptionLine, deleteTask, readEditedTask, restoreTask, saveTaskLine } from './task-editor-writes'
+import { addComment, addDescriptionLine, deleteTask, readEditedTask, removeEmptyComments, restoreTask, saveTaskLine, startComments } from './task-editor-writes'
 
 // What the Task Editor writes (ADR 0170): every write starts from the task as the editor read it, and
 // a task line that reads otherwise now is never written over.
@@ -76,6 +76,26 @@ describe('comments and the description', () => {
         const store = createInMemoryDocumentStore({ Garden: '- [ ] Build the shed\n  - Comments\n    - level' })
         expect(await addDescriptionLine(store, { concept: 'Garden', line: 0, expected: '- [ ] Build the shed' })).toEqual({ ok: true })
         expect(store.open('Garden').getText()).toBe('- [ ] Build the shed\n  - \n  - Comments\n    - level')
+    })
+})
+
+describe('Add a comment', () => {
+    it('starts a Comments bullet with an empty comment to type in, and takes both out while it is still empty', async () => {
+        const store = createInMemoryDocumentStore({ Garden: SHED })
+        expect(await startComments(store, task)).toEqual({ ok: true })
+        expect(store.open('Garden').getText()).toBe(['- [[Garden]]', '  - [ ] #P1 Build the shed #wood', '    - measure', '    - Comments', '      - ', '- Kitchen'].join('\n'))
+        expect(await removeEmptyComments(store, task)).toEqual({ ok: true })
+        expect(store.open('Garden').getText()).toBe(SHED)
+    })
+
+    it('leaves a Comments block with a comment in it', async () => {
+        const store = createInMemoryDocumentStore({ Garden: SHED })
+        await startComments(store, task)
+        const doc = store.open('Garden')
+        doc.applyChange({ from: doc.getText().length - '\n- Kitchen'.length, to: doc.getText().length - '\n- Kitchen'.length, insert: 'ordered the timber' }, 'external')
+        const typed = doc.getText()
+        expect(await removeEmptyComments(store, task)).toEqual({ ok: true })
+        expect(doc.getText()).toBe(typed)
     })
 })
 

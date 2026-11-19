@@ -82,7 +82,18 @@ export interface GraphChoicePanels {
     synced: SyncedChoicePanel
 }
 
-export const FOLDER_UNAVAILABLE_REASON = 'Needs Chrome or Edge on a computer, or Chrome on Android.'
+/** The Folder panel's help line where the browser cannot open a folder: short, the same facts as the notice. */
+export const FOLDER_UNAVAILABLE_REASON = 'Needs the File System Access API: Chrome or Edge on desktop, or Chrome on Android.'
+
+/** Which browsers open a Folder Graph, said where a folder was asked for and this browser cannot give one. */
+export const FOLDER_GRAPHS_NEED =
+    'Folder graphs are available on browsers with the File System Access API (e.g. Chrome or Edge on desktop, or Chrome on Android).'
+
+/**
+ * The Graphs page's notice for a browser that cannot open a folder. A plain statement in a neutral
+ * box, not a warning: nothing is wrong, and a synced graph works here.
+ */
+export const FOLDER_UNAVAILABLE_NOTICE = `${FOLDER_GRAPHS_NEED} Synced graphs work on any browser.`
 
 const FOLDER_BULLETS = [
     'No account or sign-in needed',

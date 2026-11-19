@@ -115,9 +115,12 @@
         return undefined
     }
 
-    function run(item: CommandBarItem) {
+    /** Run the button's Command; a menu it opens is handed the button's box, so it rises from there. */
+    function run(item: CommandBarItem, button: HTMLElement) {
         const reg = tryGetActiveCommandRegistry()
-        if (reg?.has(item.command)) void reg.execute(item.command, item.args)
+        if (!reg?.has(item.command)) return
+        const { left, top, right, bottom } = button.getBoundingClientRect()
+        void reg.execute(item.command, item.anchored ? { anchor: { left, top, right, bottom } } : item.args)
     }
 
     // The icon table is shared with the slash menu and the asset action icons (surface/icons.ts).
@@ -136,7 +139,7 @@
         aria-label={item.label}
         onpointerdown={(e) => e.preventDefault()}
         onmousedown={(e) => e.preventDefault()}
-        onclick={() => run(item)}
+        onclick={(event) => run(item, event.currentTarget)}
     >
         <!-- Icon markup from the in-repo icon table, never user or document content. -->
         <!-- eslint-disable-next-line svelte/no-at-html-tags -->

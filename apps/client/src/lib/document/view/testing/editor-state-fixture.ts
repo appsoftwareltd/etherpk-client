@@ -43,6 +43,7 @@ import { caretClamp } from '../caret-clamp'
 import { fenceDeleteGuard, fenceGuard, fencePad } from '../fence-guard'
 import { frontmatterBoundaryGuard } from '../frontmatter-boundary'
 import { frontmatterBindings, frontmatterKeys } from '../frontmatter-keys'
+import { type EditRefusal, refusalIn } from '../edit-refused'
 import { deleteHeal } from '../delete-heal'
 import { leaveTidy } from '../leave-tidy'
 import { localHistoryExtension } from '../editor-history'
@@ -250,6 +251,22 @@ export function editorFixture(text: string, options: EditorFixtureOptions = {}):
         ],
     })
     return new HeadlessEditor(state, options)
+}
+
+/**
+ * Every refusal `editor` dispatches from now on, in order (`edit-refused.ts`). A headless editor has no
+ * view, so the reporter the View installs (an update listener) never runs; this reads each dispatched
+ * transaction instead, as that listener does.
+ */
+export function collectRefusals(editor: HeadlessEditor): EditRefusal[] {
+    const refusals: EditRefusal[] = []
+    const dispatch = editor.dispatch
+    editor.dispatch = (tr) => {
+        const reason = refusalIn(tr)
+        if (reason) refusals.push(reason)
+        dispatch(tr)
+    }
+    return refusals
 }
 
 /** Shorthand: press one key on a fixture and return the result in fixture notation. */

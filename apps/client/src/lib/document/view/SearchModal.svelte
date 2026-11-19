@@ -32,12 +32,13 @@
     import { describePropertyFilter, removeSearchTerm, type PropertyFilterTerm } from "../search-query";
     import {
         applySearchSuggestion,
-        keySuggestions,
+        keyCompletion,
         suggestionContext,
         valueSuggestions,
         type SearchSuggestion,
     } from "../search-suggest";
     import { iconSvg } from "#lib/surface/icons.js";
+    import { trapTab } from "@appsoftwareltd/etherpk-shared/ui";
 
     const { controller }: { controller: SearchController } = $props();
 
@@ -296,16 +297,31 @@
         };
     });
 
+    /**
+     * The values a key has, listed once its colon is typed. A key itself is not listed: it is
+     * offered as ghost text after the caret (`ghost`), so nothing covers the results while a word
+     * that happens to start a key is typed.
+     */
     const suggestions = $derived.by<SearchSuggestion[]>(() => {
         const context = suggestContext;
-        if (!context) return [];
-        if (context.kind === "key") return keySuggestions(context, search.propertyKeys);
+        if (context?.kind !== "value") return [];
         return valuesFor === context.key.toLowerCase() ? valueSuggestions(context, values) : [];
     });
     const showSuggestions = $derived(!suggestDismissed && suggestions.length > 0);
 
+    /** The box's text runs past its width: the ghost would not sit after the caret, so it is not drawn. */
+    let inputOverflows = $state(false);
+    /**
+     * The rest of the key being typed, drawn after the caret, and what Tab, → at the end of the box
+     * or a tap on it accepts. Not over a restored query (`suggestDismissed`), only once typing starts.
+     */
+    const ghost = $derived(
+        suggestDismissed || inputOverflows ? null : keyCompletion(search.query, caret, suggestContext, search.propertyKeys),
+    );
+
     function trackCaret(event: Event & { currentTarget: HTMLInputElement }) {
         caret = event.currentTarget.selectionStart ?? event.currentTarget.value.length;
+        inputOverflows = event.currentTarget.scrollWidth > event.currentTarget.clientWidth;
     }
 
     /** Write the suggestion into the box and put the caret where the next keystroke belongs. */
@@ -331,13 +347,25 @@
         input?.setSelectionRange(next.length, next.length);
     }
 
+    /** The keys the ghost text and the value list take. Returns true when one of them took it. */
+    function suggestionKey(event: KeyboardEvent): boolean {
+        return takeGhost(event) || listKey(event);
+    }
+
+    /** Tab, or → at the very end of the box, takes the ghost text while there is one. */
+    function takeGhost(event: KeyboardEvent): boolean {
+        if (!ghost || !ghostKey(event)) return false;
+        void accept(ghost.suggestion);
+        return true;
+    }
+
     /**
-     * The suggestion list's keys, when it is showing. Returns true when the key was the list's.
+     * The value list's keys, when it is showing. Returns true when the key was the list's.
      * Down enters the list and walks it, Up walks back and leaves it at the top, Enter or Tab
      * takes the highlighted row (Tab the first one when none is), and Esc closes the list
      * without closing Search.
      */
-    function suggestionKey(event: KeyboardEvent): boolean {
+    function listKey(event: KeyboardEvent): boolean {
         if (!showSuggestions || event.isComposing) return false;
         if (event.key === "Escape") {
             suggestDismissed = true;
@@ -360,6 +388,14 @@
         return false;
     }
 
+    /** Tab, or → with the caret at the very end of the box: the keys that take the ghost text. */
+    function ghostKey(event: KeyboardEvent): boolean {
+        if (event.isComposing || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return false;
+        if (event.key === "Tab") return true;
+        const atEnd = input !== undefined && input.selectionStart === input.selectionEnd && input.selectionEnd === input.value.length;
+        return event.key === "ArrowRight" && atEnd;
+    }
+
     /** The values a name row matched, as `key: value`, once per pair. */
     function propertyText(properties: { key: string; value: string }[]): string {
         return [...new Set(properties.map((p) => `${p.key}: ${p.value}`))].join(" · ");
@@ -377,6 +413,7 @@
             aria-modal="true"
             aria-label="Search"
             onclick={(event) => event.stopPropagation()}
+            onkeydown={(event) => trapTab(event.currentTarget, event)}
         >
             <div class="search__box">
                 <input
@@ -387,7 +424,8 @@
                     aria-label="Search this graph"
                     autocomplete="off"
                     role="combobox"
-                    aria-autocomplete="list"
+                    aria-autocomplete={ghost ? "inline" : "list"}
+                    aria-describedby={ghost ? "search-ghost-hint" : undefined}
                     aria-expanded={showSuggestions}
                     aria-controls="search-suggestions"
                     aria-activedescendant={showSuggestions && suggestIndex !== null
@@ -405,6 +443,22 @@
                     onclick={trackCaret}
                     onpointerdown={() => (activeIndex = null)}
                 />
+                {#if ghost}
+                    <!-- The ghost text: the typed letters drawn invisibly, as the box draws them, so
+                         the rest of the key lands straight after the caret. Only the ghost takes the
+                         pointer, a tap on it accepting it (a phone has no Tab key); pointerdown is
+                         cancelled so the box keeps the keyboard. Its words reach a screen reader
+                         through the hint the box points at. -->
+                    <div class="search__ghost-line" aria-hidden="true">
+                        <span class="search__ghost-typed">{search.query.slice(0, caret)}</span><!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions --><span
+                            class="search__ghost"
+                            data-testid="search-ghost"
+                            onpointerdown={(event) => event.preventDefault()}
+                            onclick={() => void accept(ghost.suggestion)}>{ghost.rest}</span
+                        >
+                    </div>
+                    <span id="search-ghost-hint" class="sr-only">Press Tab to complete {ghost.suggestion.text}:</span>
+                {/if}
                 <button type="button" class="search__close" aria-label="Close search" title="Close search" onclick={dismiss} data-testid="search-close">
                     <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                     {@html iconSvg("close", { size: 18 })}
@@ -742,6 +796,30 @@
     }
     .search__input:focus {
         outline: none;
+    }
+    /* Over the box, with the box's own padding, font and line, so its text lines up with the
+       typed text; the typed part is there for its width only. */
+    .search__ghost-line {
+        position: absolute;
+        inset: 0 0 auto 0;
+        padding: 0.875rem 3rem 0.875rem 1rem;
+        border-bottom: 1px solid transparent;
+        font-size: 1rem;
+        white-space: pre;
+        overflow: hidden;
+        pointer-events: none;
+    }
+    .search__ghost-typed {
+        visibility: hidden;
+    }
+    /* Muted by colour, never opacity (ADR 0106), and padded to the box's height so a finger can
+       find it, without moving its letters. */
+    .search__ghost {
+        padding: 0.875rem 0.5rem 0.875rem 0;
+        margin: -0.875rem 0;
+        color: var(--gk-text-muted);
+        cursor: pointer;
+        pointer-events: auto;
     }
     .search__close {
         position: absolute;

@@ -18,6 +18,7 @@
     import { iconSvg } from "#lib/surface/icons.js";
 
     import { closeContextMenu, getContextMenuState, subscribeContextMenu, type ContextMenuState } from "../context-menu-store";
+    import { placeMenu, visibleArea } from "../menu-placement";
 
     let menu = $state<ContextMenuState>(getContextMenuState());
     $effect(() => subscribeContextMenu((s) => (menu = s)));
@@ -25,7 +26,7 @@
     let el = $state<HTMLDivElement>();
     let active = $state(0);
     /** Clamped position, resolved once the menu has been measured. */
-    let pos = $state({ x: 0, y: 0 });
+    let pos = $state({ x: 0, y: 0, maxHeight: 0 });
 
     const rows = $derived.by(() => {
         if (!menu.open || !menu.target) return [];
@@ -64,13 +65,11 @@
         returnFocus = focused instanceof HTMLElement && focused !== document.body ? focused : null;
         void (async () => {
             await tick();
-            const rect = el?.getBoundingClientRect();
-            const width = rect?.width ?? 200;
-            const height = rect?.height ?? 120;
-            pos = {
-                x: Math.max(8, Math.min(menu.x, window.innerWidth - width - 8)),
-                y: Math.max(8, Math.min(menu.y, window.innerHeight - height - 8)),
-            };
+            // Measured whole (scrollHeight), then placed inside what the person can see: the
+            // visual viewport, which a phone's keyboard shortens, and capped to it.
+            const width = el?.getBoundingClientRect().width ?? 200;
+            const height = el?.scrollHeight ?? 120;
+            pos = placeMenu({ x: menu.x, y: menu.y, above: menu.above }, { width, height }, visibleArea());
             el?.focus();
         })();
     });
@@ -142,6 +141,7 @@
         oncontextmenu={(e) => e.preventDefault()}
         style:left="{pos.x}px"
         style:top="{pos.y}px"
+        style:max-height={pos.maxHeight > 0 ? `${pos.maxHeight}px` : undefined}
         class="gk-menu fixed z-(--z-menu) max-h-[calc(100dvh-1rem)] overflow-y-auto focus:outline-none"
     >
         <!-- EtherPK's menu classes (controls.css, ADR 0151), which an extension's menus use too. The

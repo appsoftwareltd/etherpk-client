@@ -1544,7 +1544,15 @@ export const moveBranchUp: StateCommand = (view) => moveBranch(view, 'up')
 /** Move the caret's branch down one visual row within its group (Command-shaped for reuse). */
 export const moveBranchDown: StateCommand = (view) => moveBranch(view, 'down')
 
+/**
+ * Escape gives the keyboard back to the page (VS Code). Inside a modal dialog (the Task Editor's
+ * description and comments) the key is the dialog's to close it, so it is left unhandled: CodeMirror
+ * then neither blurs nor prevents it, and the dialog, which ignores an Escape something inside it
+ * already took, closes on the one press. A popover open in the editor binds Escape ahead of this, so
+ * the first press still closes only that.
+ */
 const blurEditor: Command = (view) => {
+    if (view.dom.closest('[aria-modal="true"]')) return false
     view.contentDOM.blur()
     return true
 }

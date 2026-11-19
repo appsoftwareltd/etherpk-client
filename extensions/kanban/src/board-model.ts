@@ -7,8 +7,9 @@
  * a lens over documents: nothing here is stored, and every card is a task line that the
  * [[Derived Index]] reported.
  */
-import type { TaskHit, TaskPriorityFilter, TaskStatus, TaskSubtaskCount } from '#lib/document/index-db.js'
-import { bulletLabel, matchesTaskTextFilter, type TaskTextFilter } from '#lib/document/index-derive.js'
+import { TASK_PRIORITY_FILTERS, type TaskDueWindow, type TaskHit, type TaskPriorityFilter, type TaskStatus, type TaskSubtaskCount } from '#lib/document/index-db.js'
+import { bulletLabel, matchesTaskTextFilter, parseTaskTextFilter, type TaskTextFilter } from '#lib/document/index-derive.js'
+import { inDueWindow } from '#lib/document/task-due-window.js'
 import { freeTagsIn, parseTaskLine, parseTaskTags, taskDisplay } from '#lib/document/task-tags.js'
 
 /**
@@ -94,6 +95,8 @@ export interface BoardCard {
     freeTag: string | null
     due: string | null
     dueState: DueState | null
+    /** The scheduled date (`#S-YYYY-MM-DD`), or null: the day to start on the task, drawn as a pill beside the due date. */
+    scheduled: string | null
     /**
      * The task this one sits under, as a person reads it (tag run off), or null. A [[Subtask]] has
      * a card only when its [[Parent Task]] is not on the board (ADR 0174), and this keeps it tied
@@ -117,6 +120,44 @@ export interface BoardSection extends BoardSectionSpec {
     hasMore: boolean
 }
 
+/**
+ * What the [[Board Filter]]'s controls hold: the words and #tags typed, the priority chips chosen
+ * (none chosen shows every priority; `null` is No priority) and the Due window.
+ */
+export interface BoardFilterChoice {
+    text: string
+    priorities: readonly TaskPriorityFilter[]
+    due: TaskDueWindow
+}
+
+/** The Board Filter that hides nothing: how a board opens, since nothing remembers the filter. */
+export const EVERY_TASK: BoardFilterChoice = { text: '', priorities: [], due: 'any' }
+
+/**
+ * The [[Board Filter]] as a board is read through it: each part that narrows, the others null (or
+ * `any`), and the day the Due window is measured from.
+ */
+export interface BoardFilter {
+    text: TaskTextFilter | null
+    priorities: readonly TaskPriorityFilter[] | null
+    due: TaskDueWindow
+    today: string
+}
+
+/** True when `choice` hides any task: words typed, some priorities and not all chosen, or a Due window. */
+export function boardFilterNarrows(choice: BoardFilterChoice): boolean {
+    return boardFilterOf(choice, '') !== null
+}
+
+/** The Board Filter `choice` reads as on `today`, or null when it hides nothing. */
+export function boardFilterOf(choice: BoardFilterChoice, today: string): BoardFilter | null {
+    const text = parseTaskTextFilter(choice.text)
+    const every = choice.priorities.length === 0 || TASK_PRIORITY_FILTERS.every((priority) => choice.priorities.includes(priority))
+    const priorities = every ? null : choice.priorities
+    if (text === null && priorities === null && choice.due === 'any') return null
+    return { text, priorities, due: choice.due, today }
+}
+
 export interface BoardLane extends BoardLaneSpec {
     sections: BoardSection[]
     total: number
@@ -126,7 +167,7 @@ export interface BoardLane extends BoardLaneSpec {
      */
     loaded: boolean
     /** The [[Board Filter]] as it is searched for, or null when the lane shows all its tasks. `total` counts the matches. */
-    filter: TaskTextFilter | null
+    filter: BoardFilter | null
     /** Every task in the lane, whatever the Board Filter hides. */
     unfiltered: number
 }
@@ -284,13 +325,21 @@ function keyedToRead(board: BoardSnapshot, moves: readonly PendingMove[]): Pendi
     })
 }
 
-/** Whether the [[Board Filter]] a lane was read through lets `card` through. */
-export function passesFilter(lane: Pick<BoardLane, 'filter'>, card: BoardCard): boolean {
-    return lane.filter === null || matchesTaskTextFilter(lane.filter, card.text)
+/**
+ * Whether the [[Board Filter]] a lane was read through lets `card` through, placed in the `priority`
+ * section: what the index's query would answer, for a card held on the board while its move is
+ * written.
+ */
+export function passesFilter(lane: Pick<BoardLane, 'filter'>, card: BoardCard, priority: TaskPriorityFilter): boolean {
+    const filter = lane.filter
+    if (filter === null) return true
+    if (filter.text !== null && !matchesTaskTextFilter(filter.text, card.text)) return false
+    if (filter.priorities !== null && !filter.priorities.includes(priority)) return false
+    return inDueWindow(card.due, filter.due, filter.today)
 }
 
 function laneWithMove(lane: BoardLane, move: PendingMove): BoardLane {
-    const passes = passesFilter(lane, move.card)
+    const passes = passesFilter(lane, move.card, move.to.priority)
     let removedFromLane = 0
     const sections = lane.sections.map((section) => {
         const kept = section.cards.filter((card) => !sameTask(card, move.card))
@@ -334,7 +383,7 @@ export function unsettledMoves(board: BoardSnapshot, moves: readonly PendingMove
         // (Archived) cannot show the card arriving, so a move into one settles when the card has
         // left every section the board does show.
         const target = board.lanes.find((lane) => lane.status === move.to.status)
-        if (!target || !target.loaded || !passesFilter(target, move.card)) return shown !== undefined
+        if (!target || !target.loaded || !passesFilter(target, move.card, move.to.priority)) return shown !== undefined
         return !(shown && shown.status === move.to.status && shown.priority === move.to.priority)
     })
 }
@@ -380,6 +429,7 @@ export function toCard(hit: TaskHit, today: string): BoardCard {
         ...cardFreeTags(hit.text),
         due: hit.due,
         dueState: dueState(hit.due, today),
+        scheduled: hit.scheduled,
         parent: hit.parentTask === null ? null : cardLabel(hit.parentTask),
         inConcept: hit.parentTask === null ? hit.ancestorConcept : null,
         subtasks: hit.subtasks,

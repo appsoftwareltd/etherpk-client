@@ -50,20 +50,21 @@ import { collaborative, isEdit } from './cm-document'
 import { editorDefaultKeymap } from './editor-default-keymap'
 import { bookmarkMarks, bookmarkedLines, syncBookmarkMarks } from './augmentations/bookmark-marks'
 import { captureAnchor } from '../bookmarks/anchor'
-import { outdentBranch, toggleBullet } from './outliner-keymap'
+import { outdentBranch, outlinerBindings, toggleBullet } from './outliner-keymap'
 import { PLAIN_PASTE_USER_EVENT } from './paste-clamp'
 import { analysisFor } from './analysis/editor-analysis'
 import { bulletToggleable, taskToggleable } from './task-toggleable'
 import { checkboxClick } from './augmentations/task-checkbox'
 import { taskChangeSpec } from './task-change'
 import { anchorLine, lineAnchor } from './line-anchor'
+import { type ShownRangeEdge } from './edit-refused'
 import { shownRange, showsPart } from './shown-range'
 import { requestReveal, revealFocus, revealOnlyWhileFocused } from './augmentations/reveal-policy'
 import { collapsedExtensionFences, fenceIdAt, interactiveFences } from './augmentations/interactive-fence-state'
 import { mapSizeEdits } from '../map-text'
 import { type TaskPart, taskPartRange } from './task-part-range'
 import { lineIndent } from '../outliner'
-import { editorFixture, type FixtureOptions, type HeadlessEditor, press } from './testing/editor-state-fixture'
+import { collectRefusals, editorFixture, type FixtureOptions, type HeadlessEditor, press } from './testing/editor-state-fixture'
 import { FIND_REPLACE_EVENT, FIND_SELECT_EVENT } from '../find/find-edit'
 import { wikilinkButtonSpec } from './wrap-selection'
 import { insertTemplate } from './template-insert'
@@ -3825,32 +3826,39 @@ describe('a bookmark follows its line (ADR 0160)', () => {
 // context (ADR 0170, `shown-range.ts`): the keys work as anywhere, inside the lines shown, and an edit reaching past them
 // is refused, leaving the document as it was.
 describe('an editor showing part of a task (ADR 0170)', () => {
-    /** `key` pressed in an editor showing `part` of the task on the fixture's second line. */
-    function pressShown(part: TaskPart, before: string, key: string): string {
+    /**
+     * `key` pressed in an editor showing `part` of the task on the fixture's second line: the text it
+     * leaves, and what each refusal said had been kept (`edit-refused.ts`).
+     */
+    function pressShown(part: TaskPart, before: string, key: string): { after: string; refused: ShownRangeEdge[] } {
         const editor = editorFixture(before, { extensions: [lineAnchor(), shownRange(taskPartRange(part))] })
         editor.dispatch(editor.state.update({ effects: anchorLine.of(editor.state.doc.line(2).from) }))
+        const refusals = collectRefusals(editor)
         for (const each of key.split(' ')) editor.key(each)
-        return editor.fixture()
+        return { after: editor.fixture(), refused: refusals.map((reason) => (typeof reason === 'string' ? reason : reason.edge) as ShownRangeEdge) }
     }
     const task = (description: string, comments = '    - Comments\n      - level') => `- [[Garden]]\n  - [ ] Build the shed\n${description}\n${comments}\n- Kitchen`
     /** A task whose `additional` lines follow its Comments block: its additional context. */
     const context = (additional: string) => task('    - measure', `    - Comments\n      - level\n${additional}`)
-    const rows: Array<Rule & { part: TaskPart }> = [
+    /** `refused`: the edge the notice names when the key is refused (`edit-refused.ts`). */
+    const rows: Array<Rule & { part: TaskPart; refused?: ShownRangeEdge }> = [
         { part: 'description', rule: 'Enter at the end of the last line shown starts a line that is shown too', precedent: 'EtherPK', before: task('    - measure|'), key: 'Enter', after: task('    - measure\n    - |') },
-        { part: 'description', rule: 'Backspace at the start of the first line shown never joins it onto the task', precedent: 'EtherPK', before: task('    - |measure'), key: 'Backspace', after: task('    - |measure') },
-        { part: 'description', rule: 'Delete at the end of the last line shown never joins the Comments bullet onto it', precedent: 'EtherPK', before: task('    - measure|'), key: 'Delete', after: task('    - measure|') },
-        { part: 'description', rule: 'Shift+Tab that would take a line out from under the task is refused', precedent: 'EtherPK', before: task('    - measure|'), key: 'Shift-Tab', after: task('    - measure|') },
-        { part: 'description', rule: 'Alt+Up on the first line shown never moves it above the task', precedent: 'EtherPK', before: task('    - measure|'), key: 'Alt-ArrowUp', after: task('    - measure|') },
+        { part: 'description', rule: 'Backspace at the start of the first line shown never joins it onto the task', precedent: 'EtherPK', before: task('    - |measure'), key: 'Backspace', after: task('    - |measure'), refused: 'join-above' },
+        { part: 'description', rule: 'Delete at the end of the last line shown never joins the Comments bullet onto it', precedent: 'EtherPK', before: task('    - measure|'), key: 'Delete', after: task('    - measure|'), refused: 'join-below' },
+        { part: 'description', rule: 'Shift+Tab that would take a line out from under the task is refused', precedent: 'EtherPK', before: task('    - measure|'), key: 'Shift-Tab', after: task('    - measure|'), refused: 'move-out' },
+        { part: 'description', rule: 'Alt+Up on the first line shown never moves it above the task', precedent: 'EtherPK', before: task('    - measure|'), key: 'Alt-ArrowUp', after: task('    - measure|'), refused: 'move-out' },
+        { part: 'description', rule: 'Alt+Down on the last line shown never moves it past the Comments block', precedent: 'EtherPK', before: task('    - measure|'), key: 'Alt-ArrowDown', after: task('    - measure|'), refused: 'move-out' },
+        { part: 'description', rule: 'Alt+Up on the last line shown moves it above an empty line, as anywhere, though the change lands on the line after', precedent: 'Logseq', before: task('    - measure\n    - \n    - |'), key: 'Alt-ArrowUp', after: task('    - measure\n    - |\n    - ') },
         { part: 'description', rule: 'Tab nests a line under the one above it, as anywhere', precedent: 'Logseq', before: task('    - measure\n    - cut|'), key: 'Tab', after: task('    - measure\n      - cut|') },
         { part: 'description', rule: 'Mod+A then Backspace deletes everything shown, and the line break with it', precedent: 'EtherPK', before: task('    - measure|\n    - cut'), key: 'Mod-a Backspace', after: task('').replace('shed\n\n', 'shed|\n') },
         { part: 'description', rule: 'Backspace on a sole empty bullet takes it out', precedent: 'EtherPK', before: task('    - |'), key: 'Backspace', after: task('').replace('shed\n\n', 'shed|\n') },
         { part: 'comments', rule: 'Enter at the end of the last comment starts another comment', precedent: 'EtherPK', before: task('    - measure', '    - Comments\n      - level|'), key: 'Enter', after: task('    - measure', '    - Comments\n      - level\n      - |') },
-        { part: 'comments', rule: 'Backspace at the start of the first comment never joins it onto the Comments bullet', precedent: 'EtherPK', before: task('    - measure', '    - Comments\n      - |level'), key: 'Backspace', after: task('    - measure', '    - Comments\n      - |level') },
+        { part: 'comments', rule: 'Backspace at the start of the first comment never joins it onto the Comments bullet', precedent: 'EtherPK', before: task('    - measure', '    - Comments\n      - |level'), key: 'Backspace', after: task('    - measure', '    - Comments\n      - |level'), refused: 'join-above' },
         { part: 'additionalContext', rule: 'Enter at the end of the last line shown starts a line that is shown too', precedent: 'EtherPK', before: context('    - paint it|'), key: 'Enter', after: context('    - paint it\n    - |') },
-        { part: 'additionalContext', rule: 'Backspace at the start of the first line shown never joins it onto the last comment', precedent: 'EtherPK', before: context('    - |paint it'), key: 'Backspace', after: context('    - |paint it') },
-        { part: 'additionalContext', rule: 'Tab on the first line shown never nests it under the Comments bullet', precedent: 'EtherPK', before: context('    - paint it|'), key: 'Tab', after: context('    - paint it|') },
-        { part: 'additionalContext', rule: 'Alt+Up on the first line shown never moves it above the Comments block', precedent: 'EtherPK', before: context('    - paint it|'), key: 'Alt-ArrowUp', after: context('    - paint it|') },
-        { part: 'additionalContext', rule: 'Shift+Tab that would take a line out from under the task is refused', precedent: 'EtherPK', before: context('    - paint it|'), key: 'Shift-Tab', after: context('    - paint it|') },
+        { part: 'additionalContext', rule: 'Backspace at the start of the first line shown never joins it onto the last comment', precedent: 'EtherPK', before: context('    - |paint it'), key: 'Backspace', after: context('    - |paint it'), refused: 'join-above' },
+        { part: 'additionalContext', rule: 'Tab on the first line shown never nests it under the Comments bullet', precedent: 'EtherPK', before: context('    - paint it|'), key: 'Tab', after: context('    - paint it|'), refused: 'move-out' },
+        { part: 'additionalContext', rule: 'Alt+Up on the first line shown never moves it above the Comments block', precedent: 'EtherPK', before: context('    - paint it|'), key: 'Alt-ArrowUp', after: context('    - paint it|'), refused: 'move-out' },
+        { part: 'additionalContext', rule: 'Shift+Tab that would take a line out from under the task is refused', precedent: 'EtherPK', before: context('    - paint it|'), key: 'Shift-Tab', after: context('    - paint it|'), refused: 'move-out' },
         { part: 'additionalContext', rule: 'Mod+A then Backspace deletes everything shown, and the line break with it', precedent: 'EtherPK', before: context('    - paint it|\n    - two coats'), key: 'Mod-a Backspace', after: task('    - measure', '    - Comments|\n      - level') },
         { part: 'additionalContext', rule: 'Backspace on a sole empty bullet takes it out', precedent: 'EtherPK', before: context('    - |'), key: 'Backspace', after: task('    - measure', '    - Comments\n      - level|') },
     ]
@@ -3858,7 +3866,10 @@ describe('an editor showing part of a task (ADR 0170)', () => {
     const partName = (part: TaskPart) => (part === 'additionalContext' ? 'additional context' : part)
     for (const row of rows) {
         it(`${row.key} in the ${partName(row.part)}: ${row.rule} (${row.precedent})`, () => {
-            expect(pressShown(row.part, row.before, row.key)).toBe(row.after)
+            const { after, refused } = pressShown(row.part, row.before, row.key)
+            expect(after).toBe(row.after)
+            // A refused key says what it kept, and a key that works says nothing.
+            expect(refused).toEqual(row.refused ? [row.refused] : [])
         })
     }
 
@@ -4182,5 +4193,29 @@ describe('folds', () => {
         expect(hasFoldedDescendant(editor.state, 1)).toBe(true)
         editor.dispatch(editor.state.update(unfoldBranchSpec(editor.state, 1)!))
         expect(foldedBulletLines(editor.state)).toEqual([])
+    })
+})
+
+// Escape in the editor gives the keyboard back to the page, in a tab. Inside a modal dialog (the
+// Task Editor's description and comments) the key is the dialog's: the editor leaves it unhandled,
+// so the dialog closes on one press rather than the first press only leaving the editor.
+describe('Escape inside a modal dialog belongs to the dialog (EtherPK, WAI-ARIA dialog pattern)', () => {
+    /** The Escape binding run on a stand-in view, its DOM inside a modal dialog or not. */
+    const pressEscape = (inModal: boolean) => {
+        const blur = vi.fn()
+        const view = {
+            contentDOM: { blur },
+            dom: { closest: (selector: string) => (inModal && selector.includes('aria-modal') ? {} : null) },
+        }
+        const binding = outlinerBindings().find((b) => b.key === 'Escape')!
+        return { handled: binding.run!(view as never), blurred: blur.mock.calls.length > 0 }
+    }
+
+    it('Escape: in a tab, blurs the editor and takes the key (VS Code)', () => {
+        expect(pressEscape(false)).toEqual({ handled: true, blurred: true })
+    })
+
+    it('Escape: in a modal dialog, leaves the key to the dialog and the editor as it is (EtherPK)', () => {
+        expect(pressEscape(true)).toEqual({ handled: false, blurred: false })
     })
 })

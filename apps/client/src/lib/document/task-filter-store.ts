@@ -43,7 +43,7 @@ const stateSchema = z.object({
     statuses: z.array(z.enum(['open', 'doing', 'waiting', 'test', 'done', 'cancelled', 'archived'])),
     // `null` is the real "no priority" bucket, so the union must admit it.
     priorities: z.array(z.union([z.literal(1), z.literal(2), z.literal(3), z.null()])),
-    due: z.enum(['any', 'overdue', 'today', 'next7']),
+    due: z.enum(['any', 'none', 'overdue', 'today', 'next7']),
     groupBy: z.enum(['document', 'priority', 'due']),
     // A default rather than a new version: a filter saved before this existed is still good.
     textFilter: z.string().default(''),

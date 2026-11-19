@@ -53,7 +53,7 @@ import {
     subscribeBookmarkReveal,
     takeBookmarkReveal,
 } from '../../bookmarks/status'
-import { isApplePlatform } from '../../../surface'
+import { isApplePlatform, type MenuAnchor } from '../../../surface'
 import { editorDocument } from '../editor-document'
 import { placeSelection } from '../view-position'
 import {
@@ -79,7 +79,8 @@ export interface BookmarkOptions {
      * Open the line Context Menu for `line` (its 1-based number and its text) at viewport `x`/`y`,
      * with only the rows whose id starts with `rows` when it is given.
      */
-    lineMenu?: (line: { number: number; text: string }, x: number, y: number, rows?: string) => void
+    /** `above`: the menu rises from (x, y), opened from a Command Bar button. */
+    lineMenu?: (line: { number: number; text: string }, x: number, y: number, rows?: string, above?: boolean) => void
     /** Whether the editor shows a [[Draft]], which has no document to bookmark yet. */
     draft?: boolean
     /**
@@ -559,17 +560,23 @@ function offeredLine(state: EditorState, line: number | null): number | null {
 const touchPointer = new WeakMap<EditorView, boolean>()
 
 /**
- * Open the line menu for the caret's line, below the caret: Shift+F10, the Menu key, and the Command
- * Bar's task group, whose Priority and Status buttons ask for only their `rows`. False when the
- * editor has no line menu.
+ * Open the line menu for the caret's line, below the caret: Shift+F10 and the Menu key. The Command
+ * Bar's task group passes the `anchor` of the button pressed, and the menu rises from that button
+ * instead, as a menu opened from a control does; its Priority and Status buttons ask for only their
+ * `rows`. False when the editor has no line menu.
  */
-export function openLineMenuAtCaret(view: EditorView, rows?: string): boolean {
+export function openLineMenuAtCaret(view: EditorView, rows?: string, anchor?: MenuAnchor | null): boolean {
     const options = view.state.field(optionsField, false)
     if (!options?.lineMenu) return false
     const head = view.state.selection.main.head
+    const line = view.state.doc.lineAt(head)
+    if (anchor) {
+        options.lineMenu(line, anchor.left, anchor.top, rows, true)
+        return true
+    }
     const coords = view.coordsAtPos(head)
     if (!coords) return false
-    options.lineMenu(view.state.doc.lineAt(head), coords.left, coords.bottom, rows)
+    options.lineMenu(line, coords.left, coords.bottom, rows)
     return true
 }
 

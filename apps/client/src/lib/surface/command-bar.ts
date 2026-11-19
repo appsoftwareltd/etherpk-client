@@ -70,6 +70,12 @@ export interface CommandBarItem {
      * tap goes. Every other button carries no pressed state.
      */
     pressed?: 'bullet'
+    /**
+     * The Command opens a menu: the bar hands it the button's box as `{ anchor }` (a
+     * `MenuAnchor`, `menu-placement.ts`), and the menu rises from the button, above the bar, rather
+     * than opening at the caret.
+     */
+    anchored?: boolean
     /** Disabled where no table can be inserted: fenced code, frontmatter, and inside a table. */
     tableInsertOnly?: boolean
     /** Disabled unless the caret is on a table's body row (the header and separator cannot be removed). */

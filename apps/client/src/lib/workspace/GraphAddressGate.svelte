@@ -27,7 +27,7 @@
 
     import { graphAccentFor } from './graph-accent.svelte.js'
     import { choiceDetail, gateFor, wrongFolderMessage, type GraphGate } from './graph-address-gate'
-    import { FOLDER_UNAVAILABLE_REASON } from './graph-choice-panels'
+    import { FOLDER_GRAPHS_NEED } from './graph-choice-panels'
     import GraphWorkspace from './GraphWorkspace.svelte'
     import { openChosenFolder } from './open-chosen-folder'
 
@@ -142,7 +142,7 @@
                 <button data-testid="graph-choose-folder-back" onclick={() => goto('/graphs')}>Back to graphs</button>
             </div>
         {:else}
-            <p data-testid="graph-choose-folder-unsupported">This browser cannot open a folder. {FOLDER_UNAVAILABLE_REASON}</p>
+            <p data-testid="graph-choose-folder-unsupported">{FOLDER_GRAPHS_NEED}</p>
             <div class="notice__actions">
                 <button data-testid="graph-choose-folder-back" onclick={() => goto('/graphs')}>Back to graphs</button>
             </div>

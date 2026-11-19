@@ -630,8 +630,9 @@ class ImageWidget extends WidgetType {
             canDownload,
         })
         wrap.appendChild(actions)
-        // Touch has no hover, so the overlay never appears there; a long press on the image
-        // raises the same actions through the [[Context Menu]]. Right-click does too on desktop.
+        // Touch has no hover, so there the overlay is always shown (see the theme below); a long
+        // press on the image raises the same actions through the [[Context Menu]] as well, and
+        // right-click does on a desktop.
         attachAssetContextMenu(view, wrap, resolve)
         return actions
     }
@@ -804,11 +805,13 @@ const theme = EditorView.baseTheme({
     '.cm-md-image--hovered .cm-asset-action, .cm-md-image-actions:focus-within .cm-asset-action': {
         pointerEvents: 'auto',
     },
-    // Touch: no hover to reveal the overlay, and a tap belongs to the editor (it opens the raw
-    // markdown). The Context Menu, raised by long press, is the route there - so hide the
-    // overlay outright rather than leaving a permanently invisible tap target over the image.
+    // Touch: no hover to reveal the overlay, so it is always shown, as the resize handle is, each
+    // button big enough for a finger (36px). Only the buttons take touches - they stop their own
+    // mousedown, so a tap on one never reveals the markdown - and a tap anywhere else on the image
+    // still belongs to the editor. Long press still raises the same actions as a Context Menu.
     '@media (hover: none)': {
-        '.cm-md-image-actions': { display: 'none' },
+        '.cm-md-image-actions': { opacity: '1' },
+        '.cm-md-image-actions .cm-asset-action': { pointerEvents: 'auto', minWidth: '36px', minHeight: '36px' },
     },
     // A broken image has no intrinsic size, so these minimums are what keep the overlay's corner
     // on screen - leaving the trash clickable on exactly the reference a user most wants to

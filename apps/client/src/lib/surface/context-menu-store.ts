@@ -13,10 +13,12 @@ export interface ContextMenuState {
     open: boolean
     x: number
     y: number
+    /** The menu rises from (x, y), its foot there: opened from a Command Bar button at the foot of the screen. */
+    above: boolean
     target: ContextMenuTarget | null
 }
 
-let state: ContextMenuState = { open: false, x: 0, y: 0, target: null }
+let state: ContextMenuState = { open: false, x: 0, y: 0, above: false, target: null }
 const listeners = new Set<(s: ContextMenuState) => void>()
 
 function emit(): void {
@@ -33,14 +35,18 @@ export function getContextMenuState(): ContextMenuState {
     return state
 }
 
-export function openContextMenu(target: ContextMenuTarget, x: number, y: number): void {
-    state = { open: true, x, y, target }
+/**
+ * Open the menu for `target` with its top-left corner at (x, y), or, with `above`, rising from
+ * (x, y) with its foot there (`menu-placement.ts` keeps it on screen either way).
+ */
+export function openContextMenu(target: ContextMenuTarget, x: number, y: number, options: { above?: boolean } = {}): void {
+    state = { open: true, x, y, above: options.above ?? false, target }
     emit()
 }
 
 export function closeContextMenu(): void {
     if (!state.open) return
-    state = { open: false, x: 0, y: 0, target: null }
+    state = { open: false, x: 0, y: 0, above: false, target: null }
     emit()
 }
 

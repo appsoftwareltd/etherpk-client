@@ -172,6 +172,38 @@ export function registerNote(tool: AgentTool): string {
     }
 }
 
+/**
+ * How to take one graph back from an agent: the registration undone, under the name it was added
+ * as (`mcpServerName`, from the same graph name). Claude Code and Codex have a remove command, and
+ * Claude Code needs the scope the registration used. The tools that take a JSON block have none, so
+ * `command` is null and the note says which entry to delete and where. The Headless Client keeps
+ * its sign-in, so the agent's other graphs keep working.
+ */
+export function unregisterStep(tool: AgentTool, graphName: string | null): { command: string | null; note: string } {
+    const name = mcpServerName(graphName)
+    const kept = "Run this on the agent's device. The agent can no longer use this graph, and keeps the others."
+    switch (tool) {
+        case 'claude':
+            return { command: `claude mcp remove --scope user ${name}`, note: kept }
+        case 'codex':
+            return { command: `codex mcp remove ${name}`, note: kept }
+        case 'cursor':
+            return { command: null, note: `Delete the "${name}" entry under mcpServers in ~/.cursor/mcp.json.` }
+        case 'vscode':
+            return { command: null, note: `In VS Code, run MCP: Open User Configuration from the Command Palette and delete the "${name}" entry under servers in mcp.json.` }
+        case 'other':
+            return { command: null, note: `Delete the "${name}" entry where your agent lists its MCP servers.` }
+    }
+}
+
+/**
+ * Takes every synced graph away from the agent's device at once: revokes each Sync Server's Agent
+ * Token, stops the background processes, and deletes the Encryption Keys and cached graphs there.
+ */
+export function logoutEverywhereCommand(headlessClient: string): string {
+    return `npx ${headlessClient} logout --all`
+}
+
 /** A path as a POSIX shell reads it: bare when it has nothing a shell would split or expand, else single-quoted. */
 function shellPath(path: string): string {
     return /^[A-Za-z0-9._/~+=:@%-]+$/.test(path) ? path : `'${path.replace(/'/g, "'\\''")}'`

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
     ALL_GRAPHS_GET,
+    FOLDER_GRAPHS_NEED,
+    FOLDER_UNAVAILABLE_NOTICE,
     FOLDER_UNAVAILABLE_REASON,
     graphChoicePanels,
     newSyncedGraphStep,
@@ -41,7 +43,14 @@ describe('the Folder Graph panel', () => {
         expect(panels.folder.button).toBeNull()
         expect(panels.folder.available).toBe(false)
         expect(panels.folder.help).toBe(FOLDER_UNAVAILABLE_REASON)
-        expect(FOLDER_UNAVAILABLE_REASON).toBe('Needs Chrome or Edge on a computer, or Chrome on Android.')
+        expect(FOLDER_UNAVAILABLE_REASON).toBe('Needs the File System Access API: Chrome or Edge on desktop, or Chrome on Android.')
+    })
+
+    it('says in one notice which browsers open folder graphs and that synced graphs work in any', () => {
+        expect(FOLDER_GRAPHS_NEED).toBe(
+            'Folder graphs are available on browsers with the File System Access API (e.g. Chrome or Edge on desktop, or Chrome on Android).',
+        )
+        expect(FOLDER_UNAVAILABLE_NOTICE).toBe(`${FOLDER_GRAPHS_NEED} Synced graphs work on any browser.`)
     })
 
     it('lists four points', () => {

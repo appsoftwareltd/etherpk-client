@@ -40,7 +40,7 @@ import { type OutlineBase, outlineBaseFacet } from './augmentations/outline-base
 import { revealOnlyWhileFocused } from './augmentations/reveal-policy'
 import { clampedCaret } from './caret-clamp'
 import { EXTERNAL } from './cm-document'
-import { refuseEdit } from './edit-refused'
+import { refuseEdit, type ShownPartNames, type ShownRangeEdge } from './edit-refused'
 import { lineAnchorField } from './line-anchor'
 import { isOwnEditing } from './own-editing'
 
@@ -55,8 +55,17 @@ export interface ShownRange {
     nestedUnder: number
 }
 
-/** Where the shown run is in a state, or null when there is nothing to show. */
-export type ShownRangeOf = (state: EditorState) => ShownRange | null
+/**
+ * Where the shown run is in a state, or null when there is nothing to show; with the names a refused
+ * edit's notice gives the part (`edit-refused.ts`), where the host has them.
+ */
+export interface ShownRangeOf {
+    (state: EditorState): ShownRange | null
+    readonly names?: ShownPartNames
+}
+
+/** The names of a part whose host gives none. */
+const UNNAMED: ShownPartNames = { field: 'part shown', line: 'line', above: 'the line above it' }
 
 const rangeOfFacet = Facet.define<ShownRangeOf, ShownRangeOf | null>({ combine: (values) => values[0] ?? null })
 
@@ -109,13 +118,50 @@ function clampedSelection(tr: Transaction, range: ShownRange | null | undefined)
     return { selection: EditorSelection.create(ranges, selection.mainIndex), sequential: true }
 }
 
-/** Whether every change `tr` makes lies inside `range`, its edges included. */
+/**
+ * Whether every change `tr` makes lies inside `range`, its edges included. A pure insertion of whole
+ * lines at the start of the hidden line after the run (`X\n` there) is the same text as one at the
+ * run's end (`\nX`), and so is `\nX` at the end of the hidden line before it and `X\n` at its start,
+ * so both count as inside here and `judgeOwnEdit` judges where the lines land. The outliner's line
+ * move writes them that way on purpose (`anchored-move.ts`, `carried`): Alt+Up on the last line shown
+ * writes the line it passes at the start of the line after it, so a peer typing at the end of the
+ * moved line keeps their text on one side of it.
+ */
 function changesWithin(tr: Transaction, range: ShownRange): boolean {
     let within = true
-    tr.changes.iterChangedRanges((fromA, toA) => {
-        if (fromA < range.from || toA > range.to) within = false
+    tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+        if (fromA >= range.from && toA <= range.to) return
+        const text = inserted.toString()
+        const pureInsert = fromA === toA && text.length > 0
+        if (pureInsert && fromA === range.to + 1 && text.endsWith('\n')) return
+        if (pureInsert && fromA === range.from - 1 && text.startsWith('\n')) return
+        within = false
     })
     return within
+}
+
+/**
+ * Which edge an edit reaching past the run would cross, read from what it does rather than the key
+ * that made it, so the notice is right for any command. Losing a line while reaching above the run is
+ * Backspace at its start joining it onto the line above; losing one while reaching below is Delete at
+ * its end; a move (Alt+Up past the task, Alt+Down past the Comments block) loses none.
+ */
+function crossedEdge(tr: Transaction, range: ShownRange): ShownRangeEdge {
+    // An undo or a redo puts back an earlier state: it joins and moves nothing the person pressed.
+    if (tr.isUserEvent('undo') || tr.isUserEvent('redo')) return 'outside'
+    let above = false
+    let below = false
+    tr.changes.iterChangedRanges((fromA, toA) => {
+        if (fromA < range.from) above = true
+        if (toA > range.to) below = true
+    })
+    if (tr.newDoc.lines < tr.startState.doc.lines) return above ? 'join-above' : below ? 'join-below' : 'outside'
+    return tr.isUserEvent('move') ? 'move-out' : 'outside'
+}
+
+/** The refusal of `tr`, carrying the edge and the names the notice gives the part. */
+function refuse(tr: Transaction, edge: ShownRangeEdge): readonly TransactionSpec[] {
+    return refuseEdit({ edge, names: tr.startState.facet(rangeOfFacet)?.names ?? UNNAMED })
 }
 
 /**
@@ -124,16 +170,27 @@ function changesWithin(tr: Transaction, range: ShownRange): boolean {
  * deletes everything shown.
  */
 function judgeOwnEdit(tr: Transaction, before: ShownRange | null): Transaction | readonly TransactionSpec[] {
-    if (before === null) return refuseEdit('shown-range')
+    if (before === null) return refuse(tr, 'nothing-shown')
     if (emptiesRun(tr, before)) return tr
-    if (!changesWithin(tr, before)) return refuseEdit('shown-range')
-    const from = tr.changes.mapPos(before.from, -1)
-    const to = tr.changes.mapPos(before.to, 1)
+    if (!changesWithin(tr, before)) return refuse(tr, crossedEdge(tr, before))
+    const { from, to } = mappedEdges(tr, before)
     if (from === to) return emptied(tr, from)
     const after = shownRangeIn(tr.state)
-    if (!after || after.from > from || after.to < to) return refuseEdit('shown-range')
+    // Inside the run, but shown text would leave it: Shift+Tab past the task, Tab into the comments.
+    if (!after || after.from > from || after.to < to) return refuse(tr, 'move-out')
     const selection = clampedSelection(tr, after)
     return selection ? [tr, selection] : tr
+}
+
+/**
+ * The run's edges after `tr`, mapped from the line breaks either side of it, so whole lines written
+ * beside the run (see `changesWithin`) count as written at its edge and must land in it.
+ */
+function mappedEdges(tr: Transaction, before: ShownRange): { from: number; to: number } {
+    const doc = tr.startState.doc
+    const from = before.from > 0 ? tr.changes.mapPos(before.from - 1, -1) + 1 : tr.changes.mapPos(before.from, -1)
+    const to = before.to < doc.length ? tr.changes.mapPos(before.to + 1, 1) - 1 : tr.changes.mapPos(before.to, 1)
+    return { from, to }
 }
 
 /**

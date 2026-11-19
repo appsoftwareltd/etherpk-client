@@ -11,7 +11,7 @@
  */
 import { bulletLabel } from '#lib/document/index-derive.js'
 import { findIndexedTask, type FoundTask, type ReadTask, rewriteTaskLine } from '#lib/document/task-write.js'
-import { asCommentBullet, commentChange, readTaskStructure, taskRemoval, type TaskStructure } from '#lib/document/task-structure.js'
+import { asCommentBullet, commentChange, emptyCommentsRemoval, readTaskStructure, taskRemoval, type TaskStructure } from '#lib/document/task-structure.js'
 import type { TaskPriority, TaskStatus } from '#lib/document/task-tags.js'
 import type { DocumentStore } from '#lib/document/types.js'
 
@@ -100,6 +100,23 @@ export async function addComment(store: DocumentStore, task: ReadTask, text: str
     const change = commentChange(at.lines.join('\n'), at.index, asCommentBullet(text))
     if (!change) return { ok: false, reason: 'stale' }
     at.document.applyChange({ from: change.from, to: change.to, insert: change.insert }, 'external')
+    return { ok: true }
+}
+
+/** Start the task's Comments bullet with an empty comment under it, to type in: Add a comment. */
+export function startComments(store: DocumentStore, task: ReadTask): Promise<{ ok: true } | Refusal> {
+    return addComment(store, task, '')
+}
+
+/**
+ * Take out the task's Comments block when it holds no comment with words, as Add a comment leaves it
+ * when the editor closes with nothing typed. A block with a comment in it is left alone.
+ */
+export async function removeEmptyComments(store: DocumentStore, task: ReadTask): Promise<{ ok: true } | Refusal> {
+    const at = await foundAsRead(store, task)
+    if ('reason' in at) return { ok: false, reason: at.reason }
+    const change = emptyCommentsRemoval(at.lines.join('\n'), at.index)
+    if (change) at.document.applyChange(change, 'external')
     return { ok: true }
 }
 

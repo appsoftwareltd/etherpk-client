@@ -9,17 +9,28 @@ import type { EditorState } from '@codemirror/state'
 import { readTaskStructure } from '../task-structure'
 import { analysisFor } from './analysis/editor-analysis'
 import { anchoredLine } from './line-anchor'
+import type { ShownPartNames } from './edit-refused'
 import type { ShownRange, ShownRangeOf } from './shown-range'
 
 /** Which part of a task an editor shows. */
 export type TaskPart = 'description' | 'comments' | 'additionalContext'
 
 /**
+ * How a refused edit's notice names each part (`edit-refused.ts`): as the Task Editor's headings read,
+ * one of its lines, and the hidden line above its first.
+ */
+export const TASK_PART_NAMES: Record<TaskPart, ShownPartNames> = {
+    description: { field: 'description', line: 'line', above: 'the task' },
+    comments: { field: 'comments', line: 'comment', above: 'the Comments line' },
+    additionalContext: { field: 'additional context', line: 'line', above: 'the last comment' },
+}
+
+/**
  * Where `part` of the task on the anchored line is, or null when that line holds no task (it was
  * deleted, or its line taken by another) or the part has no lines.
  */
 export function taskPartRange(part: TaskPart): ShownRangeOf {
-    return (state: EditorState): ShownRange | null => {
+    const rangeOf = (state: EditorState): ShownRange | null => {
         const number = anchoredLine(state)
         if (number === null) return null
         const { lines, fencedBlocks } = analysisFor(state)
@@ -33,4 +44,5 @@ export function taskPartRange(part: TaskPart): ShownRangeOf {
         const parent = part === 'comments' ? (task.commentsLine ?? task.line) : task.line
         return { from: state.doc.line(span.from + 1).from, to: state.doc.line(span.to).to, nestedUnder: parent + 1 }
     }
+    return Object.assign(rangeOf, { names: TASK_PART_NAMES[part] })
 }
