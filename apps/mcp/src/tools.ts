@@ -33,7 +33,6 @@ import { basename, resolve } from 'node:path'
 import { reasonLabel } from '#lib/sync/version-history/version-history-copy.js'
 import {
     backlinkSources,
-    capText,
     holdsEncryptedText,
     LIST_PAGE_LIMIT,
     linkGraphWithoutProtected,
@@ -44,7 +43,9 @@ import {
     SEARCH_PAGE_LIMIT,
     searchText as searchIndexText,
     TASK_PAGE_LIMIT,
+    textWindow,
     type TextSearchOutput,
+    type TextWindow,
 } from '#lib/agent-read/read-rules.js'
 import { todayISO } from '#lib/document/calendar/month-grid-core.js'
 import { normaliseIndentUnit } from '#lib/document/indent-unit.js'
@@ -224,8 +225,32 @@ export interface ReadDocumentResult {
      * definition (the publication tools). `{}` when there is no block.
      */
     frontmatter: Record<string, unknown>
-    /** True when `text` was cut at {@link READ_TEXT_CAP}. */
+    /** True when `text` was cut at {@link READ_TEXT_CAP}: the rest starts at `nextOffset`. */
     truncated: boolean
+    /** Where `text` starts in the body, in UTF-16 units: the `offset` asked for, 0 by default. */
+    offset: number
+    /** The body's 0-based line `text` starts on, so line numbers from search and tasks still apply. */
+    startLine: number
+    /** Present when `truncated`: the offset to read the next part of the body from. */
+    nextOffset?: number
+}
+
+export interface ReadOptions {
+    /** Where in the text to start, in UTF-16 units: a `nextOffset` an earlier read returned. */
+    offset?: number
+}
+
+/**
+ * The window of `text` a read answers, from `offset` up to `cap`, in the shape read results carry.
+ * An offset outside the text is the agent's to correct, so it is refused as an argument.
+ */
+function readWindow(text: string, offset: number | undefined, cap = READ_TEXT_CAP): TextWindow {
+    try {
+        return textWindow(text, offset ?? 0, cap)
+    } catch (error) {
+        if (error instanceof RangeError) throw new ToolError('invalid_argument', error.message)
+        throw error
+    }
 }
 
 export type SearchMode = 'text' | 'semantic' | 'hybrid'
@@ -537,17 +562,19 @@ export async function listDocuments(graph: HeadlessGraph, args: ListDocumentsArg
     return { documents: paged.items, total: all.length, hasMore: paged.hasMore }
 }
 
-export async function readDocument(graph: HeadlessGraph, concept: string): Promise<ReadDocumentResult> {
+/**
+ * One document's body and frontmatter. A body longer than {@link READ_TEXT_CAP} comes a window at
+ * a time: each cut answer gives the `nextOffset` to read on from, so the end is always reachable.
+ */
+export async function readDocument(graph: HeadlessGraph, concept: string, options: ReadOptions = {}): Promise<ReadDocumentResult> {
     await graph.store.refresh()
     const { identity, text } = await requireReadable(graph, concept)
-    const capped = capText(text, READ_TEXT_CAP)
     return {
         concept: identity.concept,
         kind: identity.kind,
         aliases: identity.aliases,
-        text: capped.text,
+        ...readWindow(text, options.offset),
         frontmatter: agentFrontmatter(graph.store.openRaw(identity.concept).getText()),
-        truncated: capped.truncated,
     }
 }
 
@@ -596,13 +623,19 @@ export interface ReadVersionResult {
     version: string
     /** The document's name when the version was made, which a rename since may have changed. */
     nameThen: string
-    /** The whole text the document held then, frontmatter included. */
+    /** The text the document held then, frontmatter included: all of it, or the window asked for. */
     text: string
+    /** True when `text` was cut: the rest starts at `nextOffset`. */
     truncated: boolean
+    /** Where `text` starts, in UTF-16 units. */
+    offset: number
+    /** The 0-based line `text` starts on. */
+    startLine: number
+    nextOffset?: number
 }
 
 /** One earlier version's text (ADR 0184). */
-export async function readVersion(graph: HeadlessGraph, concept: string, version: string): Promise<ReadVersionResult> {
+export async function readVersion(graph: HeadlessGraph, concept: string, version: string, options: ReadOptions = {}): Promise<ReadVersionResult> {
     await graph.store.refresh()
     const versions = requireVersions(graph)
     const { identity } = await requireReadable(graph, concept)
@@ -615,9 +648,9 @@ export async function readVersion(graph: HeadlessGraph, concept: string, version
     }
     if (!read) throw notFound(concept)
     if (holdsEncryptedText(read.text)) throw protectedDocument(concept)
-    const capped = capText(read.text, READ_TEXT_CAP)
+    const window = readWindow(read.text, options.offset)
     const nameThen = read.identity.kind === 'journal' ? (read.identity.date ?? identity.concept) : (read.identity.title ?? identity.concept)
-    return { concept: identity.concept, version, nameThen, text: capped.text, truncated: capped.truncated }
+    return { concept: identity.concept, version, nameThen, ...window }
 }
 
 export type SearchOutput =
@@ -1378,14 +1411,21 @@ export async function listAssets(graph: HeadlessGraph, args: ListAssetsArgs = {}
         const hidden = hiddenKeys(graph)
         for (const [concept, body] of bodies) if (hidden.has(conceptKey(concept)) || holdsEncryptedText(body)) bodies.delete(concept)
     }
-    const found = new Map<string, { ref: string; name: string; type: string; documents: Set<string> }>()
+    // One entry for each name a document uses. On a synced graph the stored file is the id in the
+    // reference and the name is whichever one that reference was written with (ADR 0054), so the
+    // same bytes uploaded under two names are one file with two names. Keyed by the id alone, the
+    // second name was dropped from the listing though read_asset serves it; keyed by both, each
+    // name an agent can read is listed, and the same name written twice is still one entry.
+    const found = new Map<string, { id: string; ref: string; name: string; type: string; documents: Set<string> }>()
     for (const [concept, body] of bodies) {
         for (const ref of assetReferencesIn(body)) {
             const id = assets.identify(ref)
             if (!id) continue
-            const entry = found.get(id) ?? { ref, name: displayNameOf(ref), type: mimeTypeForExt(splitNameExt(displayNameOf(ref)).ext), documents: new Set<string>() }
+            const name = displayNameOf(ref)
+            const key = `${id}\n${name}`
+            const entry = found.get(key) ?? { id, ref, name, type: mimeTypeForExt(splitNameExt(name).ext), documents: new Set<string>() }
             entry.documents.add(concept)
-            found.set(id, entry)
+            found.set(key, entry)
         }
     }
     let sizes: Map<string, number> | undefined
@@ -1394,12 +1434,12 @@ export async function listAssets(graph: HeadlessGraph, args: ListAssetsArgs = {}
     } catch {
         sizes = undefined // the listing is still right without sizes
     }
-    const list = [...found.entries()]
-        .map(([id, entry]) => ({
+    const list = [...found.values()]
+        .map((entry) => ({
             reference: entry.ref,
             name: entry.name,
             type: entry.type,
-            ...(sizes?.has(id) ? { bytes: sizes.get(id) } : {}),
+            ...(sizes?.has(entry.id) ? { bytes: sizes.get(entry.id) } : {}),
             documents: [...entry.documents].sort(),
         }))
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -1428,16 +1468,15 @@ export async function readDocuments(graph: HeadlessGraph, args: { concepts: stri
             documents.push({ concept: wanted, error: 'not_found', message: notFound(wanted).message })
             continue
         }
-        const cap = Math.max(0, Math.min(READ_TEXT_CAP, budget))
-        const cut = text.length > cap
-        budget -= Math.min(text.length, cap)
+        // A document cut here, by its own cap or the call's, says where read_document goes on from.
+        const window = textWindow(text, 0, Math.max(0, Math.min(READ_TEXT_CAP, budget)))
+        budget -= window.text.length
         documents.push({
             concept: identity.concept,
             kind: identity.kind,
             aliases: identity.aliases,
-            text: cut ? text.slice(0, cap) : text,
+            ...window,
             frontmatter: agentFrontmatter(graph.store.openRaw(identity.concept).getText()),
-            truncated: cut,
         })
     }
     return { documents }
@@ -1497,7 +1536,8 @@ export async function setTask(graph: HeadlessGraph, args: SetTaskArgs) {
     return {
         concept: identity.concept,
         line,
-        text: after.text,
+        // The task's text with its tag run, as `tasks` lists it and the line holds it after the box.
+        text: bulletLabel(next),
         status,
         priority: after.priority,
         due: after.due,
@@ -1633,7 +1673,9 @@ export async function readTask(graph: HeadlessGraph, args: ReadTaskArgs) {
     return {
         concept: found.document,
         line: found.line,
-        text: task.text,
+        // With its tag run, as `tasks` lists it and the line holds it after the box, so the text
+        // finds the line and passes set_task's expect; the tags are also read out as fields below.
+        text: bulletLabel(line),
         status: taskStatus(task.done, task),
         priority: task.priority,
         due: task.due,

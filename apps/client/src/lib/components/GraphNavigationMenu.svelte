@@ -11,8 +11,10 @@
      * renaming and forgetting all land somewhere, and a stale switcher is worse than a cheap
      * IndexedDB read.
      *
-     * Every row is painted in its graph's toolbar colour (Graph Settings, ADR 0071) when one is
-     * known, so a graph can be told apart here the way its bar tells it apart in the workspace.
+     * A group is one block of rows that meet edge to edge (`graph-menu-band.ts`). Every row is
+     * painted in its graph's toolbar colour (Graph Settings, ADR 0071) when one is known, so a
+     * graph can be told apart here the way its bar tells it apart in the workspace, and in the
+     * theme's neutral fill when none is, so a graph with no colour still reads as one of the group.
      * The open graph's colour is the live one the workspace publishes; the others come from the
      * registry record's cache, refreshed each time a graph is opened or its settings saved, so a
      * graph never opened on this device since it was coloured shows no colour until it is. The
@@ -23,6 +25,7 @@
 
     import { afterNavigate } from "$app/navigation";
     import { page } from "$app/state";
+    import { bandCornerClass } from "#lib/components/graph-menu-band.js";
     import { inkFor } from "#lib/contrast-ink.js";
     import { graphUrl } from "#lib/navigation/document-url.js";
     import { graphAddressOf, parseGraphAddressPath, sameGraphAddress } from "#lib/navigation/graph-address.js";
@@ -68,21 +71,6 @@
         return servers > 1 ? `Synced graphs on ${serverHost(group.origin)}` : "Synced graphs";
     }
 
-    /**
-     * A coloured row's corners. Rounded like every row, except on an edge it shares with another
-     * coloured row: consecutive colours then meet edge to edge as one banded block rather than a
-     * stack of separate pills, which is how a strip of colour swatches reads. A group's label stands
-     * between groups, so only the rows of one group ever meet.
-     */
-    function cornerClass(rows: ReadonlyArray<{ accent: string | null }>, index: number): string {
-        const above = index > 0 && rows[index - 1].accent !== null;
-        const below = index < rows.length - 1 && rows[index + 1].accent !== null;
-        if (above && below) return "rounded-none";
-        if (above) return "rounded-b-lg";
-        if (below) return "rounded-t-lg";
-        return "rounded-lg";
-    }
-
     onMount(() => {
         void load();
     });
@@ -114,17 +102,23 @@
                 </p>
                 {#each rows as { graph, accent }, index (graph.id)}
                     {@const current = isCurrent(graph)}
-                    <!-- Inline styles win over the classes, so on a coloured row the theme's own
-                         highlight and hover are simply left off rather than fought; a brightness
-                         shift stands in for hover there. -->
+                    <!-- Inline styles win over the classes, so a coloured row drops the theme's
+                         fill and hover rather than fighting them; a brightness shift stands in
+                         for hover there. A row with no colour takes the neutral fill, a step
+                         stronger on the open graph. -->
                     <a
                         href={graphUrl(graphAddressOf(graph))}
                         aria-current={current ? "page" : undefined}
-                        class="flex items-center gap-2 px-3 py-2 text-sm transition-colors {current ? 'font-semibold' : 'font-medium'} {accent
-                            ? `${cornerClass(rows, index)} hover:brightness-95 dark:hover:brightness-110`
-                            : current
-                              ? 'rounded-lg bg-neutral-100 text-neutral-950 dark:bg-white/10 dark:text-white'
-                              : 'rounded-lg text-neutral-700 hover:bg-neutral-50 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-white'}"
+                        class={[
+                            "flex items-center gap-2 px-3 py-2 text-sm transition-colors",
+                            bandCornerClass(index, rows.length),
+                            current ? "font-semibold" : "font-medium",
+                            accent
+                                ? "hover:brightness-95 dark:hover:brightness-110"
+                                : current
+                                  ? "bg-neutral-200 text-neutral-950 dark:bg-white/15 dark:text-white"
+                                  : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200 hover:text-neutral-950 dark:bg-white/5 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white",
+                        ]}
                         style:background-color={accent}
                         style:color={accent ? inkFor(accent) : null}
                         title={graph.name}

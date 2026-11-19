@@ -36,6 +36,59 @@ export function capText(text: string, cap = READ_TEXT_CAP): { text: string; trun
     return text.length > cap ? { text: text.slice(0, cap), truncated: true } : { text, truncated: false }
 }
 
+/** One window of a long text, and where the next one starts. */
+export interface TextWindow {
+    text: string
+    /** True when the text goes on after this window: read again from `nextOffset`. */
+    truncated: boolean
+    /** Where this window starts, in UTF-16 units from the start of the whole text. */
+    offset: number
+    /** The 0-based line this window starts on, so line numbers from search and tasks still apply. */
+    startLine: number
+    /** Where the next window starts, present only when `truncated`. */
+    nextOffset?: number
+}
+
+/**
+ * The part of `text` from `offset` that fits in `cap` UTF-16 units, so an agent can read a long
+ * document to its end, a window at a time, by passing each `nextOffset` back. A cut window ends
+ * after the last line break inside it, so the next starts on a line of its own; a line longer than
+ * the whole cap is cut at the cap instead. A window never ends between the two halves of a
+ * surrogate pair. An offset past the end, negative or not a whole number is a RangeError.
+ */
+export function textWindow(text: string, offset = 0, cap = READ_TEXT_CAP): TextWindow {
+    if (!Number.isInteger(offset) || offset < 0 || offset > text.length) {
+        throw new RangeError(`offset must be a whole number from 0 to ${text.length}, the text's length.`)
+    }
+    const startLine = lineBreaksBefore(text, offset)
+    if (text.length - offset <= cap) return { text: text.slice(offset), truncated: false, offset, startLine }
+    const end = windowEnd(text, offset, offset + cap)
+    return { text: text.slice(offset, end), truncated: true, offset, startLine, nextOffset: end }
+}
+
+/** How many line breaks come before `offset`: the 0-based line it falls on. */
+function lineBreaksBefore(text: string, offset: number): number {
+    let count = 0
+    for (let at = text.indexOf('\n'); at !== -1 && at < offset; at = text.indexOf('\n', at + 1)) count++
+    return count
+}
+
+/**
+ * Where a window from `offset` that may reach `limit` ends: after its last line break, or at
+ * `limit` when it holds none, moved off the middle of a surrogate pair (back, or forward past
+ * the pair when going back would leave the window empty).
+ */
+function windowEnd(text: string, offset: number, limit: number): number {
+    const lastBreak = text.lastIndexOf('\n', limit - 1)
+    if (lastBreak >= offset) return lastBreak + 1
+    if (!isHighSurrogate(text.charCodeAt(limit - 1))) return limit
+    return limit - 1 > offset ? limit - 1 : limit + 1
+}
+
+function isHighSurrogate(unit: number): boolean {
+    return unit >= 0xd800 && unit <= 0xdbff
+}
+
 /** Whether `text` is a Protected Document's: its whole body one encrypted fence. */
 export function isProtectedDocumentText(text: string): boolean {
     return documentProtection(text).kind === 'document'

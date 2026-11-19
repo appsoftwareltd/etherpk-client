@@ -10,6 +10,7 @@ import { createLoopbackRelay } from '#lib/sync/loopback-relay.js'
 import { fixedSyncToken } from '#lib/sync/sync-token.js'
 import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
 import { assetNameFromRef, createAssetStore } from '#lib/storage/fs/asset-store.js'
+import { assetIdFromRef } from '#lib/storage/synced/server-asset-store.js'
 
 import { fakeEmbeddingModel } from '#lib/document/semantic/embedding-model.js'
 import { taskFingerprint, taskReferenceId } from '#lib/document/task-reference.js'
@@ -209,6 +210,33 @@ describe('read_document', () => {
         expect(await readDocument(g, 'kanban')).toMatchObject({ concept: 'Kanban', kind: 'page', text: '- board\n  - column', truncated: false })
         expect((await readDocument(g, 'Board')).concept).toBe('Kanban')
         expect(await readDocument(g, 'today')).toMatchObject({ concept: todayISO(), kind: 'journal', text: '- morning' })
+    })
+
+    it('reads a document longer than one answer to its end, a window at a time, numbered from the line each starts on', async () => {
+        const g = await graph('g-read-long')
+        // A drawing of 3,000 shapes: about 360,000 characters, so the block after it is past the cap.
+        const shapes = Array.from({ length: 3000 }, (_, i) => `  {"id":"s${i}","type":"rectangle","x":${i},"y":0,"width":10,"height":10,"note":"${'a'.repeat(60)}"}`)
+        const body = ['- [[Garden]]', '- ```excalidraw.drawing', ...shapes, '  ```', '- [[Kitchen]]', '  - [ ] water the beans'].join('\n')
+        await seed(g, 'Plan', body)
+
+        const windows = [await readDocument(g, 'Plan')]
+        expect(windows[0]).toMatchObject({ truncated: true, offset: 0, startLine: 0 })
+        expect(windows[0].text.endsWith('\n')).toBe(true)
+        while (windows.at(-1)!.truncated) windows.push(await readDocument(g, 'Plan', { offset: windows.at(-1)!.nextOffset! }))
+        expect(windows.map((w) => w.text).join('')).toBe(body)
+
+        // The last window's lines are numbered as the whole document's are.
+        const last = windows.at(-1)!
+        const kitchen = last.startLine + last.text.split('\n').indexOf('- [[Kitchen]]')
+        expect(body.split('\n')[kitchen]).toBe('- [[Kitchen]]')
+        expect(last.nextOffset).toBeUndefined()
+
+        // read_documents says where to go on too.
+        const [many] = (await readDocuments(g, { concepts: ['Plan'] })).documents
+        expect(many).toMatchObject({ truncated: true, nextOffset: windows[0].nextOffset })
+
+        await rejectsWith(readDocument(g, 'Plan', { offset: body.length + 1 }), 'invalid_argument')
+        await rejectsWith(readDocument(g, 'Plan', { offset: -1 }), 'invalid_argument')
     })
 
     it('answers a protected page, by its name or an alias, exactly as it answers a name nothing has', async () => {
@@ -1098,7 +1126,7 @@ describe('set_task', () => {
         expect((await readDocument(g, 'Plan')).text.split('\n').slice(1, 3)).toEqual(['- [x] #P2 #A write the plan', '  - [x] #A #D-2026-07-01 wait for review'])
         await indexed(g, async () => (await tasks(g, { concept: 'Plan', statuses: ['archived'] })).total === 2)
 
-        expect(await setTask(g, { concept: 'Plan', line: 3, changes: { status: 'test' } })).toMatchObject({ status: 'test', text: 'done already' })
+        expect(await setTask(g, { concept: 'Plan', line: 3, changes: { status: 'test' } })).toMatchObject({ status: 'test', text: '#T done already' })
         expect((await readDocument(g, 'Plan')).text.split('\n')[3]).toBe('- [ ] #T done already')
     })
 })
@@ -1142,7 +1170,7 @@ describe('task references', () => {
     it('is read from the text Copy agent instruction writes, and from the web address an earlier version wrote', async () => {
         const { g, reference } = await withTask('g-ref-forms')
         const copied = ['EtherPK task from the graph "Work" (g)', 'Task: Send the quote', `Reference: ${reference}`, 'This is not a web address.'].join('\n')
-        expect(await readTask(g, { reference: copied })).toMatchObject({ line: 2, text: 'Send the quote' })
+        expect(await readTask(g, { reference: copied })).toMatchObject({ line: 2, text: '#P1 Send the quote' })
         expect(await readTask(g, { reference: `Send the quote\nhttps://app.example.com${reference.slice('etherpk:'.length)}` })).toMatchObject({ line: 2 })
     })
 
@@ -1155,7 +1183,22 @@ describe('task references', () => {
             ['#bug #P1 Fix the gate #needs-oil', 1, ['bug', 'needs-oil']],
             ['Book the train', null, []],
         ])
-        expect(await readTask(g, { reference: listed.tasks[0].reference })).toMatchObject({ text: '#bug Fix the gate #needs-oil', priority: 1, freeTags: ['bug', 'needs-oil'] })
+        expect(await readTask(g, { reference: listed.tasks[0].reference })).toMatchObject({ text: '#bug #P1 Fix the gate #needs-oil', priority: 1, freeTags: ['bug', 'needs-oil'] })
+    })
+
+    it('gives the task\'s text with its tags, as tasks lists it, set_task answers it and the line holds it', async () => {
+        const g = await graph('g-ref-text-tags')
+        await seed(g, 'Plan', '- [ ] #P2 #W #D-2026-07-01 Paint the fence #garden\n- [ ] Book the train')
+        await indexed(g, async () => (await tasks(g, { concept: 'Plan' })).total === 2)
+        const listed = (await tasks(g, { concept: 'Plan' })).tasks[0]
+        const read = await readTask(g, { reference: listed.reference })
+        expect(read.text).toBe('#P2 #W #D-2026-07-01 Paint the fence #garden')
+        expect(read.text).toBe(listed.text)
+        // The text finds the task's line, so an agent can edit it or pass it back as expect.
+        expect((await readDocument(g, 'Plan')).text.split('\n')[read.line]).toBe(`- [ ] ${read.text}`)
+        const changed = await setTask(g, { concept: 'Plan', line: read.line, expect: read.text, changes: { status: 'doing' } })
+        expect(changed.text).toBe('#P2 #D #D-2026-07-01 Paint the fence #garden')
+        expect((await readTask(g, { reference: changed.reference })).text).toBe(changed.text)
     })
 
     it('lists the assets the task and its detail show, so an agent can look at them', async () => {
@@ -1175,7 +1218,7 @@ describe('task references', () => {
         expect(await readTask(g, { reference: `Send the quote\n${reference}` })).toMatchObject({
             concept: 'Plan',
             line: 2,
-            text: 'Send the quote',
+            text: '#P1 Send the quote',
             status: 'open',
             priority: 1,
             breadcrumb: ['Launch', 'Call with [[Acme]]'],
@@ -1487,5 +1530,51 @@ describe('rename on a folder graph with a block that does not parse', () => {
         expect((refused as ToolError).message).toContain('“Draft” cannot be renamed while its frontmatter is not valid YAML')
         expect((await adapter.read('pages', 'Draft.md')).text).toBe(broken)
         expect(await adapter.exists('pages', 'Final.md')).toBe(false)
+    })
+})
+
+// On a synced graph an asset's identity is the id in its reference, and the name before the id is
+// whichever name that reference was written with (ADR 0054): two uploads of the same bytes under
+// two names are one stored file with two names. Each name a document uses is listed.
+describe('list_assets on a synced graph, where references name stored files by id', () => {
+    afterEach(async () => {
+        await Promise.all(open.splice(0).map((g) => g.dispose()))
+    })
+
+    it('lists each name a document uses, even when two names share one stored file', async () => {
+        const relay = createLoopbackRelay()
+        const g = await openHeadlessGraph({
+            graphId: `g-assets-shared-id-${Math.floor(performance.now() * 1000)}`,
+            rootDocId: ROOT,
+            keyring: createGraphKeyring('g-assets-shared-id'),
+            relayUrl: 'ws://loopback/sync',
+            token: fixedSyncToken('t'),
+            presenceName: 'Agent on test',
+            connect: relay.connect,
+            assets: { store: createAssetStore(createMemoryDirectoryAdapter({ now: () => (clock += 1000) })), identify: assetIdFromRef },
+        })
+        open.push(g)
+        const shared = '11111111-2222-4333-8444-555555555555'
+        const other = '66666666-7777-4888-9999-000000000000'
+        await g.store.createPage('Garden', `- [before](../assets/garden-before.${shared}.json)\n- [after](../assets/garden-after.${shared}.json)`)
+        await g.store.createPage('Kitchen', `- ![light](../assets/kitchen-light.${other}.png)\n- ![dark](../assets/kitchen-dark.${shared}.png)\n- again ![light](../assets/kitchen-light.${other}.png)`)
+        await g.settle()
+
+        const names = (listed: Awaited<ReturnType<typeof listAssets>>) => listed.assets.map((a) => [a.name, a.documents])
+        expect(names(await listAssets(g))).toEqual([
+            ['garden-after.json', ['Garden']],
+            ['garden-before.json', ['Garden']],
+            ['kitchen-dark.png', ['Kitchen']],
+            ['kitchen-light.png', ['Kitchen']],
+        ])
+        expect((await listAssets(g)).total).toBe(4)
+        expect(names(await listAssets(g, { concept: 'Garden' }))).toEqual([
+            ['garden-after.json', ['Garden']],
+            ['garden-before.json', ['Garden']],
+        ])
+        expect(names(await listAssets(g, { concept: 'Kitchen' }))).toEqual([
+            ['kitchen-dark.png', ['Kitchen']],
+            ['kitchen-light.png', ['Kitchen']],
+        ])
     })
 })

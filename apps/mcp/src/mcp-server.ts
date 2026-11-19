@@ -16,6 +16,7 @@ import {
     LIST_PAGE_LIMIT,
     SEARCH_PAGE_LIMIT,
     READ_MANY_LIMIT,
+    READ_TEXT_CAP,
     TASK_PAGE_LIMIT,
     ToolError,
     addTaskNote,
@@ -102,6 +103,7 @@ export function accessEndedError(graph: Pick<HeadlessGraph, 'accessLoss'>, cmd: 
 }
 
 const concept = z.string().min(1).describe('A page title, one of its aliases, a journal day as YYYY-MM-DD, or "today".')
+const readOffset = z.number().int().min(0).optional().describe('Where to start reading: the nextOffset a cut answer gave. 0 (the start) by default.')
 const offset = z.number().int().nonnegative().optional().describe('Skip this many results (paging).')
 /** A frontmatter value as JSON carries it; the writer turns it into YAML. */
 const frontmatterValue = z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.unknown()), z.record(z.string(), z.unknown())])
@@ -187,10 +189,10 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'read_document',
         {
             title: 'Read a document',
-            description: 'One document: its body as "text" (the markdown after any frontmatter block) and its frontmatter as the "frontmatter" object, minus title and aliases (its identity) and any publication definition. A protected document answers not_found, as a name nothing has. Long documents are cut and marked truncated: true.',
-            inputSchema: { concept },
+            description: `One document: its body as "text" (the markdown after any frontmatter block) and its frontmatter as the "frontmatter" object, minus title and aliases (its identity) and any publication definition. A protected document answers not_found, as a name nothing has. A body longer than ${READ_TEXT_CAP.toLocaleString('en-GB')} characters comes in parts: an answer cut short says truncated: true and gives nextOffset - read again with offset set to it for the next part, until truncated is false. startLine is the line the text starts on, so line numbers from search and tasks still apply.`,
+            inputSchema: { concept, offset: readOffset },
         },
-        async (args) => run((graph) => readDocument(graph, args.concept)),
+        async (args) => run((graph) => readDocument(graph, args.concept, { offset: args.offset })),
     )
 
     server.registerTool(
@@ -207,17 +209,17 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'read_version',
         {
             title: 'Read a document version',
-            description: 'The whole text a synced document held at one earlier version (list_versions names them), frontmatter included, and the name it had then. Read-only: a person restores a version in EtherPK.',
-            inputSchema: { concept, version: z.string().uuid().describe('A version id from list_versions.') },
+            description: 'The whole text a synced document held at one earlier version (list_versions names them), frontmatter included, and the name it had then. A long text comes in parts, as read_document gives them: truncated: true with nextOffset to pass as offset. Read-only: a person restores a version in EtherPK.',
+            inputSchema: { concept, version: z.string().uuid().describe('A version id from list_versions.'), offset: readOffset },
         },
-        async (args) => run((graph) => readVersion(graph, args.concept, args.version)),
+        async (args) => run((graph) => readVersion(graph, args.concept, args.version, { offset: args.offset })),
     )
 
     server.registerTool(
         'read_documents',
         {
             title: 'Read several documents',
-            description: `Up to ${READ_MANY_LIMIT} documents in one call, each as read_document returns it. A protected or unknown document is reported in its place as not_found rather than failing the call. Long texts are cut and marked truncated.`,
+            description: `Up to ${READ_MANY_LIMIT} documents in one call, each as read_document returns it. A protected or unknown document is reported in its place as not_found rather than failing the call. Long texts are cut and marked truncated, with the nextOffset to read the rest from with read_document.`,
             inputSchema: { concepts: z.array(concept).min(1).max(READ_MANY_LIMIT) },
         },
         async (args) => run((graph) => readDocuments(graph, args)),

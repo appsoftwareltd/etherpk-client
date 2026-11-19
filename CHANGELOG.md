@@ -5,6 +5,27 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.36.0 - 2026-11-19
+
+### Client
+
+- **Fixes.**
+  - In the Graphs menu, a graph with no toolbar colour sits in the same block as the coloured
+    graphs of its group. It looked like a separate item under them.
+
+### Headless Client
+
+- **`read_document` reads a long document to its end.** A document over 200,000 characters comes
+  in parts: an answer cut short gives `nextOffset`, and `read_document` with `offset` set to it
+  gives the next part, until `truncated` is false. `startLine` says which line each part starts on,
+  so line numbers from `search` and `tasks` still apply. `read_version` takes `offset` too, and
+  `read_documents` gives `nextOffset` for a document it cut.
+- **Fixes.**
+  - `list_assets` lists every name a document uses for a file. A file uploaded twice under two
+    names was listed under one of them only.
+  - `read_task` and `set_task` give a task's text with its task tags, as `tasks` does, so the text
+    matches the task's line.
+
 ## 0.35.0 - 2026-11-18
 
 ### Client
