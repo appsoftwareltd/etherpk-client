@@ -5,6 +5,16 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.39.0 - 2026-11-19
+
+### Client
+
+- **Import to Sync+.** While a folder graph is open, the header offers **Import to Sync+**, which
+  copies the graph into a new synced graph in two presses: the button, then **Import**. The folder
+  is only read. Without an account that has Sync+, the dialog leads to the sign-in or to Billing
+  and opens again on the way back. Once a folder graph has been copied from a browser, that
+  browser no longer offers it. Only a Client that offers Managed Sync shows the button.
+
 ## 0.38.0 - 2026-11-19
 
 ### Client

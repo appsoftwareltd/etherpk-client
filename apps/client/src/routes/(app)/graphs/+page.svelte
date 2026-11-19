@@ -175,6 +175,22 @@
     import ImportGraphDialog, {
         type ImportSyncTarget,
     } from "#lib/import/ui/ImportGraphDialog.svelte";
+    import ImportToSyncPlusDialog, {
+        type SyncPlusOfferButton,
+    } from "#lib/import/ui/ImportToSyncPlusDialog.svelte";
+    import {
+        SYNC_PLUS_IMPORT_PARAM,
+        SyncPlusImportRefusal,
+        importToSyncPlusStep,
+    } from "#lib/import/import-to-sync-plus.js";
+    import {
+        pendingSyncPlusImport,
+        recordSyncPlusCopy,
+    } from "#lib/import/sync-plus-import-store.svelte.js";
+    import { walkDirectory, type WalkableDirectory } from "#lib/import/directory-handle-source.js";
+    import { startImport } from "#lib/import/import-activity.js";
+    import type { SourceFile } from "#lib/import/types.js";
+    import { isRunning } from "#lib/activity/store.js";
     import {
         importMarkers,
         type ImportMarker,
@@ -2040,11 +2056,27 @@
      * does once Sync+ is active. Held here because the parameter comes off the address as soon as
      * it is acted on, so a reload or Back does not open the dialog again.
      */
-    let newGraphRequested = $state(
-        page.url.searchParams.get(NEW_GRAPH_PARAM) === NEW_GRAPH_SYNCED,
-    );
     /** A sign-in has just finished on this page, so the request does not start another. */
     const arrivedSignedIn = page.url.searchParams.get("managed") === "connected";
+    /**
+     * The folder graph Import to Sync+ was asked for: by the header button
+     * (`?import-to-sync-plus=<graph id>`), or by an import left pending while the person signed in,
+     * signed up or started Sync+, read on the return from there (a sign-in, or Billing's
+     * `?new=synced`). It is acted on once, when the graph list has been read.
+     */
+    let syncPlusRequested = $state<string | null>(
+        page.url.searchParams.get(SYNC_PLUS_IMPORT_PARAM) ??
+            (page.url.searchParams.get(NEW_GRAPH_PARAM) === NEW_GRAPH_SYNCED || arrivedSignedIn
+                ? (pendingSyncPlusImport.read()?.graphId ?? null)
+                : null),
+    );
+    // A return from Billing with an import pending opens that import, not the naming dialog. Read
+    // once, as the page arrives: the request is acted on once.
+    // svelte-ignore state_referenced_locally
+    let newGraphRequested = $state(
+        page.url.searchParams.get(NEW_GRAPH_PARAM) === NEW_GRAPH_SYNCED &&
+            syncPlusRequested === null,
+    );
 
     // Acts once on the request, when every server has answered: the account checks decide whether
     // the naming dialog can open, and they answer after the page has mounted.
@@ -2079,6 +2111,166 @@
                 return goto(url.pathname + url.search, { shallow: true, replace: true });
             });
         }, 0);
+    }
+
+    /** The folder graph the Import to Sync+ dialog is open for. */
+    let syncPlusDialog = $state<{ graphId: string; graphName: string; name: string } | null>(null);
+
+    // Opens the dialog the address or a pending import asked for, once the graph list is read. The
+    // account checks need not have answered: the dialog waits for them in view.
+    $effect(() => {
+        const graphId = syncPlusRequested;
+        if (graphId === null || !listReady) return;
+        untrack(() => {
+            syncPlusRequested = null;
+            const pending = pendingSyncPlusImport.read();
+            const graph = folderGraphs.find((record) => record.id === graphId);
+            setTimeout(() => {
+                void queueHistoryWrite(() => {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete(SYNC_PLUS_IMPORT_PARAM);
+                    url.searchParams.delete(NEW_GRAPH_PARAM);
+                    return goto(url.pathname + url.search, { shallow: true, replace: true });
+                });
+            }, 0);
+            if (!graph) {
+                pendingSyncPlusImport.clear();
+                setStatus(
+                    "The folder graph to import to Sync+ is no longer in this browser's list. Open it again from its folder to import it.",
+                    "error",
+                );
+                return;
+            }
+            // A name typed before leaving for Billing comes back with the import.
+            const name = pending?.graphId === graph.id ? pending.name : graph.name;
+            syncPlusDialog = { graphId: graph.id, graphName: graph.name, name };
+        });
+    });
+
+    /** What the account allows: import now, wait for the check, or the way to Sync+. */
+    const syncPlusStep = $derived(
+        importToSyncPlusStep(
+            orderedServers.map((server) => ({
+                origin: server.origin,
+                kind: server.connection.kind,
+                authState: server.authState,
+                createBlockedReason: server.createBlockedReason,
+                planPending: server.planNotice === "pending",
+                keysHeld: server.vaultUnlocked,
+            })),
+        ),
+    );
+
+    /**
+     * The Synced Graph panel's own ways on, for the dialog's `offer` step. Each first leaves the
+     * import pending, so the page it leads back to opens it again: a sign-in comes back here, and
+     * Billing comes back to `?new=synced`.
+     */
+    const syncPlusOffer = $derived.by(() => {
+        const panel = choicePanels.synced;
+        const buttons: SyncPlusOfferButton[] = [panel.primary, panel.secondary]
+            .filter((button) => button !== null)
+            .filter(({ action }) => action.kind !== "create-synced")
+            .map(({ label, action }) => ({
+                label,
+                run: (name: string) => {
+                    const source = syncPlusDialog;
+                    if (!source) return;
+                    if (action.kind === "connect-server") {
+                        // A custom server is set up on the Sync tab: no return trip to wait for.
+                        syncPlusDialog = null;
+                        runChoice(action);
+                        return;
+                    }
+                    pendingSyncPlusImport.write({ graphId: source.graphId, name });
+                    if (action.kind === "link") window.location.assign(action.href);
+                    else runChoice(action);
+                },
+            }));
+        return { text: panel.plan?.text ?? null, pricingUrl: panel.plan?.pricingUrl ?? null, reason: panel.reason, buttons };
+    });
+
+    /** The folder's files, asking for permission to read it first: called inside the dialog's press. */
+    async function readSyncPlusSource(): Promise<SourceFile[]> {
+        const source = syncPlusDialog;
+        const graph = source ? await registry.getGraph(source.graphId) : undefined;
+        if (!graph || graph.backend !== "filesystem")
+            throw new SyncPlusImportRefusal(
+                "This folder graph is no longer in this browser's list. Open it again from its folder to import it.",
+            );
+        if (!(await ensurePermission(graph.handle, "read")))
+            throw new SyncPlusImportRefusal(
+                "EtherPK needs permission to read the graph's folder. Choose Import again and allow it when the browser asks.",
+            );
+        try {
+            return await walkDirectory(graph.handle as WalkableDirectory);
+        } catch (err) {
+            console.error("Could not read the folder for Import to Sync+:", err);
+            throw new SyncPlusImportRefusal(
+                "Could not read the graph's folder. Check that it is still where it was, then try again.",
+            );
+        }
+    }
+
+    /**
+     * Settle the keys on the server chosen, in front of the person, then start the import and close.
+     * After that the toast owns the run, as for the Import dialog (ADR 0035).
+     */
+    async function startSyncPlusImport(run: {
+        origin: string;
+        name: string;
+        files: SourceFile[];
+        protectionKey: Uint8Array | null;
+    }): Promise<void> {
+        const source = syncPlusDialog;
+        if (!source) return;
+        // At most one import at a time, as the Import dialog has it.
+        if (isRunning("import"))
+            throw new SyncPlusImportRefusal(
+                "An import is already running. Wait for it to finish, or cancel it first.",
+            );
+        const target = importTargets().find((candidate) => candidate.origin === run.origin);
+        if (!target?.deps)
+            throw new SyncPlusImportRefusal(
+                target?.unavailableReason ?? "Sign in again, then try again.",
+            );
+        try {
+            await importVaultReady(run.origin);
+        } catch (err) {
+            run.protectionKey?.fill(0);
+            throw err;
+        }
+        const { deps } = target;
+        void startImport({
+            files: run.files,
+            format: "etherpk",
+            name: run.name,
+            reportDate: new Date().toISOString().slice(0, 10),
+            onOpen: onImported,
+            onSettled: (result) => {
+                // The header offers Import to Sync+ for this folder graph no longer.
+                recordSyncPlusCopy(source.graphId, result.graphId);
+                onImportSettled(result, run.origin);
+            },
+            destination: {
+                kind: "server",
+                deps: {
+                    api: deps.api,
+                    registry,
+                    serverBaseUrl: deps.serverBaseUrl,
+                    serverScope: deps.serverScope,
+                    getWrapKey: () => unlockVaultInteractively(run.origin),
+                    protectionKey: run.protectionKey,
+                },
+            },
+        });
+        pendingSyncPlusImport.clear();
+        syncPlusDialog = null;
+    }
+
+    function cancelSyncPlusImport() {
+        pendingSyncPlusImport.clear();
+        syncPlusDialog = null;
     }
 
     /** A choice panel's button was pressed. A link to the account site is an anchor and never arrives here. */
@@ -5388,6 +5580,21 @@
         </div>
     {/if}
 </div>
+
+{#if syncPlusDialog}
+    <!-- Keyed by the graph, so a dialog for another graph starts from its own name. -->
+    {#key syncPlusDialog.graphId}
+        <ImportToSyncPlusDialog
+            graphName={syncPlusDialog.graphName}
+            initialName={syncPlusDialog.name}
+            step={syncPlusStep}
+            offer={syncPlusOffer}
+            readSource={readSyncPlusSource}
+            start={startSyncPlusImport}
+            onclose={cancelSyncPlusImport}
+        />
+    {/key}
+{/if}
 
 {#if importDialog}
     <!-- Each server is offered with why it cannot take the graph, when it cannot; a background

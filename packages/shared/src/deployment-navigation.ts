@@ -7,7 +7,10 @@ export const NAV_EMAIL_MAX_CHARACTERS = 28
  */
 export const PUBLIC_DOCS_URL = 'https://docs.etherpk.com'
 
-/** The EtherPK blog, linked beneath the docs on the landing page. One site for every deployment. */
+/**
+ * The EtherPK blog, linked beneath the docs on the landing page and after them in Corporate's
+ * header. One site for every deployment.
+ */
 export const PUBLIC_BLOG_URL = 'https://blog.etherpk.com'
 
 /**
@@ -24,7 +27,7 @@ export const COMMUNITY_DISCORD_URL = 'https://discord.gg/m9vScxQzvp'
 
 export interface ApplicationNavigationItem {
     href: string
-    label: 'Sync+ Pricing' | 'Sync+' | 'Sync Server' | 'Graphs' | 'Docs'
+    label: 'Sync+ Pricing' | 'Sync+' | 'Sync Server' | 'Graphs' | 'Docs' | 'Blog'
     current: boolean
 }
 
@@ -49,13 +52,18 @@ export interface ApplicationNavigationOptions {
      * opens: the name people know from the Client, where it also carries the menu of their graphs.
      */
     graphsUrl: string
+    /**
+     * Add the public blog after the docs. Only Corporate, the managed service's public site, asks
+     * for it: the Sync Server and the Client are working tools, and their headers stay as they are.
+     */
+    blog?: boolean
     /** `sync-server` marks the Sync+ link, whichever page it leads to. */
     current?: 'sync-server' | 'graphs' | null
 }
 
 /**
  * Keep the cross-application destinations in one deliberate order on every origin: the Sync
- * Server, Graphs, then the public docs. This tier is only ever cross-application. An
+ * Server, Graphs, the public docs, then (Corporate only) the blog. This tier is only ever cross-application. An
  * application's own signed-in home belongs in its section navigation, and the person's Account,
  * Billing and administration pages belong in the account menu (`buildAccountMenu`), so neither
  * appears here and the two never repeat each other.
@@ -85,6 +93,8 @@ export function buildApplicationNavigation(
     // Last: it leaves the deployment, and it is never the current page. One site for every
     // deployment, so it is not an option.
     items.push({ href: PUBLIC_DOCS_URL, label: 'Docs', current: false })
+    // After the docs, for the same reasons.
+    if (options.blog) items.push({ href: PUBLIC_BLOG_URL, label: 'Blog', current: false })
 
     return items
 }

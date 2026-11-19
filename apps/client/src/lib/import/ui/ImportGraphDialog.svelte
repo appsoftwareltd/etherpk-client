@@ -46,11 +46,9 @@
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import {
         ProtectionPassphraseError,
-        parseProtectionRecord,
         unlockProtectionRecord,
         type ProtectionRecord,
     } from "#lib/crypto/index.js";
-    import { PROTECTION_FILE } from "#lib/document/protection/protection-store.js";
 
     import { describeOversize, oversizeAssets } from "../asset-preflight";
     import { importDestinations } from "../import-destinations";
@@ -64,7 +62,7 @@
     } from "../run-import";
     import { prepareZipSource } from "../zip-source";
     import { encryptedNotePaths } from "../asnotes-layout";
-    import { findFile, isJunkPath, isMarkdownPath } from "../source";
+    import { protectionToUnlock } from "../source-protection";
     import type { ImportFormat } from "../types";
 
     let {
@@ -277,18 +275,9 @@
      * would open it.
      */
     async function readSourceProtection(source: PreparedSource) {
-        const file = findFile(source.files, `etherpk/${PROTECTION_FILE}`);
-        const embeds = source.files.some(
-            (f) => !isJunkPath(f.path) && !isMarkdownPath(f.path) && !f.path.startsWith("etherpk/"),
-        );
-        if (!file || !embeds) return;
-        try {
-            const record = parseProtectionRecord(await file.data.text());
-            // Another source may have been picked while this one was read.
-            if (prepared === source) sourceProtection = record;
-        } catch {
-            // Reported by the converter; there is nothing here to unlock.
-        }
+        const record = await protectionToUnlock(source.files);
+        // Another source may have been picked while this one was read.
+        if (record && prepared === source) sourceProtection = record;
     }
 
     /** The destination directory: the FSA picker, or a fresh OPFS dir under the dev gate. */

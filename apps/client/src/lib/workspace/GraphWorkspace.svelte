@@ -569,6 +569,7 @@
     import GraphSettingsDialog from "#lib/sync/ui/GraphSettingsDialog.svelte";
     import InviteDialog from "#lib/sync/ui/InviteDialog.svelte";
     import { isDemoGraph } from "#lib/demo/demo-graph.js";
+    import { setOpenFolderGraph } from "#lib/workspace/open-folder-graph.svelte.js";
     import { createWorkspaceUsage } from "#lib/telemetry/workspace-usage.js";
     import { usageStatistics } from "#lib/telemetry/usage-statistics-device.js";
     import { registerShareCommands } from "#lib/sync/share-commands.js";
@@ -1490,6 +1491,13 @@
         | undefined;
     // Graph Name + shared settings (root-doc meta map, ADR 0031) — server graphs only.
     let graphDisplayName = $state("");
+    /** This is a folder graph with a registry record: the header then offers Import to Sync+. */
+    let folderGraphRegistered = $state(false);
+    // Told to the app header, which cannot see the workspace. Not for the Demo Graph, a throwaway.
+    $effect(() => {
+        if (!folderGraphRegistered || isDemoGraph(graphId)) return;
+        return setOpenFolderGraph({ id: graphId, name: graphDisplayName });
+    });
     let graphSettingsDialog = $state<{
         name: string;
         settings: GraphSettings;
@@ -4464,6 +4472,8 @@
             const fsRegistry = createIdbGraphRegistry();
             const fsRecord = await attempt.wait(fsRegistry.getGraph(graphId));
             graphDisplayName = fsRecord?.name ?? graphId;
+            // Import to Sync+ copies a graph the registry holds: the Graphs page finds it there.
+            folderGraphRegistered = fsRecord !== undefined;
             // The record caches the toolbar colour for the header's Graphs menu, which lists
             // graphs that are not open and so cannot read their settings.json.
             const recoloured = fsRecord && withCachedToolbarColor(fsRecord, currentFsSettings.toolbarColor);

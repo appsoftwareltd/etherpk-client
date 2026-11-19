@@ -5,6 +5,7 @@
     import ClientAccountNavigationMenu from "#lib/components/ClientAccountNavigationMenu.svelte";
     import GraphNavigationMenu from "#lib/components/GraphNavigationMenu.svelte";
     import InstallEntry from "#lib/install/InstallEntry.svelte";
+    import ImportToSyncPlusEntry from "#lib/import/ui/ImportToSyncPlusEntry.svelte";
     import ThemeToggle from "@appsoftwareltd/etherpk-shared/theme-toggle";
     import DeviceApprovalPrompt from "#lib/sync/ui/DeviceApprovalPrompt.svelte";
     import RecoveryCodeHost from "#lib/sync/ui/RecoveryCodeHost.svelte";
@@ -52,6 +53,7 @@
 
 <div class="flex min-h-screen flex-col">
     {#snippet headerActions()}
+        <ImportToSyncPlusEntry placement="header" />
         <InstallEntry placement="header" />
         <div class="hidden items-center lg:flex">
             <ThemeToggle themePreference={data.themePreference} resolvedTheme={data.resolvedTheme} />
@@ -64,6 +66,7 @@
     {/snippet}
 
     {#snippet mobileUtilities()}
+        <ImportToSyncPlusEntry placement="menu" />
         <InstallEntry placement="menu" />
         <div class="flex justify-center">
             <ThemeToggle themePreference={data.themePreference} resolvedTheme={data.resolvedTheme} />

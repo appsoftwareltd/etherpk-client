@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
     NAV_EMAIL_MAX_CHARACTERS,
+    PUBLIC_BLOG_URL,
     PUBLIC_DOCS_URL,
     buildApplicationNavigation,
     buildAccountUrl,
@@ -105,6 +106,23 @@ describe('deployment navigation', () => {
             expect(buildApplicationNavigation({ managed, signedIn: false, graphsUrl: '/graphs' }).at(-1))
                 .toEqual({ href: 'https://docs.etherpk.com', label: 'Docs', current: false })
         }
+    })
+
+    // Only Corporate asks for the blog, so every other origin ends at Docs, as above.
+    it('adds the blog after the docs when asked, and only then', () => {
+        const links = (blog?: boolean) => buildApplicationNavigation({
+            managed: true,
+            signedIn: false,
+            graphsUrl: '/graphs',
+            blog,
+        }).slice(-2)
+        expect(links(true)).toEqual([
+            { href: PUBLIC_DOCS_URL, label: 'Docs', current: false },
+            { href: PUBLIC_BLOG_URL, label: 'Blog', current: false },
+        ])
+        expect(links(true)[1]?.href).toBe('https://blog.etherpk.com')
+        expect(links(false).at(-1)?.label).toBe('Docs')
+        expect(links(undefined).at(-1)?.label).toBe('Docs')
     })
 
     it('keeps Sync Server, Graphs and Docs in standalone mode and marks the current one', () => {
