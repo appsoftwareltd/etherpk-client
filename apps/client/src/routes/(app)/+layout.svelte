@@ -14,6 +14,7 @@
     import { suppressBrowserChords } from "#lib/surface/index.js";
     import { startPersonSettingsSync } from "#lib/person-settings/person-settings-sync.js";
     import { appHeaderHiddenOnPhone } from "#lib/workspace/app-header.svelte.js";
+    import HeaderGraphStatus from "#lib/workspace/HeaderGraphStatus.svelte";
     import { startUsageStatistics } from "#lib/telemetry/usage-statistics-device.js";
     import { isDemoPath } from "#lib/telemetry/workspace-usage.js";
 
@@ -74,6 +75,11 @@
     {/snippet}
 
 
+<!-- An open synced graph's status dot, on a phone: beside the logo, as the workspace has no toolbar there. -->
+{#snippet graphStatusDot()}
+    <HeaderGraphStatus />
+{/snippet}
+
 {#snippet graphsMenu()}
     <GraphNavigationMenu />
 {/snippet}
@@ -85,6 +91,7 @@
             itemMenu={{ label: "Graphs", panel: graphsMenu }}
             {mobileUtilities}
             brandHref={data.deploymentHomeUrl}
+            brandAside={graphStatusDot}
             testId="app-navbar"
             mobileToggleTestId="mobile-nav-toggle"
             mobilePanelTestId="mobile-nav-flyout"

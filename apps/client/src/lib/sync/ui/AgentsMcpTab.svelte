@@ -77,7 +77,7 @@
         }
     }
 
-    const LINK = "underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-950 dark:hover:decoration-neutral-100";
+    const LINK = "gk-link";
     const GUIDE_URL = "https://docs.etherpk.com/using-ai-agents-with-your-notes";
 </script>
 
@@ -107,7 +107,7 @@
         for
         <select
             bind:value={agentTool}
-            class="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
+            class="gk-select"
             aria-label={name}
             data-testid={testId}
         >
@@ -127,7 +127,7 @@
         <button
             type="button"
             onclick={() => copyRegistration(text)}
-            class="shrink-0 rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            class="gk-button shrink-0"
             data-testid={copyTestId}>{copied ? "Copied" : "Copy"}</button
         >
     </div>
@@ -215,7 +215,7 @@
             <button
                 type="button"
                 onclick={blocked.step.run}
-                class="inline-flex items-center justify-center rounded-lg bg-neutral-950 dark:bg-white px-4 py-2 text-sm font-medium text-white dark:text-neutral-950 hover:bg-neutral-800 dark:hover:bg-neutral-200 pointer-coarse:min-h-11"
+                class="gk-button gk-button--primary"
                 data-testid="agents-blocked-step">{blocked.step.label}</button
             >
         {/if}

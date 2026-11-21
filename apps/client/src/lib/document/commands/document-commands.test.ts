@@ -9,6 +9,7 @@ import {
     BACKLINKS_SHOW,
     DOCUMENT_COPY_FILE_PATH,
     DOCUMENT_COPY_NAME,
+    DOCUMENT_COPY_WIKILINK,
     DOCUMENT_OPEN_BELOW,
     DOCUMENT_OPEN_TO_THE_RIGHT,
     FAVOURITE_ADD,
@@ -60,8 +61,10 @@ describe('Copy full file path', () => {
     })
 })
 
+const COPY_NAME = 'Copy name to clipboard'
+const COPY_WIKILINK = 'Copy wikilink to clipboard'
+
 describe('Copy name', () => {
-    const COPY_NAME = 'Copy name to clipboard'
 
     function stubClipboard(writeText: (text: string) => Promise<void>) {
         vi.stubGlobal('navigator', { clipboard: { writeText } })
@@ -73,16 +76,17 @@ describe('Copy name', () => {
         // No `hasFilePath` is what a Server graph supplies; a Folder graph answers false for
         // a Draft, which has no file until its first edit. Either way the tab has a name.
         const { labels } = setup()
-        expect(labels(tab('Alpha')).at(-1)).toBe(COPY_NAME)
+        expect(labels(tab('Alpha')).at(-2)).toBe(COPY_NAME)
         const folder = setup({ hasFilePath: () => false, copyFilePath: vi.fn() })
-        expect(folder.labels(tab('Not Yet Written')).at(-1)).toBe(COPY_NAME)
+        expect(folder.labels(tab('Not Yet Written')).at(-2)).toBe(COPY_NAME)
     })
 
-    it('sits directly above Copy full file path, the two sharing one group', () => {
+    it('opens the copy group: name, wikilink, then the full file path where there is one', () => {
         const { contributions } = setup({ hasFilePath: () => true, copyFilePath: vi.fn() })
         const rows = listContextMenuItems(contributions, tab('Alpha'))
-        expect(rows.slice(-2).map((r) => [r.label, r.separatorBefore])).toEqual([
+        expect(rows.slice(-3).map((r) => [r.label, r.separatorBefore])).toEqual([
             [COPY_NAME, true],
+            [COPY_WIKILINK, false],
             ['Copy full file path to clipboard', false],
         ])
     })
@@ -127,6 +131,72 @@ describe('Copy name', () => {
         expect(labels({ kind: 'document-row', concept: 'Alpha' })).not.toContain(COPY_NAME)
         expect(labels({ kind: 'wikilink', concept: 'Alpha' })).not.toContain(COPY_NAME)
         expect(labels({ kind: 'tab', panelId: 'asset:x' })).not.toContain(COPY_NAME)
+    })
+})
+
+describe('Copy wikilink', () => {
+    function stubClipboard(writeText: (text: string) => Promise<void>) {
+        vi.stubGlobal('navigator', { clipboard: { writeText } })
+    }
+
+    afterEach(() => vi.unstubAllGlobals())
+
+    it('is the last row on a document tab with no file behind it, directly below Copy name', () => {
+        const { labels } = setup()
+        expect(labels(tab('Alpha')).slice(-2)).toEqual([COPY_NAME, COPY_WIKILINK])
+        const folder = setup({ hasFilePath: () => false, copyFilePath: vi.fn() })
+        expect(folder.labels(tab('Not Yet Written')).at(-1)).toBe(COPY_WIKILINK)
+    })
+
+    it('copies the name inside [[ ]] and says what it copied', async () => {
+        const writeText = vi.fn(async () => {})
+        stubClipboard(writeText)
+        const onCopied = vi.fn()
+        const { commands } = setup({ onCopied })
+
+        expect(await commands.execute(DOCUMENT_COPY_WIKILINK, tab('Project Plan'))).toBe(true)
+        expect(writeText).toHaveBeenCalledWith('[[Project Plan]]')
+        expect(onCopied).toHaveBeenCalledWith('Copied "[[Project Plan]]"')
+    })
+
+    it('keeps a scoped name\'s own brackets, so the link names the same scoped concept', async () => {
+        const writeText = vi.fn(async () => {})
+        stubClipboard(writeText)
+        const { commands } = setup()
+
+        await commands.execute(DOCUMENT_COPY_WIKILINK, tab('[[Garden]] Notes'))
+        expect(writeText).toHaveBeenCalledWith('[[[[Garden]] Notes]]')
+    })
+
+    it('tells a refused write with the link in it, so it can be copied by hand', async () => {
+        stubClipboard(async () => {
+            throw new Error('Write permission denied.')
+        })
+        const onError = vi.fn()
+        const onCopied = vi.fn()
+        const { commands } = setup({ onError, onCopied })
+
+        expect(await commands.execute(DOCUMENT_COPY_WIKILINK, tab('Alpha'))).toBe(false)
+        expect(onError).toHaveBeenCalledWith('Could not copy the wikilink: Write permission denied. Copy it by hand: [[Alpha]]')
+        expect(onCopied).not.toHaveBeenCalled()
+    })
+
+    it('copies nothing for a target with no concept', async () => {
+        const writeText = vi.fn(async () => {})
+        stubClipboard(writeText)
+        const { commands } = setup()
+
+        expect(await commands.execute(DOCUMENT_COPY_WIKILINK, tab(''))).toBe(false)
+        expect(writeText).not.toHaveBeenCalled()
+    })
+
+    it('is a tab row: the Sidebar rows and a wikilink do not carry it', () => {
+        const { labels } = setup()
+        expect(labels({ kind: 'favourite', concept: 'Alpha' })).not.toContain(COPY_WIKILINK)
+        expect(labels({ kind: 'recent', concept: 'Alpha' })).not.toContain(COPY_WIKILINK)
+        expect(labels({ kind: 'document-row', concept: 'Alpha' })).not.toContain(COPY_WIKILINK)
+        expect(labels({ kind: 'wikilink', concept: 'Alpha' })).not.toContain(COPY_WIKILINK)
+        expect(labels({ kind: 'tab', panelId: 'asset:x' })).not.toContain(COPY_WIKILINK)
     })
 })
 

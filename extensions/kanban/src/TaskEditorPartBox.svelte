@@ -117,7 +117,7 @@
         aria-valuenow={shown}
         aria-valuetext="{shown} pixels tall"
         tabindex="0"
-        class="group relative h-3 shrink-0 cursor-row-resize touch-none rounded-sm focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
+        class="group relative h-3 shrink-0 cursor-row-resize touch-none rounded focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
         onpointerdown={onPointerDown}
         onkeydown={onKeydown}
         data-testid="{testId}-resize"

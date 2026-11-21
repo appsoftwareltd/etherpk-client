@@ -92,7 +92,7 @@
                 checked={enabled}
                 onchange={(e) => setSpellCheckEnabled((e.currentTarget as HTMLInputElement).checked)}
                 data-testid="spelling-enabled"
-                class="mt-0.5 h-4 w-4 rounded border-neutral-300 dark:border-neutral-700"
+                class="gk-checkbox mt-0.5"
             />
             <span>Check spelling as I type</span>
         </label>
@@ -123,7 +123,7 @@
                 type="button"
                 onclick={() => service.retry()}
                 data-testid="spelling-retry"
-                class="mt-2 rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5"
+                class="gk-button mt-2"
             >Try again</button>
         {:else}
             <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
@@ -157,7 +157,7 @@
                                 <button
                                     type="button"
                                     onclick={() => service.retry()}
-                                    class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5"
+                                    class="gk-button gk-button--small"
                                 >Retry</button>
                             {/if}
                             <button
@@ -165,7 +165,7 @@
                                 onclick={() => service.removeLanguage(language.tag)}
                                 aria-label={`Remove ${language.name}`}
                                 data-testid="spelling-language-remove"
-                                class="rounded-lg px-3 py-1 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-950 dark:hover:text-neutral-100"
+                                class="gk-button gk-button--small"
                             >Remove</button>
                         </li>
                     {/each}
@@ -179,7 +179,7 @@
                         id="spelling-add"
                         bind:value={toAdd}
                         data-testid="spelling-add-select"
-                        class="block min-w-0 flex-1 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
+                        class="gk-select min-w-0 flex-1"
                     >
                         {#each addable as dictionary (dictionary.tag)}
                             <option value={dictionary.tag}>{dictionary.name} ({formatBytes(dictionary.bytes)})</option>
@@ -189,7 +189,7 @@
                         type="button"
                         onclick={() => toAdd && service.addLanguage(toAdd)}
                         data-testid="spelling-add"
-                        class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5"
+                        class="gk-button"
                     >Add language</button>
                 </div>
             {/if}
@@ -199,7 +199,7 @@
                     type="button"
                     onclick={() => service.resetLanguages()}
                     data-testid="spelling-reset"
-                    class="mt-2 rounded-lg px-0 py-1 text-sm font-medium text-neutral-600 dark:text-neutral-300 underline underline-offset-2 hover:text-neutral-950 dark:hover:text-neutral-100"
+                    class="gk-link mt-2"
                 >Go back to my browser's languages</button>
             {/if}
 
@@ -228,7 +228,7 @@
                 placeholder="Search {words.length} {words.length === 1 ? 'word' : 'words'}"
                 aria-label="Search the graph dictionary"
                 data-testid="spelling-dictionary-search"
-                class="mt-2 block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
+                class="gk-input mt-2"
             />
             <ul class="mt-2 max-h-64 overflow-y-auto divide-y divide-neutral-100 dark:divide-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-800" data-testid="spelling-dictionary">
                 {#each matching.slice(0, WORD_LIMIT) as word (word)}
@@ -238,7 +238,7 @@
                             type="button"
                             onclick={() => void removeWord(word)}
                             aria-label={`Remove ${word} from the graph dictionary`}
-                            class="rounded-lg px-2 py-0.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-950 dark:hover:text-neutral-100"
+                            class="gk-button gk-button--small"
                         >Remove</button>
                     </li>
                 {:else}

@@ -40,7 +40,7 @@
         </div>
 
         <!-- Card -->
-        <div data-testid="auth-card" class="rounded-2xl bg-white dark:bg-[var(--gk-surface-0)] shadow-sm dark:shadow-neutral-950/40 ring-1 ring-neutral-950/5 dark:ring-white/10 px-6 py-8 sm:px-10">
+        <div data-testid="auth-card" class="rounded-xl bg-white dark:bg-[var(--gk-surface-0)] ring-1 ring-neutral-950/5 dark:ring-white/10 px-6 py-8 sm:px-10">
             {@render children()}
         </div>
 

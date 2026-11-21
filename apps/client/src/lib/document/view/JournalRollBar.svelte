@@ -57,12 +57,12 @@
         {@render icon(ICON.loaded)}
         <h2 class="bar__label" data-testid="journal-roll-label">{day}</h2>
         <div class="bar__actions">
-            <button type="button" class="bar__action" data-testid="journal-roll-hide" aria-label="Hide {day}" onclick={onhide}>
+            <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11 pointer-coarse:min-w-11" data-testid="journal-roll-hide" aria-label="Hide {day}" onclick={onhide}>
                 Hide
             </button>
             <button
                 type="button"
-                class="bar__action"
+                class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                 data-testid="journal-roll-open"
                 aria-label="Open {day} in its own tab"
                 title="Open in its own tab"
@@ -143,30 +143,11 @@
         display: flex;
         gap: 0.25rem;
     }
-    .bar__action {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.3rem;
-        height: 1.75rem;
-        padding: 0 0.6rem;
-        border: 1px solid transparent;
-        border-radius: 0.25rem;
-        background: transparent;
-        color: var(--gk-text-strong);
-        font: inherit;
-        cursor: pointer;
-    }
     .bar__action-icon {
         display: inline-flex;
         color: var(--gk-text-subtle);
     }
-    @media (hover: hover) {
-        .bar__action:hover {
-            background: var(--gk-border-strong);
-        }
-    }
-    .bar:focus-visible,
-    .bar__action:focus-visible {
+    .bar:focus-visible {
         outline: 2px solid var(--gk-accent, #2563eb);
         outline-offset: 2px;
     }
@@ -174,10 +155,6 @@
     @media (pointer: coarse) {
         .bar {
             height: 2.75rem;
-        }
-        .bar__action {
-            height: 2.75rem;
-            min-width: 2.75rem;
         }
     }
 </style>

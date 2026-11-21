@@ -14,6 +14,9 @@
  *
  * The Headless Client reads the reference out of the whole text, so a variant can add lines around
  * it without an installed version noticing.
+ *
+ * Each part is a paragraph of its own, with a blank line between parts. An agent's chat often shows
+ * a paste as markdown, which joins lines with no blank line between them into one block of text.
  */
 import { joinGraphPath } from '../storage/fs/folder-path'
 import type { Subdir } from '../storage/fs/directory-adapter'
@@ -50,6 +53,11 @@ export interface LaneShown {
 
 const NOT_AN_ADDRESS = 'This is not a web address.'
 
+/** Joins the parts of an instruction, one paragraph each (see the top of this file). */
+function paragraphs(parts: string[]): string {
+    return parts.join('\n\n')
+}
+
 /** For an agent to pass on: signing in needs a code from the person, so it cannot set itself up. */
 function noServer(agentsUrl: string): string {
     return `If you have no EtherPK MCP server for this graph, stop. Do not search this device for it or work from a folder copy, which EtherPK overwrites. Tell the user to connect you from the Agents tab in EtherPK's Settings, which they can open at ${agentsUrl}`
@@ -80,7 +88,7 @@ function syncedLines(reach: Extract<AgentReach, { kind: 'synced' }>, tools: stri
     return [`${NOT_AN_ADDRESS} Use the EtherPK MCP server connected to ${reach.graphName ? `"${reach.graphName}"` : 'that graph'}: ${tools}`, noServer(reach.agentsUrl)]
 }
 
-/** A sentence that opens with the tools for a folder graph, which an agent may or may not have. */
+/** The paragraph that names the tools for a folder graph, which an agent may or may not have. The way without them follows it. */
 function folderToolsSentence(tools: string): string {
     return `${NOT_AN_ADDRESS} If an EtherPK MCP server for this graph is connected, use it: ${tools}`
 }
@@ -99,11 +107,11 @@ function fileLine(reach: Extract<AgentReach, { kind: 'folder' }>): string[] {
 export function formatTaskInstruction(reference: TaskReference, label: string, reach: AgentReach): string {
     const head = [`EtherPK task from ${graphSource(reference.graph.name, reach)}`, `Task: ${taskTextAsWritten(label)}`]
     const line = `Reference: ${taskReferenceId(reference)}`
-    if (reach.kind === 'browser') return [...head, outOfReach(reach.agentsUrl)].join('\n')
-    if (reach.kind === 'synced') return [...head, line, ...syncedLines(reach, TASK_TOOLS)].join('\n')
+    if (reach.kind === 'browser') return paragraphs([...head, outOfReach(reach.agentsUrl)])
+    if (reach.kind === 'synced') return paragraphs([...head, line, ...syncedLines(reach, TASK_TOOLS)])
     const find = reach.file ? 'Otherwise open the file and find the task by its words. If it is not there, search the graph folder.' : 'Otherwise search the graph folder for the task by its words.'
     const rest = 'If none or several match, ask the user. Follow AGENTS.md at the top of the graph folder, and change the status only if you are asked.'
-    return [...head, ...fileLine(reach), line, `${folderToolsSentence(TASK_TOOLS)} ${find} ${rest}`].join('\n')
+    return paragraphs([...head, ...fileLine(reach), line, folderToolsSentence(TASK_TOOLS), `${find} ${rest}`])
 }
 
 /** Which tasks a lane holds, by the checkbox and [[Task Tag]]s an agent reading the files sees. */
@@ -134,15 +142,15 @@ export function formatLaneInstruction(reference: LaneReference, lane: LaneShown,
         `Lane: ${lane.laneLabel} (${lane.count === 1 ? '1 task' : `${lane.count} tasks`})`,
     ]
     const line = `Reference: ${laneReferenceId(reference)}`
-    if (reach.kind === 'browser') return [...head, outOfReach(reach.agentsUrl)].join('\n')
+    if (reach.kind === 'browser') return paragraphs([...head, outOfReach(reach.agentsUrl)])
     const statuses = JSON.stringify([status])
     const query = concept === null ? `tasks with statuses ${statuses}` : `tasks with concept ${JSON.stringify(concept)} and statuses ${statuses}`
     const tools = `${query} lists the lane's tasks (or pass this whole text as reference); read_task, set_task and add_task_note work on each task.`
-    if (reach.kind === 'synced') return [...head, line, ...syncedLines(reach, tools)].join('\n')
+    if (reach.kind === 'synced') return paragraphs([...head, line, ...syncedLines(reach, tools)])
     const selection = laneSelectionInFiles(status)
     const find =
         concept === null
             ? `Otherwise, in the graph folder, find the ${selection}. Follow AGENTS.md at the top of the folder.`
             : `Otherwise, in the graph folder, find the ${selection} that are about [[${concept}]]. AGENTS.md at the top of the folder says what makes a task about a concept.`
-    return [...head, ...fileLine(reach), line, `${folderToolsSentence(tools)} ${find}`].join('\n')
+    return paragraphs([...head, ...fileLine(reach), line, folderToolsSentence(tools), find])
 }

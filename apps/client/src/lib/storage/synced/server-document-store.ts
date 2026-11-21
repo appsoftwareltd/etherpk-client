@@ -964,10 +964,12 @@ export function createServerDocumentStore(
                     )
                     void graph.connected().then(() => finish(true))
                 }))
-            if (reachedRelay) {
-                await graph.rootCaughtUp()
-                registryConfirmed = true
-            }
+            // Unless the relay turns this session away (4429: the account's connections to this
+            // graph are all taken). The socket opens before it is closed, so the relay was
+            // "reached", but the root cannot catch up until another tab or device closes. The
+            // graph then opens from the Local Cache, as it does offline, and the registry is
+            // confirmed by `confirmRegistry` once a place frees.
+            if (reachedRelay && (await rootCaughtUpUnlessTurnedAway())) registryConfirmed = true
             known = currentConcepts()
             docIdsByConcept = currentDocIds(docIdsByConcept)
             knownRegistry = currentRegistryIdentities()
@@ -1699,6 +1701,28 @@ export function createServerDocumentStore(
         })
         stopClaimWatches.add(stop)
         if (graph.isConnected()) release()
+    }
+
+    /** True once the root's catch-up finishes; false as soon as the relay turns the session away. */
+    function rootCaughtUpUnlessTurnedAway(): Promise<boolean> {
+        return new Promise<boolean>((resolve, reject) => {
+            const turnedAway = () => graph.activity().connection === 'turned-away'
+            const finish = (caughtUp: boolean) => {
+                stop()
+                resolve(caughtUp)
+            }
+            const stop = graph.onActivity(() => {
+                if (turnedAway()) finish(false)
+            })
+            graph.rootCaughtUp().then(
+                () => finish(true),
+                (error: unknown) => {
+                    stop()
+                    reject(error)
+                },
+            )
+            if (turnedAway()) finish(false)
+        })
     }
 
     async function confirmRegistry(timeoutMs = 5000): Promise<boolean> {

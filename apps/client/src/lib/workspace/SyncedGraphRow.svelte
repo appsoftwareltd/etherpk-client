@@ -19,7 +19,7 @@
     import { tick } from 'svelte'
     import { BADGE_ON_COLOUR, GRAPH_CARD, GRAPH_CARD_UNCLIPPED, ICON_ON_COLOUR, OPEN_ON_COLOUR } from './graph-card'
     import type { SyncedMember } from './graph-picker-helpers'
-    import { OPEN_BUTTON, OPEN_ICON } from './graphs-page-icons'
+    import { OPEN_ICON } from './graphs-page-icons'
 
     let {
         graphId,
@@ -190,14 +190,11 @@
     const LOCK_ICON =
         'M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z'
 
-    const TEXT_BUTTON =
-        'shrink-0 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5'
-    const DANGER_BUTTON =
-        'shrink-0 rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-progress pointer-coarse:min-h-11 dark:border-red-500/40 dark:hover:bg-red-950/30'
-    const MENU_DANGER_ITEM =
-        'flex w-full items-center rounded-md px-3 py-2 text-left text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-progress pointer-coarse:min-h-11 dark:text-red-400 dark:hover:bg-red-950/30'
-    const ICON_BUTTON =
-        'shrink-0 rounded-lg p-1.5 pointer-coarse:p-3 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-200'
+    const TEXT_BUTTON = 'gk-button shrink-0'
+    const DANGER_BUTTON = 'gk-button gk-button--danger shrink-0 disabled:cursor-progress'
+    const OPEN_BUTTON = 'gk-button gk-button--primary shrink-0'
+    const MENU_DANGER_ITEM = 'gk-menu-item gk-menu-item--danger disabled:cursor-progress'
+    const ICON_BUTTON = 'gk-icon-button'
 </script>
 
 <!-- The name and the role. `coloured`: on the band in the graph's toolbar colour, which a locked
@@ -209,7 +206,7 @@
             data-testid="synced-role"
             class={coloured
                 ? BADGE_ON_COLOUR
-                : `rounded-full px-2 py-0.5 text-sm ${owner ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900' : 'bg-neutral-100 text-neutral-600 dark:bg-white/10 dark:text-neutral-400'}`}>{owner ? 'Owner' : 'Player'}</span
+                : `rounded-full px-2 py-0.5 text-sm ${owner ? 'bg-(--gk-primary-bg) text-(--gk-primary-text)' : 'bg-neutral-100 text-neutral-600 dark:bg-white/10 dark:text-neutral-400'}`}>{owner ? 'Owner' : 'Player'}</span
         >
     {/if}
 {/snippet}
@@ -251,7 +248,7 @@
                             id={menuId}
                             role="menu"
                             aria-label={`More actions for ${name}`}
-                            class="absolute right-0 top-full z-20 mt-1 min-w-44 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg dark:border-neutral-700 dark:bg-(--gk-surface-2)"
+                            class="gk-menu absolute right-0 top-full z-(--z-menu) mt-1"
                         >
                             {#if owner}
                                 <button
@@ -455,7 +452,7 @@
                                 <button
                                     data-testid="member-verify"
                                     onclick={() => onverify(m)}
-                                    class="rounded-lg px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-50 hover:text-neutral-950 pointer-coarse:min-h-11 dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-white"
+                                    class="gk-button gk-button--quiet"
                                     >Verify</button
                                 >
                             {/if}
@@ -464,7 +461,7 @@
                                     data-testid="member-cancel-invite"
                                     disabled={cancellingInvite === m.inviteId}
                                     onclick={() => oncancelinvite(m)}
-                                    class="rounded-lg px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-50 hover:text-neutral-950 disabled:cursor-progress dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-white"
+                                    class="gk-button gk-button--quiet disabled:cursor-progress"
                                     >{cancellingInvite === m.inviteId ? 'Cancelling…' : 'Cancel invite'}</button
                                 >
                             {/if}
@@ -476,7 +473,7 @@
                                     aria-busy={removingMember === m.userId}
                                     aria-expanded={confirmingRemoval === m.userId}
                                     onclick={() => (confirmingRemoval = m.userId)}
-                                    class="rounded-lg px-2 py-1 text-sm text-red-700 hover:bg-red-50 disabled:cursor-progress pointer-coarse:min-h-11 dark:text-red-400 dark:hover:bg-red-950/30"
+                                    class="gk-button gk-button--danger gk-button--small disabled:cursor-progress"
                                     >{removingMember === m.userId ? 'Removing…' : 'Remove'}</button
                                 >
                             {/if}
@@ -497,7 +494,7 @@
                                     data-testid="member-remove-confirm-button"
                                     onkeydown={escapeCancels}
                                     onclick={() => confirmRemoval(m)}
-                                    class="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 pointer-coarse:min-h-11 dark:border-red-500/40 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-950/30"
+                                    class="gk-button shrink-0"
                                     >Remove</button
                                 >
                                 <button data-testid="member-remove-cancel" onkeydown={escapeCancels} onclick={cancelRemoval} class={TEXT_BUTTON}

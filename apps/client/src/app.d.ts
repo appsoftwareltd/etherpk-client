@@ -22,6 +22,11 @@ declare global {
              * adopted from a deep link or reload closes by stripping the address in place.
              */
             etherpkSettings?: { tab: import('#lib/workspace/device-memory.js').SettingsTab; pushed: boolean }
+            /**
+             * The graph this entry is in, by id (chosen-graph.ts). An address cannot say which of
+             * two folder graphs kept in folders with one name is meant (ADR 0192).
+             */
+            etherpkGraph?: string
         }
     }
 

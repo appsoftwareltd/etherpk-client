@@ -35,6 +35,8 @@ export const CLIENT_IMPORT_EXCEPTIONS = {
     kanban: [
         // The Board Filter's Due control is the Tasks View's (2026-11-19).
         '#lib/components/ChoiceDropdown.svelte',
+        // The board's filter boxes are the Tasks View's (2026-11-20).
+        '#lib/components/FilterInput.svelte',
         '#lib/components/dialog.js',
         '#lib/contrast-ink.js',
         '#lib/document/active-editor.js',
@@ -51,6 +53,8 @@ export const CLIENT_IMPORT_EXCEPTIONS = {
         '#lib/document/index-derive.js',
         '#lib/document/index-worker/client.js',
         '#lib/document/inline-parts.js',
+        // The Graph Kanban's concept box offers names as the Tasks View's Name Filter does (2026-11-20).
+        '#lib/document/name-match.js',
         '#lib/document/open-concept.js',
         '#lib/document/settle-scheduler.js',
         '#lib/document/task-due-window.js',

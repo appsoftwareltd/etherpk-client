@@ -212,9 +212,10 @@
 
 <div
     class={[
-        "overflow-hidden border bg-(--gk-surface-1) focus-within:border-(--gk-accent)",
-        roomy ? "rounded-xl" : "rounded-md",
-        invalid ? "border-(--gk-text-danger)" : dropping ? "border-(--gk-accent)" : roomy ? "border-(--gk-border-strong)" : "border-(--gk-border-soft)",
+        // The frame is the field ([[Style Guide]]): a field's fill, border, corners and focus ring.
+        "overflow-hidden border bg-(--gk-field-bg) focus-within:border-(--gk-field-focus) focus-within:shadow-[0_0_0_1px_var(--gk-field-focus)]",
+        roomy ? "rounded-xl" : "rounded-lg",
+        invalid ? "border-(--gk-text-danger)" : dropping ? "border-(--gk-accent)" : "border-(--gk-control-border)",
     ]}
     style:font-family="var(--gk-sans, 'Inter', system-ui, sans-serif)"
     ondragover={onDragOver}
@@ -252,7 +253,7 @@
                             aria-label="Remove {file.name}"
                             title="Remove {file.name}"
                             data-testid="{testid}-file-remove"
-                            class="shrink-0 rounded-md p-1.5 text-(--gk-text-muted) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                            class="gk-icon-button"
                         >
                             <svg class="mx-auto size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M6 18L18 6" />
@@ -294,8 +295,8 @@
         rows="3"
         spellcheck="false"
         class={[
-            "block w-full resize-none overflow-y-auto border-0 bg-transparent text-(--gk-text-strong) field-sizing-content placeholder:text-(--gk-text-subtle) focus:outline-none",
-            roomy ? "max-h-72 min-h-24 px-4 py-3" : "max-h-60 min-h-18 px-2 py-1.5",
+            "block w-full resize-none overflow-y-auto border-0 bg-transparent text-(--gk-field-text) field-sizing-content placeholder:text-(--gk-text-muted) focus:outline-none",
+            roomy ? "max-h-72 min-h-24 px-4 py-3" : "max-h-60 min-h-18 px-3 py-2",
         ]}
         style:font-size="max(0.875rem, var(--editor-font-size, 1rem))"
     ></textarea>
@@ -335,7 +336,7 @@
     </ul>
 
     {#if !readonly}
-        <div class="flex flex-wrap items-center gap-1.5 border-t border-(--gk-border-soft) px-1.5 py-1.5">
+        <div class="flex flex-wrap items-center gap-2 border-t border-(--gk-border-soft) px-2 py-2">
             <button
                 type="button"
                 onclick={link}
@@ -343,7 +344,7 @@
                 data-testid="{testid}-link"
                 aria-label="Link to a page"
                 title="Link to a page"
-                class="inline-flex items-center gap-1.5 rounded-md border border-(--gk-border-strong) bg-(--gk-surface-1) px-2.5 py-1 text-sm font-medium text-(--gk-text-default) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-h-11"
+                class="gk-button gk-button--small"
             >
                 <span class="font-mono font-semibold" aria-hidden="true">[[ ]]</span>
             </button>
@@ -354,7 +355,7 @@
                     data-testid="{testid}-attach"
                     aria-label="Attach a file"
                     title="Attach a file"
-                    class="inline-flex items-center gap-1.5 rounded-md border border-(--gk-border-strong) bg-(--gk-surface-1) px-2.5 py-1 text-sm font-medium text-(--gk-text-default) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-h-11"
+                    class="gk-button gk-button--small"
                 >
                     <svg class="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />

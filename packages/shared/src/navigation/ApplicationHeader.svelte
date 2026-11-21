@@ -34,6 +34,11 @@
         sections?: Snippet<[() => void]>;
         mobileUtilities?: Snippet;
         brandHref?: string;
+        /**
+         * Something small to the right of the logo, at every width: the Client puts an open
+         * graph's status dot here on a phone, where its workspace has no toolbar.
+         */
+        brandAside?: Snippet;
         testId?: string;
         mobileToggleTestId?: string;
         mobilePanelTestId?: string;
@@ -46,6 +51,7 @@
         sections,
         mobileUtilities,
         brandHref = "/home",
+        brandAside,
         testId = "application-header",
         mobileToggleTestId = "mobile-navigation-toggle",
         mobilePanelTestId = "mobile-navigation-panel",
@@ -92,7 +98,7 @@
 
 <header
     data-testid={testId}
-    class="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center gap-4 border-b border-neutral-950/8 bg-white/92 px-4 shadow-[0_1px_0_rgba(0,0,0,0.02)] backdrop-blur-md sm:px-6 dark:border-white/10 dark:bg-[#171717]/92 dark:shadow-none"
+    class="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center gap-4 border-b border-neutral-950/8 bg-(--gk-surface-0)/92 px-4 backdrop-blur-md sm:px-6 dark:border-white/10"
 >
     <!-- The badge sits beside the brand link rather than inside it, so it neither joins the
          link's accessible name nor fades with its hover state. -->
@@ -125,6 +131,7 @@
                 <span class="[text-box:trim-both_cap_alphabetic]">{releaseStageBadge.label}</span>
             </span>
         {/if}
+        {#if brandAside}{@render brandAside()}{/if}
     </div>
 
     <nav aria-label="Primary" class="hidden items-center gap-1 lg:flex">
@@ -156,7 +163,7 @@
                         <div
                             id={itemMenuId}
                             data-testid="{testId}-item-menu"
-                            class="absolute left-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-xl border border-neutral-950/10 bg-white shadow-xl dark:border-white/10 dark:bg-[#262626]"
+                            class="gk-menu absolute left-0 top-full z-(--z-menu) mt-2 w-72 overflow-hidden"
                         >
                             {@render menu.panel()}
                         </div>
@@ -181,8 +188,9 @@
         <button
             type="button"
             data-testid={mobileToggleTestId}
-            class="-mr-1 flex shrink-0 items-center justify-center rounded-lg p-2 text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-neutral-950 lg:hidden dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-white"
+            class="gk-icon-button -mr-1 lg:hidden"
             aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
+            title={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
             aria-expanded={mobileOpen}
             aria-controls={mobilePanelId}
             onclick={() => (mobileOpen = !mobileOpen)}
@@ -210,7 +218,7 @@
 {#if mobileOpen}
     <button
         type="button"
-        class="fixed inset-0 z-40 bg-neutral-950/35 backdrop-blur-[2px] lg:hidden"
+        class="fixed inset-0 z-(--z-backdrop) bg-neutral-950/35 backdrop-blur-[2px] lg:hidden"
         aria-label="Close navigation menu"
         tabindex="-1"
         onclick={closeMobile}
@@ -224,15 +232,16 @@
         aria-label="Application navigation"
         tabindex="-1"
         {@attach dialogFocus}
-        class="fixed inset-y-0 right-0 z-50 flex w-72 max-w-[86vw] flex-col border-l border-neutral-950/10 bg-white shadow-2xl lg:hidden dark:border-white/10 dark:bg-[#171717]"
+        class="fixed inset-y-0 right-0 z-(--z-dialog) flex w-72 max-w-[86vw] flex-col border-l border-neutral-950/10 bg-(--gk-surface-0) shadow-2xl lg:hidden dark:border-white/10"
     >
         <div class="flex h-14 shrink-0 items-center justify-between border-b border-neutral-950/8 px-4 dark:border-white/10">
             <span class="text-sm font-semibold text-neutral-950 dark:text-white">Navigate</span>
             <button
                 type="button"
                 data-dialog-dismiss
-                class="rounded-lg p-2 text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-white"
+                class="gk-icon-button"
                 aria-label="Close navigation menu"
+                title="Close navigation menu"
                 onclick={closeMobile}
             >
                 <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
@@ -272,7 +281,9 @@
         </div>
 
         {#if mobileUtilities}
-            <div class="shrink-0 border-t border-neutral-950/8 p-4 dark:border-white/10">
+            <!-- A column with a gap, so whatever a layout puts here (a button, the theme switch)
+                 is never drawn against the thing above it. -->
+            <div class="flex shrink-0 flex-col gap-3 border-t border-neutral-950/8 p-4 dark:border-white/10">
                 {@render mobileUtilities()}
             </div>
         {/if}

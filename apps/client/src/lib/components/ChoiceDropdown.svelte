@@ -259,7 +259,7 @@
                 data-testid="{testid}-done"
                 onclick={close}
                 onfocusout={onFocusOut}
-                class="w-full rounded-md py-1.5 text-sm hover:bg-(--gk-surface-2) focus-visible:bg-(--gk-surface-2) pointer-coarse:min-h-11"
+                class="gk-button gk-button--quiet w-full"
             >
                 Done
             </button>

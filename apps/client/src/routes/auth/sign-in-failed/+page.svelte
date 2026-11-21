@@ -17,13 +17,13 @@
         <a
             href={data.signInHref}
             data-sveltekit-reload
-            class="rounded-lg bg-neutral-950 px-4 py-2.5 text-center text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors"
+            class="gk-button gk-button--primary"
         >
             Sign in again
         </a>
         <a
             href="/graphs"
-            class="rounded-lg border border-neutral-950/15 bg-white px-4 py-2.5 text-center text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 transition-colors"
+            class="gk-button"
         >
             Open your graphs
         </a>

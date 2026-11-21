@@ -28,7 +28,7 @@
             onclick={startInstall}
             data-testid="install-entry-header"
             title="Install EtherPK to open it from your home screen, Dock or taskbar and work with no network."
-            class="hidden items-center gap-1.5 rounded-lg border border-neutral-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50 hover:text-neutral-950 lg:inline-flex dark:border-white/10 dark:bg-white/5 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white"
+            class="gk-button hidden lg:inline-flex"
         >
             <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path
@@ -43,20 +43,11 @@
             type="button"
             onclick={startInstall}
             data-testid="install-entry-menu"
-            class="w-full rounded-lg border border-neutral-950/10 px-3 py-2.5 text-sm font-semibold text-neutral-700 transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-white"
+            class="gk-button w-full"
         >
             Install app
         </button>
     {:else}
-        <div class="px-2 pb-2">
-            <button
-                type="button"
-                onclick={startInstall}
-                data-testid="install-entry-account"
-                class="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-white"
-            >
-                Install app
-            </button>
-        </div>
+        <button type="button" onclick={startInstall} data-testid="install-entry-account" class="gk-menu-item">Install app</button>
     {/if}
 {/if}

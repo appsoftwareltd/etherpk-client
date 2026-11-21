@@ -482,6 +482,7 @@
                         <span class="gk-map-search-icon">{@render icon('search')}</span>
                         <input
                             type="search"
+                            data-own-field-style="borderless inside a frame that holds its icon, drawn in the field colours"
                             placeholder="Filter by name or document"
                             aria-label="Filter places and routes by name or document"
                             autocomplete="off"
@@ -885,7 +886,7 @@
         border-radius: 12px;
         background: var(--gk-surface-0);
         color: var(--gk-text-default);
-        box-shadow: 0 20px 40px var(--gk-shadow);
+        box-shadow: var(--gk-shadow);
     }
 
     .spot::backdrop {

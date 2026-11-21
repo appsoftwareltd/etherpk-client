@@ -95,7 +95,7 @@
         </p>
 
         <div>
-            <label for="protection-passphrase" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">Passphrase</label>
+            <label for="protection-passphrase" class="gk-label mb-1.5 block">Passphrase</label>
             <input
                 id="protection-passphrase"
                 type="password"
@@ -104,9 +104,7 @@
                 autocomplete="new-password"
                 aria-invalid={error ? "true" : undefined}
                 aria-describedby={error ? errorId : undefined}
-                class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {error
-                    ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                    : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
+                class="gk-input"
             />
             {#if strength}
                 <p
@@ -123,14 +121,14 @@
         </div>
 
         <div>
-            <label for="protection-passphrase-confirm" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">Confirm passphrase</label>
+            <label for="protection-passphrase-confirm" class="gk-label mb-1.5 block">Confirm passphrase</label>
             <input
                 id="protection-passphrase-confirm"
                 type="password"
                 bind:value={confirmation}
                 data-testid="protection-passphrase-confirm"
                 autocomplete="new-password"
-                class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+                class="gk-input"
             />
         </div>
 
@@ -141,7 +139,7 @@
                     type="checkbox"
                     bind:checked={acknowledged}
                     data-testid="protection-passphrase-acknowledge"
-                    class="mt-0.5 h-4 w-4 shrink-0 rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                    class="gk-checkbox mt-0.5"
                 />
                 <span>
                     I understand that <strong>if I forget this passphrase, the contents of every protected
@@ -163,12 +161,12 @@
     {/snippet}
 
     {#snippet footer()}
-        <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
+        <button type="button" onclick={close} class="gk-button">Cancel</button>
         <button
             type="submit"
             disabled={busy}
             data-testid="protection-passphrase-submit"
-            class="min-w-28 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
+            class="gk-button gk-button--primary min-w-28"
         >{busy ? "Setting up…" : "Set passphrase"}</button>
     {/snippet}
 </Modal>

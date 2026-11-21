@@ -262,7 +262,7 @@
                 type="button"
                 data-testid="bookmarks-remove-all"
                 onclick={removeAll}
-                class="shrink-0 rounded px-1.5 py-0.5 text-sm text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-default) pointer-coarse:min-h-11"
+                class="gk-button gk-button--quiet gk-button--small shrink-0 pointer-coarse:min-h-11"
                 >Remove all</button
             >
         {/if}
@@ -317,7 +317,7 @@
                                             onkeydown={onLabelKeydown}
                                             onblur={onLabelBlur}
                                             {@attach focusOnMount}
-                                            class="w-full rounded border border-(--gk-border-strong) bg-(--gk-surface-0) px-1.5 py-0.5 text-sm"
+                                            class="gk-input gk-input--small"
                                         />
                                         <p
                                             id="bookmark-label-hint-{bookmark.id}"

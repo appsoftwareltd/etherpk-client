@@ -456,7 +456,7 @@
             <div role="alert" class="mx-3 mt-2 flex items-center gap-3 rounded-lg bg-(--gk-warning-surface) px-3 py-2 text-sm text-(--gk-text-warning)">
                 <span class="min-w-0 flex-1">Couldn't refresh the picture from the index, so it may be out of date.</span>
                 <!-- Drawn in the banner's own colour, which no control class has. -->
-                <button type="button" class="shrink-0 rounded-md border border-current px-2 py-1 font-medium" onclick={read}>Try again</button>
+                <button type="button" class="gk-button gk-button--small shrink-0" onclick={read}>Try again</button>
             </div>
         {/if}
 

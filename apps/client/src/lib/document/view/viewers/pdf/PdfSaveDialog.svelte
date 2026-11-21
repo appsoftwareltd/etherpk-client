@@ -125,7 +125,6 @@
         }
     }
 
-    const field = "rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-2 py-1.5 text-sm font-normal text-(--gk-text-default) dark:border-neutral-700";
 </script>
 
 <Dialog {open} title="Save an additional copy" {onclose} {busy} busyReason="Making the copy…" testId="pdf-save-dialog" onsubmit={submit}>
@@ -134,12 +133,12 @@
             <p class="text-sm text-(--gk-text-muted)">Your annotations and form values are already saved with this PDF. This makes a separate PDF with them, and any signature you placed, written in. The PDF in your graph stays as it is.</p>
             <label class="flex flex-col gap-1 text-sm font-medium text-(--gk-text-default)">
                 Name
-                <input type="text" class={field} value={fileName} oninput={(event) => (typedName = event.currentTarget.value)} data-testid="pdf-save-name" />
+                <input type="text" class="gk-input" value={fileName} oninput={(event) => (typedName = event.currentTarget.value)} data-testid="pdf-save-name" />
             </label>
 
             <div class="flex flex-col gap-1">
                 <label class="flex items-start gap-2 text-sm text-(--gk-text-default)">
-                    <input type="checkbox" class="mt-0.5" bind:checked={flatten} data-testid="pdf-save-flatten" />
+                    <input type="checkbox" class="gk-checkbox mt-0.5" bind:checked={flatten} data-testid="pdf-save-flatten" />
                     <span>Flatten annotations into the page</span>
                 </label>
                 {#if flatten}
@@ -169,11 +168,11 @@
                     <div class="ml-6 flex flex-col gap-2">
                         <label class="flex flex-col gap-1 text-sm text-(--gk-text-default)">
                             New password
-                            <input type="password" autocomplete="new-password" class={field} bind:value={newPassword} onblur={() => (passwordTouched = true)} aria-invalid={emptyPassword} data-testid="pdf-save-new-password" />
+                            <input type="password" autocomplete="new-password" class="gk-input" bind:value={newPassword} onblur={() => (passwordTouched = true)} aria-invalid={emptyPassword} data-testid="pdf-save-new-password" />
                         </label>
                         <label class="flex flex-col gap-1 text-sm text-(--gk-text-default)">
                             Type it again
-                            <input type="password" autocomplete="new-password" class={field} bind:value={confirmPassword} onblur={() => (passwordTouched = true)} aria-invalid={mismatch} data-testid="pdf-save-confirm-password" />
+                            <input type="password" autocomplete="new-password" class="gk-input" bind:value={confirmPassword} onblur={() => (passwordTouched = true)} aria-invalid={mismatch} data-testid="pdf-save-confirm-password" />
                         </label>
                         {#if mismatch}<p class="text-sm text-red-700 dark:text-red-400" role="alert">The two passwords do not match.</p>{/if}
                         <p class="text-sm text-(--gk-text-muted)">EtherPK does not keep this password. Without it, nobody can open the copy.</p>
@@ -186,17 +185,17 @@
             <fieldset class="flex flex-col gap-1.5">
                 <legend class="mb-1 text-sm font-medium text-(--gk-text-default)">Where it goes</legend>
                 <label class="flex items-center gap-2 text-sm text-(--gk-text-default)">
-                    <input type="checkbox" bind:checked={toFile} data-testid="pdf-save-to-file" />
+                    <input class="gk-checkbox" type="checkbox" bind:checked={toFile} data-testid="pdf-save-to-file" />
                     A file on this device
                 </label>
                 <label class="flex items-center gap-2 text-sm text-(--gk-text-default)">
-                    <input type="checkbox" bind:checked={toGraph} data-testid="pdf-save-to-graph" />
+                    <input class="gk-checkbox" type="checkbox" bind:checked={toGraph} data-testid="pdf-save-to-graph" />
                     Add to the graph, with a link to it
                 </label>
                 {#if toGraph}
                     <label class="ml-6 flex flex-col gap-1 text-sm text-(--gk-text-default)">
                         Put the link
-                        <select class={field} bind:value={() => linkTo, (next) => (chosenLink = next)} data-testid="pdf-save-link-place">
+                        <select class="gk-select" bind:value={() => linkTo, (next) => (chosenLink = next)} data-testid="pdf-save-link-place">
                             {#each linkPlaces as place (place.concept ?? "")}
                                 <option value={place.concept ?? ""}>{place.label}</option>
                             {/each}
@@ -217,8 +216,8 @@
     {/snippet}
     {#snippet footer()}
         <div class="flex justify-end gap-2">
-            <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-(--gk-text-default) dark:border-neutral-700" onclick={onclose}>Cancel</button>
-            <button type="submit" class="rounded-lg bg-(--gk-accent) px-3 py-1.5 text-sm font-medium text-(--gk-surface-0) hover:bg-(--gk-accent-hover)" data-testid="pdf-save-submit">{busy ? "Saving…" : "Save"}</button>
+            <button type="button" class="gk-button" onclick={onclose}>Cancel</button>
+            <button type="submit" class="gk-button gk-button--primary" data-testid="pdf-save-submit">{busy ? "Saving…" : "Save"}</button>
         </div>
     {/snippet}
 </Dialog>

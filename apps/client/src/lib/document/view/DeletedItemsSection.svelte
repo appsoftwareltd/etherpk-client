@@ -211,7 +211,7 @@
                                     <input
                                         id="deleted-rename-{doc.docId}"
                                         autofocus
-                                        class="min-w-40 flex-1 rounded-lg border border-(--gk-border-soft) bg-(--gk-surface-0) px-2 py-1 text-sm text-(--gk-text-default)"
+                                        class="gk-input gk-input--small min-w-40 flex-1"
                                         bind:value={renaming.name}
                                         aria-invalid={renaming.error !== null}
                                         aria-describedby={renaming.error ? `deleted-rename-error-${doc.docId}` : undefined}
@@ -302,7 +302,7 @@
                         {@const target = outcome.open}
                         <button
                             type="button"
-                            class="ml-1 text-(--gk-accent) underline underline-offset-2"
+                            class="gk-link ml-1"
                             onclick={() => getActiveLayoutController().openView({ kind: "document", target })}
                             data-testid="deleted-items-open">Open it</button
                         >

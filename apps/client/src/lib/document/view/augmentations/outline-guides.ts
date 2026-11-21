@@ -27,6 +27,17 @@
  * signal: any unmeasurable end was "not ready", and with no other thread in view the redraw retried
  * every frame forever without touching the overlay — a subtree deleted at the foot of a long branch
  * left its threads drawn at the stale position, while the long branch never got one at all.
+ *
+ * The overlay's own corner is the origin every thread is placed from, and it sits where the
+ * scroller's content starts, inside the scroller's side padding, by its static position (no `left`).
+ * A document tab centres its text with that padding (Graph Settings → Document width), and the
+ * padding changes with the pane's width while the text itself keeps its width. Placed from the
+ * scroller's edge, the threads stayed where they were while a pane divider was dragged and the
+ * bullets moved with the column, until the editor's next measure, which CodeMirror delays. Placed
+ * from the column, the browser moves them with the text in the same layout.
+ *
+ * Every reading of one redraw has to be of one layout and one scroll position, so
+ * {@link computeThreads} first has the editor run any measure it has pending.
  */
 
 import { foldedRanges, syntaxTree } from '@codemirror/language'
@@ -153,7 +164,13 @@ function threadBottom(
     return { viewport: last ? last.bottom : null, block, unmeasured: !last }
 }
 
-function computeThreads(view: EditorView): Measured {
+function computeThreads(view: EditorView, box: HTMLElement): Measured {
+    // CodeMirror runs a measure it has pending the first time it is asked where a position is, and
+    // that measure can scroll the scroller, sideways too, to bring a caret into view. Asked for only
+    // after the overlay's origin was read, the origin was of one scroll position and every bullet of
+    // another: the threads were all drawn out by the distance scrolled, and stayed there until the
+    // next redraw. So the pending measure is run first, by asking for a position nothing is done with.
+    view.coordsAtPos(view.viewport.from)
     const { state } = view
     const analysis = analysisFor(state)
     const lines = analysis.lines
@@ -163,10 +180,11 @@ function computeThreads(view: EditorView): Measured {
     const visibleFrom = Math.max(0, Math.min(...ranges.map((range) => state.doc.lineAt(range.from).number - 1)))
     const visibleTo = Math.min(lines.length - 1, Math.max(...ranges.map((range) => state.doc.lineAt(range.to).number - 1)))
     // The overlay box lives in the scroller and scrolls with it; (sx, sy) is the viewport position of
-    // the scroll-content origin, so `coordsAtPos` (viewport) maps to box coords by subtracting it.
-    const sr = view.scrollDOM.getBoundingClientRect()
-    const sx = sr.left - view.scrollDOM.scrollLeft
-    const sy = sr.top - view.scrollDOM.scrollTop
+    // its own corner, so `coordsAtPos` (viewport) maps to box coords by subtracting it. Read off the
+    // box rather than worked out from the scroller, so the threads are right wherever the box is put.
+    const origin = box.getBoundingClientRect()
+    const sx = origin.left
+    const sy = origin.top
     // `lineBlockAt` tops are relative to the document's first line; this is where that sits in the box.
     const docTop = view.documentTop - sy
     const metrics = state.field(proseMetricsField, false) ?? null
@@ -284,7 +302,7 @@ const guidePlugin = ViewPlugin.fromClass(
             if (this.raf) cancelAnimationFrame(this.raf)
             this.raf = requestAnimationFrame(() => {
                 this.raf = 0
-                const { threads, incomplete } = computeThreads(this.view)
+                const { threads, incomplete } = computeThreads(this.view, this.box)
                 if (incomplete && this.retries < MAX_RETRIES) {
                     this.retries += 1
                     this.measure()
@@ -319,7 +337,9 @@ const guidePlugin = ViewPlugin.fromClass(
 
 const theme = EditorView.baseTheme({
     // The overlay sits behind the text; the threads are GUIDE_WIDTH_PX wide, in the strong border colour.
-    '.cm-outline-guides': { position: 'absolute', top: '0', left: '0', zIndex: '0', pointerEvents: 'none' },
+    // No `left`: the box keeps its static position, the start of the scroller's content, so it moves
+    // with the text when the scroller's side padding changes (see the note at the top of the file).
+    '.cm-outline-guides': { position: 'absolute', top: '0', zIndex: '0', pointerEvents: 'none' },
     '.cm-outline-guide': { background: 'var(--gk-border-strong, rgba(10,10,10,0.16))' },
 })
 

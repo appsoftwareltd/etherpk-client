@@ -750,7 +750,7 @@
                     <div class="-my-2 flex justify-end">
                         <button
                             type="button"
-                            class="inline-flex min-h-8 items-center rounded-sm text-sm text-(--gk-accent) underline hover:text-(--gk-accent-hover) focus-visible:outline-2 focus-visible:outline-(--gk-accent) disabled:text-(--gk-text-muted) disabled:no-underline"
+                            class="gk-link inline-flex min-h-8 items-center rounded focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
                             onclick={() => void openInTab()}
                             disabled={!task}
                             data-testid="task-editor-open-in-tab"
@@ -770,7 +770,7 @@
                             {/if}
                         </span>
                         {#if saveState === "stale"}
-                            <button type="button" class="shrink-0 rounded-md border border-current px-2 py-1 font-medium" onclick={() => void load()} data-testid="task-editor-reload">
+                            <button type="button" class="gk-button gk-button--small shrink-0" onclick={() => void load()} data-testid="task-editor-reload">
                                 Reload
                             </button>
                         {/if}
@@ -903,7 +903,7 @@
                                     <span>{tag}</span>
                                     <button
                                         type="button"
-                                        class="inline-flex size-7 items-center justify-center rounded-full text-(--gk-text-muted) hover:bg-(--gk-control-hover) hover:text-(--gk-text-strong) focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
+                                        class="gk-icon-button size-7 rounded-full"
                                         aria-label="Remove the tag {tag}"
                                         onclick={() => removeTag(tag)}
                                         data-testid="task-editor-tag-remove"
@@ -956,7 +956,7 @@
                                 id="{uid}-tag-list"
                                 role="listbox"
                                 aria-label="Tags in this graph"
-                                class="absolute top-full left-0 z-10 m-0 mt-1 max-h-60 w-full list-none overflow-y-auto rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) p-0 shadow-lg"
+                                class="absolute top-full left-0 z-(--z-menu) m-0 mt-1 max-h-60 w-full list-none overflow-y-auto rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) p-0 shadow-lg"
                                 data-testid="task-editor-tag-suggestions"
                             >
                                 {#each tagOffers as tag, i (tag)}

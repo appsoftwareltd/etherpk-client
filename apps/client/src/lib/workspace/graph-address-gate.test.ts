@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { AddressedGraph } from '#lib/navigation/graph-address.js'
 
-import { choiceDetail, gateFor, wrongFolderMessage } from './graph-address-gate'
+import { choiceDetail, entryIsAnotherGraphs, gateFor, graphAskedFor, graphIdsNamed, wrongFolderMessage } from './graph-address-gate'
 
 const folder = (id: string, name: string): AddressedGraph => ({ id, backend: 'filesystem', handle: { kind: 'directory', name } })
 const browser = (id: string): AddressedGraph => ({ id, backend: 'filesystem', where: 'browser', handle: { kind: 'directory', name: `graph-${id}` } })
@@ -32,6 +32,74 @@ describe('gateFor', () => {
         expect(gateFor({ where: 'browser', name: 'b1' }, graphs, false)).toEqual({ kind: 'open', graphId: 'b1', createInBrowser: false })
         expect(gateFor({ where: 'browser', name: 'new' }, graphs, false)).toEqual({ kind: 'not-in-browser' })
         expect(gateFor({ where: 'browser', name: 'new' }, graphs, true)).toEqual({ kind: 'open', graphId: 'new', createInBrowser: true })
+    })
+})
+
+describe('gateFor, with the graph a person chose in EtherPK', () => {
+    const graphs = [folder('f1', 'reports'), folder('f2', 'notes'), folder('f3', 'notes'), browser('b1')]
+    const notes = { where: 'folder', name: 'notes' } as const
+
+    it('opens the chosen one of two folders with one name, without asking', () => {
+        expect(gateFor(notes, graphs, false, 'f3')).toEqual({ kind: 'open', graphId: 'f3', createInBrowser: false })
+        expect(gateFor(notes, graphs, false, 'f2')).toEqual({ kind: 'open', graphId: 'f2', createInBrowser: false })
+    })
+
+    it('still asks when the choice is a graph the address does not name', () => {
+        // Another folder, a graph that was forgotten since, and another kind of graph.
+        for (const chosen of ['f1', 'gone', 'b1']) {
+            expect(gateFor(notes, graphs, false, chosen)).toEqual({ kind: 'choose-graph', graphs: [graphs[1], graphs[2]] })
+        }
+    })
+
+    it('never opens the chosen graph in place of the one graph the address names', () => {
+        expect(gateFor({ where: 'folder', name: 'reports' }, graphs, false, 'f2')).toEqual({ kind: 'open', graphId: 'f1', createInBrowser: false })
+        expect(gateFor({ where: 'folder', name: 'garden' }, graphs, false, 'f2')).toEqual({ kind: 'choose-folder' })
+        expect(gateFor({ where: 'sync', name: 's1' }, graphs, false, 'f2')).toEqual({ kind: 'open', graphId: 's1', createInBrowser: false })
+    })
+})
+
+describe('graphAskedFor', () => {
+    it('is the graph a real navigation or Back names, when it is not the one open', () => {
+        expect(graphAskedFor({ type: 'goto', shallow: false }, 'f3', 'f2')).toBe('f3')
+        expect(graphAskedFor({ type: 'popstate' }, 'f3', 'f2')).toBe('f3')
+        // Back onto another graph's entry is flagged shallow when no route changed.
+        expect(graphAskedFor({ type: 'popstate', shallow: true }, 'f3', 'f2')).toBe('f3')
+        expect(graphAskedFor({ type: 'link' }, 'f3', null)).toBe('f3')
+    })
+
+    it('is none when the entry names the open graph, or no graph', () => {
+        expect(graphAskedFor({ type: 'popstate' }, 'f2', 'f2')).toBeNull()
+        expect(graphAskedFor({ type: 'goto', shallow: false }, null, 'f2')).toBeNull()
+    })
+
+    it('is none for a workspace\'s own write to its entry, which may be a closed workspace\'s', () => {
+        expect(graphAskedFor({ type: 'goto', shallow: true }, 'f3', 'f2')).toBeNull()
+    })
+})
+
+describe('graphIdsNamed', () => {
+    const graphs = [folder('f1', 'reports'), folder('f2', 'notes'), folder('f3', 'notes'), browser('b1')]
+
+    it('is every registered graph the address names', () => {
+        expect(graphIdsNamed({ where: 'folder', name: 'notes' }, graphs)).toEqual(['f2', 'f3'])
+        expect(graphIdsNamed({ where: 'folder', name: 'reports' }, graphs)).toEqual(['f1'])
+        expect(graphIdsNamed({ where: 'folder', name: 'garden' }, graphs)).toEqual([])
+    })
+})
+
+describe('entryIsAnotherGraphs', () => {
+    it('is an entry of the other folder with the open graph\'s address', () => {
+        expect(entryIsAnotherGraphs('f3', 'f2', ['f2', 'f3'])).toBe(true)
+    })
+
+    it('is not the open graph\'s own entry, nor one that names no graph', () => {
+        expect(entryIsAnotherGraphs('f2', 'f2', ['f2', 'f3'])).toBe(false)
+        expect(entryIsAnotherGraphs(undefined, 'f2', ['f2', 'f3'])).toBe(false)
+    })
+
+    it('is not an entry written under an id the address no longer names: a folder forgotten and chosen again', () => {
+        expect(entryIsAnotherGraphs('f-old', 'f2', ['f2'])).toBe(false)
+        expect(entryIsAnotherGraphs('f-old', 'f2', ['f2', 'f3'])).toBe(false)
     })
 })
 

@@ -1057,6 +1057,7 @@
                 <form class="gk-map-search" role="search" onsubmit={submitSearch}>
                     <span class="gk-map-search-icon">{@render icon('search')}</span>
                     <input
+                        data-own-field-style="borderless inside a frame that holds its icon and button, drawn in the field colours"
                         bind:this={searchInput}
                         bind:value={query}
                         oninput={typed}

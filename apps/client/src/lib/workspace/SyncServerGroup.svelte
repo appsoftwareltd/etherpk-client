@@ -155,10 +155,8 @@
     const dayFormat = new Intl.DateTimeFormat(undefined, {
         dateStyle: "medium",
     });
-    const SECONDARY_BUTTON =
-        "inline-flex items-center justify-center rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5";
-    const PRIMARY_BUTTON =
-        "inline-flex items-center justify-center rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 pointer-coarse:min-h-11 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200";
+    const SECONDARY_BUTTON = "gk-button";
+    const PRIMARY_BUTTON = "gk-button gk-button--primary";
 </script>
 
 <section
@@ -273,7 +271,7 @@
                     <a
                         href={corporateBillingUrl}
                         data-sveltekit-reload
-                        class="font-medium underline underline-offset-2"
+                        class="gk-link"
                         >Fix payment</a
                     >
                 {/if}
@@ -283,14 +281,14 @@
                     <a
                         href={corporateBillingUrl}
                         data-sveltekit-reload
-                        class="font-medium underline underline-offset-2"
+                        class="gk-link"
                         >Restart Sync+</a
                     >
                 {:else}
                     <button
                         type="button"
                         onclick={actions.showSettings}
-                        class="font-medium underline underline-offset-2"
+                        class="gk-link"
                         >Details on the Sync tab</button
                     >
                 {/if}
@@ -351,7 +349,7 @@
                                     disabled={withdrawingInvite === invite.id}
                                     onclick={() =>
                                         actions.declineInvite(invite)}
-                                    class="shrink-0 rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-progress dark:border-red-500/40 dark:hover:bg-red-950/30"
+                                    class="gk-button gk-button--danger shrink-0 disabled:cursor-progress"
                                     >{withdrawingInvite === invite.id
                                         ? "Declining…"
                                         : "Decline"}</button
@@ -374,7 +372,7 @@
                                     data-testid="invite-accept"
                                     onclick={() => actions.acceptInvite(invite)}
                                     aria-busy={checkingInvite === invite.id}
-                                    class="rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                                    class="gk-button gk-button--primary"
                                     >{checkingInvite === invite.id
                                         ? "Checking…"
                                         : "Accept"}</button
@@ -410,7 +408,7 @@
                     type="button"
                     data-testid="sync-sign-in"
                     onclick={actions.signIn}
-                    class="mt-3 rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                    class="gk-button gk-button--primary mt-3"
                     >Sign in</button
                 >
             {:else}

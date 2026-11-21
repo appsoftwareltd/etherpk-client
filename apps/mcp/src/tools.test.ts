@@ -420,7 +420,7 @@ describe('tasks', () => {
             'Lane: Doing (3 tasks)',
             `Reference: etherpk:${at(g)}/k/Kitchen%20Garden#lane=doing`,
             'This is not a web address.',
-        ].join('\n')
+        ].join('\n\n')
         const lane = await tasks(g, { reference: copied })
         expect(lane.tasks.map((t) => t.text).sort()).toEqual(['#D #D-2026-07-01 weed the rows', '#D #P1 water the beans', '#D sharpen the hoe'])
 
@@ -1169,7 +1169,7 @@ describe('task references', () => {
 
     it('is read from the text Copy agent instruction writes, and from the web address an earlier version wrote', async () => {
         const { g, reference } = await withTask('g-ref-forms')
-        const copied = ['EtherPK task from the graph "Work" (g)', 'Task: Send the quote', `Reference: ${reference}`, 'This is not a web address.'].join('\n')
+        const copied = ['EtherPK task from the graph "Work" (g)', 'Task: Send the quote', `Reference: ${reference}`, 'This is not a web address.'].join('\n\n')
         expect(await readTask(g, { reference: copied })).toMatchObject({ line: 2, text: '#P1 Send the quote' })
         expect(await readTask(g, { reference: `Send the quote\nhttps://app.example.com${reference.slice('etherpk:'.length)}` })).toMatchObject({ line: 2 })
     })

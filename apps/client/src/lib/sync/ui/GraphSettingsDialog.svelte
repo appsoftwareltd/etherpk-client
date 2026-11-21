@@ -34,8 +34,13 @@
     import { type GraphSettings } from "#lib/storage/index.js";
     import InstallSteps from "#lib/install/InstallSteps.svelte";
     import {
+        CONTENT_WIDTH_HIGHEST,
+        CONTENT_WIDTH_LOWEST,
+        CONTENT_WIDTH_OFF,
+        DEFAULT_CONTENT_WIDTH,
         DEFAULT_IMAGE_DISPLAY_SIZE,
         DEFAULT_RECENT_COUNT,
+        parseContentWidthField,
         IMAGE_DISPLAY_SIZE_OFF,
         MAX_RECENT_COUNT,
         MIN_RECENT_COUNT,
@@ -374,6 +379,12 @@
         settings.defaultMaxImageDisplaySize ?? DEFAULT_IMAGE_DISPLAY_SIZE,
     );
     // svelte-ignore state_referenced_locally
+    // Seeded with the effective value too, so an untouched graph shows the width its text keeps to.
+    let contentWidth = $state(String(settings.maxContentWidth ?? DEFAULT_CONTENT_WIDTH));
+    /** Set when the width typed is no width, so the field says so as well as the message. */
+    let contentWidthInvalid = $state(false);
+    let contentWidthInput = $state<HTMLInputElement>();
+    // svelte-ignore state_referenced_locally
     let codeLanguage = $state(settings.defaultCodeLanguage ?? "");
     // svelte-ignore state_referenced_locally
     let recentCount = $state<number>(
@@ -414,6 +425,45 @@
     });
     let error = $state<string | null>(null);
 
+    /**
+     * The image size field onto `next`: blank ⇒ back to the default; `0` ⇒ no hint at all (natural
+     * size); else a real size. False, with the message set, when the field holds no size.
+     */
+    function applyDisplaySize(next: GraphSettings): boolean {
+        delete next.defaultMaxImageDisplaySize;
+        const trimmedSize = displaySize.trim();
+        if (trimmedSize === IMAGE_DISPLAY_SIZE_OFF) {
+            next.defaultMaxImageDisplaySize = IMAGE_DISPLAY_SIZE_OFF;
+        } else if (trimmedSize !== "") {
+            const normalized = normalizeDisplaySize(trimmedSize);
+            if (!normalized) {
+                error =
+                    "Image size: enter a width like 800, width×height like 800x600, or 0 for natural size.";
+                return false;
+            }
+            next.defaultMaxImageDisplaySize = normalized;
+        }
+        return true;
+    }
+
+    /**
+     * The Document width field onto `next`: blank ⇒ back to the default; `0` ⇒ the text fills the
+     * pane; else a width within bounds. False when it is none of those: the field is marked
+     * invalid, takes the focus, and the message says what it accepts.
+     */
+    function applyContentWidth(next: GraphSettings): boolean {
+        delete next.maxContentWidth;
+        const width = parseContentWidthField(contentWidth);
+        contentWidthInvalid = width === null;
+        if (width === null) {
+            error = `Document width: enter a width between ${CONTENT_WIDTH_LOWEST} and ${CONTENT_WIDTH_HIGHEST}, or ${CONTENT_WIDTH_OFF} to fill the pane.`;
+            contentWidthInput?.focus();
+            return false;
+        }
+        if (width !== undefined) next.maxContentWidth = width;
+        return true;
+    }
+
     function save() {
         // The shell runs this on Enter in ANY field, and the other tabs have fields of their own —
         // pressing Enter in "New passphrase" would otherwise save the General tab and close the
@@ -428,21 +478,8 @@
         // field it persists. Favourites are Graph Settings too (ADR 0036) and are changed
         // from the Sidebar, so building a fresh object here would silently wipe them.
         const next: GraphSettings = { ...settings };
-        delete next.defaultMaxImageDisplaySize;
         delete next.defaultCodeLanguage;
-        // Blank ⇒ back to the default; `0` ⇒ no hint at all (natural size); else a real size.
-        const trimmedSize = displaySize.trim();
-        if (trimmedSize === IMAGE_DISPLAY_SIZE_OFF) {
-            next.defaultMaxImageDisplaySize = IMAGE_DISPLAY_SIZE_OFF;
-        } else if (trimmedSize !== "") {
-            const normalized = normalizeDisplaySize(trimmedSize);
-            if (!normalized) {
-                error =
-                    "Image size: enter a width like 800, width×height like 800x600, or 0 for natural size.";
-                return;
-            }
-            next.defaultMaxImageDisplaySize = normalized;
-        }
+        if (!applyDisplaySize(next) || !applyContentWidth(next)) return;
         const lang = codeLanguage.trim();
         if (lang !== "") next.defaultCodeLanguage = lang;
         if (
@@ -541,7 +578,7 @@
                 <select
                     value={activeTab}
                     onchange={(event) => selectTab(event.currentTarget.value as Tab)}
-                    class="block w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-950 dark:border-neutral-700 dark:bg-white/10 dark:text-neutral-100"
+                    class="gk-select w-full"
                     data-testid="settings-tab-select"
                 >
                     {#each tabs as entry (entry.id)}
@@ -638,12 +675,12 @@
                         type="button"
                         onclick={onshare}
                         data-testid="graph-share-invite"
-                        class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 pointer-coarse:min-h-11"
+                        class="gk-button gk-button--primary"
                         >Share this graph…</button
                     >
                     <p class="text-sm text-neutral-600 dark:text-neutral-400">
                         The graph's card on the
-                        <a href="/graphs" class="font-medium text-(--gk-accent) underline underline-offset-2">Graphs page</a>
+                        <a href="/graphs" class="gk-link">Graphs page</a>
                         lists its Players and the invites not yet accepted.
                     </p>
                 </div>
@@ -687,7 +724,7 @@
                                 type="button"
                                 onclick={mirror.onstop}
                                 data-testid="mirror-stop"
-                                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                                class="gk-button"
                                 >Stop mirroring</button
                             >
                         </div>
@@ -807,7 +844,7 @@
                                     type="button"
                                     onclick={mirror.onresume}
                                     data-testid="mirror-resume"
-                                    class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
+                                    class="gk-button gk-button--primary"
                                     >{mirror.status.paused.kind === "folder"
                                         ? "Choose the folder again…"
                                         : "Reconnect and carry on"}</button
@@ -818,7 +855,7 @@
                                     onclick={mirror.onsync}
                                     disabled={mirror.status.syncing}
                                     data-testid="mirror-sync-now"
-                                    class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+                                    class="gk-button"
                                     >Mirror now</button
                                 >
                             {/if}
@@ -826,7 +863,7 @@
                                 type="button"
                                 onclick={mirror.onstop}
                                 data-testid="mirror-stop"
-                                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                                class="gk-button"
                                 >Stop mirroring</button
                             >
                         </div>
@@ -850,7 +887,7 @@
                             type="button"
                             onclick={mirror.onenable}
                             data-testid="mirror-enable"
-                            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
+                            class="gk-button gk-button--primary"
                             >Choose a folder and start mirroring…</button
                         >
                     {/if}
@@ -922,14 +959,14 @@
                                         type="button"
                                         onclick={exportGraph.pending.onkeep}
                                         data-testid="export-keep"
-                                        class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
+                                        class="gk-button gk-button--primary"
                                         >Keep the incomplete export</button
                                     >
                                     <button
                                         type="button"
                                         onclick={exportGraph.pending.ondiscard}
                                         data-testid="export-discard"
-                                        class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                                        class="gk-button"
                                         >Discard</button
                                     >
                                 </div>
@@ -943,7 +980,7 @@
                                         exportGraph.estimate === "offline" ||
                                         exportGraph.estimate === null}
                                     data-testid="export-start"
-                                    class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50"
+                                    class="gk-button gk-button--primary"
                                     >{exportGraph.running
                                         ? "Exporting…"
                                         : "Export as zip…"}</button
@@ -963,7 +1000,7 @@
                                     type="button"
                                     onclick={exportGraph.leftover.onremove}
                                     data-testid="export-leftover-remove"
-                                    class="font-medium text-neutral-950 dark:text-neutral-100 underline hover:no-underline"
+                                    class="gk-link"
                                     >Remove it</button
                                 >
                             </p>
@@ -1006,14 +1043,14 @@
                 <div>
                     <label
                         for="graph-name"
-                        class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
+                        class="gk-label mb-1.5 block"
                         >Graph name</label
                     >
                     <input
                         id="graph-name"
                         data-testid="graph-name"
                         bind:value={draftName}
-                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+                        class="gk-input"
                     />
                     <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                         {nameHelp}
@@ -1022,7 +1059,7 @@
                 <div>
                     <label
                         for="graph-display-size"
-                        class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
+                        class="gk-label mb-1.5 block"
                         >Default maximum image display size on upload</label
                     >
                     <input
@@ -1031,7 +1068,7 @@
                         bind:value={displaySize}
                         placeholder={DEFAULT_IMAGE_DISPLAY_SIZE}
                         inputmode="numeric"
-                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+                        class="gk-input"
                     />
                     <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                         Uploaded images get this added to their description, e.g.
@@ -1041,8 +1078,33 @@
                 </div>
                 <div>
                     <label
+                        for="graph-content-width"
+                        class="gk-label mb-1.5 block"
+                        >Document width</label
+                    >
+                    <input
+                        id="graph-content-width"
+                        data-testid="graph-content-width"
+                        bind:value={contentWidth}
+                        bind:this={contentWidthInput}
+                        oninput={() => (contentWidthInvalid = false)}
+                        placeholder={String(DEFAULT_CONTENT_WIDTH)}
+                        inputmode="numeric"
+                        aria-describedby="graph-content-width-help{contentWidthInvalid ? ' graph-settings-error' : ''}"
+                        aria-invalid={contentWidthInvalid}
+                        class="gk-input"
+                    />
+                    <p id="graph-content-width-help" class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
+                        In a wider pane, a document's text stays this many pixels wide
+                        and is centred, so lines stay easy to read. It grows with the
+                        text when you zoom. Blank for {DEFAULT_CONTENT_WIDTH}, or 0 to
+                        fill the pane.
+                    </p>
+                </div>
+                <div>
+                    <label
                         for="graph-code-language"
-                        class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
+                        class="gk-label mb-1.5 block"
                         >Default code language</label
                     >
                     <input
@@ -1050,13 +1112,13 @@
                         data-testid="graph-code-language"
                         bind:value={codeLanguage}
                         placeholder="e.g. text, ts, python"
-                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+                        class="gk-input"
                     />
                 </div>
                 <div>
                     <label
                         for="graph-recent-count"
-                        class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
+                        class="gk-label mb-1.5 block"
                         >Recent documents shown in the sidebar</label
                     >
                     <input
@@ -1066,7 +1128,7 @@
                         min={MIN_RECENT_COUNT}
                         max={MAX_RECENT_COUNT}
                         bind:value={recentCount}
-                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+                        class="gk-input"
                     />
                     <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                         Which documents are recent is remembered per device - how
@@ -1077,7 +1139,7 @@
                     <div>
                         <label
                             for="graph-journal-template"
-                            class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
+                            class="gk-label mb-1.5 block"
                             >Journal Template</label
                         >
                         <select
@@ -1086,7 +1148,7 @@
                             bind:value={journalTemplate}
                             aria-describedby="graph-journal-template-help{journalTemplateMissing ? ' graph-journal-template-missing' : ''}"
                             aria-invalid={journalTemplateMissing}
-                            class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+                            class="gk-select w-full"
                         >
                             <option value="">None</option>
                             <!-- The saved name stays choosable while the list loads, and when it
@@ -1118,7 +1180,7 @@
                 <div>
                     <label
                         for="graph-toolbar-color"
-                        class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
+                        class="gk-label mb-1.5 block"
                         >Toolbar colour</label
                     >
                     <!-- Eight ready-made pastels first - the presence palette, so a graph's bar
@@ -1172,7 +1234,7 @@
                                 type="button"
                                 onclick={() => (toolbarColor = null)}
                                 data-testid="graph-toolbar-color-clear"
-                                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                                class="gk-button"
                                 >Use theme colour</button
                             >
                         {:else}
@@ -1194,7 +1256,7 @@
                     <div>
                         <label
                             for="graph-folder-path-setting"
-                            class="mb-1.5 block text-sm font-medium text-neutral-600 dark:text-neutral-300"
+                            class="gk-label mb-1.5 block"
                             >Folder path on this device</label
                         >
                         <input
@@ -1204,7 +1266,7 @@
                             autocomplete="off"
                             spellcheck="false"
                             placeholder={`e.g. /home/you/notes/${folderPath.folderName}`}
-                            class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 font-mono text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+                            class="gk-input font-mono"
                         />
                         <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
                             Where the <strong class="font-medium">{folderPath.folderName}</strong> folder is on this
@@ -1229,6 +1291,7 @@
                     <UsageStatisticsSetting />
                 {/if}
                 {#if error}<p
+                        id="graph-settings-error"
                         class="text-sm text-red-600"
                         data-testid="graph-settings-error"
                     >
@@ -1247,7 +1310,7 @@
             type="button"
             onclick={close}
             data-testid="settings-dismiss"
-            class="rounded-lg px-4 py-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+            class="gk-button"
         >
             {activeTab === "general" ? "Cancel" : "Done"}
         </button>
@@ -1255,7 +1318,7 @@
             <button
                 type="submit"
                 data-testid="graph-settings-save"
-                class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
+                class="gk-button gk-button--primary"
                 >Save</button
             >
         {/if}
@@ -1316,7 +1379,7 @@
                     onclick={rebuildIndex}
                     disabled={rebuilding}
                     data-testid="index-rebuild"
-                    class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
+                    class="gk-button"
                     >{rebuilding
                         ? indexProgress && indexProgress.total > 0
                             ? `Rebuilding… ${indexProgress.done.toLocaleString()} of ${indexProgress.total.toLocaleString()}`

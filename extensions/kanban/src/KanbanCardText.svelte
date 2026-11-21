@@ -16,7 +16,7 @@
         em: "italic",
         code: "rounded bg-(--gk-surface-2) px-0.5 font-mono",
         strike: "line-through",
-        highlight: "rounded-sm bg-(--gk-highlight-bg)",
+        highlight: "rounded bg-(--gk-highlight-bg)",
     };
 
     function markClasses(marks: readonly InlineMark[] | undefined): string {

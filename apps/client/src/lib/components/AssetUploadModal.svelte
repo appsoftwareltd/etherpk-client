@@ -190,7 +190,7 @@
                         type="button"
                         onclick={() => fileInput?.click()}
                         data-autofocus
-                        class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors"
+                        class="gk-button gk-button--primary"
                     >
                         Browse files
                     </button>
@@ -199,7 +199,7 @@
                             type="button"
                             onclick={pasteFromClipboard}
                             data-testid="asset-paste-button"
-                            class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5 transition-colors"
+                            class="gk-button"
                         >
                             Paste from clipboard
                         </button>
@@ -236,7 +236,7 @@
                     bind:checked={optimizeImages}
                     data-testid="asset-optimize-images"
                     aria-describedby="asset-optimize-images-help"
-                    class="mt-0.5 h-4 w-4 rounded border-neutral-300 dark:border-neutral-600"
+                    class="gk-checkbox mt-0.5"
                 />
                 <span>Optimise images</span>
             </label>

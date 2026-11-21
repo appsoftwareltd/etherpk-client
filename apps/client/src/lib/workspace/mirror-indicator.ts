@@ -1,5 +1,5 @@
 /**
- * What the workspace toolbar's [[Local Mirror]] dot says (ADR 0008).
+ * What the [[Local Mirror]] contributes to a graph's status dot and its dialog (ADR 0008).
  *
  * A module rather than a type inside the component, for the same reason as `sync/ui/mirror-tab.ts`:
  * both the toolbar and the workspace that fills it name the shape, and a Svelte instance script
@@ -12,21 +12,12 @@
  */
 import { MIRROR_PHASE_LABELS, type MirrorStatus } from '#lib/storage/synced/local-mirror.js'
 
-export type MirrorIndicator =
-    | { state: 'hidden' }
-    | {
-          /**
-           * `writing` a pass is running, shown amber because the folder does not match the graph
-           * yet; `current` it does; `paused` mirroring has stopped and needs the user; `waiting`
-           * another tab of this browser owns the folder.
-           */
-          state: 'writing' | 'current' | 'paused' | 'waiting'
-          /** The whole story in one sentence, as the tooltip and the accessible name. */
-          title: string
-          onclick: () => void
-      }
-
-/** The dot without its click, which only the workspace can give it. */
+/**
+ * The mirror's part of the status dot (graph-status.ts). `writing` a pass is running, shown amber
+ * because the folder does not match the graph yet; `current` it does; `paused` mirroring has
+ * stopped and needs the user; `waiting` another tab of this browser owns the folder. `title` is
+ * the whole story in one sentence.
+ */
 export type MirrorIndicatorView = { state: 'hidden' } | { state: 'writing' | 'current' | 'paused' | 'waiting'; title: string }
 
 /**

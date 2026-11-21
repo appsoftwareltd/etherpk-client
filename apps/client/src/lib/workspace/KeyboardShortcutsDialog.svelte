@@ -121,7 +121,7 @@
             onclick={onclose}
             data-dialog-dismiss
             data-testid="keyboard-shortcuts-close"
-            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
+            class="gk-button gk-button--primary"
         >Close</button>
     {/snippet}
 </Modal>
@@ -189,7 +189,7 @@
         padding: 0.1rem 0.4rem;
         border: 1px solid var(--gk-border-soft);
         border-bottom-width: 2px;
-        border-radius: 5px;
+        border-radius: 0.25rem;
         background: var(--gk-surface-1);
         font: inherit;
         font-size: 0.875rem;

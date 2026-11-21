@@ -21,7 +21,6 @@ import type { EpisodeEnd } from '#lib/document/view/augmentations/frontmatter-ep
 import type { AssetStore } from '#lib/storage/fs/asset-store.js'
 import type { SyncApi } from '#lib/sync/sync-api.js'
 import type { VersionHistory } from '#lib/sync/version-history/version-history.js'
-import type { SyncIndicator, SyncStatusAction } from '#lib/sync/sync-indicator.js'
 import type { GraphSettings } from '#lib/storage/fs/graph-settings.js'
 import type { CommandRegistry } from '#lib/surface/command-registry.js'
 import type { ContributionRegistry } from '#lib/surface/contribution-registry.js'
@@ -97,21 +96,6 @@ export interface ProtectionControls {
     lockNow(): void
     /** Open the unlock prompt. */
     requestUnlock(): void
-}
-
-/**
- * A synced graph's sync status, for the foot of the Graph Sidebar: whether this device's edits
- * have reached the Sync Server, and what the status's panel offers. Getters over the workspace's
- * runes, as {@link ProtectionControls} are, so a template that reads them re-renders as the
- * connection changes.
- */
-export interface SyncStatusControls {
-    /** False for a folder graph, which has no Sync Server to reach and shows no status. Reactive. */
-    readonly isSynced: boolean
-    /** Null until the first state has settled (sync-indicator.ts). Reactive. */
-    readonly indicator: SyncIndicator | null
-    /** Try again now, Billing, Download unsent changes: whichever apply. Reactive. */
-    readonly actions: SyncStatusAction[]
 }
 
 /**
@@ -194,8 +178,6 @@ export interface WorkspaceServices {
     retitleView?: (panelId: string, title: string) => void
     /** The graph's lock, for the sidebar. Absent on a graph with no Protection Key. */
     protection?: ProtectionControls
-    /** The sync status, for the sidebar. Present on every graph; `isSynced` says whether to show it. */
-    sync?: SyncStatusControls
     frontmatter?: FrontmatterService
     wikilinkRename?: WikilinkRenameService
     findReplace?: FindReplaceService

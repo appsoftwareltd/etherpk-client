@@ -82,13 +82,13 @@
             <button
                 type="button"
                 onclick={close}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300"
+                class="gk-button"
                 >Cancel</button
             >
             <button
                 type="submit"
                 data-testid="accept-invite-confirm"
-                class="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                class="gk-button gk-button--primary"
                 >{fingerprintState === "verified"
                     ? "Accept"
                     : fingerprintState === "changed"
@@ -100,7 +100,7 @@
                 type="button"
                 onclick={close}
                 data-testid="accept-invite-close"
-                class="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                class="gk-button gk-button--primary"
                 >Close</button
             >
         {/if}

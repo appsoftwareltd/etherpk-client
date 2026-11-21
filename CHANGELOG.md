@@ -5,6 +5,78 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.40.0 - 2026-11-21
+
+### Client
+
+- **One status dot for sync and the mirror.** A synced graph's toolbar dot now covers sync and the
+  local mirror together. It is green only when both are working, or when sync is working and the
+  graph has no mirror. Select it to open **Sync status**, with a section for **Sync** and one for
+  **Mirroring**, each with its explanation and actions. On a phone the dot is in the header, to the
+  right of the logo. The sync status row at the foot of the Graph Sidebar is gone. When sync stops,
+  a notice under the dot says why, that your changes are kept, and when they sync.
+- **Filter the Graph Kanban by concept.** A box before the words filter on the Graph Kanban
+  suggests the graph's pages, journal days and aliases as you type. Choosing one shows that
+  concept's tasks, the same cards as its own board, and works with the words, priority and due
+  date filters.
+- **Text fields and drop-downs look alike.** Every text field and drop-down in the Client now has
+  the same fill, border and height. In the dark theme a drop-down is the same grey as the field
+  beside it. Fields in a toolbar, such as the PDF and EBook viewers' page and find boxes, share one
+  smaller size. Extensions can use that size with `gk-input--small` and `gk-select--small`.
+- **Buttons, links and menus look alike.** Every button, link, label, checkbox and menu in the
+  Client now draws from one set of styles. A button that removes something is outlined in red, and
+  a toggle that is on is filled. The PDF and EBook viewers' tools, menus and notices follow the
+  same styles.
+- **Toolbar and Quick notes.** The workspace toolbar's buttons are 32px with a border and a small
+  shadow, as other icon buttons over a colour are. In Quick notes the note box looks like a text
+  field, and **Clear** and **Add** are full-size buttons. A plain text button is as tall as the
+  button beside it.
+- **Search rows keep their height.** In Search, the **New page** label is the size of the
+  **Enter** key hint, and a name row is one height with either or neither. The rows below no
+  longer move as the hint comes and goes or as a name is typed.
+- **Buttons line up with fields.** A button is now as tall as a text field (38px, and 30px for the
+  small size), and never narrower than 80px (60px small), so a short label no longer draws a
+  square. Extensions get the new sizes from `gk-button`, and a new `gk-button--emphasis` for the
+  one action a page most wants taken.
+- **Filter boxes look alike.** The Tasks View's and the Kanban boards' filter boxes now share one
+  style, with a filter icon inside each and a close button that clears it. The concept boxes read
+  **Concept (Page / Journal)** and the text boxes **Task text / #tag**.
+- **Document width.** In a wide pane, a document's text now stays 1000 pixels wide and sits in the
+  middle of the pane, with the backlinks and journal panels beneath it lined up. Change the width
+  with **Document width** in Graph Settings, or enter `0` to let the text fill the pane as before.
+  The width grows and shrinks with the text zoom.
+- **Copy wikilink.** A document tab's menu has **Copy wikilink to clipboard** below **Copy name to
+  clipboard**. It copies the page's name inside `[[` `]]`, ready to paste into another page as a
+  link.
+- **Fixes.**
+  - The outline's guide lines, the caret and a selection stay on the text while a pane divider is
+    dragged or the window is resized. In a pane wider than the **Document width** they were left
+    behind as the text moved. They also stay in place after a new **Document width** is saved, and
+    when a narrow pane scrolls sideways to the caret.
+  - A pane divider can be dragged its whole way with text selected in a document. It used to stop
+    after a few pixels. The caret also stays in the document through the drag.
+  - On a phone, the header menu's theme switch has a gap above it under **Install app**.
+  - The list of boards that `/kanban` offers when a line answers to more than one page no longer
+    closes by itself a moment after it opens.
+  - Resizing a pane no longer scrolls the tab in front out of view. The tabs beside the edge you
+    drag stay against it: widen the right Sidebar and the right-hand tabs move with the edge.
+  - Enter with text selected in a block deletes the text and splits the block there, as Enter does
+    with nothing selected. It used to put the rest of the line outside the block. Shift+Enter
+    likewise opens a new line inside the block.
+  - **Copy agent instruction** puts a blank line between the parts of the text it copies, so an
+    agent's chat that shows a paste as one block keeps them apart.
+  - A synced graph opens in a tab when the Sync Server has no connection left for it, which
+    happens when the account has the graph open in many tabs and devices at once. The tab used to
+    stay on **Opening your graph…**. It now opens from the copy on the device, its status dot
+    turns red and says why, and it connects once one of the other tabs is closed. Changes made
+    meanwhile are kept on the device, and sync from a newly opened tab if you close this one.
+  - A click on the blank space beside the journal roll's bar, the backlinks or the journal panels
+    no longer takes the keys from the text: typing carries on where the caret was.
+  - Two folder graphs kept in folders with the same name: the **Graphs** menu ticks only the one
+    that is open, and choosing either there or on the Graphs page opens it without asking which
+    you mean. A link from outside EtherPK still asks. The Graphs page says which folders share a
+    name.
+
 ## 0.39.0 - 2026-11-19
 
 ### Client

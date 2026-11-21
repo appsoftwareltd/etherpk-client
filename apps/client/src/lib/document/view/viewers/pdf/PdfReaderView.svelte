@@ -671,8 +671,8 @@
 {/snippet}
 
 {#snippet toggleRow(label: string, checked: boolean, testId: string, onchange: (next: boolean) => void)}
-    <label class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)">
-        <input type="checkbox" {checked} onchange={(event) => onchange(event.currentTarget.checked)} data-testid={testId} />
+    <label class="gk-menu-item">
+        <input class="gk-checkbox" type="checkbox" {checked} onchange={(event) => onchange(event.currentTarget.checked)} data-testid={testId} />
         {label}
     </label>
 {/snippet}
@@ -682,7 +682,7 @@
         <label class="sr-only" for="pdf-page-input">Page</label>
         <input
             id="pdf-page-input"
-            class="w-12 rounded-md border border-neutral-300 bg-(--gk-surface-0) px-1 py-0.5 text-center text-sm text-(--gk-text-default) dark:border-neutral-700"
+            class="gk-input gk-input--small w-12 text-center"
             inputmode="numeric"
             value={pageInput === "" ? reader.page : pageInput}
             oninput={(event) => (pageInput = event.currentTarget.value)}
@@ -748,14 +748,14 @@
         <!-- Against the toolbar however many rows it has wrapped to, or the Command Bar, and with no height
          of its own, so the menu opening moves nothing. -->
         <div class="relative h-0 shrink-0">
-        <div bind:this={moreMenu} class={["etherpk-pdf-more flex flex-col gap-0.5 rounded-lg border border-(--gk-surface-2) bg-(--gk-surface-0) p-1 shadow-lg", inBar && "etherpk-pdf-more--above"]} role="group" aria-label="More for this PDF" data-testid="pdf-more-menu">
-            <div class="flex items-center justify-between">
-                <span class="px-2 text-sm font-medium text-(--gk-text-muted)">More</span>
-                <button type="button" class="pdf-tool" aria-label="Close this menu" title="Close this menu" onclick={closeMoreMenu} data-testid="pdf-more-close">{@render icon("close")}</button>
+        <div bind:this={moreMenu} class={["etherpk-pdf-more gk-menu flex flex-col", inBar && "etherpk-pdf-more--above"]} role="group" aria-label="More for this PDF" data-testid="pdf-more-menu">
+            <div class="flex items-center justify-between pr-1 pl-3">
+                <span class="text-sm font-medium text-(--gk-text-muted)">More</span>
+                <button type="button" class="gk-icon-button" aria-label="Close this menu" title="Close this menu" onclick={closeMoreMenu} data-testid="pdf-more-close">{@render icon("close")}</button>
             </div>
             {#if inBar}
                 <!-- The page box lives here where the toolbar is on the Command Bar. -->
-                <div class="flex items-center gap-2 px-2 py-1.5 text-sm text-(--gk-text-default)" data-testid="pdf-more-page">
+                <div class="flex items-center gap-2 px-3 py-1.5 text-sm text-(--gk-text-default)" data-testid="pdf-more-page">
                     <span aria-hidden="true">Page</span>
                     {@render pageBox()}
                 </div>
@@ -773,18 +773,18 @@
             {/if}
             {#if service?.backend === "synced"}
                 {@render toggleRow(`Keep on this device (${fileSize})`, keptOnDevice, "pdf-keep-on-device", (next) => void setKept(next))}
-                {#if keepError}<p class="px-2 text-sm text-red-700 dark:text-red-400" role="alert" data-testid="pdf-keep-error">{keepError}</p>{/if}
+                {#if keepError}<p class="px-3 text-sm text-red-700 dark:text-red-400" role="alert" data-testid="pdf-keep-error">{keepError}</p>{/if}
             {/if}
-            <hr class="my-0.5 border-(--gk-surface-2)" />
+            <hr class="gk-menu-separator" />
             <!-- On a phone these leave the toolbar, so the page keeps the room. -->
-            <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2) sm:hidden" onclick={() => { moreOpen = false; signatureOpen = true; }} data-testid="pdf-more-sign">Add your signature</button>
-            <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2) sm:hidden" onclick={() => { moreOpen = false; openSave(); }} data-testid="pdf-more-save">Save a copy</button>
-            <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2) sm:hidden" onclick={() => { moreOpen = false; printOptionsOpen = true; }} data-testid="pdf-more-print">Print</button>
-            <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={toggleFavourite} data-testid="pdf-favourite">{favourite ? "Remove from favourites" : "Add to favourites"}</button>
-            <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={downloadOriginal} data-testid="pdf-download">Download the original</button>
+            <button type="button" class="gk-menu-item sm:hidden" onclick={() => { moreOpen = false; signatureOpen = true; }} data-testid="pdf-more-sign">Add your signature</button>
+            <button type="button" class="gk-menu-item sm:hidden" onclick={() => { moreOpen = false; openSave(); }} data-testid="pdf-more-save">Save a copy</button>
+            <button type="button" class="gk-menu-item sm:hidden" onclick={() => { moreOpen = false; printOptionsOpen = true; }} data-testid="pdf-more-print">Print</button>
+            <button type="button" class="gk-menu-item" onclick={toggleFavourite} data-testid="pdf-favourite">{favourite ? "Remove from favourites" : "Add to favourites"}</button>
+            <button type="button" class="gk-menu-item" onclick={downloadOriginal} data-testid="pdf-download">Download the original</button>
             {#if service}
-                <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={openRename} data-testid="pdf-rename">Rename…</button>
-                <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={openDelete} data-testid="pdf-delete">Delete…</button>
+                <button type="button" class="gk-menu-item" onclick={openRename} data-testid="pdf-rename">Rename…</button>
+                <button type="button" class="gk-menu-item" onclick={openDelete} data-testid="pdf-delete">Delete…</button>
             {/if}
         </div>
         </div>
@@ -809,19 +809,19 @@
     {:else}
         {#if !inBar}
             <div class="etherpk-pdf-toolbar flex shrink-0 flex-wrap items-center gap-0.5 border-b border-(--gk-surface-2) bg-(--gk-surface-1) px-1 py-1" role="toolbar" aria-label="PDF tools" data-testid="pdf-toolbar">
-                {@render tools("pdf-tool")}
-                <div class="relative shrink-0">{@render moreToggle("pdf-tool")}</div>
+                {@render tools("gk-icon-button")}
+                <div class="relative shrink-0">{@render moreToggle("gk-icon-button")}</div>
             </div>
         {/if}
         {#if !inBar}{@render moreMenuBlock()}{/if}
         {#if clearsTopBar}<div class="etherpk-pdf-top-bar-room" aria-hidden="true"></div>{/if}
         {#if renameOpen}
             <form class="flex flex-wrap items-center gap-2 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2" onsubmit={submitRename} data-testid="pdf-rename-form">
-                <label class="text-sm font-medium text-(--gk-text-default)" for="pdf-rename-input">Name</label>
+                <label class="gk-label" for="pdf-rename-input">Name</label>
                 <!-- svelte-ignore a11y_autofocus -->
-                <input id="pdf-rename-input" autofocus class="min-w-40 flex-1 rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-2 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" bind:value={renameValue} aria-invalid={renameError !== ""} onkeydown={(event) => event.key === "Escape" && (renameOpen = false)} data-testid="pdf-rename-input" />
-                <button type="submit" class="rounded-lg bg-(--gk-accent) px-3 py-1 text-sm font-medium text-(--gk-surface-0)" data-testid="pdf-rename-submit">Rename</button>
-                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => (renameOpen = false)}>Cancel</button>
+                <input id="pdf-rename-input" autofocus class="gk-input gk-input--small min-w-40 flex-1" bind:value={renameValue} aria-invalid={renameError !== ""} onkeydown={(event) => event.key === "Escape" && (renameOpen = false)} data-testid="pdf-rename-input" />
+                <button type="submit" class="gk-button gk-button--primary gk-button--small" data-testid="pdf-rename-submit">Rename</button>
+                <button type="button" class="gk-button gk-button--small" onclick={() => (renameOpen = false)}>Cancel</button>
                 {#if renameError}<p class="w-full text-sm text-red-700 dark:text-red-400" role="alert" data-testid="pdf-rename-error">{renameError}</p>{/if}
             </form>
         {/if}
@@ -830,19 +830,19 @@
                 <p class="min-w-40 flex-1 text-sm text-(--gk-text-default)">
                     {deleteFileQuestion(displayName, reader.annotations.length > 0 ? `${reader.annotations.length} annotation${reader.annotations.length === 1 ? "" : "s"}` : null, deleteKeptDays)}
                 </p>
-                <button type="button" class="rounded-lg bg-red-700 px-3 py-1 text-sm font-medium text-white disabled:opacity-60" disabled={deleteBusy} onclick={confirmDelete} data-testid="pdf-delete-submit">Delete</button>
-                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => (deleteOpen = false)}>Cancel</button>
+                <button type="button" class="gk-button gk-button--danger gk-button--small" disabled={deleteBusy} onclick={confirmDelete} data-testid="pdf-delete-submit">Delete</button>
+                <button type="button" class="gk-button gk-button--small" onclick={() => (deleteOpen = false)}>Cancel</button>
                 {#if deleteMessage}<p class="w-full text-sm text-red-700 dark:text-red-400" data-testid="pdf-delete-message">{deleteMessage}</p>{/if}
             </div>
         {/if}
         {#if printOptionsOpen}
             <div class="flex flex-wrap items-center gap-3 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2" data-testid="pdf-print-options">
                 <label class="flex items-center gap-2 text-sm text-(--gk-text-default)">
-                    <input type="checkbox" bind:checked={includeAnnotations} data-testid="pdf-print-annotations" />
+                    <input class="gk-checkbox" type="checkbox" bind:checked={includeAnnotations} data-testid="pdf-print-annotations" />
                     Include annotations
                 </label>
-                <button type="button" class="rounded-lg bg-(--gk-accent) px-3 py-1 text-sm font-medium text-(--gk-surface-0)" onclick={print} data-testid="pdf-print-submit">Print</button>
-                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => (printOptionsOpen = false)}>Cancel</button>
+                <button type="button" class="gk-button gk-button--primary gk-button--small" onclick={print} data-testid="pdf-print-submit">Print</button>
+                <button type="button" class="gk-button gk-button--small" onclick={() => (printOptionsOpen = false)}>Cancel</button>
             </div>
         {/if}
         {#if reader.printing}
@@ -862,8 +862,8 @@
         {#if closeGuardOpen}
             <div class="flex flex-wrap items-center gap-2 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2" role="alert" data-testid="pdf-close-guard">
                 <p class="min-w-40 flex-1 text-sm text-(--gk-text-default)">Your signature is not saved anywhere. Save a copy, or discard it.</p>
-                <button type="button" class="rounded-lg bg-(--gk-accent) px-3 py-1 text-sm font-medium text-(--gk-surface-0)" onclick={() => { closeGuardOpen = false; openSave(); }}>Save a copy</button>
-                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => { closeGuardOpen = false; reader.discardSignatures(); }} data-testid="pdf-close-guard-discard">Discard</button>
+                <button type="button" class="gk-button gk-button--primary gk-button--small" onclick={() => { closeGuardOpen = false; openSave(); }}>Save a copy</button>
+                <button type="button" class="gk-button gk-button--small" onclick={() => { closeGuardOpen = false; reader.discardSignatures(); }} data-testid="pdf-close-guard-discard">Discard</button>
             </div>
         {/if}
         {#if reader.findOpen}
@@ -884,6 +884,7 @@
                         <textarea
                             {@attach focusNote}
                             class="etherpk-pdf-note-editor"
+                            data-own-field-style="a note drawn on the page, in the accent"
                             style={noteStyle(noteAt)}
                             aria-label="Note"
                             placeholder="Type a note"
@@ -914,13 +915,13 @@
                          Where the toolbar is on the Command Bar the count is the only sign of the page in
                          view, in either mode. It shows when the page changes, and takes no touches. -->
                     <div class="etherpk-pdf-page-nav" data-in-bar={inBar || undefined} data-buttons-gone={reader.controlsHidden || undefined} role="group" aria-label="Turn the page" data-testid="pdf-page-nav">
-                        {#if turningPages}{@render turnPage("previous", "pdf-tool etherpk-pdf-page-edge")}{/if}
+                        {#if turningPages}{@render turnPage("previous", "gk-icon-button gk-button--raised etherpk-pdf-page-edge")}{/if}
                         <div class="etherpk-pdf-page-progress" data-gone={(inBar && (!reader.pageCountShowing || reader.hasSelection)) || undefined} data-testid="pdf-page-progress">
-                            {#if !inBar}{@render turnPage("previous", "pdf-tool etherpk-pdf-page-inner")}{/if}
+                            {#if !inBar}{@render turnPage("previous", "gk-icon-button etherpk-pdf-page-inner")}{/if}
                             <span class="px-1 text-sm whitespace-nowrap text-(--gk-text-default)">{reader.page} of {reader.pageCount}</span>
-                            {#if !inBar}{@render turnPage("next", "pdf-tool etherpk-pdf-page-inner")}{/if}
+                            {#if !inBar}{@render turnPage("next", "gk-icon-button etherpk-pdf-page-inner")}{/if}
                         </div>
-                        {#if turningPages}{@render turnPage("next", "pdf-tool etherpk-pdf-page-edge")}{/if}
+                        {#if turningPages}{@render turnPage("next", "gk-icon-button gk-button--raised etherpk-pdf-page-edge")}{/if}
                     </div>
                 {/if}
                 {#if fileActions.length > 0}
@@ -929,7 +930,7 @@
                         {#each fileActions as action (action.id)}
                             <button
                                 type="button"
-                                class="etherpk-pdf-file-action"
+                                class="gk-icon-button gk-button--raised size-10 pointer-coarse:size-11"
                                 aria-label={action.label}
                                 title={action.label}
                                 onpointerdown={(event) => event.preventDefault()}
@@ -972,8 +973,8 @@
                 {#if reader.hasSelection && reader.tool !== "highlight"}
                     <div class={["etherpk-pdf-selection-actions", turningPages && "etherpk-pdf-selection-actions--raised"]} role="group" aria-label="Selected text" data-testid="pdf-selection-actions">
                         <!-- A press here leaves the selection and the focus where they are, as the file actions' does. -->
-                        <button type="button" class="etherpk-pdf-selection-action" onpointerdown={(event) => event.preventDefault()} onmousedown={(event) => event.preventDefault()} onclick={() => reader.highlightSelection()} data-testid="pdf-highlight-selection">{@render icon("highlight")}Highlight</button>
-                        <button type="button" class="etherpk-pdf-selection-action" onpointerdown={(event) => event.preventDefault()} onmousedown={(event) => event.preventDefault()} onclick={copySelection} data-testid="pdf-copy-selection">{@render icon(selectionCopied ? "check" : "copy")}{selectionCopied ? "Copied" : "Copy"}</button>
+                        <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onpointerdown={(event) => event.preventDefault()} onmousedown={(event) => event.preventDefault()} onclick={() => reader.highlightSelection()} data-testid="pdf-highlight-selection">{@render icon("highlight")}Highlight</button>
+                        <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onpointerdown={(event) => event.preventDefault()} onmousedown={(event) => event.preventDefault()} onclick={copySelection} data-testid="pdf-copy-selection">{@render icon(selectionCopied ? "check" : "copy")}{selectionCopied ? "Copied" : "Copy"}</button>
                     </div>
                 {/if}
             </div>
@@ -984,10 +985,10 @@
         {#if inBar}{@render moreMenuBlock()}{/if}
     {/if}
     {#if toast}
-        <div class="etherpk-pdf-toast flex items-center gap-3 rounded-lg bg-neutral-900 px-3 py-2 text-sm text-white shadow-lg" role="status" data-testid="pdf-toast">
+        <div class="etherpk-pdf-toast flex items-center gap-3 rounded-lg border border-(--gk-menu-border) bg-(--gk-menu-bg) px-3 py-2 text-sm text-(--gk-control-text) shadow-lg" role="status" data-testid="pdf-toast">
             <span>{toast}</span>
             {#if toastAction}
-                <button type="button" class="font-medium underline" onclick={toastAction.run} data-testid="pdf-toast-action">{toastAction.label}</button>
+                <button type="button" class="gk-link" onclick={toastAction.run} data-testid="pdf-toast-action">{toastAction.label}</button>
             {/if}
         </div>
     {/if}
@@ -1017,41 +1018,9 @@
 </div>
 
 <style>
-    .etherpk-pdf-reader :global(.pdf-tool) {
-        display: inline-flex;
-        flex-shrink: 0;
-        align-items: center;
-        justify-content: center;
-        border-radius: 0.5rem;
-        padding: 0.375rem;
-        color: var(--gk-text-default);
-    }
-    @media (pointer: coarse) {
-        .etherpk-pdf-reader :global(.pdf-tool) {
-            padding: 0.625rem;
-        }
-    }
-    /* The display above would beat Tailwind's utility, which sits in a lower layer. */
-    @media (width < 40rem) {
-        .etherpk-pdf-reader :global(.pdf-tool.max-sm\:hidden) {
-            display: none;
-        }
-    }
-    .etherpk-pdf-reader :global(.pdf-tool:hover:not(:disabled)) {
-        background: var(--gk-surface-2);
-    }
-    .etherpk-pdf-reader :global(.pdf-tool[aria-pressed="true"]) {
-        background: var(--gk-surface-2);
-        color: var(--gk-accent);
-        box-shadow: inset 0 0 0 1px var(--gk-accent);
-    }
     /* A page with a PDF Bookmark: the icon filled in, as the ribbon on the page is. On the Command Bar too. */
     :global(.etherpk-pdf-bookmarked svg) {
         fill: currentColor;
-    }
-    .etherpk-pdf-reader :global(.pdf-tool:disabled) {
-        color: var(--gk-text-subtle);
-        cursor: default;
     }
     .etherpk-pdf-divider {
         margin-inline: 0.25rem;
@@ -1104,39 +1073,14 @@
         grid-auto-flow: column;
         gap: 0.125rem;
         padding: 0.25rem;
-        border: 1px solid var(--gk-border-strong, var(--gk-surface-2));
+        border: 1px solid var(--gk-control-border);
         border-radius: 0.75rem;
-        background: var(--gk-surface-1);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+        background: var(--gk-surface-0);
+        box-shadow: var(--gk-control-shadow);
     }
     /* Above the buttons that turn the page, which have this part of the view. */
     .etherpk-pdf-selection-actions--raised {
         bottom: calc(env(safe-area-inset-bottom) + 5.25rem);
-    }
-    .etherpk-pdf-selection-action {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.375rem;
-        min-height: 2.25rem;
-        padding: 0 0.625rem;
-        border-radius: 0.5rem;
-        color: var(--gk-text-default);
-        font-size: 0.875rem;
-        font-weight: 500;
-        white-space: nowrap;
-    }
-    .etherpk-pdf-selection-action:hover {
-        background: var(--gk-surface-2);
-    }
-    .etherpk-pdf-selection-action:focus-visible {
-        outline: 2px solid var(--gk-accent);
-        outline-offset: -2px;
-    }
-    @media (pointer: coarse) {
-        .etherpk-pdf-selection-action {
-            min-height: 2.75rem;
-        }
     }
     .etherpk-pdf-file-actions {
         position: absolute;
@@ -1145,21 +1089,6 @@
         z-index: 10;
         display: flex;
         gap: 0.25rem;
-    }
-    .etherpk-pdf-file-action {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 2.5rem;
-        height: 2.5rem;
-        border: 1px solid var(--gk-border-strong, var(--gk-surface-2));
-        border-radius: 0.75rem;
-        background: var(--gk-surface-1);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-        color: var(--gk-text-default);
-    }
-    .etherpk-pdf-file-action:hover {
-        background: var(--gk-surface-2);
     }
     /* Across the view, with the count in its middle whether or not the edge buttons show. Lifted
        clear of a horizontal scrollbar. Only the buttons take the pointer: the gaps are the page's. */
@@ -1174,15 +1103,12 @@
         align-items: center;
         pointer-events: none;
     }
-    /* A floating control's border, surface and lift, as the Lock button over a document has (DocumentView.svelte). */
-    .etherpk-pdf-page-progress,
-    .etherpk-pdf-reader :global(.pdf-tool.etherpk-pdf-page-edge) {
-        pointer-events: auto;
-        border: 1px solid var(--gk-border-strong, var(--gk-surface-2));
-        background: var(--gk-surface-1);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-    }
+    /* A floating control's border, surface and lift, as a `gk-button--raised` has: the edge buttons beside it carry that class. */
     .etherpk-pdf-page-progress {
+        pointer-events: auto;
+        border: 1px solid var(--gk-control-border);
+        background: var(--gk-surface-0);
+        box-shadow: var(--gk-control-shadow);
         grid-column: 2;
         display: flex;
         align-items: center;
@@ -1191,30 +1117,27 @@
         padding: 0 0.25rem;
         border-radius: 0.75rem;
     }
-    .etherpk-pdf-reader :global(.pdf-tool.etherpk-pdf-page-edge) {
+    /* The page buttons at the edges of the view: raised icon buttons, a thumb's width whatever the pointer. */
+    .etherpk-pdf-reader :global(.etherpk-pdf-page-edge) {
         display: none;
         width: 2.75rem;
         height: 2.75rem;
-        border-radius: 0.75rem;
+        pointer-events: auto;
     }
-    .etherpk-pdf-reader :global(.pdf-tool.etherpk-pdf-page-edge:last-child) {
+    .etherpk-pdf-reader :global(.etherpk-pdf-page-edge:last-child) {
         grid-column: 3;
         justify-self: end;
     }
     @media (pointer: coarse), (width < 40rem) {
-        .etherpk-pdf-reader :global(.pdf-tool.etherpk-pdf-page-edge) {
+        .etherpk-pdf-reader :global(.etherpk-pdf-page-edge) {
             display: inline-flex;
         }
-        .etherpk-pdf-reader :global(.pdf-tool.etherpk-pdf-page-inner) {
+        .etherpk-pdf-reader :global(.etherpk-pdf-page-inner) {
             display: none;
         }
         .etherpk-pdf-page-progress {
             min-height: 2.75rem;
             padding: 0 0.5rem;
-        }
-        .etherpk-pdf-file-action {
-            width: 2.75rem;
-            height: 2.75rem;
         }
         /* The next page button has this corner here, so these sit just left of it. */
         .etherpk-pdf-file-actions[data-beside-next] {
@@ -1223,7 +1146,7 @@
     }
     /* Where the toolbar is on the Command Bar: the buttons at the edges with a mouse too, because the
        count goes away, and the count passes a touch through to the page under it. */
-    .etherpk-pdf-page-nav[data-in-bar] :global(.pdf-tool.etherpk-pdf-page-edge) {
+    .etherpk-pdf-page-nav[data-in-bar] :global(.etherpk-pdf-page-edge) {
         display: inline-flex;
     }
     .etherpk-pdf-page-nav[data-in-bar] .etherpk-pdf-page-progress {
@@ -1239,18 +1162,18 @@
         visibility: hidden;
     }
     /* Gone with the phone's top bar. A tap where one was lands on the side of the view, which turns the page too. */
-    .etherpk-pdf-page-nav[data-in-bar] :global(.pdf-tool.etherpk-pdf-page-edge) {
+    .etherpk-pdf-page-nav[data-in-bar] :global(.etherpk-pdf-page-edge) {
         transition:
             opacity 150ms ease-out,
             visibility 150ms;
     }
-    .etherpk-pdf-page-nav[data-buttons-gone] :global(.pdf-tool.etherpk-pdf-page-edge) {
+    .etherpk-pdf-page-nav[data-buttons-gone] :global(.etherpk-pdf-page-edge) {
         opacity: 0;
         visibility: hidden;
     }
     @media (prefers-reduced-motion: reduce) {
         .etherpk-pdf-page-nav[data-in-bar] .etherpk-pdf-page-progress,
-        .etherpk-pdf-page-nav[data-in-bar] :global(.pdf-tool.etherpk-pdf-page-edge) {
+        .etherpk-pdf-page-nav[data-in-bar] :global(.etherpk-pdf-page-edge) {
             transition: none;
         }
     }

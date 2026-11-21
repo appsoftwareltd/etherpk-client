@@ -123,7 +123,7 @@
 {#snippet shareStranded()}
     {#if shareWaiting}
         <p data-testid="share-waiting" class="notice__share">
-            What you shared is still waiting. <a href="/share" data-testid="share-choose-another">Choose another graph</a>
+            What you shared is still waiting. <a class="gk-link" href="/share" data-testid="share-choose-another">Choose another graph</a>
         </p>
     {/if}
 {/snippet}
@@ -171,10 +171,10 @@
                 <p role="alert" class="notice__error">{setupError}</p>
             {/if}
             <div class="notice__actions">
-                <button data-testid="graph-setup-here" onclick={onsetup} disabled={settingUp}>
+                <button class="gk-button gk-button--primary" data-testid="graph-setup-here" onclick={onsetup} disabled={settingUp}>
                     {settingUp ? 'Setting up…' : 'Set it up here'}
                 </button>
-                <button onclick={onback}>Back to graphs</button>
+                <button class="gk-button" onclick={onback}>Back to graphs</button>
             </div>
         {:else if missing?.kind === 'signed-out'}
             <h2>Sign in to open this graph</h2>
@@ -184,10 +184,10 @@
             </p>
             <div class="notice__actions">
                 <!-- A full load: /auth/login is a server route that hands over to the account site. -->
-                <a class="notice__primary" data-testid="graph-missing-sign-in" href={managedSignInHref(returnPath)} data-sveltekit-reload>
+                <a class="gk-button gk-button--primary" data-testid="graph-missing-sign-in" href={managedSignInHref(returnPath)} data-sveltekit-reload>
                     Sign in
                 </a>
-                <button onclick={onback}>Back to graphs</button>
+                <button class="gk-button" onclick={onback}>Back to graphs</button>
             </div>
         {:else if missing?.kind === 'token-rejected'}
             <h2>{hostOf(missing.serverOrigin)} did not accept this device's access token</h2>
@@ -196,11 +196,11 @@
                 the server, then add it in Sync settings, and this graph opens again.
             </p>
             <div class="notice__actions">
-                <a class="notice__primary" data-testid="graph-missing-connect" href={syncConnectHref(returnPath)} data-sveltekit-reload>
+                <a class="gk-button gk-button--primary" data-testid="graph-missing-connect" href={syncConnectHref(returnPath)} data-sveltekit-reload>
                     Sync settings
                 </a>
-                <a class="notice__link" href={`${missing.serverOrigin}/account/tokens`} rel="noopener">Access tokens</a>
-                <button onclick={onback}>Back to graphs</button>
+                <a class="gk-link self-center" href={`${missing.serverOrigin}/account/tokens`} rel="noopener">Access tokens</a>
+                <button class="gk-button" onclick={onback}>Back to graphs</button>
             </div>
         {:else if missing?.kind === 'not-connected'}
             <h2>This device is not connected to {hostOf(missing.serverOrigin)}</h2>
@@ -209,10 +209,10 @@
                 Sync settings, and the graph opens again with everything this browser holds.
             </p>
             <div class="notice__actions">
-                <a class="notice__primary" data-testid="graph-missing-connect" href={syncConnectHref(returnPath)} data-sveltekit-reload>
+                <a class="gk-button gk-button--primary" data-testid="graph-missing-connect" href={syncConnectHref(returnPath)} data-sveltekit-reload>
                     Connect
                 </a>
-                <button onclick={onback}>Back to graphs</button>
+                <button class="gk-button" onclick={onback}>Back to graphs</button>
             </div>
         {:else if missing?.kind === 'no-longer-member'}
             <h2>You no longer have access to this graph</h2>
@@ -233,16 +233,16 @@
             {/if}
             <div class="notice__actions">
                 {#if heldCopyUnsent}
-                    <button data-testid="graph-missing-download" onclick={ondownloadheldcopy}>Download unsent changes</button>
-                    <button data-testid="graph-missing-remove" onclick={onremoveheldcopy} disabled={removingHeldCopy} aria-busy={removingHeldCopy}>
+                    <button class="gk-button" data-testid="graph-missing-download" onclick={ondownloadheldcopy}>Download unsent changes</button>
+                    <button class="gk-button" data-testid="graph-missing-remove" onclick={onremoveheldcopy} disabled={removingHeldCopy} aria-busy={removingHeldCopy}>
                         {removingHeldCopy ? 'Removing…' : 'Remove anyway'}
                     </button>
-                    <button onclick={onkeepheldcopy}>Keep it</button>
+                    <button class="gk-button" onclick={onkeepheldcopy}>Keep it</button>
                 {:else}
-                    <button data-testid="graph-missing-remove" onclick={onremoveheldcopy} disabled={removingHeldCopy} aria-busy={removingHeldCopy}>
+                    <button class="gk-button" data-testid="graph-missing-remove" onclick={onremoveheldcopy} disabled={removingHeldCopy} aria-busy={removingHeldCopy}>
                         {removingHeldCopy ? 'Removing…' : 'Remove from this device'}
                     </button>
-                    <button onclick={onback}>Back to graphs</button>
+                    <button class="gk-button" onclick={onback}>Back to graphs</button>
                 {/if}
             </div>
         {:else if missing?.kind === 'other-account'}
@@ -251,14 +251,14 @@
                 The account signed in now is not a member of it. Sign in as the account that set
                 it up, or ask the graph's owner to invite this one.
             </p>
-            <button onclick={onback}>Back to graphs</button>
+            <button class="gk-button justify-self-center" onclick={onback}>Back to graphs</button>
         {:else if missing?.kind === 'not-a-member'}
             <h2>That graph is not in this browser.</h2>
             <p>
                 Your sync account is not a member of it either. If someone shared it with you,
                 accept their invite on the Graphs page.
             </p>
-            <button onclick={onback}>Back to graphs</button>
+            <button class="gk-button justify-self-center" onclick={onback}>Back to graphs</button>
         {:else if missing?.kind === 'unknown' && missing.reason === 'server-unreachable'}
             <h2>That graph is not in this browser.</h2>
             <p>
@@ -267,9 +267,9 @@
             </p>
             <div class="notice__actions">
                 {#if onretry}
-                    <button data-testid="graph-missing-retry" onclick={onretry}>Try again</button>
+                    <button class="gk-button" data-testid="graph-missing-retry" onclick={onretry}>Try again</button>
                 {/if}
-                <button onclick={onback}>Back to graphs</button>
+                <button class="gk-button" onclick={onback}>Back to graphs</button>
             </div>
         {:else if missing?.kind === 'ready'}
             <!-- The open makes a ready record visible and carries on, so this shows only if the
@@ -277,9 +277,9 @@
             <h2>This graph is ready to open.</h2>
             <div class="notice__actions">
                 {#if onretry}
-                    <button data-testid="graph-missing-retry" onclick={onretry}>Open it</button>
+                    <button class="gk-button" data-testid="graph-missing-retry" onclick={onretry}>Open it</button>
                 {/if}
-                <button onclick={onback}>Back to graphs</button>
+                <button class="gk-button" onclick={onback}>Back to graphs</button>
             </div>
         {:else}
             <h2>That graph is not in this browser.</h2>
@@ -288,8 +288,8 @@
                 page and add it to this device from there.
             </p>
             <div class="notice__actions">
-                <a class="notice__primary" href={syncConnectHref(returnPath)} data-sveltekit-reload>Sync settings</a>
-                <button onclick={onback}>Back to graphs</button>
+                <a class="gk-button gk-button--primary" href={syncConnectHref(returnPath)} data-sveltekit-reload>Sync settings</a>
+                <button class="gk-button" onclick={onback}>Back to graphs</button>
             </div>
         {/if}
         {@render shareStranded()}
@@ -303,11 +303,11 @@
         <div class="notice__actions">
             <!-- aria-disabled, not disabled: a disabled button loses focus, which would leave a
                  keyboard user on nothing when the refusal comes back. The handler ignores a second press. -->
-            <button data-testid="graph-grant" onclick={ongrant} aria-disabled={granting} aria-busy={granting}>
+            <button class="gk-button gk-button--primary" data-testid="graph-grant" onclick={ongrant} aria-disabled={granting} aria-busy={granting}>
                 {granting ? 'Waiting for the browser…' : 'Grant access'}
             </button>
             <!-- The notice covers the whole workspace, and a person who refused needs a way out. -->
-            <button data-testid="graph-grant-back" onclick={onback}>Back to graphs</button>
+            <button class="gk-button" data-testid="graph-grant-back" onclick={onback}>Back to graphs</button>
         </div>
         <!-- Chrome and Edge on a computer keep an installed app's folder access between visits,
              so this question stops coming back; the offer shows only there. -->
@@ -332,16 +332,16 @@
         <div class="notice__actions">
             {#if accessLost.primary}
                 <!-- A full load: /auth/login is a server route, and the connect form reads the URL on load. -->
-                <a class="notice__primary" data-testid="graph-access-lost-primary" href={accessLost.primary.href} data-sveltekit-reload>
+                <a class="gk-button gk-button--primary" data-testid="graph-access-lost-primary" href={accessLost.primary.href} data-sveltekit-reload>
                     {accessLost.primary.label}
                 </a>
             {/if}
             {#if accessLost.canDownload && ondownload}
-                <button data-testid="graph-access-lost-download" onclick={ondownload} disabled={downloading} aria-busy={downloading}>
+                <button class="gk-button" data-testid="graph-access-lost-download" onclick={ondownload} disabled={downloading} aria-busy={downloading}>
                     {downloading ? 'Preparing the download…' : 'Download unsent changes'}
                 </button>
             {/if}
-            <button data-testid="graph-access-lost-back" onclick={onback}>Back to graphs</button>
+            <button class="gk-button" data-testid="graph-access-lost-back" onclick={onback}>Back to graphs</button>
         </div>
     </div>
 {:else if phase === 'error'}
@@ -355,9 +355,9 @@
              the browser's back button. -->
         <div class="notice__actions">
             {#if onretry}
-                <button data-testid="graph-error-retry" onclick={onretry}>Try again</button>
+                <button class="gk-button" data-testid="graph-error-retry" onclick={onretry}>Try again</button>
             {/if}
-            <button data-testid="graph-error-back" onclick={onback}>Back to graphs</button>
+            <button class="gk-button" data-testid="graph-error-back" onclick={onback}>Back to graphs</button>
         </div>
         {@render shareStranded()}
     </div>
@@ -396,10 +396,6 @@
     }
     .notice__share {
         color: var(--gk-text-subtle, #737373);
-    }
-    .notice__share a {
-        color: inherit;
-        text-decoration: underline;
     }
     .notice :global(.loading-sweep) {
         margin: 0 auto;
@@ -442,49 +438,15 @@
         border-radius: 999px;
         background: var(--gk-text-default);
     }
+    /* The buttons are `gk-button`, and the way back in is the primary one. They do not wrap their
+       labels, so the row wraps on a narrow screen. */
     .notice__actions {
         display: flex;
+        flex-wrap: wrap;
         gap: 0.5rem;
         justify-content: center;
     }
-    .notice button {
-        border: 1px solid var(--gk-border-soft);
-        border-radius: 6px;
-        padding: 0.35rem 0.75rem;
-        background: var(--gk-surface-1);
-        color: inherit;
-        cursor: pointer;
-    }
     .notice h2:focus {
         outline: none;
-    }
-    /* The way back in: the same shape as the buttons, marked out by weight and an accent edge
-       rather than a filled background, which would not hold contrast on the accent blue. */
-    .notice__primary {
-        border: 1px solid var(--gk-accent);
-        border-radius: 6px;
-        padding: 0.35rem 0.75rem;
-        background: var(--gk-surface-1);
-        color: inherit;
-        font-weight: 600;
-        text-decoration: none;
-    }
-    .notice__link {
-        align-self: center;
-        color: inherit;
-        text-decoration: underline;
-    }
-    .notice__primary:focus-visible,
-    .notice__link:focus-visible,
-    .notice button:focus-visible {
-        outline: 2px solid var(--gk-accent);
-        outline-offset: 2px;
-    }
-    .notice button:disabled {
-        opacity: 0.6;
-        cursor: default;
-    }
-    .notice button[aria-disabled='true'] {
-        cursor: default;
     }
 </style>

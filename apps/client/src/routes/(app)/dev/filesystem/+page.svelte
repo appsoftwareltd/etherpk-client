@@ -210,7 +210,7 @@
                 system, no picker). Proves the adapter matches its in-memory contract.
             </p>
             <div class="row">
-                <button class="btn btn--primary" data-testid="opfs-run" onclick={runOpfsSelfTest}>
+                <button class="gk-button gk-button--primary" data-testid="opfs-run" onclick={runOpfsSelfTest}>
                     {@render playIcon()} Run self-test
                 </button>
                 <span class="badge badge--{opfsBadge}" data-testid="opfs-result">{opfsResult}</span>
@@ -232,11 +232,11 @@
                     the permission is re-confirmed (one click), never the folder.
                 </p>
                 <div class="row">
-                    <button class="btn btn--primary" data-testid="fs-pick" onclick={pickFolder}>
+                    <button class="gk-button gk-button--primary" data-testid="fs-pick" onclick={pickFolder}>
                         {@render folderIcon()} Choose folder…
                     </button>
                     {#if rememberedName}
-                        <button class="btn" data-testid="fs-reconnect" onclick={reconnect}>
+                        <button class="gk-button" data-testid="fs-reconnect" onclick={reconnect}>
                             {@render plugIcon()} Reconnect “{rememberedName}”
                         </button>
                     {/if}
@@ -256,7 +256,7 @@
                             onkeydown={(e) => e.key === 'Enter' && createPage()}
                         />
                         <button
-                            class="btn btn--icon btn--primary"
+                            class="gk-button gk-button--primary"
                             title="Create page"
                             data-testid="fs-create-page"
                             onclick={createPage}
@@ -265,7 +265,7 @@
                             {@render plusIcon()}
                         </button>
                     </div>
-                    <button class="btn" data-testid="fs-reconcile" onclick={reconcileNow}>
+                    <button class="gk-button" data-testid="fs-reconcile" onclick={reconcileNow}>
                         {@render refreshIcon()} Reconcile
                     </button>
                 </div>
@@ -302,10 +302,10 @@
             <span>while you have unsaved edits. Keep yours, or take the disk version?</span>
         </div>
         <div class="conflict__actions">
-            <button class="btn" data-testid="fs-keep-mine" onclick={() => resolve('keep-mine')}>
+            <button class="gk-button" data-testid="fs-keep-mine" onclick={() => resolve('keep-mine')}>
                 Keep mine
             </button>
-            <button class="btn btn--primary" data-testid="fs-take-disk" onclick={() => resolve('take-disk')}>
+            <button class="gk-button gk-button--primary" data-testid="fs-take-disk" onclick={() => resolve('take-disk')}>
                 Take disk
             </button>
         </div>
@@ -398,45 +398,7 @@
     }
 
     /* Button system */
-    .btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        padding: 0.42rem 0.7rem;
-        border: 1px solid var(--gk-border-soft);
-        border-radius: 7px;
-        background: var(--gk-surface-1);
-        color: inherit;
-        font: inherit;
-        font-weight: 500;
-        cursor: pointer;
-        transition:
-            background 0.12s ease,
-            border-color 0.12s ease,
-            transform 0.04s ease;
-    }
-    .btn:hover:not(:disabled) {
-        background: var(--gk-surface-2, rgba(127, 127, 127, 0.12));
-    }
-    .btn:active:not(:disabled) {
-        transform: translateY(1px);
-    }
-    .btn:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-    }
-    .btn--primary {
-        border-color: transparent;
-        background: var(--gk-accent, #4f46e5);
-        color: #fff;
-    }
-    .btn--primary:hover:not(:disabled) {
-        background: var(--gk-accent-strong, #4338ca);
-    }
-    .btn--icon {
-        padding: 0.42rem;
-    }
-    .btn :global(svg),
+
     h2 :global(svg) {
         width: 1rem;
         height: 1rem;

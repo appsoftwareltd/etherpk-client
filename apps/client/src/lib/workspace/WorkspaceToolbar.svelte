@@ -6,20 +6,16 @@
      * Rendered by the desktop presenter only. The mobile presenter carries its own chrome, and
      * the Sidebar offers Settings from the drawer there (`graph.settings.open`).
      *
-     * The [[Local Mirror]]'s button used to live here and moved to the Settings modal's Mirror
-     * tab, which can say where the copy is going. What comes back here is smaller and different:
-     * a state dot, not a control. A mirror writes to a folder nothing on screen shows, and after
-     * a browser restart it usually needs its permission back - so with the tab as the only place
-     * that says anything, a stopped backup looked exactly like a working one. The dot answers
-     * "is my copy current?" without opening anything, and opens the tab when there is something
-     * to do about it.
+     * The status dot is a synced graph's one answer to "is my work safe?": sync and the
+     * [[Local Mirror]] together (graph-status.ts). It is green only when every part that applies
+     * is working, and opens a dialog with a section for each. A mirror writes to a folder nothing
+     * on screen shows, and after a browser restart it usually needs its permission back, so a
+     * stopped one must show here. When sync stops in a way the person should hear about, a notice
+     * hangs under the dot until they close it. A folder graph has no dot.
      *
      * Reset workspace has no button here: an icon alone does not say what it does, and a circle
      * of arrows reads as "reload". It is a named row at the foot of the Graph Sidebar, beside
      * Settings, and a Command.
-     *
-     * A synced graph's sync status is not here: it is the last row of the Graph Sidebar, which
-     * has the room for its words on a phone as well as a desktop.
      *
      * The indexing icon is a status light too, and not a control: it shows while the search index
      * takes in a change a person may be waiting on, such as a rename, so that a link or Quick
@@ -29,7 +25,8 @@
 
     import SidebarToggleIcon from '#lib/layout/renderers/SidebarToggleIcon.svelte'
 
-    import type { MirrorIndicator } from './mirror-indicator'
+    import type { GraphStatus, StatusCallout as Callout } from './graph-status'
+    import StatusCallout from './StatusCallout.svelte'
 
     let {
         ontoggleleft,
@@ -37,7 +34,10 @@
         onshortcuts,
         onsettings,
         ontasks,
-        mirror = { state: 'hidden' },
+        status = { shown: false },
+        callout = null,
+        onstatus,
+        ondismisscallout,
         indexing = false,
     }: {
         ontoggleleft: () => void
@@ -45,7 +45,13 @@
         onshortcuts: () => void
         onsettings: () => void
         ontasks: () => void
-        mirror?: MirrorIndicator
+        /** Sync and the Local Mirror together; not shown on a graph that has neither. */
+        status?: GraphStatus
+        /** The notice under the dot, already less whatever the person closed. */
+        callout?: Callout | null
+        /** Open the status dialog. */
+        onstatus?: () => void
+        ondismisscallout?: () => void
         /** The search index is busy with work worth showing (workspace/indexing-indicator.ts). */
         indexing?: boolean
     } = $props()
@@ -53,7 +59,8 @@
 
 <div class="toolbar" data-testid="ws-toolbar">
     <button
-        class="toggle"
+        type="button"
+        class="gk-icon-button gk-button--raised"
         title="Toggle document tree"
         data-testid="ws-toggle-left"
         onclick={ontoggleleft}
@@ -78,22 +85,33 @@
             </svg>
         </span>
     {/if}
-    {#if mirror.state !== 'hidden'}
-        <button
-            class="toggle mirror"
-            title={mirror.title}
-            aria-label={mirror.title}
-            data-testid="ws-mirror-state"
-            data-state={mirror.state}
-            onclick={mirror.onclick}
-        >
-            <span class="dot" class:spin={mirror.state === 'writing'}></span>
-        </button>
+    {#if status.shown}
+        <!-- The wrapper is what the notice hangs from. -->
+        <span class="status-wrap">
+            <button
+                class="gk-icon-button gk-button--raised status"
+                title={status.title}
+                aria-label={`Sync status. ${status.title}`}
+                aria-haspopup="dialog"
+                data-testid="graph-status"
+                data-state={status.tone}
+                data-sync-state={status.sync?.state ?? 'pending'}
+                data-mirror-state={status.mirror?.state ?? 'none'}
+                data-unsent={status.sync?.unsent ?? 0}
+                onclick={onstatus}
+            >
+                <span class="dot" class:spin={status.tone === 'busy'}></span>
+            </button>
+            {#if callout && ondismisscallout}
+                <StatusCallout {callout} align="end" ondismiss={ondismisscallout} />
+            {/if}
+        </span>
     {/if}
     <!-- The keyboard-shortcuts card. Beside the cog because that is where a user looks for
          "how does this thing work", but its own button: it is a reference, not a setting. -->
     <button
-        class="toggle"
+        type="button"
+        class="gk-icon-button gk-button--raised"
         title="Keyboard shortcuts"
         aria-label="Keyboard shortcuts"
         data-testid="ws-keyboard-shortcuts"
@@ -105,7 +123,8 @@
         </svg>
     </button>
     <button
-        class="toggle"
+        type="button"
+        class="gk-icon-button gk-button--raised"
         title="Graph name and settings"
         aria-label="Graph name and settings"
         data-testid="ws-graph-settings"
@@ -119,7 +138,8 @@
     <!-- heroicons/outline clipboard-document-check. Sits immediately before the Sidebar
          toggle: it opens a View INTO that Sidebar, so the two read as a pair. -->
     <button
-        class="toggle"
+        type="button"
+        class="gk-icon-button gk-button--raised"
         title="Tasks"
         aria-label="Tasks"
         data-testid="ws-tasks"
@@ -130,7 +150,8 @@
         </svg>
     </button>
     <button
-        class="toggle"
+        type="button"
+        class="gk-icon-button gk-button--raised"
         title="Toggle backlinks"
         data-testid="ws-toggle-right"
         onclick={ontoggleright}
@@ -143,7 +164,7 @@
 <style>
     /* The button is one of the toolbar's own, the same box as the four beside it. What differs
        is only what sits inside: a dot, because this one reports rather than invites. */
-    .mirror .dot {
+    .status .dot {
         width: 1.1rem;
         height: 1.1rem;
         display: block;
@@ -152,24 +173,27 @@
         /* Inset so the dot reads as a status light within the button, not as a filled button. */
         transform: scale(0.5);
     }
-    .mirror[data-state='current'] {
+    .status[data-state='ok'] {
         color: var(--gk-mirror-ok, #16a34a);
     }
-    /* Amber, not blue: writing is a transient "not settled yet", which is the same thing every
-       other warning on the Mirror tab says, and blue read as an informational badge. */
-    .mirror[data-state='writing'] {
+    /* Amber, not blue: busy is a transient "not settled yet", and blue read as an informational badge. */
+    .status[data-state='busy'] {
         color: var(--gk-mirror-busy, #d97706);
     }
-    .mirror[data-state='paused'] {
+    .status[data-state='stopped'] {
         color: var(--gk-mirror-stopped, #dc2626);
     }
-    .mirror[data-state='waiting'] {
+    .status[data-state='idle'] {
         color: var(--gk-mirror-idle, #a3a3a3);
     }
-    .mirror .dot.spin {
-        animation: mirror-pulse 1.4s ease-in-out infinite;
+    .status-wrap {
+        position: relative;
+        display: inline-flex;
     }
-    @keyframes mirror-pulse {
+    .status .dot.spin {
+        animation: status-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes status-pulse {
         0%,
         100% {
             opacity: 1;
@@ -179,7 +203,7 @@
         }
     }
     @media (prefers-reduced-motion: reduce) {
-        .mirror .dot.spin {
+        .status .dot.spin {
             animation: none;
         }
     }
@@ -192,12 +216,13 @@
         display: inline-flex;
         justify-content: center;
         align-items: center;
-        padding: calc(0.3rem + 1px);
+        /* A 20px ring in a 32px box. */
+        padding: 0.375rem;
         color: var(--gk-toolbar-ink, var(--gk-text-muted));
     }
     .indexing > svg {
-        width: 1.1rem;
-        height: 1.1rem;
+        width: 1.25rem;
+        height: 1.25rem;
         display: block;
         animation: indexing-spin 0.9s linear infinite;
     }
@@ -217,7 +242,7 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        padding: 0.3rem 0.5rem;
+        padding: 0.25rem 0.5rem;
         border-bottom: 1px solid var(--gk-border-soft);
         /* The graph's own colour when one is set (Graph Settings → Toolbar colour, ADR 0071),
            set as a custom property on the workspace root; the theme surface otherwise. The
@@ -227,24 +252,12 @@
     .spacer {
         flex: 1;
     }
-    .toggle {
-        display: inline-flex;
-        justify-content: center;
-        align-items: center;
-        padding: 0.3rem;
-        border: 1px solid var(--gk-border-soft);
-        border-radius: 6px;
-        background: var(--gk-surface-1);
-        color: inherit;
-        font: inherit;
-        cursor: pointer;
-    }
-    .toggle:hover {
-        background: var(--gk-surface-2, rgba(127, 127, 127, 0.12));
-    }
-    .toggle > svg {
-        width: 1.1rem;
-        height: 1.1rem;
+    /* The buttons are raised icon buttons ([[Style Guide]], "Icon buttons"): a border, the theme's
+       surface and a small shadow, so their icons read over a graph's toolbar colour. An icon that
+       stands away from text is 20px. */
+    .toolbar :global(.gk-icon-button > svg) {
+        width: 1.25rem;
+        height: 1.25rem;
         display: block;
     }
 </style>

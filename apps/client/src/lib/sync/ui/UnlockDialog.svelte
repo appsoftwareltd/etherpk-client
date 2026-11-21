@@ -256,7 +256,7 @@
                     type="button"
                     data-testid="unlock-use-recovery-code"
                     onclick={useRecoveryCode}
-                    class="font-medium text-neutral-950 underline underline-offset-2 hover:no-underline dark:text-neutral-100"
+                    class="gk-link"
                     >Use your Recovery Code</button
                 >
             </p>
@@ -267,7 +267,7 @@
                 open them. It never leaves your browser and the sync server never sees it.
             </p>
             <div>
-                <label for="unlock-code" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">Recovery Code</label>
+                <label for="unlock-code" class="gk-label mb-1.5 block">Recovery Code</label>
                 <input
                     id="unlock-code"
                     bind:this={codeInput}
@@ -277,9 +277,7 @@
                     aria-invalid={error ? "true" : undefined}
                     aria-describedby={error ? errorId : undefined}
                     placeholder="EPK1-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX"
-                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm font-mono text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {error
-                        ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                        : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
+                    class="gk-input font-mono"
                 />
                 <!-- At the field, not at the foot of the dialog, and announced when it appears. -->
                 {#if error}
@@ -289,7 +287,7 @@
             {#if api}
                 <p class="text-sm text-neutral-600 dark:text-neutral-400">
                     Or, if another device is already unlocked:
-                    <button type="button" data-testid="unlock-approve-mode" disabled={startingApproval} onclick={startApproval} class="font-medium text-neutral-950 dark:text-neutral-100 underline underline-offset-2 hover:no-underline disabled:opacity-50">
+                    <button type="button" data-testid="unlock-approve-mode" disabled={startingApproval} onclick={startApproval} class="gk-link">
                         {startingApproval ? "starting…" : "approve from another device"}
                     </button>
                 </p>
@@ -316,7 +314,7 @@
                         href={RECOVERING_ACCESS_URL}
                         target="_blank"
                         rel="noopener"
-                        class="inline-block font-medium text-neutral-950 underline underline-offset-2 hover:no-underline dark:text-neutral-100"
+                        class="gk-link inline-block"
                     >What to do without your code</a>
                 </div>
             </details>
@@ -325,29 +323,29 @@
 
     {#snippet footer()}
         {#if approval || startingApproval}
-            <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
+            <button type="button" onclick={close} class="gk-button">Cancel</button>
             {#if approvalCode}
                 <button
                     type="button"
                     onclick={codesDiffer}
                     data-testid="approval-mismatch"
-                    class="rounded-lg border border-red-300 dark:border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                    class="gk-button gk-button--danger"
                 >They don't match</button>
                 <button
                     type="button"
                     onclick={confirmCodesMatch}
                     disabled={codesMatch}
                     data-testid="approval-confirm"
-                    class="min-w-28 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
+                    class="gk-button gk-button--primary min-w-28"
                 >{codesMatch ? "Confirmed" : "The codes match"}</button>
             {/if}
         {:else}
-            <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
+            <button type="button" onclick={close} class="gk-button">Cancel</button>
             <button
                 type="submit"
                 disabled={busy}
                 data-testid="unlock-submit"
-                class="min-w-28 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
+                class="gk-button gk-button--primary min-w-28"
             >{busy ? "Unlocking…" : "Unlock"}</button>
         {/if}
     {/snippet}

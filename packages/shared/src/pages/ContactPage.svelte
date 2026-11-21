@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { focusFirstInvalid, textFieldClass } from "../ui/index.svelte";
+    import { focusFirstInvalid } from "../ui/index.svelte";
     import { touchAll, visibleErrors } from "../forms/field-errors";
     import AlertBanner from "../components/AlertBanner.svelte";
 
@@ -157,7 +157,7 @@
         <h1 class="text-3xl sm:text-4xl font-semibold tracking-tight text-neutral-950">Contact us</h1>
         {#if support}
             <p class="mt-3 text-neutral-600" data-testid="contact-support">
-                Send a message below, or email <a href="mailto:{support.email}" class="font-medium text-neutral-950 underline underline-offset-2 hover:text-neutral-700 dark:text-white dark:hover:text-neutral-300">{support.email}</a>. {support.responseTime}
+                Send a message below, or email <a href="mailto:{support.email}" class="gk-link">{support.email}</a>. {support.responseTime}
             </p>
         {:else}
             <p class="mt-3 text-neutral-600">Send a message and we'll get back to you as soon as we can.</p>
@@ -165,7 +165,7 @@
     </div>
 
     {#if success}
-        <div class="rounded-2xl border border-green-200 bg-green-50 p-8 text-center">
+        <div class="rounded-xl border border-green-200 bg-green-50 p-8 text-center">
             <div class="flex justify-center mb-4">
                 <div class="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 ring-1 ring-green-600/20">
                     <svg class="h-6 w-6 text-green-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -181,7 +181,7 @@
                     success = false;
                     token = btoa(Date.now().toString());
                 }}
-                class="mt-6 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500 transition-colors"
+                class="gk-button gk-button--primary mt-6"
             >
                 Send another message
             </button>
@@ -197,35 +197,35 @@
             <!-- Honeypot — hidden from real users, attractive to bots -->
             <div class="absolute left-[-9999px]" aria-hidden="true">
                 <label for="website">Website</label>
-                <input id="website" type="text" name="website" tabindex="-1" autocomplete="off" />
+                <input id="website" type="text" name="website" tabindex="-1" autocomplete="off" data-own-field-style="never shown: it is off the page" />
             </div>
 
             <div>
-                <label for="contact-name" class="block text-sm font-medium text-neutral-700 mb-1.5">Name</label>
-                <input id="contact-name" onblur={() => blurField("name")} oninput={() => inputField("name")} type="text" bind:value={name} autocomplete="name" placeholder="Your name" aria-invalid={!!fieldErrors.name} aria-describedby={fieldErrors.name ? "name-error" : undefined} class={textFieldClass(!!fieldErrors.name)} />
+                <label for="contact-name" class="gk-label block mb-1.5">Name</label>
+                <input id="contact-name" onblur={() => blurField("name")} oninput={() => inputField("name")} type="text" bind:value={name} autocomplete="name" placeholder="Your name" aria-invalid={!!fieldErrors.name} aria-describedby={fieldErrors.name ? "name-error" : undefined} class="gk-input" />
                 {#if fieldErrors.name}
                     <p id="name-error" class="mt-1 text-sm text-red-600">{fieldErrors.name}</p>
                 {/if}
             </div>
 
             <div>
-                <label for="contact-email" class="block text-sm font-medium text-neutral-700 mb-1.5">Email</label>
-                <input id="contact-email" onblur={() => blurField("email")} oninput={() => inputField("email")} type="email" bind:value={email} autocomplete="email" placeholder="you@example.com" aria-invalid={!!fieldErrors.email} aria-describedby={fieldErrors.email ? "email-error" : undefined} class={textFieldClass(!!fieldErrors.email)} />
+                <label for="contact-email" class="gk-label block mb-1.5">Email</label>
+                <input id="contact-email" onblur={() => blurField("email")} oninput={() => inputField("email")} type="email" bind:value={email} autocomplete="email" placeholder="you@example.com" aria-invalid={!!fieldErrors.email} aria-describedby={fieldErrors.email ? "email-error" : undefined} class="gk-input" />
                 {#if fieldErrors.email}
                     <p id="email-error" class="mt-1 text-sm text-red-600">{fieldErrors.email}</p>
                 {/if}
             </div>
 
             <div>
-                <label for="contact-message" class="block text-sm font-medium text-neutral-700 mb-1.5">Message</label>
-                <textarea id="contact-message" onblur={() => blurField("message")} oninput={() => inputField("message")} onkeydown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") e.currentTarget.form?.requestSubmit(); }} bind:value={message} rows="5" placeholder="How can we help?" aria-invalid={!!fieldErrors.message} aria-describedby={fieldErrors.message ? "message-error" : undefined} class="{textFieldClass(!!fieldErrors.message)} resize-y"></textarea>
+                <label for="contact-message" class="gk-label block mb-1.5">Message</label>
+                <textarea id="contact-message" onblur={() => blurField("message")} oninput={() => inputField("message")} onkeydown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") e.currentTarget.form?.requestSubmit(); }} bind:value={message} rows="5" placeholder="How can we help?" aria-invalid={!!fieldErrors.message} aria-describedby={fieldErrors.message ? "message-error" : undefined} class="gk-input resize-y"></textarea>
                 {#if fieldErrors.message}
                     <p id="message-error" class="mt-1 text-sm text-red-600">{fieldErrors.message}</p>
                 {/if}
                 <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400 text-right">{message.length.toLocaleString()} / 5,000</p>
             </div>
 
-            <button type="submit" disabled={loading} class="w-full rounded-lg bg-neutral-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            <button type="submit" disabled={loading} class="gk-button gk-button--primary w-full">
                 {loading ? "Sending…" : "Send message"}
             </button>
         </form>

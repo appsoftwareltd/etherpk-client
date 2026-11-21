@@ -200,7 +200,7 @@
 
             {#if asksCurrent}
                 <div>
-                    <label for="{uid}-current" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
+                    <label for="{uid}-current" class="gk-label mb-1.5 block"
                         >{mode === "change" ? "Current passcode" : "Passcode"}</label
                     >
                     <input
@@ -213,9 +213,7 @@
                         data-testid="device-passcode-current"
                         aria-invalid={currentError ? "true" : undefined}
                         aria-describedby={currentError ? `${uid}-current-error` : undefined}
-                        class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {currentError
-                            ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                            : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
+                        class="gk-input"
                     />
                     {#if currentError}
                         <p id="{uid}-current-error" role="alert" class="mt-1.5 text-sm text-red-600" data-testid="device-passcode-current-error">
@@ -227,7 +225,7 @@
 
             {#if asksNew}
                 <div>
-                    <label for="{uid}-next" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
+                    <label for="{uid}-next" class="gk-label mb-1.5 block"
                         >{mode === "change" ? "New passcode" : "Passcode"}</label
                     >
                     <input
@@ -239,9 +237,7 @@
                         data-testid="device-passcode-new"
                         aria-invalid={nextError ? "true" : undefined}
                         aria-describedby="{uid}-advice{nextError ? ` ${uid}-next-error` : ''}"
-                        class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {nextError
-                            ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                            : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
+                        class="gk-input"
                     />
                     {#if nextError}
                         <p id="{uid}-next-error" role="alert" class="mt-1.5 text-sm text-red-600" data-testid="device-passcode-new-error">
@@ -254,7 +250,7 @@
                     </p>
                 </div>
                 <div>
-                    <label for="{uid}-again" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
+                    <label for="{uid}-again" class="gk-label mb-1.5 block"
                         >{mode === "change" ? "New passcode again" : "Passcode again"}</label
                     >
                     <input
@@ -266,9 +262,7 @@
                         data-testid="device-passcode-again"
                         aria-invalid={againError ? "true" : undefined}
                         aria-describedby={againError ? `${uid}-again-error` : undefined}
-                        class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {againError
-                            ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                            : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
+                        class="gk-input"
                     />
                     {#if againError}
                         <p id="{uid}-again-error" role="alert" class="mt-1.5 text-sm text-red-600" data-testid="device-passcode-again-error">
@@ -290,7 +284,7 @@
                     type="button"
                     data-testid="device-passcode-forgot"
                     onclick={() => void showForgetStep(true)}
-                    class="text-sm font-medium text-neutral-950 underline underline-offset-2 hover:no-underline dark:text-neutral-100"
+                    class="gk-link"
                     >Forgot your passcode?</button
                 >
             {/if}
@@ -308,13 +302,13 @@
                 bind:this={backButton}
                 onclick={() => void showForgetStep(false)}
                 data-testid="device-passcode-forget-back"
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                class="gk-button"
                 >Back</button
             >
             <button
                 type="submit"
                 data-testid="device-passcode-forget-confirm"
-                class="min-w-28 rounded-lg bg-red-700 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-800"
+                class="gk-button gk-button--danger min-w-28"
                 >{submitLabel}</button
             >
         {:else}
@@ -322,14 +316,14 @@
                 type="button"
                 onclick={onclose}
                 data-testid="device-passcode-dismiss"
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                class="gk-button"
                 >{dismissLabel}</button
             >
             <button
                 type="submit"
                 disabled={busy}
                 data-testid="device-passcode-submit"
-                class="min-w-28 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
+                class="gk-button gk-button--primary min-w-28"
                 >{busy ? busyReason : submitLabel}</button
             >
         {/if}

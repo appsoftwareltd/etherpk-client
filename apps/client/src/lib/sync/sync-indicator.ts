@@ -17,6 +17,7 @@ export type SyncIndicatorState =
     | 'sending'
     | 'connecting'
     | 'reconnecting'
+    | 'turned-away'
     | 'offline'
     | 'refused'
     | 'waiting-for-key'
@@ -72,6 +73,35 @@ export function describeKeyWait(outcome: HandoutOutcome | null): string {
 }
 
 /**
+ * What a tab the relay turned away says, under the status dot and in the Sync status dialog alike.
+ * The last sentence holds because a session sends what the Local Cache still holds when it opens.
+ */
+export const TURNED_AWAY_NOTICE =
+    'Not syncing: this graph is open in too many tabs or devices. Your changes are kept on this device and sync once one of the other tabs is closed. If you close this tab your edits will sync when a newly opened tab next syncs.'
+
+/** The connection states in which no socket is open yet, each with its label and its sentence. */
+const WAITING_TO_CONNECT: Partial<Record<SyncActivity['connection'], { label: string; detail: (kept: string) => string }>> = {
+    // The relay closed the socket as it opened: this account's connections to the graph are all taken.
+    'turned-away': {
+        label: 'Not syncing',
+        detail: () => TURNED_AWAY_NOTICE,
+    },
+    connecting: {
+        label: 'Connecting',
+        detail: (kept) => `Connecting to the sync server. ${kept} until it answers.`,
+    },
+    reconnecting: {
+        label: 'Reconnecting',
+        detail: (kept) => `The connection to the sync server dropped and EtherPK is reconnecting. ${kept} until it does.`,
+    },
+}
+
+/** Whether the status offers **Try again now**: a refused write, or a tab the server turned away. */
+export function syncRetryOffered(activity: SyncActivity): boolean {
+    return activity.refusal !== null || activity.connection === 'turned-away'
+}
+
+/**
  * @param online `navigator.onLine`: false is reliable ("certainly offline"), true is not, which is
  *   why an open socket, not this flag, is what makes the status say Synced.
  * @param refusalReason Why the server refuses, worded for this person (write-refusal.ts).
@@ -108,22 +138,8 @@ export function describeSyncActivity(activity: SyncActivity, online: boolean, re
             unsent,
         }
     }
-    if (activity.connection === 'connecting') {
-        return {
-            state: 'connecting',
-            label: 'Connecting',
-            detail: `Connecting to the sync server. ${kept} until it answers.`,
-            unsent,
-        }
-    }
-    if (activity.connection === 'reconnecting') {
-        return {
-            state: 'reconnecting',
-            label: 'Reconnecting',
-            detail: `The connection to the sync server dropped and EtherPK is reconnecting. ${kept} until it does.`,
-            unsent,
-        }
-    }
+    const waiting = WAITING_TO_CONNECT[activity.connection]
+    if (waiting) return { state: activity.connection as SyncIndicatorState, label: waiting.label, detail: waiting.detail(kept), unsent }
     if (unsent > 0) {
         return {
             state: 'sending',

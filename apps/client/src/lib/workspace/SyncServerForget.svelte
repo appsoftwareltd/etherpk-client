@@ -25,8 +25,7 @@
         onforget: () => void;
     } = $props();
 
-    const SECONDARY_BUTTON =
-        "inline-flex items-center justify-center rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5";
+    const SECONDARY_BUTTON = "gk-button";
 </script>
 
 <div class="flex flex-wrap items-center gap-2">
@@ -39,7 +38,7 @@
             data-testid="sync-server-forget-confirm"
             disabled={forgetting}
             onclick={onforget}
-            class="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-progress pointer-coarse:min-h-11 dark:border-red-500/40 dark:hover:bg-red-950/30"
+            class="gk-button gk-button--danger disabled:cursor-progress"
             >{forgetting ? "Forgetting…" : "Forget"}</button
         >
         <button type="button" onclick={oncancel} class={SECONDARY_BUTTON}

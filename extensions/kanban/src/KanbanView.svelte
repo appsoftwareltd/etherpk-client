@@ -28,6 +28,7 @@
     import type { TaskDueWindow, TaskPriorityFilter } from "#lib/document/index-db.js";
     import { DUE_OPTIONS, optionLabel } from "#lib/document/task-filter-labels.js";
     import ChoiceDropdown from "#lib/components/ChoiceDropdown.svelte";
+    import FilterInput from "#lib/components/FilterInput.svelte";
     import { PRIORITY_LABEL_CLASSES, priorityColour } from "#lib/document/task-priority-colour.js";
     import { findIndexedTask, isTaskLine, type TaskChanges, type TaskWrite, type TaskWriteOutcome, undoTaskWrite, writeTaskChanges } from "#lib/document/task-write.js";
     import type { DocumentStore } from "#lib/document/types.js";
@@ -68,12 +69,14 @@
         sameTask,
         sectionAfter,
         passesFilter,
+        readConcept,
         taskDetailCard,
         unsettledMoves,
         withPendingMoves,
     } from "./board-model";
     import { laneTasks, readBoard, SECTION_PAGE_SIZE } from "./board-queries";
     import KanbanCardText from "./KanbanCardText.svelte";
+    import KanbanConceptFilter from "./KanbanConceptFilter.svelte";
     import TaskEditor from "./TaskEditor.svelte";
     import type { ArchivedTask, TaskEditorStart } from "./task-editor-model";
     import { type RemovedTask, restoreTask } from "./task-editor-writes";
@@ -179,9 +182,16 @@
     let filterPriorities = $state.raw<readonly TaskPriorityFilter[]>([]);
     /** The Board Filter's due window. */
     let filterDue = $state<TaskDueWindow>("any");
+    /** The Board Filter's concept, chosen in the Graph Kanban's concept box; null shows every concept's tasks. */
+    let filterConcept = $state<string | null>(null);
     /** The Board Filter as its controls hold it. */
-    const filterChoice = $derived({ text: boardFilter, priorities: filterPriorities, due: filterDue });
-    /** Whether the Board Filter hides anything: words typed, a chip on, or a due window. */
+    const filterChoice = $derived({ text: boardFilter, priorities: filterPriorities, due: filterDue, concept: filterConcept });
+    /**
+     * The concept a task the Task Editor adds goes under: the board's own, or the one the Graph
+     * Kanban's concept box has chosen, so the task lands on the board it was added from.
+     */
+    const addsUnder = $derived(concept ?? filterConcept);
+    /** Whether the Board Filter hides anything: words typed, a chip on, a due window, or a concept. */
     const filtering = $derived(boardFilterNarrows(filterChoice));
     let filterInputEl = $state<HTMLInputElement>();
 
@@ -319,6 +329,12 @@
 
     function chooseDue(due: TaskDueWindow): void {
         filterDue = due;
+        retry();
+    }
+
+    /** Narrow the Graph Kanban to a concept's tasks, or show every concept's again, at once: a choice is no typing to wait out. */
+    function chooseConcept(chosen: string | null): void {
+        filterConcept = chosen;
         retry();
     }
 
@@ -695,6 +711,14 @@
     type WrittenTask = Extract<TaskWriteOutcome, { ok: true }>;
 
     /**
+     * The concept the cards on screen answer to: the one they were read through (`readConcept`).
+     * Not the concept box's choice, which a read has yet to reach just after it changes.
+     */
+    function cardsAnswerTo(): string | null {
+        return shown === null ? concept : readConcept(shown);
+    }
+
+    /**
      * Show `card` in `to` at once, run `write`, and put the card back with a notice when the write
      * is refused. A write is refused when the task changed under the board (its text edited, or
      * now on two tasks) or its document went away, and the board then reads again at once.
@@ -705,10 +729,12 @@
         write: (store: DocumentStore) => Promise<TaskWriteOutcome>,
         said: string,
         refused: (reason: WriteRefusal) => string,
+        // The concept the card's task is known to answer to: the one the cards on screen were read through.
+        cardAnswersTo: string | null = cardsAnswerTo(),
     ): Promise<WrittenTask | null> {
         const store = workspaceService("store");
         if (!store) return null;
-        const moving: PendingMove = { card, to, writtenAt: null };
+        const moving: PendingMove = { card, to, writtenAt: null, answersTo: cardAnswersTo };
         // One pending move per task: moving a card again replaces its first move.
         pending = [...pending.filter((move) => !sameTask(move.card, card)), moving];
         notice = null;
@@ -725,7 +751,7 @@
         }
         // The board remembers what it wrote, so moving the card again before the index catches up
         // addresses the line as it is now. The key stays, so a card the keyboard is on keeps focus.
-        const written: PendingMove = { card: { ...card, line: outcome.line, text: outcome.text }, to, writtenAt: Date.now() };
+        const written: PendingMove = { ...moving, card: { ...card, line: outcome.line, text: outcome.text }, writtenAt: Date.now() };
         pending = pending.map((move) => (move === moving ? written : move));
         // Read again once the hold has run out, so a move the index never confirms gives way even
         // when nothing else changes.
@@ -745,6 +771,8 @@
         const changes: TaskChanges = {};
         if (to.status !== from.status) changes.status = to.status;
         if (to.priority !== from.priority) changes.priority = to.priority;
+        // Asked before the write: a read through another concept may land while it is under way.
+        const movedUnder = cardsAnswerTo();
         const outcome = await showWhileWriting(
             card,
             to,
@@ -754,9 +782,10 @@
                 reason === "missing"
                     ? `"${card.document}" was renamed or deleted after the board read it, so "${card.label}" was not moved.`
                     : `"${card.label}" changed after the board showed it, so it was not moved. The board has been read again.`,
+            movedUnder,
         );
         if (outcome?.changed) {
-            const entry: HistoryEntry = { document: card.document, label: card.label, from, to, write: writtenPart(outcome) };
+            const entry: HistoryEntry = { document: card.document, label: card.label, from, to, write: writtenPart(outcome), answersTo: movedUnder };
             undoStack = [...undoStack, entry];
             redoStack = [];
             const unseen = await movedOutOfSight(card, to, source);
@@ -796,6 +825,8 @@
          * and its nested lines are the nested tasks the move brought with it.
          */
         write: TaskWrite;
+        /** The concept the board answered to at the move, which the task answers to (`PendingMove`). */
+        answersTo: string | null;
     }
     /**
      * A Move all to lane (ADR 0167), kept as one move so one undo takes back every task it wrote.
@@ -897,6 +928,7 @@
                 reason === "missing"
                     ? `"${entry.document}" was renamed or deleted, so the move of "${entry.label}" was not undone.`
                     : `"${entry.label}" has changed since it was moved, so the move was not undone.`,
+            entry.answersTo,
         );
         if (outcome) redoStack = [...redoStack, { ...entry, write: writtenPart(outcome) }];
         if (activeKey === card.key) followMovedCard(card.key, outcome ? entry.from : entry.to);
@@ -922,6 +954,7 @@
                 reason === "missing"
                     ? `"${entry.document}" was renamed or deleted, so the move of "${entry.label}" was not redone.`
                     : `"${entry.label}" has changed since the move was undone, so it was not redone.`,
+            entry.answersTo,
         );
         if (outcome) undoStack = [...undoStack, { ...entry, write: writtenPart(outcome) }];
         if (activeKey === card.key) followMovedCard(card.key, outcome ? entry.to : entry.from);
@@ -1058,7 +1091,14 @@
     /** A task archived from the Task Editor, kept as a board move so Undo and Mod+Z take it back. */
     function taskArchived(archived: ArchivedTask): void {
         const from: BoardCell = { status: archived.status, priority: archived.priority };
-        const entry: HistoryEntry = { document: archived.document, label: archived.label, from, to: { status: "archived", priority: archived.priority }, write: writtenPart(archived.outcome) };
+        const entry: HistoryEntry = {
+            document: archived.document,
+            label: archived.label,
+            from,
+            to: { status: "archived", priority: archived.priority },
+            write: writtenPart(archived.outcome),
+            answersTo: cardsAnswerTo(),
+        };
         undoStack = [...undoStack, entry];
         redoStack = [];
         deleted = null;
@@ -1446,7 +1486,7 @@
             <button
                 type="button"
                 onclick={() => void undo()}
-                class="shrink-0 rounded-md border border-(--gk-control-border) px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
+                class="gk-button gk-button--small shrink-0"
                 data-testid="{testid}-undo"
             >
                 Undo
@@ -1455,7 +1495,7 @@
         <button
             type="button"
             onclick={dismiss}
-            class="shrink-0 rounded-md border border-(--gk-control-border) px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
+            class="gk-button gk-button--small shrink-0"
             data-testid="{testid}-dismiss"
         >
             Dismiss
@@ -1490,7 +1530,7 @@
             <button
                 type="button"
                 onclick={retry}
-                class="shrink-0 rounded-md border border-current px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
+                class="gk-button gk-button--small shrink-0"
                 data-testid="kanban-retry"
             >
                 Retry
@@ -1514,7 +1554,7 @@
             <button
                 type="button"
                 onclick={() => (notice = null)}
-                class="shrink-0 rounded-md border border-current px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
+                class="gk-button gk-button--small shrink-0"
                 data-testid="kanban-notice-dismiss"
             >
                 Dismiss
@@ -1551,47 +1591,35 @@
             </button>
         </p>
     {/if}
-    <!-- The Board Filter: an input, the priority chips and a due window that narrow every lane at
-         once, each lane's count saying how many of its tasks match. Above the lanes, outside their
-         scroll, so it stays in reach. One gap between every control, and every control as tall as
-         the input (the row stretches them); on a narrow pane the row wraps. -->
+    <!-- The Board Filter: on the Graph Kanban a concept box, then an input, the priority chips and a
+         due window that narrow every lane at once, each lane's count saying how many of its tasks
+         match. Above the lanes, outside their scroll, so it stays in reach. One gap between every
+         control, and every control as tall as the input (the row stretches them); on a narrow pane
+         the row wraps. -->
     <div class={["flex flex-wrap items-stretch gap-2", desktop.current ? "px-3 pt-3" : "px-2 pt-2"]} data-testid="kanban-filter">
-        <div class="relative min-w-48 flex-1 sm:max-w-sm">
-            <!-- In-repo constant markup from the icon table, never user content. -->
-            <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
-            <span class="pointer-events-none absolute top-1/2 left-2.5 inline-flex size-4 -translate-y-1/2 text-(--gk-text-subtle)" aria-hidden="true">{@html iconSvg("search")}</span>
-            <!-- 16px on a phone, because iOS Safari zooms the page to a field smaller than that when it takes focus. -->
-            <input
-                bind:this={filterInputEl}
-                type="text"
-                class={["gk-input w-full pl-8", filtering && "pr-9", !desktop.current && "text-base"]}
-                value={boardFilter}
-                placeholder="Filter tasks by title or #tag"
-                aria-label="Filter the board's tasks by title or tag"
-                aria-describedby="{uid}-filter-count"
-                data-testid="kanban-filter-input"
-                oninput={(event) => onFilterInput(event.currentTarget.value)}
-                onkeydown={(event) => {
-                    if (event.key !== "Escape" || boardFilter === "") return;
-                    event.preventDefault();
-                    clearFilter();
-                }}
-            />
-            {#if boardFilter !== ""}
-                <button
-                    type="button"
-                    onclick={clearFilter}
-                    class="gk-icon-button absolute top-1/2 right-0.5 -translate-y-1/2"
-                    aria-label="Clear the filter and show every task"
-                    title="Clear the filter"
-                    data-testid="kanban-filter-clear"
-                >
-                    <!-- In-repo constant markup from the icon table, never user content. -->
-                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
-                    {@html iconSvg("close")}
-                </button>
-            {/if}
-        </div>
+        <!-- A concept's board answers to its concept already, so only the Graph Kanban has the box. -->
+        {#if concept === null}
+            <KanbanConceptFilter value={filterConcept} onchoose={chooseConcept} desktop={desktop.current} />
+        {/if}
+        <FilterInput
+            class="min-w-48 flex-1 sm:max-w-58"
+            bind:input={filterInputEl}
+            value={boardFilter}
+            ontext={onFilterInput}
+            onclear={clearFilter}
+            clearLabel="Clear the filter and show every task"
+            clearTestid="kanban-filter-clear"
+            phone={!desktop.current}
+            placeholder="Task text / #tag"
+            aria-label="Filter the board's tasks by title or tag"
+            aria-describedby="{uid}-filter-count"
+            data-testid="kanban-filter-input"
+            onkeydown={(event) => {
+                if (event.key !== "Escape" || boardFilter === "") return;
+                event.preventDefault();
+                clearFilter();
+            }}
+        />
         <!-- Toggle chips: each on adds its priority, none on shows every one. Styled as the Task
              Editor's priority chips, the dot saying which priority, an outline saying it is on. -->
         <div class="flex gap-2" role="group" aria-label="Show only these priorities">
@@ -1607,6 +1635,7 @@
                     ]}
                     aria-pressed={on}
                     aria-label={chip.priority === null ? "No priority" : chip.label}
+                    data-own-button-style="a priority chip, drawn as the Task Editor's priority chips"
                     data-testid="kanban-filter-priority"
                     data-priority={chip.priority ?? "none"}
                     onclick={() => togglePriority(chip.priority)}
@@ -1766,7 +1795,7 @@
                     <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-2" data-kanban-lane-body>
                         {#if lane.filter !== null && lane.total === 0 && lane.unfiltered > 0}
                             <p class="m-0 px-1 pt-2 text-sm wrap-anywhere text-(--gk-text-subtle)" data-testid="kanban-lane-filter-empty">
-                                No tasks in {lane.label} match {lane.filter.priorities === null && lane.filter.due === "any" ? `"${boardFilter.trim()}"` : "the filter"}. {lane.unfiltered === 1 ? "1 task is" : `${lane.unfiltered} tasks are`} hidden.
+                                No tasks in {lane.label} match {lane.filter.priorities === null && lane.filter.due === "any" && lane.filter.concept === null ? `"${boardFilter.trim()}"` : "the filter"}. {lane.unfiltered === 1 ? "1 task is" : `${lane.unfiltered} tasks are`} hidden.
                             </p>
                         {/if}
                         {#if !desktop.current && shown !== null && !empty && lane.unfiltered === 0}
@@ -1840,7 +1869,7 @@
                                                     {@attach (node) => attachContextMenu(node, () => cardTarget(card, cell))}
                                                     class={[
                                                         // touch-manipulation and select-none leave a held finger to the card's menu (attachContextMenu).
-                                                        "block w-full touch-manipulation select-none rounded-lg border p-2.5 text-left shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gk-accent)",
+                                                        "block w-full touch-manipulation select-none rounded-lg border p-2.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gk-accent)",
                                                         // Under the Phone Layout a card is not carried, and its menu button sits over its top right corner.
                                                         desktop.current ? "cursor-grab" : "pr-10",
                                                         // The card left behind while its copy is carried: its outline only, so it
@@ -1923,7 +1952,7 @@
                                                         type="button"
                                                         tabindex={-1}
                                                         onclick={() => copyReference(card)}
-                                                        class="absolute right-1.5 bottom-1.5 inline-flex size-7 items-center justify-center rounded-md text-(--gk-text-subtle) hover:bg-(--gk-control-hover) hover:text-(--gk-text-default) focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
+                                                        class="gk-icon-button absolute right-1.5 bottom-1.5 size-7 rounded-md"
                                                         aria-label="Copy agent instruction"
                                                         title="Copy agent instruction, to hand this task to an agent"
                                                         data-testid="kanban-card-copy-reference"
@@ -1939,7 +1968,7 @@
                                                         type="button"
                                                         tabindex={-1}
                                                         onclick={(event) => openCardMenuFromButton(card, cell, event.currentTarget)}
-                                                        class="absolute right-0.5 top-0.5 inline-flex size-10 items-center justify-center rounded-md text-(--gk-text-subtle) hover:bg-(--gk-control-hover) hover:text-(--gk-text-default) focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
+                                                        class="gk-icon-button absolute right-0.5 top-0.5 size-10 rounded-md"
                                                         aria-haspopup="menu"
                                                         aria-label="More actions for {card.label}"
                                                         title="More actions for this task"
@@ -2055,7 +2084,7 @@
              fixed dialog inside one is placed, and clipped, by the pane. -->
         <div {@attach onBody}>
             <TaskEditor
-                {concept}
+                concept={addsUnder}
                 start={taskEditor}
                 {panelId}
                 {visibility}

@@ -2,7 +2,7 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
 import type { ConceptCandidate } from './index-db'
-import { NAME_MATCH_LIMIT, nameMatchKey, rankNames } from './name-match'
+import { NAME_FILTER_LIMIT, NAME_MATCH_LIMIT, nameMatchKey, rankNameFilter, rankNames } from './name-match'
 import { matchScore } from './view/augmentations/wikilink-complete-core'
 
 /**
@@ -107,6 +107,51 @@ describe('ranking names for a query', () => {
                 for (const c of matching) if (!kept.has(c.display)) expect(matchScore(nameMatchKey(c.display), q)!).toBeLessThanOrEqual(scores.at(-1)!)
             }),
             fuzz(500),
+        )
+    })
+})
+
+describe('the names a Name Filter offers for a query', () => {
+    it('are the best matches, best first, never more than the limit, with no New page row', () => {
+        fc.assert(
+            fc.property(candidates, query, fc.integer({ min: 1, max: 12 }), (list, typed, limit) => {
+                const offered = rankNameFilter(list, typed, limit)
+                const q = nameMatchKey(typed)
+                if (q === '') {
+                    expect(offered).toEqual([])
+                    return
+                }
+                const scores = offered.map((c) => matchScore(nameMatchKey(c.display), q))
+                expect(scores.every((score) => score !== null)).toBe(true)
+                for (let i = 1; i < scores.length; i++) expect(scores[i]!).toBeLessThanOrEqual(scores[i - 1]!)
+                // Each offer is one of the graph's own names, offered once.
+                expect(offered.every((c) => list.includes(c))).toBe(true)
+                expect(new Set(offered).size).toBe(offered.length)
+                // Every match is offered until the limit, and nothing left out matches better than the last offer.
+                const matching = list.filter((c) => matchScore(nameMatchKey(c.display), q) !== null)
+                expect(offered.length).toBe(Math.min(matching.length, limit))
+                for (const c of matching) if (!offered.includes(c)) expect(matchScore(nameMatchKey(c.display), q)!).toBeLessThanOrEqual(scores.at(-1)!)
+            }),
+            fuzz(500),
+        )
+    })
+
+    it('do not depend on the order the index listed the names in', () => {
+        fc.assert(
+            fc.property(candidates, query, fc.func(fc.integer()), (list, typed, order) => {
+                const shuffled = [...list].sort((a, b) => order(a.display) - order(b.display))
+                expect(rankNameFilter(shuffled, typed)).toEqual(rankNameFilter(list, typed))
+            }),
+            fuzz(500),
+        )
+    })
+
+    it('stop at the Name Filter limit by default', () => {
+        fc.assert(
+            fc.property(candidates, query, (list, typed) => {
+                expect(rankNameFilter(list, typed).length).toBeLessThanOrEqual(NAME_FILTER_LIMIT)
+            }),
+            fuzz(200),
         )
     })
 })

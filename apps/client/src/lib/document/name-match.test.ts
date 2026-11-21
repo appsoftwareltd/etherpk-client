@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ConceptCandidate } from './index-db'
-import { NAME_MATCH_LIMIT, nameMatchKey, rankNames } from './name-match'
+import { NAME_MATCH_LIMIT, nameFilterDetail, nameMatchKey, rankNameFilter, rankNames } from './name-match'
 import { matchScore } from './view/augmentations/wikilink-complete-core'
 
 function page(display: string): ConceptCandidate {
@@ -146,5 +146,34 @@ describe('rankNames', () => {
         const many = Array.from({ length: 40 }, (_, n) => page(`Physics ${n}`))
         const rows = rankNames(many, 'physics')
         expect(rows.filter((r) => r.kind !== 'draft')).toHaveLength(NAME_MATCH_LIMIT)
+    })
+})
+
+describe('rankNameFilter', () => {
+    const graph = [page('Garden Shed'), page('Garden'), journal('2026-09-29'), alias('Plot', 'Garden'), pageless('Gardening'), page('Test [[Garden]]')]
+
+    it('offers nothing until a name is typed', () => {
+        expect(rankNameFilter(graph, '')).toEqual([])
+        expect(rankNameFilter(graph, '   ')).toEqual([])
+    })
+
+    it('offers the exact name first, then names that start with it, then names holding it, A–Z within each', () => {
+        expect(rankNameFilter(graph, 'garden').map((c) => c.display)).toEqual(['Garden', 'Garden Shed', 'Gardening', 'Test [[Garden]]'])
+    })
+
+    it('finds a scoped concept by its words, with no New page row', () => {
+        expect(rankNameFilter(graph, 'test garden').map((c) => c.display)).toEqual(['Test [[Garden]]'])
+        expect(rankNameFilter(graph, 'cabbages')).toEqual([])
+    })
+
+    it('stops at the limit', () => {
+        expect(rankNameFilter(graph, 'g', 2)).toHaveLength(2)
+    })
+
+    it('says what kind of name each offer is', () => {
+        expect(rankNameFilter(graph, 'plot').map(nameFilterDetail)).toEqual(['alias of Garden'])
+        expect(rankNameFilter(graph, 'gardening').map(nameFilterDetail)).toEqual(['no page yet'])
+        expect(rankNameFilter(graph, '2026-09').map(nameFilterDetail)).toEqual(['journal'])
+        expect(rankNameFilter(graph, 'garden shed').map(nameFilterDetail)).toEqual(['page'])
     })
 })

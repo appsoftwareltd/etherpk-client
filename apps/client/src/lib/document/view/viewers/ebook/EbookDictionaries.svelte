@@ -49,7 +49,7 @@
             {#each held as dictionary (dictionary.id)}
                 <li class="flex items-center gap-2 text-sm text-(--gk-text-default)" data-testid="ebook-dictionary-row">
                     <span class="min-w-0 flex-1 truncate">{dictionary.name}</span>
-                    <button type="button" class="rounded-lg border border-neutral-300 px-2 py-0.5 text-sm dark:border-neutral-700" onclick={() => remove(dictionary.id)} data-testid="ebook-dictionary-remove">Remove</button>
+                    <button type="button" class="gk-button gk-button--small" onclick={() => remove(dictionary.id)} data-testid="ebook-dictionary-remove">Remove</button>
                 </li>
             {/each}
         </ul>
@@ -57,7 +57,7 @@
     {#if problem}<p class="text-sm text-red-700 dark:text-red-400" role="alert" data-testid="ebook-dictionary-problem">{problem}</p>{/if}
     <div class="flex flex-wrap items-center gap-2">
         <input bind:this={input} class="sr-only" type="file" multiple accept=".ifo,.idx,.dz,.syn,.zip" tabindex="-1" aria-hidden="true" onchange={onPick} data-testid="ebook-dictionary-file" />
-        <button type="button" class="rounded-lg bg-(--gk-accent) px-3 py-1 text-sm font-medium text-(--gk-surface-0) disabled:opacity-60" disabled={adding} onclick={() => input?.click()} data-testid="ebook-dictionary-add">{adding ? "Adding…" : "Add a dictionary"}</button>
-        <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={onclose} data-testid="ebook-dictionaries-close">Close</button>
+        <button type="button" class="gk-button gk-button--primary gk-button--small" disabled={adding} onclick={() => input?.click()} data-testid="ebook-dictionary-add">{adding ? "Adding…" : "Add a dictionary"}</button>
+        <button type="button" class="gk-button gk-button--small" onclick={onclose} data-testid="ebook-dictionaries-close">Close</button>
     </div>
 </div>

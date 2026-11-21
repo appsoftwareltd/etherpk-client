@@ -563,8 +563,8 @@
 {/snippet}
 
 {#snippet toggleRow(label: string, checked: boolean, testId: string, onchange: (next: boolean) => void)}
-    <label class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)">
-        <input type="checkbox" {checked} onchange={(event) => onchange(event.currentTarget.checked)} data-testid={testId} />
+    <label class="gk-menu-item">
+        <input class="gk-checkbox" type="checkbox" {checked} onchange={(event) => onchange(event.currentTarget.checked)} data-testid={testId} />
         {label}
     </label>
 {/snippet}
@@ -574,7 +574,7 @@
         <label class="sr-only" for="ebook-percent-input">How far through the EBook, as a percentage</label>
         <input
             id="ebook-percent-input"
-            class="w-12 rounded-md border border-neutral-300 bg-(--gk-surface-0) px-1 py-0.5 text-center text-sm text-(--gk-text-default) dark:border-neutral-700"
+            class="gk-input gk-input--small w-12 text-center"
             inputmode="decimal"
             value={percentInput === "" ? percent : percentInput}
             oninput={(event) => (percentInput = event.currentTarget.value)}
@@ -628,13 +628,13 @@
 {#snippet moreMenuBlock()}
     {#if moreOpen}
         <div class="relative h-0 shrink-0">
-            <div bind:this={moreMenu} class={["etherpk-ebook-more flex flex-col gap-0.5 rounded-lg border border-(--gk-surface-2) bg-(--gk-surface-0) p-1 shadow-lg", inBar && "etherpk-ebook-more--above"]} role="group" aria-label="More for this EBook" data-testid="ebook-more-menu">
-                <div class="flex items-center justify-between">
-                    <span class="px-2 text-sm font-medium text-(--gk-text-muted)">More</span>
-                    <button type="button" class="ebook-tool" aria-label="Close this menu" title="Close this menu" onclick={() => (moreOpen = false)} data-testid="ebook-more-close">{@render icon("close")}</button>
+            <div bind:this={moreMenu} class={["etherpk-ebook-more gk-menu flex flex-col", inBar && "etherpk-ebook-more--above"]} role="group" aria-label="More for this EBook" data-testid="ebook-more-menu">
+                <div class="flex items-center justify-between pr-1 pl-3">
+                    <span class="text-sm font-medium text-(--gk-text-muted)">More</span>
+                    <button type="button" class="gk-icon-button" aria-label="Close this menu" title="Close this menu" onclick={() => (moreOpen = false)} data-testid="ebook-more-close">{@render icon("close")}</button>
                 </div>
                 {#if inBar}
-                    <div class="flex items-center gap-2 px-2 py-1.5 text-sm text-(--gk-text-default)" data-testid="ebook-more-percent">
+                    <div class="flex items-center gap-2 px-3 py-1.5 text-sm text-(--gk-text-default)" data-testid="ebook-more-percent">
                         <span aria-hidden="true">Go to</span>
                         {@render percentBox()}
                     </div>
@@ -648,17 +648,17 @@
                 {/if}
                 {#if files?.backend === "synced"}
                     {@render toggleRow(`Keep on this device (${fileSize})`, keptOnDevice, "ebook-keep-on-device", (next) => void setKept(next))}
-                    {#if keepError}<p class="px-2 text-sm text-red-700 dark:text-red-400" role="alert" data-testid="ebook-keep-error">{keepError}</p>{/if}
+                    {#if keepError}<p class="px-3 text-sm text-red-700 dark:text-red-400" role="alert" data-testid="ebook-keep-error">{keepError}</p>{/if}
                 {/if}
-                <hr class="my-0.5 border-(--gk-surface-2)" />
-                <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={toggleFavourite} data-testid="ebook-favourite">{favourite ? "Remove from favourites" : "Add to favourites"}</button>
+                <hr class="gk-menu-separator" />
+                <button type="button" class="gk-menu-item" onclick={toggleFavourite} data-testid="ebook-favourite">{favourite ? "Remove from favourites" : "Add to favourites"}</button>
                 {#if dictionaries}
-                    <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={() => { moreOpen = false; dictionariesOpen = true; }} data-testid="ebook-dictionaries-open">Dictionaries</button>
+                    <button type="button" class="gk-menu-item" onclick={() => { moreOpen = false; dictionariesOpen = true; }} data-testid="ebook-dictionaries-open">Dictionaries</button>
                 {/if}
-                <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={downloadOriginal} data-testid="ebook-download">Download the original</button>
+                <button type="button" class="gk-menu-item" onclick={downloadOriginal} data-testid="ebook-download">Download the original</button>
                 {#if files}
-                    <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={openRename} data-testid="ebook-rename">Rename…</button>
-                    <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={openDelete} data-testid="ebook-delete">Delete…</button>
+                    <button type="button" class="gk-menu-item" onclick={openRename} data-testid="ebook-rename">Rename…</button>
+                    <button type="button" class="gk-menu-item" onclick={openDelete} data-testid="ebook-delete">Delete…</button>
                 {/if}
             </div>
         </div>
@@ -670,14 +670,14 @@
         <div class="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
             <p class="text-sm text-(--gk-text-muted)" role="alert" data-testid="ebook-error">{reader.errorMessage}</p>
             <div class="flex gap-2">
-                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-(--gk-text-default) dark:border-neutral-700" onclick={onretry} data-testid="ebook-retry">Try again</button>
-                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-(--gk-text-default) dark:border-neutral-700" onclick={downloadOriginal}>Download it instead</button>
+                <button type="button" class="gk-button" onclick={onretry} data-testid="ebook-retry">Try again</button>
+                <button type="button" class="gk-button" onclick={downloadOriginal}>Download it instead</button>
             </div>
         </div>
     {:else if reader.status === "protected"}
         <div class="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
             <p class="max-w-prose text-sm text-(--gk-text-muted)" role="alert" data-testid="ebook-protected">This EBook is protected by DRM, so EtherPK can't open it. Read it in the app it came from.</p>
-            <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-(--gk-text-default) dark:border-neutral-700" onclick={downloadOriginal} data-testid="ebook-protected-download">Download it</button>
+            <button type="button" class="gk-button" onclick={downloadOriginal} data-testid="ebook-protected-download">Download it</button>
         </div>
     {:else}
         {#if reader.status === "opening"}
@@ -685,8 +685,8 @@
         {/if}
         {#if reader.status === "ready" && !inBar}
             <div class="etherpk-ebook-toolbar flex shrink-0 flex-wrap items-center gap-0.5 border-b border-(--gk-surface-2) bg-(--gk-surface-1) px-1 py-1" role="toolbar" aria-label="EBook tools" data-testid="ebook-toolbar">
-                {@render tools("ebook-tool")}
-                <div class="relative shrink-0">{@render moreToggle("ebook-tool")}</div>
+                {@render tools("gk-icon-button")}
+                <div class="relative shrink-0">{@render moreToggle("gk-icon-button")}</div>
             </div>
         {/if}
         {#if !inBar}{@render moreMenuBlock()}{/if}
@@ -694,11 +694,11 @@
         {#if clearsTopBar}<div class="etherpk-ebook-top-bar-room" aria-hidden="true"></div>{/if}
         {#if renameOpen}
             <form class="flex shrink-0 flex-wrap items-center gap-2 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2" onsubmit={submitRename} data-testid="ebook-rename-form">
-                <label class="text-sm font-medium text-(--gk-text-default)" for="ebook-rename-input">Name</label>
+                <label class="gk-label" for="ebook-rename-input">Name</label>
                 <!-- svelte-ignore a11y_autofocus -->
-                <input id="ebook-rename-input" autofocus class="min-w-40 flex-1 rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-2 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" bind:value={renameValue} data-testid="ebook-rename-input" />
-                <button type="submit" class="rounded-lg bg-(--gk-accent) px-3 py-1 text-sm font-medium text-(--gk-surface-0)" data-testid="ebook-rename-submit">Rename</button>
-                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => (renameOpen = false)}>Cancel</button>
+                <input id="ebook-rename-input" autofocus class="gk-input gk-input--small min-w-40 flex-1" bind:value={renameValue} data-testid="ebook-rename-input" />
+                <button type="submit" class="gk-button gk-button--primary gk-button--small" data-testid="ebook-rename-submit">Rename</button>
+                <button type="button" class="gk-button gk-button--small" onclick={() => (renameOpen = false)}>Cancel</button>
                 {#if renameError}<p class="w-full text-sm text-red-700 dark:text-red-400" role="alert" data-testid="ebook-rename-error">{renameError}</p>{/if}
             </form>
         {/if}
@@ -707,23 +707,23 @@
                 <p class="min-w-40 flex-1 text-sm text-(--gk-text-default)">
                     {deleteFileQuestion(displayName, reader.highlights.length > 0 ? `${reader.highlights.length} highlight${reader.highlights.length === 1 ? "" : "s"}` : null, deleteKeptDays)}
                 </p>
-                <button type="button" class="rounded-lg bg-red-700 px-3 py-1 text-sm font-medium text-white disabled:opacity-60" disabled={deleteBusy} onclick={confirmDelete} data-testid="ebook-delete-submit">Delete</button>
-                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => (deleteOpen = false)}>Cancel</button>
+                <button type="button" class="gk-button gk-button--danger gk-button--small" disabled={deleteBusy} onclick={confirmDelete} data-testid="ebook-delete-submit">Delete</button>
+                <button type="button" class="gk-button gk-button--small" onclick={() => (deleteOpen = false)}>Cancel</button>
                 {#if deleteMessage}<p class="w-full text-sm text-red-700 dark:text-red-400" data-testid="ebook-delete-message">{deleteMessage}</p>{/if}
             </div>
         {/if}
         {#if reader.linkAsked}
             <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2" role="alert" data-testid="ebook-link-confirm">
                 <p class="min-w-40 flex-1 text-sm break-all text-(--gk-text-default)">This link leaves EtherPK for {reader.linkAsked}. Open it?</p>
-                <button type="button" class="rounded-lg bg-(--gk-accent) px-3 py-1 text-sm font-medium text-(--gk-surface-0)" onclick={() => reader.followLink()} data-testid="ebook-link-open">Open</button>
-                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => (reader.linkAsked = null)} data-testid="ebook-link-cancel">Cancel</button>
+                <button type="button" class="gk-button gk-button--primary gk-button--small" onclick={() => reader.followLink()} data-testid="ebook-link-open">Open</button>
+                <button type="button" class="gk-button gk-button--small" onclick={() => (reader.linkAsked = null)} data-testid="ebook-link-cancel">Cancel</button>
             </div>
         {/if}
         {#if reader.placeElsewhere}
             <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2" role="status" data-testid="ebook-place-elsewhere">
                 <p class="min-w-40 flex-1 text-sm text-(--gk-text-default)">You read to {Math.round(reader.placeElsewhere.fraction * 100)}% on another device.</p>
-                <button type="button" class="rounded-lg bg-(--gk-accent) px-3 py-1 text-sm font-medium text-(--gk-surface-0)" onclick={() => reader.acceptPlaceElsewhere()} data-testid="ebook-place-elsewhere-go">Go there</button>
-                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => (reader.placeElsewhere = null)} data-testid="ebook-place-elsewhere-stay">Stay here</button>
+                <button type="button" class="gk-button gk-button--primary gk-button--small" onclick={() => reader.acceptPlaceElsewhere()} data-testid="ebook-place-elsewhere-go">Go there</button>
+                <button type="button" class="gk-button gk-button--small" onclick={() => (reader.placeElsewhere = null)} data-testid="ebook-place-elsewhere-stay">Stay here</button>
             </div>
         {/if}
         {#if reader.stateProblem}
@@ -739,7 +739,7 @@
             <div class="flex max-h-60 shrink-0 flex-col gap-1 overflow-y-auto border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2 text-sm text-(--gk-text-default)" role="status" data-testid="ebook-definition">
                 <div class="flex items-center gap-2">
                     <span class="min-w-0 flex-1 truncate font-medium">{definitions.word}</span>
-                    <button type="button" class="ebook-tool" aria-label="Close this definition" title="Close this definition" onclick={() => (definitions = null)} data-testid="ebook-definition-close">{@render icon("close")}</button>
+                    <button type="button" class="gk-icon-button" aria-label="Close this definition" title="Close this definition" onclick={() => (definitions = null)} data-testid="ebook-definition-close">{@render icon("close")}</button>
                 </div>
                 {#each definitions.found as found, index (index)}
                     <p class="whitespace-pre-wrap" data-testid="ebook-definition-text">{found.text}</p>
@@ -752,14 +752,14 @@
         {#if reader.readAloud.state !== "off"}
             <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2" role="group" aria-label="Read aloud" data-testid="ebook-read-aloud-bar">
                 {#if reader.readAloud.state === "paused"}
-                    <button type="button" class="rounded-lg bg-(--gk-accent) px-3 py-1 text-sm font-medium text-(--gk-surface-0)" onclick={() => reader.readAloud.resume()} data-testid="ebook-read-resume">Resume</button>
+                    <button type="button" class="gk-button gk-button--primary gk-button--small" onclick={() => reader.readAloud.resume()} data-testid="ebook-read-resume">Resume</button>
                 {:else}
-                    <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => reader.readAloud.pause()} data-testid="ebook-read-pause">Pause</button>
+                    <button type="button" class="gk-button gk-button--small" onclick={() => reader.readAloud.pause()} data-testid="ebook-read-pause">Pause</button>
                 {/if}
-                <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => reader.readAloud.stop()} data-testid="ebook-read-stop">Stop</button>
+                <button type="button" class="gk-button gk-button--small" onclick={() => reader.readAloud.stop()} data-testid="ebook-read-stop">Stop</button>
                 <label class="flex min-w-0 items-center gap-1 text-sm text-(--gk-text-default)">
                     Voice
-                    <select class="max-w-48 rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-1 py-1 text-sm dark:border-neutral-700" onchange={onPickVoice} data-testid="ebook-read-voice">
+                    <select class="gk-select gk-select--small max-w-48" onchange={onPickVoice} data-testid="ebook-read-voice">
                         {#each reader.readAloud.voices as voice (voice.name)}
                             <option value={voice.name} selected={voice.name === reader.preferences.readingVoice}>{voice.name}</option>
                         {/each}
@@ -767,7 +767,7 @@
                 </label>
                 <label class="flex items-center gap-1 text-sm text-(--gk-text-default)">
                     Speed
-                    <select class="rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-1 py-1 text-sm dark:border-neutral-700" onchange={onPickRate} data-testid="ebook-read-rate">
+                    <select class="gk-select gk-select--small" onchange={onPickRate} data-testid="ebook-read-rate">
                         {#each READING_RATES as rate (rate)}
                             <option value={rate} selected={rate === reader.preferences.readingRate}>{rate}×</option>
                         {/each}
@@ -779,7 +779,7 @@
             <p class="shrink-0 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2 text-sm text-(--gk-text-default)" role="status" data-testid="ebook-read-problem">
                 {reader.readAloud.problem}
                 {#if reader.readAloud.noVoice}
-                    <a class="text-(--gk-accent) underline" href="{PUBLIC_DOCS_URL}/ebooks-reading-and-highlighting#add-a-voice" target="_blank" rel="noopener noreferrer" data-testid="ebook-read-voice-help">How to add a voice</a>
+                    <a class="gk-link" href="{PUBLIC_DOCS_URL}/ebooks-reading-and-highlighting#add-a-voice" target="_blank" rel="noopener noreferrer" data-testid="ebook-read-voice-help">How to add a voice</a>
                 {/if}
             </p>
         {/if}
@@ -793,11 +793,11 @@
                 }}
                 data-testid="ebook-note-editor"
             >
-                <label class="text-sm font-medium text-(--gk-text-default)" for="ebook-note-input">Note on “<span class="line-clamp-1 inline font-normal text-(--gk-text-muted)">{editor.quote}</span>”</label>
-                <textarea id="ebook-note-input" name="note" rows="3" {@attach focusNote} class="rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-2 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" value={editor.text} onkeydown={onNoteKeydown} data-testid="ebook-note-input"></textarea>
+                <label class="gk-label" for="ebook-note-input">Note on “<span class="line-clamp-1 inline font-normal text-(--gk-text-muted)">{editor.quote}</span>”</label>
+                <textarea id="ebook-note-input" name="note" rows="3" {@attach focusNote} class="gk-input gk-input--small" value={editor.text} onkeydown={onNoteKeydown} data-testid="ebook-note-input"></textarea>
                 <div class="flex gap-2">
-                    <button type="submit" class="rounded-lg bg-(--gk-accent) px-3 py-1 text-sm font-medium text-(--gk-surface-0)" data-testid="ebook-note-save">Save</button>
-                    <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700" onclick={() => reader.cancelNote()} data-testid="ebook-note-cancel">Cancel</button>
+                    <button type="submit" class="gk-button gk-button--primary gk-button--small" data-testid="ebook-note-save">Save</button>
+                    <button type="button" class="gk-button gk-button--small" onclick={() => reader.cancelNote()} data-testid="ebook-note-cancel">Cancel</button>
                 </div>
             </form>
         {/if}
@@ -815,26 +815,26 @@
                         {/if}
                     {/key}
                     <div class="etherpk-ebook-nav" data-in-bar={inBar || undefined} data-buttons-gone={reader.controlsHidden || undefined} role="group" aria-label="Turn the page" data-testid="ebook-nav">
-                        {@render turnPage("previous", "ebook-tool etherpk-ebook-edge", "ebook-previous-edge")}
+                        {@render turnPage("previous", "gk-icon-button gk-button--raised etherpk-ebook-edge", "ebook-previous-edge")}
                         <!-- On a desktop it holds the page buttons too, as a PDF's does. On a touch screen or in a
                              narrow window they move out to the edges of the view, near a thumb. -->
                         <div class="etherpk-ebook-progress" data-gone={progressGone || undefined} data-testid="ebook-progress">
-                            {#if !inBar}{@render turnPage("previous", "ebook-tool etherpk-ebook-inner", "ebook-previous-inner")}{/if}
+                            {#if !inBar}{@render turnPage("previous", "gk-icon-button etherpk-ebook-inner", "ebook-previous-inner")}{/if}
                             {#if offersBack && backTo !== null}
                                 <!-- After a jump, in place of the progress words, until the person goes back or reads on. -->
-                                <button type="button" class="etherpk-ebook-back" onclick={() => reader.goBack()} data-testid="ebook-back">{@render icon("ebook-back")}Back to {Math.round(backTo * 100)}%</button>
+                                <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onclick={() => reader.goBack()} data-testid="ebook-back">{@render icon("ebook-back")}Back to {Math.round(backTo * 100)}%</button>
                             {:else}
                                 <span class="min-w-0 truncate px-1 text-sm text-(--gk-text-default)">{progressWords}</span>
                             {/if}
-                            {#if !inBar}{@render turnPage("next", "ebook-tool etherpk-ebook-inner", "ebook-next-inner")}{/if}
+                            {#if !inBar}{@render turnPage("next", "gk-icon-button etherpk-ebook-inner", "ebook-next-inner")}{/if}
                         </div>
-                        {@render turnPage("next", "ebook-tool etherpk-ebook-edge", "ebook-next-edge")}
+                        {@render turnPage("next", "gk-icon-button gk-button--raised etherpk-ebook-edge", "ebook-next-edge")}
                     </div>
                     {#if fileActions.length > 0}
                         <!-- Level with the page controls. Where the layout has a Command Bar, these buttons are on it. -->
                         <div class="etherpk-ebook-file-actions">
                             {#each fileActions as action (action.id)}
-                                <button type="button" class="etherpk-ebook-file-action" aria-label={action.label} title={action.label} onclick={() => runFileAction(action)} data-testid="ebook-file-action" data-command={action.command}>
+                                <button type="button" class="gk-icon-button gk-button--raised size-10 pointer-coarse:size-11" aria-label={action.label} title={action.label} onclick={() => runFileAction(action)} data-testid="ebook-file-action" data-command={action.command}>
                                     <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                                     {@html iconSvg(action.icon, { size: 18 })}
                                 </button>
@@ -854,20 +854,20 @@
                     {/if}
                     {#if reader.selection && !reader.highlightToolOn}
                         <div class="etherpk-ebook-actions" role="group" aria-label="Selected text" data-testid="ebook-selection-actions">
-                            <button type="button" class="etherpk-ebook-action" onpointerdown={keepPress} onmousedown={keepPress} onclick={() => reader.highlightSelection()} data-testid="ebook-selection-highlight">{@render icon("highlight")}Highlight</button>
-                            <button type="button" class="etherpk-ebook-action" onpointerdown={keepPress} onmousedown={keepPress} onclick={() => reader.startNote(null)} data-testid="ebook-selection-note">{@render icon("pdf-note")}Note</button>
+                            <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onpointerdown={keepPress} onmousedown={keepPress} onclick={() => reader.highlightSelection()} data-testid="ebook-selection-highlight">{@render icon("highlight")}Highlight</button>
+                            <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onpointerdown={keepPress} onmousedown={keepPress} onclick={() => reader.startNote(null)} data-testid="ebook-selection-note">{@render icon("pdf-note")}Note</button>
                             {#if canDefine}
-                                <button type="button" class="etherpk-ebook-action" onpointerdown={keepPress} onmousedown={keepPress} onclick={defineSelection} data-testid="ebook-selection-define">{@render icon("search")}Define</button>
+                                <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onpointerdown={keepPress} onmousedown={keepPress} onclick={defineSelection} data-testid="ebook-selection-define">{@render icon("search")}Define</button>
                             {/if}
-                            <button type="button" class="etherpk-ebook-action" onpointerdown={keepPress} onmousedown={keepPress} onclick={copySelection} data-testid="ebook-selection-copy">{@render icon("copy")}{selectionCopied ? "Copied" : "Copy"}</button>
+                            <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onpointerdown={keepPress} onmousedown={keepPress} onclick={copySelection} data-testid="ebook-selection-copy">{@render icon("copy")}{selectionCopied ? "Copied" : "Copy"}</button>
                         </div>
                     {/if}
                     {#if reader.pressedHighlight}
                         {@const pressed = reader.pressedHighlight}
                         <div class="etherpk-ebook-actions" role="group" aria-label="This highlight" data-testid="ebook-highlight-actions">
-                            <button type="button" class="etherpk-ebook-action" onclick={() => reader.startNote(pressed)} data-testid="ebook-pressed-note">{@render icon("pdf-note")}{pressed.note ? "Note" : "Add note"}</button>
-                            <button type="button" class="etherpk-ebook-action" onclick={() => copyToJournal(pressed)} data-testid="ebook-pressed-copy">{@render icon("todays-journal")}To journal</button>
-                            <button type="button" class="etherpk-ebook-action" onclick={() => reader.removeHighlight(pressed.id)} data-testid="ebook-pressed-delete">{@render icon("trash")}Delete</button>
+                            <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onclick={() => reader.startNote(pressed)} data-testid="ebook-pressed-note">{@render icon("pdf-note")}{pressed.note ? "Note" : "Add note"}</button>
+                            <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onclick={() => copyToJournal(pressed)} data-testid="ebook-pressed-copy">{@render icon("todays-journal")}To journal</button>
+                            <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onclick={() => reader.removeHighlight(pressed.id)} data-testid="ebook-pressed-delete">{@render icon("trash")}Delete</button>
                         </div>
                     {/if}
                 {/if}
@@ -880,10 +880,10 @@
         {#if settingsOpen && inBar}<EbookSettingsPanel {reader} above={true} onclose={() => (settingsOpen = false)} />{/if}
     {/if}
     {#if toast}
-        <div class="etherpk-ebook-toast flex items-center gap-3 rounded-lg bg-neutral-900 px-3 py-2 text-sm text-white shadow-lg" role="status" data-testid="ebook-toast">
+        <div class="etherpk-ebook-toast flex items-center gap-3 rounded-lg border border-(--gk-menu-border) bg-(--gk-menu-bg) px-3 py-2 text-sm text-(--gk-control-text) shadow-lg" role="status" data-testid="ebook-toast">
             <span>{toast}</span>
             {#if toastAction}
-                <button type="button" class="font-medium underline" onclick={toastAction.run} data-testid="ebook-toast-action">{toastAction.label}</button>
+                <button type="button" class="gk-link" onclick={toastAction.run} data-testid="ebook-toast-action">{toastAction.label}</button>
             {/if}
         </div>
     {/if}
@@ -893,40 +893,6 @@
     .etherpk-ebook-reader {
         position: relative;
         min-height: 0;
-    }
-    .etherpk-ebook-reader :global(.ebook-tool) {
-        display: inline-flex;
-        flex-shrink: 0;
-        align-items: center;
-        justify-content: center;
-        border-radius: 0.5rem;
-        padding: 0.375rem;
-        color: var(--gk-text-default);
-    }
-    @media (pointer: coarse) {
-        .etherpk-ebook-reader :global(.ebook-tool) {
-            padding: 0.625rem;
-        }
-    }
-    @media (width < 40rem) {
-        .etherpk-ebook-reader :global(.ebook-tool.max-sm\:hidden) {
-            display: none;
-        }
-    }
-    .etherpk-ebook-reader :global(.ebook-tool:hover:not(:disabled)) {
-        background: var(--gk-surface-2);
-    }
-    .etherpk-ebook-reader :global(.ebook-tool[aria-pressed="true"]) {
-        background: var(--gk-surface-2);
-        color: var(--gk-accent);
-    }
-    .etherpk-ebook-reader :global(.ebook-tool:disabled) {
-        color: var(--gk-text-subtle);
-        cursor: default;
-    }
-    .etherpk-ebook-reader :global(.ebook-tool:focus-visible) {
-        outline: 2px solid var(--gk-accent);
-        outline-offset: -2px;
     }
     :global(.etherpk-ebook-bookmarked svg) {
         fill: currentColor;
@@ -967,12 +933,11 @@
         align-items: center;
         pointer-events: none;
     }
-    .etherpk-ebook-progress,
-    .etherpk-ebook-reader :global(.ebook-tool.etherpk-ebook-edge) {
-        pointer-events: auto;
-        border: 1px solid var(--gk-border-strong, var(--gk-surface-2));
-        background: var(--gk-surface-1);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    /* Over the page, so raised as a `gk-button--raised` is: the edge buttons beside it carry that class. */
+    .etherpk-ebook-progress {
+        border: 1px solid var(--gk-control-border);
+        background: var(--gk-surface-0);
+        box-shadow: var(--gk-control-shadow);
     }
     /* Only its buttons take the pointer, so a tap on the words reaches the page. */
     .etherpk-ebook-progress {
@@ -989,49 +954,30 @@
     .etherpk-ebook-progress > :global(button) {
         pointer-events: auto;
     }
-    .etherpk-ebook-back {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.375rem;
-        min-height: 2rem;
-        padding: 0 0.5rem;
-        border-radius: 0.5rem;
-        color: var(--gk-text-default);
-        font-size: 0.875rem;
-        font-weight: 500;
-        white-space: nowrap;
-    }
-    .etherpk-ebook-back:hover {
-        background: var(--gk-surface-2);
-    }
-    .etherpk-ebook-back:focus-visible {
-        outline: 2px solid var(--gk-accent);
-        outline-offset: 2px;
-    }
     @media (pointer: coarse) {
-        .etherpk-ebook-progress,
-        .etherpk-ebook-back {
+        .etherpk-ebook-progress {
             min-height: 2.75rem;
         }
     }
     .etherpk-ebook-progress[data-gone] {
         visibility: hidden;
     }
-    .etherpk-ebook-reader :global(.ebook-tool.etherpk-ebook-edge) {
+    /* The page buttons at the edges of the view: raised icon buttons, a thumb's width whatever the pointer. */
+    .etherpk-ebook-reader :global(.etherpk-ebook-edge) {
         display: none;
         width: 2.75rem;
         height: 2.75rem;
-        border-radius: 0.75rem;
+        pointer-events: auto;
     }
-    .etherpk-ebook-reader :global(.ebook-tool.etherpk-ebook-edge:last-child) {
+    .etherpk-ebook-reader :global(.etherpk-ebook-edge:last-child) {
         grid-column: 3;
         justify-self: end;
     }
     @media (pointer: coarse), (width < 40rem) {
-        .etherpk-ebook-reader :global(.ebook-tool.etherpk-ebook-edge) {
+        .etherpk-ebook-reader :global(.etherpk-ebook-edge) {
             display: inline-flex;
         }
-        .etherpk-ebook-reader :global(.ebook-tool.etherpk-ebook-inner) {
+        .etherpk-ebook-reader :global(.etherpk-ebook-inner) {
             display: none;
         }
     }
@@ -1046,21 +992,6 @@
         display: flex;
         gap: 0.25rem;
     }
-    .etherpk-ebook-file-action {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 2.5rem;
-        height: 2.5rem;
-        border: 1px solid var(--gk-border-strong, var(--gk-surface-2));
-        border-radius: 0.75rem;
-        background: var(--gk-surface-1);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-        color: var(--gk-text-default);
-    }
-    .etherpk-ebook-file-action:hover {
-        background: var(--gk-surface-2);
-    }
     /* Equal columns, so that Copy turning into Copied moves no button. */
     .etherpk-ebook-actions {
         position: absolute;
@@ -1073,35 +1004,10 @@
         grid-auto-flow: column;
         gap: 0.125rem;
         padding: 0.25rem;
-        border: 1px solid var(--gk-border-strong, var(--gk-surface-2));
+        border: 1px solid var(--gk-control-border);
         border-radius: 0.75rem;
-        background: var(--gk-surface-1);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-    }
-    .etherpk-ebook-action {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.375rem;
-        min-height: 2.25rem;
-        padding: 0 0.625rem;
-        border-radius: 0.5rem;
-        color: var(--gk-text-default);
-        font-size: 0.875rem;
-        font-weight: 500;
-        white-space: nowrap;
-    }
-    .etherpk-ebook-action:hover {
-        background: var(--gk-surface-2);
-    }
-    .etherpk-ebook-action:focus-visible {
-        outline: 2px solid var(--gk-accent);
-        outline-offset: -2px;
-    }
-    @media (pointer: coarse) {
-        .etherpk-ebook-action {
-            min-height: 2.75rem;
-        }
+        background: var(--gk-surface-0);
+        box-shadow: var(--gk-control-shadow);
     }
     .etherpk-ebook-turn-flash {
         position: absolute;

@@ -32,7 +32,7 @@
             onchange={(e) => statistics.setEnabled(e.currentTarget.checked)}
             aria-describedby="usage-statistics-help"
             data-testid="usage-statistics-enabled"
-            class="mt-0.5 h-4 w-4 rounded border-neutral-300 dark:border-neutral-700"
+            class="gk-checkbox mt-0.5"
         />
         <span>Send usage statistics</span>
     </label>
@@ -46,7 +46,7 @@
                 target="_blank"
                 rel="noopener noreferrer"
                 data-testid="usage-statistics-privacy-link"
-                class="font-medium text-(--gk-accent) underline underline-offset-2">privacy policy</a
+                class="gk-link">privacy policy</a
             > says what is sent.
         {/if}
     </p>

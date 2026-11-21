@@ -191,7 +191,7 @@
             <select data-testid="open-mode" bind:value={mode} title="How to place it">
                 {#each MODES as m (m)}<option value={m}>{m}</option>{/each}
             </select>
-            <label title="Open a deliberate second copy instead of focusing the existing one"><input type="checkbox" data-testid="open-forcenew" bind:checked={forceNew} /> forceNew</label>
+            <label title="Open a deliberate second copy instead of focusing the existing one"><input class="gk-checkbox" type="checkbox" data-testid="open-forcenew" bind:checked={forceNew} /> forceNew</label>
             <button data-testid="open-view" onclick={() => openTracked({ kind: 'document', target }, { region, mode, forceNew })}>
                 Open View
             </button>

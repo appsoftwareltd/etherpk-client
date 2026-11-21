@@ -32,7 +32,7 @@
             onclick={open}
             data-testid="import-to-sync-plus-header"
             title="Copy this folder graph into a new synced graph, end-to-end encrypted and on all your devices."
-            class="hidden items-center gap-1.5 rounded-lg border border-neutral-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50 hover:text-neutral-950 lg:inline-flex dark:border-white/10 dark:bg-white/5 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white"
+            class="gk-button hidden lg:inline-flex"
         >
             <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path
@@ -48,7 +48,7 @@
             type="button"
             onclick={open}
             data-testid="import-to-sync-plus-menu"
-            class="w-full rounded-lg border border-neutral-950/10 px-3 py-2.5 text-sm font-semibold text-neutral-700 transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-white"
+            class="gk-button w-full"
         >
             Import to Sync+
         </button>

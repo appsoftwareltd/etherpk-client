@@ -49,7 +49,7 @@ describe('copying the instruction for a task', () => {
     it('puts where the task is from, its words and its reference on the clipboard, and says what it copied', async () => {
         const { value, copied, notices } = deps()
         expect(await copyTaskInstruction({ document: 'Acme', line: 3, label: '#P1 Send the quote' }, value)).toBe(true)
-        const lines = copied[0].split('\n')
+        const lines = copied[0].split('\n\n')
         expect(lines.slice(0, 3)).toEqual([
             'EtherPK task from the graph "Work" (g-1)',
             'Task: Send the quote',
@@ -75,7 +75,7 @@ describe('copying the instruction for a task', () => {
         const reach: AgentReach = { kind: 'folder', folderName: 'notes', folderPath: '/path/to/notes', file: { subdir: 'pages', fileName: 'Acme.md' } }
         const { value, copied, notices } = deps({ reach })
         await copyTaskInstruction({ document: 'Acme', line: 3, label: 'Send the quote' }, value)
-        expect(copied[0].split('\n')[2]).toBe('File: /path/to/notes/pages/Acme.md')
+        expect(copied[0].split('\n\n')[2]).toBe('File: /path/to/notes/pages/Acme.md')
         expect(notices).toEqual([['info', 'Copied an agent instruction for "Send the quote". Paste it to your agent.']])
     })
 
@@ -97,7 +97,7 @@ describe('copying the instruction for a task', () => {
         const { value, copied } = deps()
         registerAgentInstructionCommands(commands, createContributionRegistry(), value)
         await commands.execute(TASK_COPY_REFERENCE, { document: 'Acme', line: 0, label: 'Send the quote' })
-        expect(copied.map((text) => text.split('\n')[0])).toEqual(['EtherPK task from the graph "Work" (g-1)'])
+        expect(copied.map((text) => text.split('\n\n')[0])).toEqual(['EtherPK task from the graph "Work" (g-1)'])
     })
 
     it('is a Command Menu row only while the caret is on a task line', () => {
@@ -115,7 +115,7 @@ describe('copying the instruction for a lane', () => {
     it('puts the graph, the board, the lane and its reference on the clipboard, and says what it copied', async () => {
         const { value, copied, notices } = deps()
         expect(await copyLaneInstruction({ concept: 'Garden', status: 'doing', label: 'Doing', count: 2 }, value)).toBe(true)
-        expect(copied[0].split('\n').slice(0, 4)).toEqual([
+        expect(copied[0].split('\n\n').slice(0, 4)).toEqual([
             'EtherPK Kanban lane from the graph "Work" (g-1)',
             'Board: Garden',
             'Lane: Doing (2 tasks)',
@@ -151,7 +151,7 @@ describe('copying the instruction for a lane', () => {
         await commands.execute(TASK_COPY_LANE_REFERENCE, { concept: 'Garden', status: 'test', label: 'Test', count: 1 })
         await commands.execute(TASK_COPY_LANE_REFERENCE, { concept: 'Garden', status: 'later', label: 'Later', count: 1 })
         await commands.execute(TASK_COPY_LANE_REFERENCE, undefined)
-        expect(copied.map((text) => text.split('\n')[3])).toEqual(['Reference: etherpk:/graph/sync/g-1/k/Garden#lane=test'])
+        expect(copied.map((text) => text.split('\n\n')[3])).toEqual(['Reference: etherpk:/graph/sync/g-1/k/Garden#lane=test'])
     })
 })
 
@@ -188,7 +188,7 @@ describe('Copy agent instruction on a menu', () => {
 
         await commands.execute(TASK_COPY_REFERENCE, taskLine)
         expect(copied).toHaveLength(1)
-        expect(copied[0].split('\n').slice(1, 3)).toEqual(['Task: water the beans', `Reference: etherpk:/graph/sync/g-1/d/Garden#task=0-${await taskFingerprint('water the beans')}`])
+        expect(copied[0].split('\n\n').slice(1, 3)).toEqual(['Task: water the beans', `Reference: etherpk:/graph/sync/g-1/d/Garden#task=0-${await taskFingerprint('water the beans')}`])
     })
 
     it('follows a wikilink on a task line, after the link\'s own rows', () => {
@@ -210,7 +210,7 @@ describe('Copy agent instruction on a menu', () => {
         const task = { kind: 'task', document: 'Garden', line: 2, label: '#W water the beans', done: false }
         expect(rows(task)).toEqual(['Copy agent instruction'])
         await commands.execute(TASK_COPY_REFERENCE, task)
-        expect(copied[0].split('\n')[1]).toBe('Task: water the beans')
+        expect(copied[0].split('\n\n')[1]).toBe('Task: water the beans')
     })
 })
 

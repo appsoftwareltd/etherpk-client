@@ -286,7 +286,7 @@
     {/snippet}
     {#snippet body()}
         <div
-            class="flex flex-col gap-2 text-(--gk-text-default)"
+            class="flex flex-col gap-4 text-(--gk-text-default)"
             style:font-family="var(--gk-sans, 'Inter', system-ui, sans-serif)"
             data-testid="quick-notes"
         >
@@ -302,7 +302,7 @@
                 onclick={move}
                 disabled={count === 0 || moving || !hasMoveCommand}
                 aria-busy={moving}
-                class="flex w-full items-center justify-center gap-2 rounded-md border border-transparent bg-(--gk-surface-2) px-3 py-1.5 text-sm font-medium text-(--gk-text-strong) hover:bg-(--gk-border-strong) disabled:cursor-default disabled:text-(--gk-text-muted) disabled:hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
+                class="gk-button w-full"
             >
                 <svg
                     class="h-4 w-4 shrink-0"
@@ -322,7 +322,7 @@
             </button>
 
             <!-- ── Input ──────────────────────────────────────────────────────────────── -->
-            <div class="flex flex-col gap-1.5">
+            <div class="flex flex-col gap-2">
                 <QuickNoteBox
                     bind:this={box}
                     bind:value={text}
@@ -341,23 +341,23 @@
                     <!-- In the box's own button row, at its right end. -->
                     {#snippet tools()}
                         <label class="flex w-fit cursor-pointer items-center gap-2 [-webkit-tap-highlight-color:transparent] pointer-coarse:min-h-11">
-                            <input type="checkbox" bind:checked={asTask} data-testid="quick-notes-task" class="size-4 shrink-0 accent-(--gk-accent)" />
+                            <input type="checkbox" bind:checked={asTask} data-testid="quick-notes-task" class="gk-checkbox" />
                             <span class="text-sm text-(--gk-text-default)">Add as task</span>
                         </label>
                     {/snippet}
                 </QuickNoteBox>
                 <span id="quick-notes-hint" class="sr-only">Enter adds the note, Shift+Enter starts a new line.</span>
                 {#if nearCap}
-                    <p class="text-sm text-(--gk-text-muted)" data-testid="quick-notes-length" role="status">
+                    <p class="gk-hint" data-testid="quick-notes-length" role="status">
                         {text.length.toLocaleString()} / {MAX_QUICK_NOTE_LENGTH.toLocaleString()} characters
                     </p>
                 {/if}
                 <QuickNoteFileUnder choices={fileUnder} bind:selected={under} testid="quick-notes-under" />
                 {#if storing > 0}
-                    <p class="text-sm text-(--gk-text-muted)" role="status" data-testid="quick-notes-storing">Storing files…</p>
+                    <p class="gk-hint" role="status" data-testid="quick-notes-storing">Storing files…</p>
                 {/if}
                 {#if addError}
-                    <p class="text-sm text-(--gk-text-danger)" role="alert" data-testid="quick-notes-add-error">{addError}</p>
+                    <p class="gk-error" role="alert" data-testid="quick-notes-add-error">{addError}</p>
                 {/if}
                 <div class="flex items-center justify-between gap-2">
                     <button
@@ -365,7 +365,7 @@
                         data-testid="quick-notes-clear"
                         onclick={clear}
                         disabled={text === "" && pending.count === 0 && under === null && !asTask}
-                        class="rounded-md px-2 py-1 text-sm text-(--gk-text-muted) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent pointer-coarse:min-h-11"
+                        class="gk-button gk-button--quiet"
                     >
                         Clear
                     </button>
@@ -374,10 +374,9 @@
                         data-testid="quick-notes-add"
                         onclick={add}
                         disabled={!canAdd}
-                        class="inline-flex items-center gap-1.5 rounded-md bg-(--gk-accent) py-1.5 pr-5 pl-4 text-sm font-medium text-(--gk-surface-0) hover:bg-(--gk-accent-hover) disabled:cursor-default disabled:opacity-50 disabled:hover:bg-(--gk-accent) pointer-coarse:min-h-11"
+                        class="gk-button gk-button--primary"
                     >
-                        <!-- heroicons/outline plus. A little less padding on its side than after
-                             the word, so the two ends look the same. -->
+                        <!-- heroicons/outline plus. -->
                         <svg class="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                         </svg>
@@ -467,7 +466,7 @@
                                 disabled={deleting.has(note.id)}
                                 aria-label="Delete note"
                                 title="Delete note"
-                                class="absolute top-1 right-1 inline-flex items-center justify-center rounded-md p-1.5 text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) disabled:opacity-40 pointer-coarse:top-0 pointer-coarse:right-0 pointer-coarse:size-11"
+                                class="gk-icon-button absolute top-1 right-1 pointer-coarse:top-0 pointer-coarse:right-0"
                             >
                                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M6 18L18 6" />

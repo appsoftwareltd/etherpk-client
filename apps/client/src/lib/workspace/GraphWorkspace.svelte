@@ -444,6 +444,7 @@
         createWebFsDirectoryAdapter,
         ensureAgentInstructions,
         registerSyncedGraphOnDevice,
+        maxContentWidthOf,
         readGraphSettings,
         sanitizeGraphSettings,
         withCachedToolbarColor,
@@ -546,9 +547,13 @@
     import { dismissNotice, retractNotice, showNotice } from "#lib/activity/notices.js";
     import type { ActivityOutcome } from "#lib/activity/store.js";
     import type { ActivityProgress } from "#lib/activity/types.js";
-    import { type MirrorIndicator, mirrorIndicatorView } from "./mirror-indicator";
+    import { mirrorIndicatorView } from "./mirror-indicator";
+    import { calloutToShow, graphStatus, type GraphStatusActions } from "./graph-status";
+    import { headerGraphStatus } from "./graph-status-host.svelte.js";
+    import GraphStatusDialog from "./GraphStatusDialog.svelte";
     import { createIndexingIndicator } from "./indexing-indicator";
     import { toolbarAccentStyle } from "./toolbar-accent";
+    import { contentWidthStyle } from "./content-width";
 
     /** One tab per graph owns the mirror folder; the rest queue behind this. */
     const MIRROR_LOCK_PREFIX = "etherpk-mirror-folder:";
@@ -569,6 +574,8 @@
     import GraphSettingsDialog from "#lib/sync/ui/GraphSettingsDialog.svelte";
     import InviteDialog from "#lib/sync/ui/InviteDialog.svelte";
     import { isDemoGraph } from "#lib/demo/demo-graph.js";
+    import { chosenGraphState } from "#lib/workspace/chosen-graph.js";
+    import { entryIsAnotherGraphs as namesAnotherGraph } from "#lib/workspace/graph-address-gate.js";
     import { setOpenFolderGraph } from "#lib/workspace/open-folder-graph.svelte.js";
     import { createWorkspaceUsage } from "#lib/telemetry/workspace-usage.js";
     import { usageStatistics } from "#lib/telemetry/usage-statistics-device.js";
@@ -678,6 +685,7 @@
         createIndicatorSettle,
         describeKeyWait,
         describeSyncActivity,
+        syncRetryOffered,
         type SyncIndicator,
         type SyncStatusAction,
     } from "#lib/sync/sync-indicator.js";
@@ -744,6 +752,7 @@
     let {
         graphId: routeGraphId,
         graphAddress: routeGraphAddress,
+        graphsAtAddress,
         opfs,
         autosaveMs,
         indexingIconMs,
@@ -752,6 +761,11 @@
         graphId: string;
         /** The [[Graph Address]] the route was opened at (ADR 0192): every address this workspace writes begins with it. */
         graphAddress: GraphAddress;
+        /**
+         * The ids of the graphs the address names: this one, and for two folders with one name the
+         * other (ADR 0192). A history entry that carries the other's id is not this workspace's.
+         */
+        graphsAtAddress: readonly string[];
         /** Dev only: open over a private-storage folder made for the id, without the registry. */
         opfs: boolean;
         autosaveMs?: number;
@@ -1008,9 +1022,10 @@
     function refreshSyncIndicator(): void {
         if (!syncActivity) {
             syncIndicator = null;
+            dismissedCallout = null;
             return;
         }
-        syncIndicatorSettle ??= createIndicatorSettle((indicator) => (syncIndicator = indicator));
+        syncIndicatorSettle ??= createIndicatorSettle(showSyncIndicator);
         syncIndicatorSettle.update(
             // The flag is read now rather than kept from the last online event: a page started with
             // no network can miss the event when the network returns, and would say Offline for good.
@@ -1018,11 +1033,10 @@
         );
     }
 
-    /** Follow a new graph session's activity: the sync status, and the refusal card when writes are refused. */
+    /** Follow a new graph session's activity: the sync status, and the reason when writes are refused. */
     function watchSyncActivity(sg: GraphSync): void {
         syncActivity = sg.activity();
         refusalCopy = null;
-        refusalNoticeDismissed = false;
         refreshSyncIndicator();
         sg.onActivity((activity) => {
             if (sg !== serverGraph) return;
@@ -1047,7 +1061,6 @@
      */
     async function explainRefusal(sg: GraphSync, refusal: WriteRefusal): Promise<void> {
         const managed = serverAtOpen?.managed ?? false;
-        refusalNoticeDismissed = false;
         refusalCopy = describeWriteRefusal({ refusal, owner: null, plan: null, managed });
         const api = serverApi;
         if (!api) return;
@@ -1067,10 +1080,15 @@
         refreshSyncIndicator();
     }
 
-    /** The server accepted a write after refusing: say so once, and take the refusal card down. */
+    /** Try again now: send what the server refused, and connect if it turned this tab away. */
+    function retrySyncNow(): void {
+        serverGraph?.retryRefused();
+        serverGraph?.reconnectNow();
+    }
+
+    /** The server accepted a write after refusing: say so once. */
     function writesAcceptedAgain(): void {
         refusalCopy = null;
-        refusalNoticeDismissed = false;
         showNotice({
             id: WRITES_RESUMED_NOTICE,
             tone: "info",
@@ -1088,8 +1106,10 @@
         if (syncActivity.refusal && refusalCopy?.billing && billingUrl) {
             actions.push({ id: "sync-state-billing", label: refusalCopy.billing.label, href: billingUrl });
         }
-        if (syncActivity.refusal) {
-            actions.push({ id: "sync-state-retry", label: "Try again now", run: () => serverGraph?.retryRefused() });
+        // A refused write, or a tab the server had no connection left for: the person has just
+        // restarted a plan or closed another tab, and should not wait out the retry schedule.
+        if (syncRetryOffered(syncActivity)) {
+            actions.push({ id: "sync-state-retry", label: "Try again now", run: retrySyncNow });
         }
         // The new key arrived signed with the owner's new keys: they are compared on the Graphs page.
         if (syncActivity.waitingForKey !== null && keyWaitOutcome?.kind === "owner-key-changed") {
@@ -1114,7 +1134,7 @@
     }
 
     /**
-     * The workspace's three STANDING notices - a save that failed, the search index held or
+     * The workspace's STANDING notices - a save that failed, the search index held or
      * unstorable, records restored from the safety copy - live in the same rail as the status
      * line and the Activity Toasts (ADR 0035), each keyed so a change re-posts it in place.
      * Effects, because each is a projection of workspace state that changes from several
@@ -1123,32 +1143,8 @@
      * acknowledgement, and the effect only re-posts once the state behind it changes again.
      */
     const SAVE_FAILURE_NOTICE = "workspace-save-failure";
-    /** Writes refused by the Sync Server on a quota, and their end. */
-    const WRITE_REFUSED_NOTICE = "workspace-write-refused";
+    /** The Sync Server accepts writes again after refusing them. */
     const WRITES_RESUMED_NOTICE = "workspace-writes-resumed";
-    $effect(() => {
-        if (phase !== "ready" || !refusalCopy || refusalNoticeDismissed) {
-            dismissNotice(WRITE_REFUSED_NOTICE);
-            return;
-        }
-        showNotice({
-            id: WRITE_REFUSED_NOTICE,
-            tone: "error",
-            title: "Changes are not reaching the sync server",
-            text: `${refusalCopy.reason} ${refusalCopy.next}`,
-            actions: syncStatusActions.map((action) => ({
-                id: `${action.id}-notice`,
-                label: action.label,
-                primary: action.href !== undefined,
-                disabled: action.disabled,
-                run: () => {
-                    if (action.href) window.open(action.href, "_blank", "noopener");
-                    else action.run?.();
-                },
-            })),
-            ondismiss: () => (refusalNoticeDismissed = true),
-        });
-    });
     const INDEX_NOTICE = "index-not-persisted";
     const STORAGE_RECOVERY_NOTICE = "workspace-storage-recovered";
     /** The notice naming a folder graph's `etherpk/bookmarks.json` that could not be read (ADR 0159). */
@@ -1345,9 +1341,11 @@
      */
     let syncActivity = $state.raw<SyncActivity | null>(null);
     let refusalCopy = $state.raw<WriteRefusalCopy | null>(null);
-    /** The person closed the refusal card; the sync status still says it, and a new refusal re-posts it. */
-    let refusalNoticeDismissed = $state(false);
     let syncIndicator = $state.raw<SyncIndicator | null>(null);
+    /** The status notice the person closed, by the sync state it was about; null when none is closed. */
+    let dismissedCallout = $state<string | null>(null);
+    /** The status dialog, opened from the status dot. */
+    let statusDialogOpen = $state(false);
     let syncIndicatorSettle: ReturnType<typeof createIndicatorSettle> | null = null;
     /**
      * What became of this account's copy of the graph's newest key when it was last collected,
@@ -1405,6 +1403,14 @@
      * their own theme surface over it, and what has none takes the ink beside it (toolbar-accent.ts).
      */
     const toolbarStyle = $derived(toolbarAccentStyle(graphAccentFor(graphId)));
+    /**
+     * Graph Settings → Document width: the widest a document tab's text runs before its pane
+     * centres it, or null to fill the pane. On the workspace root as a CSS custom property, which
+     * every DocumentView beneath reads (content-width.ts), so a save or a peer's change resizes
+     * every open tab at once. Set wherever the settings are adopted, beside the toolbar colour.
+     */
+    let contentWidth = $state<number | null>(maxContentWidthOf({}));
+    const workspaceStyle = $derived(toolbarStyle + contentWidthStyle(contentWidth));
     /**
      * Title the Graph Sidebar's dockview tab from the current name. The tab is titled once, when
      * its panel is created, and two things make that stale: a restored Layout carries the title
@@ -3211,8 +3217,12 @@
                 controller = undefined;
                 renderer = undefined;
                 mobileRenderer = undefined;
-                void queueHistoryWrite(() =>
-                    goto(`${graphUrl(graphAddress)}${withoutSettingsTab(page.url.search)}`, { shallow: true, replace: true }),
+                void writeOwnHistory(() =>
+                    goto(`${graphUrl(graphAddress)}${withoutSettingsTab(page.url.search)}`, {
+                        shallow: true,
+                        replace: true,
+                        state: chosenGraphState({ id: graphId }),
+                    }),
                 );
                 await attempt.wait(tick());
                 await mountPresenter(attempt, freshLayout().model);
@@ -3487,8 +3497,18 @@
     // via page.state. (Our own pushUrl also lands here; apply() is id-idempotent.)
     $effect(() => {
         const visit = page.state.etherpkVisit;
-        if (visit && phase === "ready" && !suppressNav) navEngine?.apply(visit);
+        if (visit && !entryIsAnotherGraphs() && phase === "ready" && !suppressNav) navEngine?.apply(visit);
     });
+
+    /**
+     * Whether the history entry belongs to another graph at this address: the other of two folder
+     * graphs kept in folders with one name (ADR 0192). Back onto such an entry rebuilds the
+     * workspace as that graph (GraphAddressGate.svelte), and until this one is torn down it must
+     * not open the entry's page as though it were its own.
+     */
+    function entryIsAnotherGraphs(): boolean {
+        return namesAnotherGraph(page.state.etherpkGraph, graphId, graphsAtAddress);
+    }
 
     // Settings follows the history entry the same way (ADR 0023, 2026-09-20): a tab named in
     // its state opens the modal there, its absence closes it, so the cog, Back, Forward, a
@@ -3520,6 +3540,7 @@
      * handled by the $effects on page.state, and since SvelteKit 3 they run the navigation hooks too.
      */
     function arrivesFromElsewhere(navigation: { type: string; shallow?: boolean }): boolean {
+        if (entryIsAnotherGraphs()) return false;
         return navigation.type === "popstate" || (navigation.type === "goto" && !navigation.shallow);
     }
 
@@ -4024,6 +4045,7 @@
                 updateWorkspaceServices(workspaceGeneration, { settings });
             }
             setGraphAccent(graphId, settings.toolbarColor);
+            contentWidth = maxContentWidthOf(settings);
             if (meta.name) graphDisplayName = meta.name;
             if (record) {
                 // The record caches the name and the toolbar colour for surfaces that list
@@ -4420,6 +4442,7 @@
             // Graph Settings (etherpk/settings.json) — a snapshot read once.
             currentFsSettings = await attempt.wait(readGraphSettings(adapter));
             setGraphAccent(graphId, currentFsSettings.toolbarColor);
+            contentWidth = maxContentWidthOf(currentFsSettings);
             // Favourites ride Graph Settings on this backend too, so they land in the
             // committed, exported `etherpk/` folder like the rest of the graph's content.
             setFavourites(currentFsSettings.favourites ?? [], async (next) => {
@@ -5316,19 +5339,28 @@
             // Settings is never open on the entry a fresh Visit makes (ADR 0023,
             // 2026-09-20). That drop is what closes the modal when the Publish tab
             // sends someone to a theme or a page, and what lets Back find it again.
+            // Every entry says which graph it is in: the address of a folder graph may be two
+            // graphs' (chosen-graph.ts), and Back from the other one has to find this one.
             pushUrl: (url, state) =>
-                void queueHistoryWrite(() =>
-                    goto(url + withoutSettingsTab(page.url.search), { shallow: true, state: { etherpkVisit: state } }),
+                void writeOwnHistory(() =>
+                    goto(url + withoutSettingsTab(page.url.search), {
+                        shallow: true,
+                        state: { etherpkVisit: state, ...chosenGraphState({ id: graphId }) },
+                    }),
                 ),
             replaceUrl: (url, state) =>
-                void queueHistoryWrite(() =>
-                    goto(url + withoutSettingsTab(page.url.search), { shallow: true, replace: true, state: { etherpkVisit: state } }),
+                void writeOwnHistory(() =>
+                    goto(url + withoutSettingsTab(page.url.search), {
+                        shallow: true,
+                        replace: true,
+                        state: { etherpkVisit: state, ...chosenGraphState({ id: graphId }) },
+                    }),
                 ),
             // The last page closed. Unlike a Visit this keeps Settings: a page can close under an
             // open modal (a delete from elsewhere, Lock now), and the modal stays where it was.
             // `location`, not `page.url`, which shallow writes never update.
             replaceUrlWithoutVisit: (url) =>
-                void queueHistoryWrite(() => {
+                void writeOwnHistory(() => {
                     const state = { ...page.state };
                     delete state.etherpkVisit;
                     return goto(url + location.search, { shallow: true, replace: true, state });
@@ -5510,19 +5542,6 @@
                 },
                 lockNow,
                 requestUnlock: () => void openUnlockProtection(null),
-            },
-            // The Sidebar's sync status. Getters for the same reason: `syncActivity` is set once
-            // the graph session starts, and the status follows every change after it.
-            sync: {
-                get isSynced() {
-                    return syncActivity !== null;
-                },
-                get indicator() {
-                    return syncIndicator;
-                },
-                get actions() {
-                    return syncStatusActions;
-                },
             },
             recents,
             taskFilter,
@@ -5823,7 +5842,7 @@
     function runLaunchFromUrl() {
         if (!new URLSearchParams(location.search).has(WORKSPACE_LAUNCH_PARAM)) return;
         const launch = workspaceLaunchFrom(location.search);
-        void queueHistoryWrite(() =>
+        void writeOwnHistory(() =>
             goto(location.pathname + withoutParams(location.search, [WORKSPACE_LAUNCH_PARAM]) + location.hash, {
                 shallow: true,
                 replace: true,
@@ -5874,7 +5893,7 @@
         const tab = settingsTabFromUrl(page.url);
         // `location`, not `page.url`: seed() may just have replaced the address, which
         // `page.url` does not reflect (shallow writes never update it).
-        void queueHistoryWrite(() => {
+        void writeOwnHistory(() => {
             const search = tab
                 ? withSettingsTab(location.search, tab)
                 : withoutSettingsTab(location.search);
@@ -6968,7 +6987,7 @@
         }
         const target = tab ?? readSettingsTab(graphId) ?? "general";
         // Decided when the write runs: an open still on its way to the address counts as open.
-        void queueHistoryWrite(() => {
+        void writeOwnHistory(() => {
             if (page.state.etherpkSettings) {
                 // Open already: the Publish tab is mounted and read its report request once, so a
                 // report asked for now is not shown (as before this change) - and must not be
@@ -6991,7 +7010,7 @@
 
     /** The open Settings changes tab: the same history entry, renamed - never a second entry. */
     function moveSettingsTab(tab: SettingsTab) {
-        void queueHistoryWrite(() => renameSettingsEntry(tab));
+        void writeOwnHistory(() => renameSettingsEntry(tab));
     }
 
     /** The Settings entry renamed for `tab`. Run only as a queued history write. */
@@ -7019,7 +7038,7 @@
         graphSettingsDialog = null;
         // A prep still in flight must not land the modal again while the Back is on its way.
         settingsShowToken += 1;
-        void queueHistoryWrite(() => {
+        void writeOwnHistory(() => {
             const current = page.state.etherpkSettings;
             if (!current) return undefined;
             if (current.pushed) return goBack();
@@ -7130,6 +7149,7 @@
         try {
             currentFsSettings = sanitizeGraphSettings({ ...currentFsSettings, ...patch });
             await writeGraphSettings(adapter, currentFsSettings);
+            contentWidth = maxContentWidthOf(currentFsSettings);
             if (workspaceGeneration !== undefined) {
                 updateWorkspaceServices(workspaceGeneration, { settings: currentFsSettings });
             }
@@ -7170,6 +7190,7 @@
                 await writeGraphSettings(adapter, result.settings);
                 currentFsSettings = sanitizeGraphSettings(result.settings);
                 setGraphAccent(graphId, currentFsSettings.toolbarColor);
+                contentWidth = maxContentWidthOf(currentFsSettings);
                 if (workspaceGeneration !== undefined) {
                     updateWorkspaceServices(workspaceGeneration, {
                         settings: currentFsSettings,
@@ -7847,6 +7868,15 @@
         };
     }
 
+    /**
+     * Show a settled sync state. A notice the person closed is forgotten here once its state has
+     * gone, so it shows again the next time that state comes back (graph-status.ts).
+     */
+    function showSyncIndicator(indicator: SyncIndicator): void {
+        syncIndicator = indicator;
+        const next = graphStatus(true, indicator, { state: "hidden" });
+        dismissedCallout = calloutToShow(next.shown ? next.callout : null, dismissedCallout).nextDismissed;
+    }
     /** What the orphan scan says beside a PDF that nothing links to but a person may still be using. */
     async function orphanNotesInput(): Promise<OrphanNotesInput> {
         const favourites = new Set(
@@ -7859,18 +7889,45 @@
     }
 
     /**
-     * What the toolbar dot shows. Derived rather than stored: every input already exists, and a
-     * second copy of "is the mirror all right" is a second thing to get wrong.
+     * What the status dot shows: sync and the Local Mirror together (graph-status.ts). Derived
+     * rather than stored: every input already exists, and a second copy of "is everything all
+     * right" is a second thing to get wrong.
      */
-    function mirrorIndicator(): MirrorIndicator {
-        const view = mirrorIndicatorView(
-            mirrorStatus ?? rememberedMirrorStatus(),
-            mirrorHeldElsewhere,
-        );
-        return view.state === "hidden"
-            ? view
-            : { ...view, onclick: () => openGraphSettings("mirror") };
+    const status = $derived(
+        graphStatus(
+            syncActivity !== null,
+            syncIndicator,
+            mirrorIndicatorView(mirrorStatus ?? rememberedMirrorStatus(), mirrorHeldElsewhere),
+        ),
+    );
+    /** The notice beside the dot, less the one the person closed. */
+    const statusCallout = $derived(status.shown ? calloutToShow(status.callout, dismissedCallout).show : null);
+    const statusActions = $derived<GraphStatusActions>({
+        sync: syncStatusActions,
+        openMirrorSettings: () => openGraphSettings("mirror"),
+    });
+
+    /** Opening the dialog closes the notice: the dialog says the same, at length. */
+    function openStatusDialog(): void {
+        dismissStatusCallout();
+        statusDialogOpen = true;
     }
+
+    function dismissStatusCallout(): void {
+        if (status.shown && status.callout) dismissedCallout = status.callout.id;
+    }
+
+    // On a phone the dot sits in the app's header, which the route layout draws, so what it needs
+    // is published to it (graph-status-host.svelte.ts). An effect, because the header is outside
+    // this component.
+    $effect(() => {
+        headerGraphStatus.set(
+            useMobile && phase === "ready" && status.shown
+                ? { status, callout: statusCallout, open: openStatusDialog, dismissCallout: dismissStatusCallout }
+                : null,
+        );
+        return () => headerGraphStatus.set(null);
+    });
 
     /**
      * A mirror paused because the Sync Server was out of reach carries on once the connection is
@@ -7921,6 +7978,17 @@
         } finally {
             resolvingConflict = false;
         }
+    }
+
+    /**
+     * A write to this workspace's own history entry. Writes wait their turn (history-writes.ts),
+     * and one can come up after the workspace has closed, when the entry in front belongs to the
+     * page opened since: the Graphs page, or another graph. Such a write is dropped, as is one
+     * that comes up on an entry of the other folder with this graph's address. It would put this
+     * graph's address and state on that entry.
+     */
+    function writeOwnHistory(write: () => unknown): Promise<void> {
+        return queueHistoryWrite(() => (session.isDisposed() || entryIsAnotherGraphs() ? undefined : write()));
     }
 
     async function disposeWorkspaceResources() {
@@ -8460,6 +8528,10 @@
     />
 {/if}
 
+{#if statusDialogOpen && status.shown}
+    <GraphStatusDialog {status} actions={statusActions} onclose={() => (statusDialogOpen = false)} />
+{/if}
+
 {#if graphSettingsDialog}
     <GraphSettingsDialog
         {graphId}
@@ -8660,7 +8732,7 @@
      (which must exist whenever ready & desktop). Mobile: the self-contained
      MobilePresenter, which carries its own chrome (drawer toggles + tab strip),
      so the desktop toolbar is not rendered. -->
-<div class="workspace" class:hidden={phase !== "ready"} style={toolbarStyle}>
+<div class="workspace" class:hidden={phase !== "ready"} style={workspaceStyle}>
     {#if !useMobile}
         <WorkspaceToolbar
             ontoggleleft={() => toggleSidebar("left")}
@@ -8669,7 +8741,10 @@
                 void commandRegistry?.execute("help.openShortcuts")}
             onsettings={() => openGraphSettings()}
             ontasks={() => void commandRegistry?.execute("tasks.open")}
-            mirror={mirrorIndicator()}
+            {status}
+            callout={statusCallout}
+            onstatus={openStatusDialog}
+            ondismisscallout={dismissStatusCallout}
             indexing={indexingIconShown}
         />
         <div
@@ -8715,13 +8790,13 @@
             <button
                 type="button"
                 data-testid="conflict-keep-mine"
-                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                class="gk-button"
                 onclick={() => resolve("keep-mine")}>Keep mine</button
             >
             <button
                 type="button"
                 data-testid="conflict-take-disk"
-                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                class="gk-button"
                 onclick={() => resolve("take-disk")}>Take disk</button
             >
         {/snippet}

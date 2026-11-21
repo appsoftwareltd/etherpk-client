@@ -161,8 +161,7 @@
             <!-- Disabled only while there is nothing to pin; the idle hint below says why. -->
             <button
                 type="button"
-                class="pin"
-                class:pin--on={pinned !== null}
+                class="gk-icon-button"
                 aria-pressed={pinned !== null}
                 aria-label={pinned !== null ? `Unpin from ${pinned}` : concept ? `Pin to ${concept}` : "Pin"}
                 title={pinned !== null
@@ -198,7 +197,7 @@
     {:else if backlinks.status === "failed"}
         <p class="hint hint--error" data-testid="backlinks-error">
             Could not load the backlinks to <strong>{concept}</strong>: the graph's index did not answer.
-            <button type="button" class="retry" onclick={() => loader.retry()}>Try again</button>
+            <button type="button" class="gk-link ml-1" onclick={() => loader.retry()}>Try again</button>
         </p>
     {:else if backlinks.status === "ready" && backlinks.groups.length === 0}
         <p class="hint" data-testid="backlinks-empty">
@@ -252,49 +251,6 @@
         gap: 0.5rem;
         margin-left: auto;
     }
-    .pin {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 4px;
-        border: 0;
-        border-radius: 4px;
-        background: transparent;
-        color: var(--gk-text-muted, currentColor);
-        cursor: pointer;
-        line-height: 0;
-    }
-    /* Hover styling only where hover exists: a tapped button on a touch screen keeps `:hover`
-       until the next tap elsewhere, and a hover colour that outranked the pinned state left the
-       icon grey until the drawer was reopened. */
-    @media (hover: hover) {
-        .pin:hover:not(:disabled) {
-            background: rgba(127, 127, 127, 0.22);
-            color: var(--gk-text-default, currentColor);
-        }
-    }
-    .pin:disabled {
-        opacity: 0.4;
-        cursor: default;
-    }
-    /* A finger needs a 44 CSS px target: on a touch screen the pin grows to it. */
-    @media (pointer: coarse) {
-        .pin {
-            min-width: 2.75rem;
-            min-height: 2.75rem;
-        }
-    }
-    /* Pinned: the accent, and a grey wash that stays without hover, so the state is legible at rest.
-       Declared after the hover rule and repeated with it, so the state wins under the pointer too. */
-    .pin--on,
-    .pin--on:hover {
-        color: var(--gk-accent, #2563eb);
-        background: color-mix(in srgb, var(--gk-text-default) 14%, transparent);
-    }
-    .pin:focus-visible {
-        outline: 2px solid var(--gk-accent, #2563eb);
-        outline-offset: 1px;
-    }
     /* "Pinned to X" / "Showing X", under the header. */
     .caption {
         margin: -0.2rem 0 0.5rem;
@@ -310,20 +266,6 @@
     .hint--error {
         opacity: 1;
         color: var(--gk-text-muted);
-    }
-    .retry {
-        margin-left: 0.25rem;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: var(--gk-accent, #2563eb);
-        font: inherit;
-        text-decoration: underline;
-        cursor: pointer;
-    }
-    .retry:focus-visible {
-        outline: 2px solid var(--gk-accent, #2563eb);
-        outline-offset: 1px;
     }
     /* Loading: a quiet ring and a line of text, faded in only once the wait is worth explaining
        (the reference image's placeholder waits the same way, AssetImage.svelte). */

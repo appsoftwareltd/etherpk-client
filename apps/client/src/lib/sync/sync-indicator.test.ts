@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SyncActivity } from './graph-sync'
-import { createIndicatorSettle, describeKeyWait, describeSyncActivity, INDICATOR_SETTLE_MS, type SyncIndicator } from './sync-indicator'
+import { createIndicatorSettle, describeKeyWait, describeSyncActivity, INDICATOR_SETTLE_MS, syncRetryOffered, type SyncIndicator } from './sync-indicator'
 
 const activity = (patch: Partial<SyncActivity> = {}): SyncActivity => ({
     connection: 'open',
@@ -44,6 +44,23 @@ describe('describeSyncActivity', () => {
         expect(refused.detail).toBe(
             'The sync server is not accepting changes to this graph. Your Sync+ subscription has ended. Changes to 1 document are kept on this device.',
         )
+    })
+
+    it('says the sync server turned this tab away, what to close, and that changes are kept', () => {
+        const turnedAway = describeSyncActivity(activity({ connection: 'turned-away', unsentDocuments: 2 }), true)
+        expect(turnedAway).toMatchObject({ state: 'turned-away', label: 'Not syncing', unsent: 2 })
+        expect(turnedAway.detail).toBe(
+            'Not syncing: this graph is open in too many tabs or devices. Your changes are kept on this device and sync once one of the other tabs is closed. If you close this tab your edits will sync when a newly opened tab next syncs.',
+        )
+        // Offline says what to fix first.
+        expect(describeSyncActivity(activity({ connection: 'turned-away' }), false).state).toBe('offline')
+    })
+
+    it('offers Try again now for a refused write and for a tab turned away, and for nothing else', () => {
+        expect(syncRetryOffered(activity({ connection: 'turned-away' }))).toBe(true)
+        expect(syncRetryOffered(activity({ refusal: { quotaCode: 'entitlement_inactive' } }))).toBe(true)
+        expect(syncRetryOffered(activity({ connection: 'reconnecting' }))).toBe(false)
+        expect(syncRetryOffered(activity())).toBe(false)
     })
 
     it('says access ended once the session ended for good', () => {

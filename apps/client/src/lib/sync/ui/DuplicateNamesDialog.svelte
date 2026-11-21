@@ -31,13 +31,13 @@
         <button
             type="button"
             onclick={onclose}
-            class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-600 dark:text-neutral-300 hover:text-neutral-800 dark:hover:text-neutral-100 transition-colors"
+            class="gk-button"
             data-testid="duplicate-names-not-now">Not now</button
         >
         <button
             type="submit"
             data-autofocus
-            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors"
+            class="gk-button gk-button--primary"
             data-testid="duplicate-names-review">Review</button
         >
     {/snippet}

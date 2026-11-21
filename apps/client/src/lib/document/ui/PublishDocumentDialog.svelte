@@ -89,7 +89,7 @@
             </p>
         {:else}
             <label class="flex items-start gap-2 text-sm text-neutral-950 dark:text-neutral-100">
-                <input type="checkbox" class="mt-0.5" bind:checked={isPublic} data-testid="publish-document-public" />
+                <input type="checkbox" class="gk-checkbox mt-0.5" bind:checked={isPublic} data-testid="publish-document-public" />
                 <span>
                     <span class="font-medium">Public</span><br />
                     <span class="text-neutral-600 dark:text-neutral-400">Required before any publication can include it. Unticking it withdraws the document from every site at once.</span>
@@ -103,26 +103,26 @@
             {:else if publications && publications.length === 0}
                 <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="publish-document-none">
                     This graph has no publication yet, so a public document goes nowhere until one exists.
-                    <button type="button" class="font-medium text-[var(--gk-accent,#007ACC)] underline underline-offset-2" onclick={onopensettings}>Create one in Settings → Publish</button>.
+                    <button type="button" class="gk-link" onclick={onopensettings}>Create one in Settings → Publish</button>.
                 </p>
             {:else if publications}
                 <fieldset class="space-y-2" data-testid="publish-document-publications">
                     <legend class="text-sm font-medium text-neutral-500 dark:text-neutral-400">Publications</legend>
                     {#each named as p (p.id)}
                         <label class="flex items-start gap-2 text-sm text-neutral-950 dark:text-neutral-100">
-                            <input type="checkbox" class="mt-0.5" checked={chosen.includes(p.id)} onchange={(e) => toggle(p.id, (e.currentTarget as HTMLInputElement).checked)} data-testid="publish-document-in-{p.id}" />
+                            <input type="checkbox" class="gk-checkbox mt-0.5" checked={chosen.includes(p.id)} onchange={(e) => toggle(p.id, (e.currentTarget as HTMLInputElement).checked)} data-testid="publish-document-in-{p.id}" />
                             <span><span class="font-medium">{p.name}</span> <span class="text-neutral-500 dark:text-neutral-400"><code>{p.id}</code></span></span>
                         </label>
                     {/each}
                     {#each allPublic as p (p.id)}
                         <label class="flex items-start gap-2 text-sm text-neutral-950 dark:text-neutral-100">
-                            <input type="checkbox" class="mt-0.5" checked={isPublic} disabled data-testid="publish-document-in-{p.id}" />
+                            <input type="checkbox" class="gk-checkbox mt-0.5" checked={isPublic} disabled data-testid="publish-document-in-{p.id}" />
                             <span><span class="font-medium">{p.name}</span> <span class="text-neutral-500 dark:text-neutral-400">includes every public document</span></span>
                         </label>
                     {/each}
                     {#each unknown as id (id)}
                         <label class="flex items-start gap-2 text-sm text-neutral-950 dark:text-neutral-100">
-                            <input type="checkbox" class="mt-0.5" checked onchange={(e) => toggle(id, (e.currentTarget as HTMLInputElement).checked)} />
+                            <input type="checkbox" class="gk-checkbox mt-0.5" checked onchange={(e) => toggle(id, (e.currentTarget as HTMLInputElement).checked)} />
                             <span><code>{id}</code> <span class="text-amber-800 dark:text-amber-200">no publication has this id</span></span>
                         </label>
                     {/each}
@@ -136,9 +136,9 @@
     {/snippet}
 
     {#snippet footer()}
-        <button type="button" class="rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/10" onclick={onclose}>{isProtected ? "Close" : "Cancel"}</button>
+        <button type="button" class="gk-button" onclick={onclose}>{isProtected ? "Close" : "Cancel"}</button>
         {#if !isProtected}
-            <button type="button" class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-3 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50" disabled={!changed || saving} onclick={() => void save()} data-testid="publish-document-save">{saving ? "Saving…" : "Save"}</button>
+            <button type="button" class="gk-button gk-button--primary" disabled={!changed || saving} onclick={() => void save()} data-testid="publish-document-save">{saving ? "Saving…" : "Save"}</button>
         {/if}
     {/snippet}
 </Dialog>

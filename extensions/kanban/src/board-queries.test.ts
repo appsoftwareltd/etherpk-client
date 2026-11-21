@@ -350,3 +350,54 @@ describe('a board with a filter', () => {
         expect((await laneTasks(source, 'Garden', 'doing', TODAY, { filter: { text: 'weed' } })).map((task) => task.text)).toEqual(['#D Weed'])
     })
 })
+
+describe('the Graph Kanban narrowed to a concept', () => {
+    beforeEach(() => {
+        ingest(db, [
+            page('2026-09-29', ['- Call with [[Acme]]', '  - [ ] #P1 Send the quote', '    - [ ] Print it', '  - [ ] #D Draft the brief', '- [ ] Buy milk']),
+            page('Acme', ['- [ ] #P2 Water the beans', '- [x] Book a room']),
+            page('Shed', ['- [ ] Fix the door', '- [ ] [[Acme]] Paint the gate #urgent']),
+        ])
+    })
+
+    const open = (board: BoardSnapshot) => board.lanes[0]
+
+    /** Every lane's cards, section by section, as keys a person could compare. */
+    const cards = (board: BoardSnapshot) => board.lanes.map((lane) => lane.sections.map((s) => s.cards.map((card) => `${card.document}:${card.line}:${card.label}`)))
+
+    it('shows what the concept’s own board shows, and counts each lane against the whole graph', async () => {
+        const narrowed = await readBoard(source, null, TODAY, { filter: { concept: 'Acme' } })
+        const own = await readBoard(source, 'Acme', TODAY)
+        expect(cards(narrowed)).toEqual(cards(own))
+        expect(open(narrowed)).toMatchObject({ filter: { concept: 'Acme' }, total: 3, unfiltered: 5 })
+        // The Graph Kanban stays the Graph Kanban: the filter narrows it, and is not its concept.
+        expect(narrowed.concept).toBeNull()
+    })
+
+    it('agrees with the concept’s own board for every name the graph has', async () => {
+        for (const name of ['Acme', 'acme', 'Shed', '2026-09-29', 'Nowhere']) {
+            const narrowed = await readBoard(source, null, TODAY, { filter: { concept: name } })
+            expect(cards(narrowed)).toEqual(cards(await readBoard(source, name, TODAY)))
+        }
+    })
+
+    it('combines the concept with the words, the priorities and the due window', async () => {
+        const board = await readBoard(source, null, TODAY, { filter: { concept: 'Acme', text: '#urgent' } })
+        expect(labels(board, 'open', null)).toEqual(['[[Acme]] Paint the gate'])
+        expect(open(board)).toMatchObject({ total: 1, unfiltered: 5 })
+        const p2 = await readBoard(source, null, TODAY, { filter: { concept: 'Acme', priorities: [2] } })
+        expect(labels(p2, 'open', 2)).toEqual(['Water the beans'])
+        expect(open(p2).total).toBe(1)
+    })
+
+    it('leaves a concept’s own board to its concept', async () => {
+        const board = await readBoard(source, 'Shed', TODAY, { filter: { concept: 'Acme' } })
+        expect(cards(board)).toEqual(cards(await readBoard(source, 'Shed', TODAY)))
+        expect(open(board).filter).toBeNull()
+    })
+
+    it('lists a lane through the concept for Move all to lane', async () => {
+        const tasks = await laneTasks(source, null, 'open', TODAY, { filter: { concept: 'Acme' } })
+        expect(tasks.map((task) => task.text).sort()).toEqual(['#P1 Send the quote', '#P2 Water the beans', '[[Acme]] Paint the gate #urgent'])
+    })
+})

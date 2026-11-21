@@ -45,7 +45,7 @@
     {#each buttons as button (button.kind)}
         <button
             type="button"
-            class="end-button"
+            class="end-button gk-button gk-button--quiet gk-button--small"
             title={button.hint}
             data-testid={`end-of-document-${button.kind}`}
             onmousedown={keepEditorFocus}
@@ -71,53 +71,21 @@
         border-top: 1px solid var(--gk-border-soft);
         background: var(--gk-surface-0);
     }
-    /* The names are read, so they are 14px in the muted text colour (ADR 0106): fixed to the root
-       size, so the document's zoom, which scales the text above, leaves them as they are. */
+    /* Quiet buttons (`gk-button--quiet`): the names are read, so they are 14px in the muted text
+       colour (ADR 0106), fixed to the root size, so the document's zoom, which scales the text
+       above, leaves them as they are. The height is the row's own. */
     .end-button {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.375rem;
         min-height: 2.25rem;
-        padding: 0 0.625rem;
-        border: 0;
-        border-radius: 0.5rem;
-        background: transparent;
-        color: var(--gk-text-muted);
-        font-size: 0.875rem;
-        line-height: 1.25rem;
-        white-space: nowrap;
-        cursor: pointer;
         touch-action: manipulation;
-        transition:
-            background-color 120ms ease-out,
-            color 120ms ease-out;
     }
     .end-button__icon {
         display: inline-flex;
         flex: none;
     }
-    @media (hover: hover) {
-        .end-button:hover {
-            background: var(--gk-surface-2);
-            color: var(--gk-text-default);
-        }
-    }
-    .end-button:active {
-        background: var(--gk-surface-2);
-    }
-    .end-button:focus-visible {
-        outline: 2px solid var(--gk-accent);
-        outline-offset: -2px;
-    }
     /* A finger needs a 44 CSS px target. */
     @media (pointer: coarse) {
         .end-button {
             min-height: 2.75rem;
-        }
-    }
-    @media (prefers-reduced-motion: reduce) {
-        .end-button {
-            transition: none;
         }
     }
 </style>

@@ -82,10 +82,8 @@
     let passphraseInput: HTMLInputElement | undefined = $state();
     let runButton: HTMLButtonElement | undefined = $state();
 
-    const SECONDARY =
-        "rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5";
-    const PRIMARY =
-        "rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 pointer-coarse:min-h-11 disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200";
+    const SECONDARY = "gk-button";
+    const PRIMARY = "gk-button gk-button--primary";
 
     const custom = $derived(step.kind === "import" && !step.managed ? serverHost(step.origin) : null);
     const title = $derived(custom ? `Import "${graphName}" to a synced graph` : `Import "${graphName}" to Sync+`);
@@ -205,7 +203,7 @@
         <div>
             <label
                 for="import-to-sync-plus-name"
-                class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
+                class="gk-label mb-1.5 block"
                 >Graph name</label
             >
             <input
@@ -218,14 +216,14 @@
                 aria-describedby={nameInvalid ? "import-to-sync-plus-error" : undefined}
                 disabled={busy}
                 autocomplete="off"
-                class="block w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-950 focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 focus:outline-none dark:border-neutral-700 dark:bg-white/10 dark:text-neutral-100 dark:focus:border-neutral-400 dark:focus:ring-neutral-400"
+                class="gk-input"
             />
         </div>
         {#if protection}
             <div data-testid="import-to-sync-plus-protection">
                 <label
                     for="import-to-sync-plus-passphrase"
-                    class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
+                    class="gk-label mb-1.5 block"
                     >Protection passphrase (optional)</label
                 >
                 <p id="import-to-sync-plus-passphrase-help" class="mb-1.5 text-sm text-neutral-600 dark:text-neutral-300">
@@ -246,12 +244,7 @@
                         : "import-to-sync-plus-passphrase-help"}
                     disabled={busy}
                     autocomplete="current-password"
-                    class={[
-                        "block w-full rounded-lg border bg-white px-3 py-2 text-sm text-neutral-950 focus:ring-1 focus:outline-none dark:bg-white/10 dark:text-neutral-100",
-                        passphraseInvalid
-                            ? "border-red-400 focus:border-red-500 focus:ring-red-500 dark:border-red-500/60"
-                            : "border-neutral-300 focus:border-neutral-950 focus:ring-neutral-950 dark:border-neutral-700 dark:focus:border-neutral-400 dark:focus:ring-neutral-400",
-                    ]}
+                    class="gk-input"
                 />
             </div>
         {/if}
@@ -277,7 +270,7 @@
                         {#if offer.pricingUrl}
                             <a
                                 href={offer.pricingUrl}
-                                class="font-medium text-(--gk-accent) underline underline-offset-2"
+                                class="gk-link"
                                 >See pricing</a
                             >
                         {/if}
@@ -305,7 +298,7 @@
             type="button"
             onclick={onclose}
             disabled={busy}
-            class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 hover:text-neutral-700 disabled:opacity-40 dark:text-neutral-400 dark:hover:text-neutral-300"
+            class="gk-button"
             >Cancel</button
         >
         {#if step.kind === "offer"}

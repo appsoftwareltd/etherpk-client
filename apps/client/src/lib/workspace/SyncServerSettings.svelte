@@ -163,12 +163,10 @@
         void cancelReplace();
     }
 
-    const SECONDARY_BUTTON =
-        "inline-flex items-center justify-center rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5";
+    const SECONDARY_BUTTON = "gk-button";
     const CARD =
         "rounded-xl border border-neutral-200 bg-white p-4 dark:border-white/10 dark:bg-white/5";
-    const PRIMARY_BUTTON =
-        "inline-flex rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200";
+    const PRIMARY_BUTTON = "gk-button gk-button--primary";
     /**
      * A part of a card, such as the Recovery Code in the Encryption Keys card, in a tinted panel of
      * its own. The heading is only a little larger than the help text, so the panel's edge is what
@@ -357,7 +355,7 @@
                             data-testid="sync-plan-check-again"
                             aria-busy={server.planChecking}
                             onclick={actions.checkPlan}
-                            class="mt-2 rounded-lg border border-amber-300 px-3 py-1.5 text-sm font-medium hover:bg-amber-100 aria-busy:cursor-progress dark:border-amber-400/30 dark:hover:bg-amber-400/10"
+                            class="gk-button mt-2 aria-busy:cursor-progress"
                             >{server.planChecking
                                 ? "Checking…"
                                 : "Check again"}</button
@@ -593,7 +591,7 @@
                                 data-testid="replace-keys-continue"
                                 onkeydown={escapeCancels}
                                 onclick={continueReplace}
-                                class="{SECONDARY_BUTTON} bg-white dark:bg-transparent"
+                                class={SECONDARY_BUTTON}
                                 >Continue</button
                             >
                             <button
@@ -601,7 +599,7 @@
                                 data-testid="replace-keys-cancel"
                                 onkeydown={escapeCancels}
                                 onclick={cancelReplace}
-                                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-700 hover:text-neutral-950 pointer-coarse:min-h-11 dark:text-neutral-200 dark:hover:text-white"
+                                class="gk-button"
                                 >Cancel</button
                             >
                         </div>
@@ -726,7 +724,7 @@
                 type="button"
                 data-testid="reset-keys"
                 onclick={actions.reset}
-                class="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 pointer-coarse:min-h-11 dark:border-red-500/40 dark:hover:bg-red-950/30"
+                class="gk-button gk-button--danger"
                 >Reset Encryption Keys</button
             >
         </section>

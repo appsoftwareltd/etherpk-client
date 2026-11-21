@@ -212,22 +212,15 @@
             .map((piece, index) => ({ code: index % 2 === 1, text: piece }));
     }
 
-    // The two buttons are the same size and differ only in their fill; the link beside them is as
-    // tall, so it is as easy to hit, and takes a line of its own on a phone.
-    const actionBase =
-        "inline-flex h-12 items-center justify-center gap-2.5 text-base font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 dark:focus-visible:outline-white";
-    const buttonBase = `${actionBase} w-full rounded-xl px-6 shadow-sm sm:w-56`;
+    // The two buttons are the standard controls at one width, and differ only in their fill; the
+    // link beside them is padded to their height, so it is as easy to hit, and takes a line of its
+    // own on a phone.
     const actionClasses: Record<Action["variant"], string> = {
-        primary: `${buttonBase} bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100`,
-        secondary: `${buttonBase} bg-white text-neutral-950 ring-1 ring-inset ring-neutral-950/15 hover:bg-neutral-50 dark:bg-white/5 dark:text-white dark:ring-white/15 dark:hover:bg-white/10`,
-        link: `${actionBase} rounded-lg px-3 text-neutral-700 underline decoration-neutral-400 underline-offset-4 hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-white`,
+        primary: "gk-button gk-button--primary w-full sm:w-56",
+        secondary: "gk-button w-full sm:w-56",
+        // A flex row, so the icon stays on the label's line (an `svg` is a block), and 44px to hit.
+        link: "gk-link inline-flex min-h-11 items-center gap-1.5 px-3 whitespace-nowrap",
     };
-
-    // Every text link on the page looks the same. The links beneath the hero add an icon, and
-    // share one class list so the repository, the docs, the blog and the Discord community match.
-    const textLinkClass =
-        "font-medium text-neutral-700 underline decoration-neutral-400 underline-offset-2 transition-colors hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-white";
-    const iconLinkClass = `inline-flex items-center gap-1.5 ${textLinkClass}`;
 </script>
 
 <svelte:head>
@@ -412,7 +405,7 @@
             <!-- A self-hosted page links the team's server here, where Sync+ is named on a managed one. -->
             Free for folder graphs in Chrome or Edge. {#if managed}Sync+{:else if syncServerHref}<a
                     href={syncServerHref}
-                    class={textLinkClass}>Your team's Sync Server</a
+                    class="gk-link">Your team's Sync Server</a
                 >{:else}Your team's Sync Server{/if} works in every browser and on your phone,
             or bring your own sync (Git, Syncthing).
         </p>
@@ -457,7 +450,7 @@
             class="mt-10 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm leading-6"
         >
             <li class="flex w-full justify-center">
-                <a href={CLIENT_REPOSITORY_URL} class={iconLinkClass}>
+                <a href={CLIENT_REPOSITORY_URL} class="gk-link inline-flex items-center gap-1.5">
                     <svg
                         class="size-4 shrink-0"
                         viewBox="0 0 16 16"
@@ -472,7 +465,7 @@
                 </a>
             </li>
             <li>
-                <a href={docsHref} class={iconLinkClass}>
+                <a href={docsHref} class="gk-link inline-flex items-center gap-1.5">
                     <!-- An open book. -->
                     <svg
                         class="size-4 shrink-0"
@@ -493,7 +486,7 @@
                 </a>
             </li>
             <li>
-                <a href={PUBLIC_BLOG_URL} class={iconLinkClass}>
+                <a href={PUBLIC_BLOG_URL} class="gk-link inline-flex items-center gap-1.5">
                     <!-- A pencil over a line of writing. -->
                     <svg
                         class="size-4 shrink-0"
@@ -514,7 +507,7 @@
                 </a>
             </li>
             <li class="flex w-full justify-center">
-                <a href={COMMUNITY_DISCORD_URL} class={iconLinkClass}>
+                <a href={COMMUNITY_DISCORD_URL} class="gk-link inline-flex items-center gap-1.5">
                     <!-- Discord's mark, from Simple Icons (CC0). -->
                     <svg
                         class="size-4 shrink-0"
@@ -552,8 +545,8 @@
                 <dd>
                     <!-- The space sits between the blocks on one line: whitespace at the end of an
                          {#if} block is dropped. -->
-                    {#if way.source}<a href={way.source.href} class={textLinkClass}>{way.source.label}</a>.{/if} {@render inline(way.text)}
-                    <a href="{docsHref}/{way.docs.slug}" class={textLinkClass}>{way.docs.label}</a>
+                    {#if way.source}<a href={way.source.href} class="gk-link">{way.source.label}</a>.{/if} {@render inline(way.text)}
+                    <a href="{docsHref}/{way.docs.slug}" class="gk-link">{way.docs.label}</a>
                 </dd>
             </div>
         {/each}
@@ -619,7 +612,7 @@
         <p class="mt-4 text-sm leading-6 text-neutral-500 dark:text-neutral-400">
             Need support? Email us at <a
                 href="mailto:{supportEmail}"
-                class={textLinkClass}>{supportEmail}</a
+                class="gk-link">{supportEmail}</a
             >.
         </p>
     {/if}

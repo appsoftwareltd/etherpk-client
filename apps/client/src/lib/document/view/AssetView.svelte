@@ -114,7 +114,7 @@
             <button
                 type="button"
                 onclick={() => (attempt += 1)}
-                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                class="gk-button"
                 >Retry</button
             >
         </div>
@@ -145,7 +145,7 @@
             <button
                 type="button"
                 onclick={download}
-                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                class="gk-button"
                 >Download it instead</button
             >
         </div>

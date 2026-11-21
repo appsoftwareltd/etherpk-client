@@ -164,7 +164,7 @@
             <button
                 type="button"
                 onclick={copyAppLink}
-                class="min-h-9 rounded-lg border border-neutral-300 px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5"
+                class="gk-button"
             >{linkCopy === "copied" ? "Copied" : "Copy link"}</button>
             <span role="status" class="text-sm text-neutral-600 dark:text-neutral-400">
                 {#if linkCopy !== "idle" && linkCopy !== "copied"}{linkCopy}{/if}
@@ -182,7 +182,7 @@
                 Sync settings.
             </p>
             <div>
-                <label for="invite-email" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">Email address</label>
+                <label for="invite-email" class="gk-label mb-1.5 block">Email address</label>
                 <input
                     id="invite-email"
                     type="email"
@@ -191,9 +191,7 @@
                     placeholder="name@example.com"
                     aria-invalid={error && step === "email" ? "true" : undefined}
                     aria-describedby={error && step === "email" ? errorId : undefined}
-                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {error
-                        ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                        : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
+                    class="gk-input"
                 />
                 {#if error && step === "email"}
                     <p id={errorId} role="alert" class="mt-1.5 text-sm text-red-600" data-testid="invite-error">{error}</p>
@@ -231,22 +229,22 @@
 
     {#snippet footer()}
         {#if step === "email"}
-            <button type="button" onclick={() => close()} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
+            <button type="button" onclick={() => close()} class="gk-button">Cancel</button>
             <button
                 type="submit"
                 disabled={busy}
                 data-testid="invite-lookup"
-                class="min-w-32 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
+                class="gk-button gk-button--primary min-w-32"
             >{busy ? "Looking up…" : "Continue"}</button>
         {:else if step === "verify"}
-            <button type="button" onclick={() => (step = "email")} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Back</button>
+            <button type="button" onclick={() => (step = "email")} class="gk-button">Back</button>
             <!-- Reserved width: this label loses ~150px when it becomes "Sending…", which slid
                  the Back button out from under the pointer that had just clicked. -->
             <button
                 type="submit"
                 disabled={busy}
                 data-testid="invite-send"
-                class="min-w-64 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
+                class="gk-button gk-button--primary min-w-64"
             >{busy
                     ? "Sending…"
                     : fingerprintState === "verified"
@@ -258,7 +256,7 @@
             <button
                 type="submit"
                 data-testid="invite-done"
-                class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
+                class="gk-button gk-button--primary"
             >Done</button>
         {/if}
     {/snippet}

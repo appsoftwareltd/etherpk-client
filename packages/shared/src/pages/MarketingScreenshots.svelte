@@ -236,7 +236,7 @@
     onpointerleave={onPointerLeave}
 >
     <div
-        class="overflow-hidden rounded-xl bg-neutral-950 shadow-2xl shadow-neutral-950/15 ring-1 ring-neutral-950/10 sm:rounded-2xl dark:shadow-black/40 dark:ring-white/10"
+        class="overflow-hidden rounded-xl bg-neutral-950 ring-1 ring-neutral-950/10 dark:ring-white/10"
     >
         <!-- One grid cell holds every screenshot, so the frame is the size of one. The screenshot
              coming in fades in on top, and the one going out stays whole beneath it until it is
@@ -286,7 +286,7 @@
             type="button"
             aria-label={rotating ? "Pause slideshow" : "Play slideshow"}
             title={rotating ? "Pause slideshow" : "Play slideshow"}
-            class="inline-flex size-10 shrink-0 items-center justify-center rounded-full text-neutral-700 ring-1 ring-neutral-950/10 transition-colors ring-inset hover:bg-neutral-950/5 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 dark:text-neutral-300 dark:ring-white/15 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:outline-white"
+            class="gk-icon-button"
             onclick={() => (rotating ? takeOver() : play())}
         >
             <!-- The icons ignore the pointer, so the node under it is always the button. Chrome
@@ -322,7 +322,7 @@
         <div
             role="tablist"
             aria-label="Screenshots"
-            class="flex min-w-0 flex-wrap items-center justify-center gap-0.5 rounded-[1.25rem] bg-neutral-950/5 p-1 ring-1 ring-neutral-950/5 ring-inset dark:bg-white/5 dark:ring-white/10"
+            class="flex min-w-0 flex-wrap items-center justify-center gap-0.5 rounded-xl bg-neutral-950/5 p-1 ring-1 ring-neutral-950/5 ring-inset dark:bg-white/5 dark:ring-white/10"
         >
             {#each SCREENSHOTS as shot, index (shot.id)}
                 <button

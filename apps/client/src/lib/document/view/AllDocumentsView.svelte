@@ -71,7 +71,7 @@
             aria-label="Filter documents by name"
             autocomplete="off"
             bind:value={filter}
-            class="min-w-0 flex-1 rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-3 py-2 text-sm text-(--gk-text-strong) placeholder:text-(--gk-text-subtle) focus:border-(--gk-border-strong) focus:outline-none"
+            class="gk-input min-w-0 flex-1"
         />
         <span class="shrink-0 text-sm text-(--gk-text-subtle)" data-testid="all-documents-count">
             {matches.length} of {all.length}

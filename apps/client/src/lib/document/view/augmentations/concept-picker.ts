@@ -7,7 +7,8 @@
  *
  * Built on the shared `popoverMenu`, so it has the Command Menu's chrome and keys: the arrows
  * move, Enter or Tab picks, Escape closes. Any edit or caret move closes it too, as does the
- * editor losing focus.
+ * editor losing focus. Another popover's late answer refreshes every popover (the `#` helper's
+ * Free Tags, asked for whenever the editor takes the focus), and leaves this one as it was.
  *
  * A request carries data only (the rows and the id of the Command to run), as the calendar's
  * target does. The Command runs with `{ ...args, concept }`.
@@ -53,12 +54,18 @@ interface PickerState extends PopoverBase {
 }
 
 export function conceptPicker(): Extension {
-    // The request lives only in the transaction that makes it. The popover keeps its own copy
-    // from then on, and the next time it recomputes (an edit, a caret move) it finds none here
-    // and closes.
+    // The request lasts until an edit or a caret move, which close the picker. A refresh in
+    // between recomputes it from here and finds it still asked for: the request lived only in the
+    // transaction that made it, and a Free Tags answer landing a moment after `/kanban` shut the
+    // picker under the person's eyes. Only that transaction opens it (`opensOn`), so a refresh
+    // after Escape, a pick or a blur leaves it shut although the request is still held.
     const requested = StateField.define<ConceptPickerRequest | null>({
         create: () => null,
-        update: (_, tr) => tr.effects.find((effect) => effect.is(openConceptPicker))?.value ?? null,
+        update(value, tr) {
+            const opened = tr.effects.find((effect) => effect.is(openConceptPicker))
+            if (opened) return opened.value
+            return tr.docChanged || tr.selection ? null : value
+        },
     })
 
     return [
@@ -66,6 +73,7 @@ export function conceptPicker(): Extension {
         popoverMenu<PickerState>({
             testid: 'concept-picker',
             classPrefix: 'gk-concept-picker',
+            opensOn: (tr) => tr.effects.some((effect) => effect.is(openConceptPicker)),
             compute(state) {
                 const request = state.field(requested, false)
                 return request ? { anchor: request.pos, request, selected: 0 } : null

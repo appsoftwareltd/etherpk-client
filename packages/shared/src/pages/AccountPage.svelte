@@ -2,7 +2,7 @@
     import { flushSync, tick } from "svelte";
     import { uuidv7 } from "uuidv7";
     import QRCode from "qrcode";
-    import { focusFirstInvalid, textFieldClass } from "../ui/index.svelte";
+    import { focusFirstInvalid } from "../ui/index.svelte";
     import AlertBanner from "../components/AlertBanner.svelte";
     import type { AccountAuthClient } from "../auth/page-clients";
     import { verificationResendWaitSeconds } from "../auth/verification-resend";
@@ -747,7 +747,7 @@
         autocomplete="current-password"
         aria-invalid={mfaFieldError !== null}
         aria-describedby={mfaFieldError ? `${id}-error` : undefined}
-        class={textFieldClass(!!mfaFieldError)}
+        class="gk-input"
     />
     {#if mfaFieldError}
         <p id="{id}-error" class="text-sm text-red-600">{mfaFieldError}</p>
@@ -779,7 +779,7 @@
     </div>
 
     <!-- Profile card -->
-    <div class="rounded-xl border border-neutral-950/8 bg-white shadow-sm divide-y divide-neutral-950/5">
+    <div class="rounded-xl border border-neutral-950/8 bg-white divide-y divide-neutral-950/5">
         <div class="px-6 py-5">
             <h2 class="text-sm font-semibold text-neutral-950">Profile</h2>
         </div>
@@ -831,7 +831,7 @@
                 {/if}
 
                 <div class="flex flex-wrap items-center gap-3">
-                    <button type="button" onclick={resendVerification} disabled={verificationLoading || resendCoolingDown} aria-describedby={resendCoolingDown || lastSentLabel ? resendHintId : undefined} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button type="button" onclick={resendVerification} disabled={verificationLoading || resendCoolingDown} aria-describedby={resendCoolingDown || lastSentLabel ? resendHintId : undefined} class="gk-button gk-button--primary">
                         {verificationLoading ? "Sending…" : "Resend verification email"}
                     </button>
                     {#if resendCoolingDown}
@@ -847,7 +847,7 @@
     </div>
 
     <!-- Email change -->
-    <div class="mt-4 rounded-xl border border-neutral-950/8 bg-white shadow-sm divide-y divide-neutral-950/5">
+    <div class="mt-4 rounded-xl border border-neutral-950/8 bg-white divide-y divide-neutral-950/5">
         <div class="px-6 py-5">
             <h2 class="text-sm font-semibold text-neutral-950">Email</h2>
         </div>
@@ -877,8 +877,8 @@
             {#if mailEnabled}
             <form onsubmit={handleChangeEmail} novalidate class="space-y-3">
                 <div>
-                    <label for="new-email" class="block text-sm font-medium text-neutral-700 mb-1">New email address</label>
-                    <input id="new-email" type="email" bind:value={newEmail} autocomplete="email" placeholder="new@example.com" aria-invalid={!!emailFieldError} aria-describedby={emailFieldError ? "new-email-error" : undefined} class={textFieldClass(!!emailFieldError)} />
+                    <label for="new-email" class="gk-label block mb-1">New email address</label>
+                    <input id="new-email" type="email" bind:value={newEmail} autocomplete="email" placeholder="new@example.com" aria-invalid={!!emailFieldError} aria-describedby={emailFieldError ? "new-email-error" : undefined} class="gk-input" />
                     {#if emailFieldError}
                         <p id="new-email-error" class="mt-1 text-sm text-red-600">{emailFieldError}</p>
                     {/if}
@@ -886,7 +886,7 @@
 
                 {#if hasPassword}
                     <div>
-                        <label for="email-password" class="block text-sm font-medium text-neutral-700 mb-1">Password</label>
+                        <label for="email-password" class="gk-label block mb-1">Password</label>
                         <input
                             id="email-password"
                             type="password"
@@ -897,7 +897,7 @@
                             autocomplete="current-password"
                             aria-invalid={!!emailPasswordError}
                             aria-describedby={emailPasswordError ? "email-password-error" : undefined}
-                            class={textFieldClass(!!emailPasswordError)}
+                            class="gk-input"
                         />
                         {#if emailPasswordError}
                             <p id="email-password-error" class="mt-1 text-sm text-red-600">{emailPasswordError}</p>
@@ -905,7 +905,7 @@
                     </div>
                 {/if}
 
-                <button type="submit" disabled={emailLoading} class="rounded-lg bg-neutral-950 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                <button type="submit" disabled={emailLoading} class="gk-button gk-button--primary">
                     {emailLoading ? "Sending…" : "Change email"}
                 </button>
             </form>
@@ -916,7 +916,7 @@
     <!-- Connected accounts: only when there is a provider to connect or a link to show, or while it
          confirms a disconnect that removed the last one listed. -->
     {#if offeredProviders.length > 0 || accountSuccess}
-    <div data-testid="connected-accounts" class="mt-4 rounded-xl border border-neutral-950/8 bg-white shadow-sm divide-y divide-neutral-950/5">
+    <div data-testid="connected-accounts" class="mt-4 rounded-xl border border-neutral-950/8 bg-white divide-y divide-neutral-950/5">
         <div class="px-6 py-5">
             <h2 class="text-sm font-semibold text-neutral-950">Connected accounts</h2>
         </div>
@@ -966,12 +966,12 @@
                                 <!-- Said in text, not a tooltip on a control that cannot be used. -->
                                 <span class="text-sm text-neutral-500">Your only sign-in method</span>
                             {:else if isLinked(provider.id)}
-                                <button type="button" onclick={() => unlinkProvider(provider.id)} disabled={unlinkLoading === provider.id} aria-label="Disconnect {provider.label}" class="text-sm text-red-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline">
+                                <button type="button" onclick={() => unlinkProvider(provider.id)} disabled={unlinkLoading === provider.id} aria-label="Disconnect {provider.label}" class="gk-link text-red-600 disabled:cursor-not-allowed">
                                     {unlinkLoading === provider.id ? "Disconnecting…" : "Disconnect"}
                                 </button>
                             {:else}
                                 <!-- Unverified, the notice above the list says why this is unavailable. -->
-                                <button type="button" onclick={() => linkProvider(provider.id)} disabled={linkLoading === provider.id || verifyBeforeLinking} aria-label="Connect {provider.label}" class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                <button type="button" onclick={() => linkProvider(provider.id)} disabled={linkLoading === provider.id || verifyBeforeLinking} aria-label="Connect {provider.label}" class="gk-button gk-button--primary">
                                     {linkLoading === provider.id ? "Connecting…" : "Connect"}
                                 </button>
                             {/if}
@@ -984,7 +984,7 @@
     {/if}
 
     <!-- Security -->
-    <div class="mt-4 rounded-xl border border-neutral-950/8 bg-white shadow-sm divide-y divide-neutral-950/5">
+    <div class="mt-4 rounded-xl border border-neutral-950/8 bg-white divide-y divide-neutral-950/5">
         <div class="px-6 py-5">
             <h2 class="text-sm font-semibold text-neutral-950">Security</h2>
         </div>
@@ -1005,10 +1005,10 @@
                         </span>
                         <!-- Hidden while a step is open: starting again would discard what it shows. -->
                         {#if mfaStep === "idle"}
-                            <button type="button" bind:this={disableButton} onclick={startMfaDisable} class="text-sm text-red-600 hover:underline">Disable</button>
+                            <button type="button" bind:this={disableButton} onclick={startMfaDisable} class="gk-link text-red-600">Disable</button>
                         {/if}
                     {:else if mfaStep === "idle"}
-                        <button type="button" bind:this={enableButton} onclick={startMfaEnable} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors">Enable</button>
+                        <button type="button" bind:this={enableButton} onclick={startMfaEnable} class="gk-button gk-button--primary">Enable</button>
                     {/if}
                 </div>
             </div>
@@ -1024,16 +1024,16 @@
             <!-- Confirm password to start enable flow -->
             {#if mfaStep === "confirm-password"}
                 <form onsubmit={getMfaUri} novalidate class="rounded-lg border border-neutral-950/8 bg-neutral-50 p-4 space-y-3">
-                    <label for="account-mfa-enable-password" class="block text-sm font-medium text-neutral-700">Enter your current password to continue</label>
+                    <label for="account-mfa-enable-password" class="gk-label block">Enter your current password to continue</label>
                     {#if mfaError}
                         {@render errorBanner(mfaError)}
                     {/if}
                     {@render mfaPasswordField("account-mfa-enable-password")}
                     <div class="flex gap-2">
-                        <button type="submit" disabled={mfaLoading} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={mfaLoading} class="gk-button gk-button--primary">
                             {mfaLoading ? "Loading…" : "Continue"}
                         </button>
-                        <button type="button" onclick={cancelMfa} class="rounded-lg border border-neutral-950/15 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelMfa} class="gk-button">Cancel</button>
                     </div>
                 </form>
             {/if}
@@ -1060,7 +1060,7 @@
                         <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
                             <div class="flex items-center justify-between gap-2">
                                 <p class="text-sm font-semibold text-amber-800">Save your backup codes</p>
-                                <button type="button" onclick={copyBackupCodes} class="inline-flex items-center gap-1 rounded-md bg-amber-100 border border-amber-300 px-2 py-1 text-sm font-medium text-amber-800 hover:bg-amber-200 transition-colors">
+                                <button type="button" onclick={copyBackupCodes} class="gk-button gk-button--small">
                                     {#if backupCodesCopied}
                                         <svg class="h-3 w-3" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                                             <path fill-rule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" />
@@ -1083,7 +1083,7 @@
                         </div>
                     {/if}
                     <div>
-                        <label for="account-mfa-code" class="block text-sm font-medium text-neutral-700 mb-1.5">2. Enter the 6-digit code from your app</label>
+                        <label for="account-mfa-code" class="gk-label block mb-1.5">2. Enter the 6-digit code from your app</label>
                         {#if mfaError}
                             <div class="mb-2">
                                 {@render errorBanner(mfaError)}
@@ -1103,17 +1103,17 @@
                             autocomplete="one-time-code"
                             aria-invalid={mfaFieldError !== null}
                             aria-describedby={mfaFieldError ? "account-mfa-code-error" : undefined}
-                            class="{textFieldClass(!!mfaFieldError)} font-mono tracking-widest"
+                            class="gk-input font-mono tracking-widest"
                         />
                         {#if mfaFieldError}
                             <p id="account-mfa-code-error" class="mt-1 text-sm text-red-600">{mfaFieldError}</p>
                         {/if}
                     </div>
                     <div class="flex gap-2">
-                        <button type="submit" disabled={mfaLoading} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={mfaLoading} class="gk-button gk-button--primary">
                             {mfaLoading ? "Verifying…" : "Verify & Enable"}
                         </button>
-                        <button type="button" onclick={cancelMfa} class="rounded-lg border border-neutral-950/15 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelMfa} class="gk-button">Cancel</button>
                     </div>
                 </form>
             {/if}
@@ -1121,16 +1121,16 @@
             <!-- Disable confirmation -->
             {#if mfaStep === "disable-confirm"}
                 <form onsubmit={disableMfa} novalidate class="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
-                    <label for="account-mfa-disable-password" class="block text-sm font-medium text-red-700">Enter your current password to disable two-factor authentication</label>
+                    <label for="account-mfa-disable-password" class="gk-label block text-red-700">Enter your current password to disable two-factor authentication</label>
                     {#if mfaError}
                         {@render errorBanner(mfaError)}
                     {/if}
                     {@render mfaPasswordField("account-mfa-disable-password")}
                     <div class="flex gap-2">
-                        <button type="submit" disabled={mfaLoading} class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={mfaLoading} class="gk-button gk-button--danger">
                             {mfaLoading ? "Disabling…" : "Disable 2FA"}
                         </button>
-                        <button type="button" onclick={cancelMfa} class="rounded-lg border border-neutral-950/15 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelMfa} class="gk-button">Cancel</button>
                     </div>
                 </form>
             {/if}
@@ -1144,7 +1144,7 @@
                     <p class="text-sm text-neutral-500 mt-0.5">Sign in with your fingerprint, face, or screen lock instead of a password.</p>
                 </div>
                 {#if passkeySupported && passkeyStep === "idle"}
-                    <button type="button" bind:this={addPasskeyButton} onclick={startAddPasskey} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors shrink-0">Add a passkey</button>
+                    <button type="button" bind:this={addPasskeyButton} onclick={startAddPasskey} class="gk-button gk-button--primary shrink-0">Add a passkey</button>
                 {/if}
             </div>
 
@@ -1163,7 +1163,7 @@
             <!-- Add passkey: name prompt -->
             {#if passkeyStep === "add-name"}
                 <form onsubmit={addPasskey} novalidate class="rounded-lg border border-neutral-950/8 bg-neutral-50 p-4 space-y-3">
-                    <label for="account-passkey-name" class="block text-sm font-medium text-neutral-700">Name your passkey</label>
+                    <label for="account-passkey-name" class="gk-label block">Name your passkey</label>
                     <p id="account-passkey-name-hint" class="text-sm text-neutral-500">Give it a recognisable name so you can identify it later.</p>
                     {#if passkeyError}
                         {@render errorBanner(passkeyError)}
@@ -1180,16 +1180,16 @@
                         maxlength="100"
                         aria-invalid={passkeyFieldError !== null}
                         aria-describedby={passkeyFieldError ? "account-passkey-name-error" : "account-passkey-name-hint"}
-                        class={textFieldClass(!!passkeyFieldError)}
+                        class="gk-input"
                     />
                     {#if passkeyFieldError}
                         <p id="account-passkey-name-error" class="text-sm text-red-600">{passkeyFieldError}</p>
                     {/if}
                     <div class="flex gap-2">
-                        <button type="submit" disabled={passkeyLoading} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={passkeyLoading} class="gk-button gk-button--primary">
                             {passkeyLoading ? "Waiting for browser…" : "Continue"}
                         </button>
-                        <button type="button" onclick={cancelPasskey} class="rounded-lg border border-neutral-950/15 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelPasskey} class="gk-button">Cancel</button>
                     </div>
                 </form>
             {/if}
@@ -1197,7 +1197,7 @@
             <!-- Rename passkey -->
             {#if passkeyStep === "rename"}
                 <form onsubmit={renamePasskey} novalidate class="rounded-lg border border-neutral-950/8 bg-neutral-50 p-4 space-y-3">
-                    <label for="account-passkey-rename" class="block text-sm font-medium text-neutral-700">Rename passkey</label>
+                    <label for="account-passkey-rename" class="gk-label block">Rename passkey</label>
                     {#if passkeyError}
                         {@render errorBanner(passkeyError)}
                     {/if}
@@ -1213,16 +1213,16 @@
                         maxlength="100"
                         aria-invalid={passkeyFieldError !== null}
                         aria-describedby={passkeyFieldError ? "account-passkey-rename-error" : undefined}
-                        class={textFieldClass(!!passkeyFieldError)}
+                        class="gk-input"
                     />
                     {#if passkeyFieldError}
                         <p id="account-passkey-rename-error" class="text-sm text-red-600">{passkeyFieldError}</p>
                     {/if}
                     <div class="flex gap-2">
-                        <button type="submit" disabled={passkeyRenameLoading} class="rounded-lg bg-neutral-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={passkeyRenameLoading} class="gk-button gk-button--primary">
                             {passkeyRenameLoading ? "Saving…" : "Save"}
                         </button>
-                        <button type="button" onclick={cancelPasskey} class="rounded-lg border border-neutral-950/15 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelPasskey} class="gk-button">Cancel</button>
                     </div>
                 </form>
             {/if}
@@ -1252,9 +1252,9 @@
                                 </div>
                             </div>
                             <div class="flex items-center gap-2 shrink-0">
-                                <button type="button" bind:this={renameButtons[pk.id]} onclick={() => startRenamePasskey(pk.id, pk.name ?? "")} class="text-sm text-neutral-500 hover:text-neutral-950 hover:underline">Rename</button>
+                                <button type="button" bind:this={renameButtons[pk.id]} onclick={() => startRenamePasskey(pk.id, pk.name ?? "")} class="gk-link">Rename</button>
                                 {#if canDeletePasskey()}
-                                    <button type="button" onclick={() => deletePasskey(pk.id)} disabled={passkeyDeleteLoading === pk.id} class="text-sm text-red-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <button type="button" onclick={() => deletePasskey(pk.id)} disabled={passkeyDeleteLoading === pk.id} class="gk-link text-red-600 disabled:cursor-not-allowed">
                                         {passkeyDeleteLoading === pk.id ? "Removing…" : "Remove"}
                                     </button>
                                 {:else}
@@ -1297,16 +1297,16 @@
             {#if hasPassword}
                 <form onsubmit={handleChangePassword} novalidate class="space-y-3">
                     <div>
-                        <label for="pw-current" class="block text-sm font-medium text-neutral-700 mb-1">Current password</label>
-                        <input id="pw-current" type="password" bind:value={pwCurrent} autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" aria-invalid={!!pwFieldErrors.current} aria-describedby={pwFieldErrors.current ? "pw-current-error" : undefined} class={textFieldClass(!!pwFieldErrors.current)} />
+                        <label for="pw-current" class="gk-label block mb-1">Current password</label>
+                        <input id="pw-current" type="password" bind:value={pwCurrent} autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" aria-invalid={!!pwFieldErrors.current} aria-describedby={pwFieldErrors.current ? "pw-current-error" : undefined} class="gk-input" />
                         {#if pwFieldErrors.current}
                             <p id="pw-current-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.current}</p>
                         {/if}
                     </div>
 
                     <div>
-                        <label for="pw-new" class="block text-sm font-medium text-neutral-700 mb-1">New password</label>
-                        <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error pw-new-help" : "pw-new-help"} class={textFieldClass(!!pwFieldErrors.new)} />
+                        <label for="pw-new" class="gk-label block mb-1">New password</label>
+                        <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error pw-new-help" : "pw-new-help"} class="gk-input" />
                         {#if pwFieldErrors.new}
                             <p id="pw-new-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.new}</p>
                         {/if}
@@ -1314,27 +1314,27 @@
                     </div>
 
                     <div>
-                        <label for="pw-confirm" class="block text-sm font-medium text-neutral-700 mb-1">Confirm new password</label>
-                        <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" placeholder="Repeat new password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class={textFieldClass(!!pwFieldErrors.confirm)} />
+                        <label for="pw-confirm" class="gk-label block mb-1">Confirm new password</label>
+                        <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" placeholder="Repeat new password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class="gk-input" />
                         {#if pwFieldErrors.confirm}
                             <p id="pw-confirm-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.confirm}</p>
                         {/if}
                     </div>
 
                     <label class="flex items-center gap-2 text-sm text-neutral-700">
-                        <input type="checkbox" bind:checked={signOutOthers} class="h-4 w-4 rounded border-neutral-300" />
+                        <input type="checkbox" bind:checked={signOutOthers} class="gk-checkbox" />
                         Sign out of other devices
                     </label>
 
-                    <button type="submit" disabled={pwLoading} class="rounded-lg bg-neutral-950 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button type="submit" disabled={pwLoading} class="gk-button gk-button--primary">
                         {pwLoading ? "Saving…" : "Update password"}
                     </button>
                 </form>
             {:else}
                 <form onsubmit={handleSetPassword} novalidate class="space-y-3">
                     <div>
-                        <label for="pw-new" class="block text-sm font-medium text-neutral-700 mb-1">New password</label>
-                        <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error pw-new-help" : "pw-new-help"} class={textFieldClass(!!pwFieldErrors.new)} />
+                        <label for="pw-new" class="gk-label block mb-1">New password</label>
+                        <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error pw-new-help" : "pw-new-help"} class="gk-input" />
                         {#if pwFieldErrors.new}
                             <p id="pw-new-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.new}</p>
                         {/if}
@@ -1342,14 +1342,14 @@
                     </div>
 
                     <div>
-                        <label for="pw-confirm" class="block text-sm font-medium text-neutral-700 mb-1">Confirm password</label>
-                        <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" placeholder="Repeat password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class={textFieldClass(!!pwFieldErrors.confirm)} />
+                        <label for="pw-confirm" class="gk-label block mb-1">Confirm password</label>
+                        <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" placeholder="Repeat password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class="gk-input" />
                         {#if pwFieldErrors.confirm}
                             <p id="pw-confirm-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.confirm}</p>
                         {/if}
                     </div>
 
-                    <button type="submit" disabled={pwLoading} class="rounded-lg bg-neutral-950 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button type="submit" disabled={pwLoading} class="gk-button gk-button--primary">
                         {pwLoading ? "Saving…" : "Set password"}
                     </button>
                 </form>
@@ -1364,7 +1364,7 @@
                     <p class="text-sm text-neutral-500 mt-0.5">Where your account is signed in. Signing a session out ends it at once.</p>
                 </div>
                 {#if sessions.length > 1}
-                    <button type="button" onclick={signOutOtherSessions} disabled={sessionsBusy !== null} class="shrink-0 rounded-lg border border-neutral-950/15 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button type="button" onclick={signOutOtherSessions} disabled={sessionsBusy !== null} class="gk-button shrink-0">
                         {sessionsBusy === "others" ? "Signing out…" : "Sign out of other sessions"}
                     </button>
                 {/if}
@@ -1397,7 +1397,7 @@
                                 onclick={() => signOutSession(session)}
                                 disabled={sessionsBusy !== null}
                                 aria-label="Sign out {describeDevice(session.userAgent)}, signed in {formatDate(session.createdAt)}"
-                                class="shrink-0 text-sm text-red-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                                class="gk-link shrink-0 text-red-600 disabled:cursor-not-allowed"
                             >
                                 {sessionsBusy === session.id ? "Signing out…" : "Sign out"}
                             </button>

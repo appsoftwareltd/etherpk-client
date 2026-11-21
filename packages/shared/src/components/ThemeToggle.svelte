@@ -79,20 +79,20 @@
         };
     });
 
-    const containerClass = $derived(displayedResolvedTheme === "dark" ? "border-white/15 bg-neutral-950/85 shadow-neutral-950/40" : "border-neutral-200 bg-white/85");
+    const containerClass = $derived(displayedResolvedTheme === "dark" ? "border-white/15 bg-neutral-950/85" : "border-neutral-200 bg-white/85");
 
     function buttonClass(option: ThemePreference) {
         const isActive = displayedPreference === option;
 
         if (isActive) {
-            return displayedResolvedTheme === "dark" ? "bg-white/12 text-white ring-1 ring-white/20 shadow-sm" : "bg-neutral-950 text-white shadow-sm";
+            return displayedResolvedTheme === "dark" ? "bg-white/12 text-white ring-1 ring-white/20" : "bg-neutral-950 text-white";
         }
 
         return displayedResolvedTheme === "dark" ? "text-neutral-400 hover:bg-white/10 hover:text-white" : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950";
     }
 </script>
 
-<div data-testid="theme-toggle" data-hydrated={hydrated || undefined} class="inline-flex items-center rounded-full border p-1 shadow-sm backdrop-blur-sm {containerClass}">
+<div data-testid="theme-toggle" data-hydrated={hydrated || undefined} class="inline-flex items-center rounded-full border p-1 backdrop-blur-sm {containerClass}">
     <div class="flex items-center gap-0.5" role="radiogroup" aria-label="Color theme">
         {#each options as option (option.value)}
             <button

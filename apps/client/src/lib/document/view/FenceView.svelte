@@ -125,19 +125,19 @@
                     <p class="m-0 max-w-sm text-sm text-(--gk-text-muted)">
                         Nothing on this device draws <code>{ref.info}</code>. The extension that does may be switched off or not installed.
                     </p>
-                    <button type="button" class="action" onclick={openDocument}>Open {ref.document}</button>
+                    <button type="button" class="gk-button" onclick={openDocument}>Open {ref.document}</button>
                 </div>
             {:else if status === "gone"}
                 <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center" role="status" data-testid="fence-view-gone">
                     <p class="m-0 max-w-sm text-sm text-(--gk-text-muted)">This is no longer in {ref.document}. It may have been deleted, or the document renamed.</p>
-                    <button type="button" class="action" onclick={openDocument}>Open {ref.document}</button>
+                    <button type="button" class="gk-button" onclick={openDocument}>Open {ref.document}</button>
                 </div>
             {:else if status === "protected"}
                 <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center" role="status" data-testid="fence-view-protected">
                     <p class="m-0 max-w-sm text-sm text-(--gk-text-muted)">
                         {ref.document} is a protected document. Extensions don't draw anything in a protected document, so this can't be shown here.
                     </p>
-                    <button type="button" class="action" onclick={openDocument}>Open {ref.document}</button>
+                    <button type="button" class="gk-button" onclick={openDocument}>Open {ref.document}</button>
                 </div>
             {/if}
         </div>
@@ -161,17 +161,5 @@
         .loading {
             animation-duration: 0ms;
         }
-    }
-    .action {
-        border: 1px solid var(--gk-border-strong);
-        border-radius: 0.375rem;
-        padding: 0.375rem 0.75rem;
-        font-size: 0.875rem;
-        font-weight: 500;
-        color: var(--gk-text-default);
-        background: transparent;
-    }
-    .action:hover {
-        background: var(--gk-surface-1);
     }
 </style>

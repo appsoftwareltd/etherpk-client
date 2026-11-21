@@ -58,10 +58,8 @@
 
     const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
-    const button =
-        "rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40";
-    const primary =
-        "rounded-lg bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40";
+    const button = "gk-button";
+    const primary = "gk-button gk-button--primary";
 </script>
 
 <section bind:this={root} class="space-y-3" aria-labelledby="{uid}-heading" data-testid="duplicate-names-section">

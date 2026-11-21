@@ -150,10 +150,8 @@
         }),
     );
 
-    const SETUP_PRIMARY =
-        "inline-flex min-h-9 items-center justify-center rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 pointer-coarse:min-h-11 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200";
-    const SETUP_SECONDARY =
-        "inline-flex min-h-9 items-center justify-center rounded-lg border border-neutral-300 px-4 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5";
+    const SETUP_PRIMARY = "gk-button gk-button--primary";
+    const SETUP_SECONDARY = "gk-button";
 
     let open = $state(true);
     let prepared = $state.raw<PreparedSource | null>(null);
@@ -480,7 +478,7 @@
                     target="_blank"
                     rel="noopener noreferrer"
                     data-testid="import-guide"
-                    class="font-medium underline">Importing an existing knowledge base</a
+                    class="gk-link">Importing an existing knowledge base</a
                 >
             </p>
             {#if destinations.notice}
@@ -515,7 +513,7 @@
                     data-autofocus
                     disabled={busy}
                     onclick={() => sourceInput?.click()}
-                    class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                    class="gk-button"
                     >Choose folder…</button
                 >
                 <button
@@ -524,7 +522,7 @@
                     data-testid="import-choose-zip"
                     disabled={busy}
                     onclick={() => zipInput?.click()}
-                    class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                    class="gk-button"
                     >Choose a zip…</button
                 >
             </div>
@@ -543,7 +541,7 @@
             <div>
                 <label
                     for="import-format"
-                    class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
+                    class="gk-label mb-1.5 block"
                     >Source format (detected)</label
                 >
                 <select
@@ -552,7 +550,7 @@
                     disabled={busy}
                     aria-describedby={encryptedNotes > 0 ? "import-encrypted-notes" : undefined}
                     bind:value={format}
-                    class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+                    class="gk-select w-full"
                 >
                     {#each FORMAT_LABELS as [value, label] (value)}
                         <option {value}>{label}</option>
@@ -576,7 +574,7 @@
             <div>
                 <label
                     for="import-name"
-                    class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
+                    class="gk-label mb-1.5 block"
                     >Graph name</label
                 >
                 <input
@@ -589,7 +587,7 @@
                     aria-describedby={nameInvalid ? "import-error" : undefined}
                     disabled={busy}
                     autocomplete="off"
-                    class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+                    class="gk-input"
                 />
             </div>
             <fieldset>
@@ -649,7 +647,7 @@
                         <div class="pl-6">
                             <label
                                 for="import-sync-server"
-                                class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
+                                class="gk-label mb-1.5 block"
                                 >Sync Server</label
                             >
                             <select
@@ -658,7 +656,7 @@
                                 disabled={busy}
                                 value={syncTarget.origin}
                                 onchange={(event) => (pickedOrigin = event.currentTarget.value)}
-                                class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+                                class="gk-select w-full"
                             >
                                 {#each syncTargets as target (target.origin)}
                                     {@const reason = target.deps ? target.unavailableReason : (target.unavailableReason ?? "Not signed in")}
@@ -675,7 +673,7 @@
                 <div data-testid="import-protection">
                     <label
                         for="import-protection-passphrase"
-                        class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
+                        class="gk-label mb-1.5 block"
                         >Protection passphrase (optional)</label
                     >
                     <p id="import-protection-help" class="mb-1.5 text-sm text-neutral-600 dark:text-neutral-300">
@@ -696,9 +694,7 @@
                             : "import-protection-help"}
                         disabled={busy}
                         autocomplete="current-password"
-                        class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:outline-none focus:ring-1 {passphraseInvalid
-                            ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
-                            : 'border-neutral-300 dark:border-neutral-700 focus:border-neutral-950 dark:focus:border-neutral-400 focus:ring-neutral-950 dark:focus:ring-neutral-400'}"
+                        class="gk-input"
                     />
                 </div>
             {/if}
@@ -737,7 +733,7 @@
             type="button"
             onclick={close}
             disabled={busy}
-            class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 disabled:opacity-40"
+            class="gk-button"
             >{destinations.none && !prepared ? "Close" : "Cancel"}</button
         >
         {#if prepared}
@@ -748,7 +744,7 @@
                     (destination === "synced" && !syncTarget) ||
                     (destination === "folder" && !folderAvailable)}
                 data-testid="import-run"
-                class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
+                class="gk-button gk-button--primary"
                 >{busy ? "Starting…" : "Import"}</button
             >
         {/if}

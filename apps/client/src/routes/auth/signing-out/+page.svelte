@@ -43,10 +43,10 @@
     {#if slow}
         <p class="mt-3 text-sm text-neutral-600 dark:text-neutral-400">
             This is taking longer than usual.
-            <a href={data.next} class="font-medium text-neutral-900 underline dark:text-neutral-100">Continue</a>
+            <a href={data.next} class="gk-link">Continue</a>
         </p>
     {/if}
     <noscript>
-        <a href={data.next} class="mt-3 inline-block text-sm font-medium text-neutral-900 underline dark:text-neutral-100">Continue</a>
+        <a href={data.next} class="gk-link mt-3 inline-block text-sm">Continue</a>
     </noscript>
 </main>

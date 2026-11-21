@@ -23,10 +23,8 @@
     const passcode = $derived(devicePasscodeState());
     let dialog = $state<DevicePasscodeDialogMode | null>(null);
 
-    const SECONDARY_BUTTON =
-        "inline-flex items-center justify-center rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5";
-    const PRIMARY_BUTTON =
-        "inline-flex items-center justify-center rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 pointer-coarse:min-h-11 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200";
+    const SECONDARY_BUTTON = "gk-button";
+    const PRIMARY_BUTTON = "gk-button gk-button--primary";
 </script>
 
 <section

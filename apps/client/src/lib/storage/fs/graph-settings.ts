@@ -64,6 +64,14 @@ export interface GraphSettings {
      * Graph Settings dialog says so. Follows a rename of the page, as [[Favourite]]s do.
      */
     journalTemplate?: string
+    /**
+     * The widest a document's text runs in its pane, in CSS pixels at the default text size: in a
+     * wider pane the text, and what is drawn beneath it, stays this wide and is centred, so lines
+     * stay short enough to read (as Logseq's main column does). It scales with the editor's zoom.
+     * Absent ⇒ {@link DEFAULT_CONTENT_WIDTH}; {@link CONTENT_WIDTH_OFF} ⇒ the text fills the pane.
+     * Resolve it through {@link maxContentWidthOf}.
+     */
+    maxContentWidth?: number
 }
 
 /** Applied on upload when `defaultMaxImageDisplaySize` is absent - the value after the `|` in `![alt|800](…)`. */
@@ -74,6 +82,18 @@ export const DEFAULT_IMAGE_DISPLAY_SIZE = '800'
  * cannot collide with a real one.
  */
 export const IMAGE_DISPLAY_SIZE_OFF = '0'
+
+/**
+ * Applied when `maxContentWidth` is absent. Room for about 100 characters of body text at the
+ * default size once the padding and the fold column are taken off: the owner's choice, a little
+ * wider than the 870px Logseq uses.
+ */
+export const DEFAULT_CONTENT_WIDTH = 1000
+/** The stored value that lets the text fill the pane: `0` is never a real width. */
+export const CONTENT_WIDTH_OFF = 0
+/** Bounds for a real `maxContentWidth`: narrower than this wraps a bullet's text a word at a time. */
+export const CONTENT_WIDTH_LOWEST = 400
+export const CONTENT_WIDTH_HIGHEST = 4000
 
 /** Shown when `recentDocumentCount` is absent. */
 export const DEFAULT_RECENT_COUNT = 10
@@ -149,6 +169,7 @@ export function sanitizeGraphSettings(raw: unknown): GraphSettings {
     }
     const journalTemplate = rec.journalTemplate
     if (typeof journalTemplate === 'string' && journalTemplate.trim() !== '') out.journalTemplate = journalTemplate.trim()
+    keepContentWidth(out, rec.maxContentWidth)
     return out
 }
 
@@ -159,6 +180,35 @@ export function sanitizeGraphSettings(raw: unknown): GraphSettings {
 export function imageDisplaySizeOf(settings: GraphSettings): string | undefined {
     const size = settings.defaultMaxImageDisplaySize ?? DEFAULT_IMAGE_DISPLAY_SIZE
     return size === IMAGE_DISPLAY_SIZE_OFF ? undefined : size
+}
+
+/** Whether `value` can be stored as `maxContentWidth`: {@link CONTENT_WIDTH_OFF}, or a whole width within bounds. */
+export function isContentWidth(value: unknown): value is number {
+    if (typeof value !== 'number' || !Number.isInteger(value)) return false
+    return value === CONTENT_WIDTH_OFF || (value >= CONTENT_WIDTH_LOWEST && value <= CONTENT_WIDTH_HIGHEST)
+}
+
+/** Copy a stored `maxContentWidth` onto `out` when it is one, and leave `out` alone when it is not. */
+function keepContentWidth(out: GraphSettings, raw: unknown): void {
+    // `|| 0` writes -0 as 0: the two compare equal but are different values to a deep comparison.
+    if (isContentWidth(raw)) out.maxContentWidth = raw || CONTENT_WIDTH_OFF
+}
+
+/**
+ * What the Document width field holds: `undefined` when blank (the default applies), the width
+ * when it is a whole number {@link isContentWidth} accepts, or `null` when it is neither.
+ */
+export function parseContentWidthField(text: string): number | undefined | null {
+    const trimmed = text.trim()
+    if (trimmed === '') return undefined
+    const width = /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN
+    return isContentWidth(width) ? width : null
+}
+
+/** The widest a document's text runs, in pixels at the default text size, or `null` to fill the pane. */
+export function maxContentWidthOf(settings: GraphSettings): number | null {
+    const width = settings.maxContentWidth ?? DEFAULT_CONTENT_WIDTH
+    return width === CONTENT_WIDTH_OFF ? null : width
 }
 
 /** The effective Recents count: the setting when valid, else the default. */

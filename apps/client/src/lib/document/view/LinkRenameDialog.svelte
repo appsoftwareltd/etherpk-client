@@ -180,7 +180,7 @@
             onclick={onclose}
             disabled={busy}
             data-testid="link-rename-keep"
-            class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 disabled:opacity-40"
+            class="gk-button"
         >{started ? "Close" : replace ? "Cancel" : several ? "Keep links as typed" : "Just this link"}</button>
         {#if replace && !started}
             <button
@@ -188,7 +188,7 @@
                 onclick={replace.onoutside}
                 disabled={busy}
                 data-testid="link-rename-outside"
-                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
+                class="gk-button"
             >Replace outside wikilinks only</button>
         {/if}
         <button
@@ -197,7 +197,7 @@
             disabled={!canConfirm}
             aria-describedby={hint ? hintId : undefined}
             data-testid="link-rename-confirm"
-            class="min-w-28 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
+            class="gk-button gk-button--primary min-w-28"
         >{busy ? (replace && !started ? "Replacing…" : "Renaming…") : failed ? "Retry" : replace && !started ? (toRun > 0 ? `Replace and rename ${several ? toRun : ""}`.trim() : "Replace") : several ? `Rename ${toRun}` : "Rename"}</button>
     {/snippet}
 </Dialog>

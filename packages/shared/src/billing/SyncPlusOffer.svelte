@@ -1,7 +1,6 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
     import {
-        SYNC_PLUS_OFFER_BUTTON_CLASS,
         SYNC_PLUS_OFFER_PANEL_CLASS,
         SYNC_PLUS_OFFER_TEXT,
         SYNC_PLUS_PRICING_LABEL,
@@ -27,6 +26,6 @@
     {#if action}
         <div class="shrink-0">{@render action()}</div>
     {:else if pricingUrl}
-        <a href={pricingUrl} class={SYNC_PLUS_OFFER_BUTTON_CLASS}>{SYNC_PLUS_PRICING_LABEL}</a>
+        <a href={pricingUrl} class="gk-button gk-button--primary shrink-0">{SYNC_PLUS_PRICING_LABEL}</a>
     {/if}
 </div>

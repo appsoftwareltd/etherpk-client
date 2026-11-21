@@ -270,7 +270,7 @@
                             <button
                                 type="button"
                                 data-testid="reset-transfer-{g.graphId}"
-                                class="rounded-md border border-neutral-300 dark:border-neutral-700 px-2 py-1 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                                class="gk-button gk-button--small"
                                 onclick={() => (transferFor = g)}
                                 >Transfer…</button
                             >
@@ -305,7 +305,7 @@
             <div>
                 <label
                     for="reset-confirm"
-                    class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
+                    class="gk-label mb-1.5 block"
                 >
                     Type <span
                         data-testid="reset-confirm-phrase"
@@ -320,7 +320,7 @@
                     autocomplete="off"
                     autocapitalize="characters"
                     spellcheck="false"
-                    class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
+                    class="gk-input"
                 />
             </div>
         {:else if step === "portal"}
@@ -334,7 +334,7 @@
                 target="_blank"
                 rel="noopener"
                 data-testid="reset-open-portal"
-                class="inline-flex min-h-11 items-center rounded-lg bg-red-600 px-4 text-sm font-medium text-white hover:bg-red-700"
+                class="gk-button gk-button--danger"
                 >Open the reset page on {host}</a
             >
             {#if portalWatchesVault}
@@ -381,7 +381,7 @@
             <button
                 type="button"
                 onclick={() => close()}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                class="gk-button"
                 >Cancel</button
             >
             {#if previewFailed}
@@ -389,7 +389,7 @@
                     type="button"
                     onclick={() => void load()}
                     data-testid="reset-preview-retry"
-                    class="min-w-32 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
+                    class="gk-button gk-button--primary min-w-32"
                     >Try again</button
                 >
             {:else}
@@ -398,7 +398,7 @@
                     onclick={() => (resetsOnPortal ? void continueOnPortal() : (step = "confirm"))}
                     disabled={loading || checkingVault}
                     data-testid="reset-continue"
-                    class="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40"
+                    class="gk-button gk-button--danger"
                     >Continue to reset</button
                 >
             {/if}
@@ -406,14 +406,14 @@
             <button
                 type="button"
                 onclick={() => (step = "review")}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                class="gk-button"
                 >Back</button
             >
             <button
                 type="submit"
                 disabled={busy || !confirmed}
                 data-testid="reset-execute"
-                class="min-w-44 rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                class="gk-button gk-button--danger min-w-44"
                 >{busy ? "Resetting…" : "Permanently reset"}</button
             >
         {:else if step === "portal"}
@@ -423,13 +423,13 @@
                     stopWatchingForPortalReset();
                     step = "review";
                 }}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                class="gk-button"
                 >Back</button
             >
             <button
                 type="button"
                 onclick={() => close()}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                class="gk-button"
                 >Close</button
             >
         {:else}
@@ -437,7 +437,7 @@
                 type="button"
                 onclick={() => close(true)}
                 data-testid="reset-done"
-                class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
+                class="gk-button gk-button--primary"
                 >Done</button
             >
         {/if}

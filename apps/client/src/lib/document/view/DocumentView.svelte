@@ -1483,7 +1483,16 @@
         placeJournalPanels(editor.view.scrollDOM)
         placeBacklinks(editor.view.scrollDOM)
         placeRoll(editor.view.scrollDOM)
-        if (ownsTab) detachBelowText = handleEventsBelowText(editor.view, { store: () => tryGetActiveAssetStore() })
+        if (ownsTab) {
+            detachBelowText = handleEventsBelowText(editor.view, {
+                store: () => tryGetActiveAssetStore(),
+                // A press on the tab's blank space gives the keys back as coming back to the tab
+                // does. A phone's tap gives none: the keyboard would rise over what is being read.
+                focusText: () => {
+                    if (!prefersMobileLayout()) focusActivated()
+                },
+            })
+        }
         // Reflect external/remote changes into the editor — but NOT in collab mode, where
         // yCollab already reflects remote Y.Text updates; a setExternalText whole-buffer
         // rewrite would be seen as a local edit and echo-storm the sync engine.
@@ -1638,6 +1647,7 @@
 <div
     class={[
         'document-view',
+        ownsTab && 'document-view--tab',
         showLock && 'document-view--lock',
         showLock && 'document-view--floating',
         (showLock || endShown) && 'document-view--foot-room',
@@ -1670,7 +1680,7 @@
     {#if showLock}
         <button
             type="button"
-            class="document-view__lock"
+            class="document-view__lock gk-icon-button gk-button--raised"
             data-testid="document-lock"
             aria-label="Lock protected documents"
             title="Lock protected documents"
@@ -1690,7 +1700,7 @@
     {#if supersededNotice}
         <div class="document-view__notice" data-testid="draft-superseded" role="status">
             <span>This page now exists. Opening it keeps what you have typed here.</span>
-            <button type="button" data-testid="draft-superseded-open" onclick={() => remount()}>Open it</button>
+            <button type="button" class="gk-button gk-button--small shrink-0" data-testid="draft-superseded-open" onclick={() => remount()}>Open it</button>
         </div>
     {/if}
     {#if refusal}
@@ -1701,9 +1711,9 @@
             <p><strong>{refusal.title}.</strong> {refusal.message}</p>
             <div class="document-view__refusal-actions">
                 {#if refusal.opensDocument && onopenintab}
-                    <button type="button" data-testid="edit-refused-open-in-tab" onclick={openRefusedInTab}>Open in tab</button>
+                    <button type="button" class="gk-button gk-button--small shrink-0" data-testid="edit-refused-open-in-tab" onclick={openRefusedInTab}>Open in tab</button>
                 {/if}
-                <button type="button" data-testid="edit-refused-dismiss" onclick={clearRefusal}>Dismiss</button>
+                <button type="button" class="gk-button gk-button--small shrink-0" data-testid="edit-refused-dismiss" onclick={clearRefusal}>Dismiss</button>
             </div>
         </div>
     {/if}
@@ -1760,13 +1770,6 @@
         padding: 0.5rem 0.75rem;
         font-size: 0.875rem;
     }
-    .document-view__notice button {
-        flex-shrink: 0;
-        border-radius: 0.25rem;
-        border: 1px solid var(--gk-border-strong);
-        padding: 0.125rem 0.5rem;
-        cursor: pointer;
-    }
     /* A refused edit's reason: a strip at the foot of the pane, the same margin each side (the
        right one grown by the scrollbar, like the Lock button), above the editor rather than in
        its flow (rule 9: nothing moves under the caret). */
@@ -1783,7 +1786,7 @@
         border: 1px solid var(--gk-border-strong);
         border-radius: 0.5rem;
         background: var(--gk-surface-1);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+        box-shadow: var(--gk-control-shadow);
         padding: 0.5rem 0.75rem;
         font-size: 0.875rem;
         line-height: 1.4;
@@ -1798,13 +1801,6 @@
         display: flex;
         gap: 0.5rem;
         margin-left: auto;
-    }
-    .document-view__refusal button {
-        flex-shrink: 0;
-        border-radius: 0.25rem;
-        border: 1px solid var(--gk-border-strong);
-        padding: 0.125rem 0.5rem;
-        cursor: pointer;
     }
     /* The Lock button owns the bottom right corner, so the strip sits above it (button height
        plus the gap) rather than giving up its margins. */
@@ -1827,6 +1823,26 @@
     .document-view__editor :global(.cm-editor) {
         height: 100%;
     }
+    /*
+     * Graph Settings → Document width (content-width.ts): in a pane wider than the setting, a tab's
+     * text and everything drawn beneath it in the scroller (the panels, the backlinks, the roll) keep
+     * to a centred column of that width. The scroller takes the room as side padding rather than the
+     * text taking a max-width, so the scrollbar stays at the pane's edge, a wheel in the margin still
+     * scrolls, and the layers CodeMirror and the selection draw from the scroller's edge line up.
+     * `100%` here is the pane's width; the property follows the editor's zoom. A press in the
+     * margin is handled in below-text-events.ts. Only a tab's own scroller: an embedded or rolled
+     * editor already sits in a column. The new line buttons' row, below the scroller, takes the
+     * same margins, so its names stay lined up with the text's left edge.
+     */
+    .document-view--tab {
+        --gk-content-margin: max(0px, (100% - var(--gk-content-max-width, 100%)) / 2);
+    }
+    .document-view--tab > .document-view__editor > :global(.cm-editor) > :global(.cm-scroller) {
+        padding-inline: var(--gk-content-margin);
+    }
+    .document-view--tab > :global(.end-buttons) {
+        padding-inline: calc(0.5rem + var(--gk-content-margin));
+    }
     /* The Lock button over an unlocked Protected Document: bottom right, the same distance from
        each edge. Anchored to the pane rather than the viewport, so on a phone it sits just above
        the Command Bar (the pane ends where the bar begins) and on desktop inside its own split.
@@ -1837,18 +1853,12 @@
         right: calc(1rem + var(--gk-scrollbar-inset, 0px));
         bottom: calc(1rem + var(--gk-foot-height));
         z-index: 2;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
+        /* A raised icon button (`gk-icon-button gk-button--raised` draws the border, surface and
+           lift), round and a thumb's width whatever the pointer, in the accent. */
         width: 2.75rem;
         height: 2.75rem;
         border-radius: 9999px;
-        border: 1px solid var(--gk-border-strong);
-        background: var(--gk-surface-1);
         color: var(--gk-accent);
-        /* A small lift, not the theme's dialog shadow, which is far too deep for a 44px button. */
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-        cursor: pointer;
         touch-action: manipulation;
         transition:
             background-color 120ms ease,
@@ -1915,15 +1925,8 @@
     .document-view--rolled .document-view__refusal {
         position: sticky;
     }
-    .document-view__lock:hover {
-        background: var(--gk-surface-2);
-    }
     .document-view__lock:active {
         transform: scale(0.96);
-    }
-    .document-view__lock:focus-visible {
-        outline: 2px solid var(--gk-accent);
-        outline-offset: 2px;
     }
     .document-view__lock :global(svg) {
         display: block;

@@ -92,8 +92,8 @@
             Every page goes back to how it shipped and anything you wrote or uploaded in the demo is discarded.
         </p>
         <div class="flex flex-wrap justify-center gap-2">
-            <button type="button" data-testid="demo-reset-keep" onclick={() => void run(false)} class="primary" {@attach focusOnShow}>Keep my changes</button>
-            <button type="button" data-testid="demo-reset-confirm" onclick={() => void run(true)} class="secondary">Reset demo</button>
+            <button type="button" data-testid="demo-reset-keep" onclick={() => void run(false)} class="gk-button gk-button--primary" {@attach focusOnShow}>Keep my changes</button>
+            <button type="button" data-testid="demo-reset-confirm" onclick={() => void run(true)} class="gk-button">Reset demo</button>
         </div>
     {:else if phase.kind === "working"}
         <p data-testid="demo-working" role="status">
@@ -110,15 +110,15 @@
             Close the demo in your other tabs first, then try again. Nothing has been changed.
         </p>
         <div class="flex flex-wrap justify-center gap-2">
-            <button type="button" data-testid="demo-retry" onclick={() => void run(phase.kind === "held" && phase.reset)} class="primary">Try again</button>
-            <a href="/graphs" class="secondary">Go to graphs</a>
+            <button type="button" data-testid="demo-retry" onclick={() => void run(phase.kind === "held" && phase.reset)} class="gk-button gk-button--primary">Try again</button>
+            <a href="/graphs" class="gk-button">Go to graphs</a>
         </div>
     {:else}
         <h1 class="text-lg font-semibold text-neutral-950 dark:text-white">The demo could not be prepared</h1>
         <p class="max-w-md text-sm text-red-600" data-testid="demo-error">{phase.message}</p>
         <div class="flex flex-wrap justify-center gap-2">
-            <button type="button" data-testid="demo-retry" onclick={() => void run(phase.kind === "error" && phase.reset)} class="primary">Try again</button>
-            <a href="/graphs" class="secondary">Go to graphs</a>
+            <button type="button" data-testid="demo-retry" onclick={() => void run(phase.kind === "error" && phase.reset)} class="gk-button gk-button--primary">Try again</button>
+            <a href="/graphs" class="gk-button">Go to graphs</a>
         </div>
     {/if}
 </div>
@@ -134,25 +134,5 @@
         padding: 1rem;
         text-align: center;
         color: var(--gk-text-default);
-    }
-    .primary,
-    .secondary {
-        border-radius: 0.5rem;
-        padding: 0.4rem 0.9rem;
-        font: inherit;
-        font-size: 0.875rem;
-        font-weight: 500;
-        cursor: pointer;
-    }
-    .primary {
-        border: 1px solid transparent;
-        background: var(--gk-text-default);
-        color: var(--gk-surface-1);
-    }
-    .secondary {
-        border: 1px solid var(--gk-border-soft);
-        background: var(--gk-surface-1);
-        color: inherit;
-        text-decoration: none;
     }
 </style>

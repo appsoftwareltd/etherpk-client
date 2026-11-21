@@ -800,6 +800,54 @@ table('Shift+Enter is the soft line', [
     { rule: 'a continuation after the children gets another at the owner’s floor', precedent: 'EtherPK', before: '- a\n  - b\n  trailing|', key: 'Shift-Enter', after: '- a\n  - b\n  trailing\n  |' },
 ])
 
+// A line break typed over a text selection replaces it, as any typed character does, and the break is
+// then the one the key makes at a caret: Enter splits the block, Shift+Enter opens a soft line. A
+// plain newline over the selection put the rest of the line at the margin, outside the block.
+table('Enter over a text selection deletes it, then acts as at the caret', [
+    { rule: 'a word selected in a bullet goes, and the block splits there', precedent: 'Obsidian', before: '- a «wo»rd b', key: 'Enter', after: '- a\n- |rd b' },
+    { rule: '…selected right to left too', precedent: 'Obsidian', before: '- a »wo«rd b', key: 'Enter', after: '- a\n- |rd b' },
+    { rule: 'a selection to the line’s end leaves a new empty sibling', precedent: 'Obsidian', before: '- a word« b»', key: 'Enter', after: '- a word\n- |' },
+    { rule: 'a selection of the whole content leaves the block empty, with a sibling after it', precedent: 'Obsidian', before: '- «a»', key: 'Enter', after: '- \n- |' },
+    { rule: 'a nested bullet splits at its own depth', precedent: 'Obsidian', before: '- x\n  - a «wo»rd', key: 'Enter', after: '- x\n  - a\n  - |rd' },
+    { rule: 'a task begets an unchecked task', precedent: 'Logseq', before: '- [x] a «wo»rd', key: 'Enter', after: '- [x] a\n- [ ] |rd' },
+    { rule: 'at the end of a bullet with children, a new first child', precedent: 'Logseq', before: '- a «b»\n  - c', key: 'Enter', after: '- a\n  - |\n  - c' },
+    { rule: 'on a continuation line the block splits there', precedent: 'Logseq', before: '- a\n  so«ft» x', key: 'Enter', after: '- a\n  so\n- | x' },
+    { rule: 'across one block’s lines the lines join, then the block splits at the join', precedent: 'Obsidian', before: '- a «b\n  c» d', key: 'Enter', after: '- a\n- | d' },
+    { rule: 'in code it is a newline at the fence column', precedent: 'VS Code', before: '- a\n  ```\n  c«od»e\n  ```', key: 'Enter', after: '- a\n  ```\n  c\n  |e\n  ```' },
+    { rule: 'in prose it is the plain newline', precedent: 'VS Code', before: 'pro«se» x', key: 'Enter', after: 'pro\n|x' },
+    { rule: 'Shift+Enter over a word in a bullet opens a soft line at the content column', precedent: 'Logseq', before: '- a «wo»rd', key: 'Shift-Enter', after: '- a \n  |rd' },
+    { rule: 'Shift+Enter over a word on a continuation line opens another at the floor', precedent: 'Logseq', before: '- a\n  so«ft» x', key: 'Shift-Enter', after: '- a\n  so\n  | x' },
+    { rule: 'Shift+Enter in code is a newline at the fence column', precedent: 'VS Code', before: '- a\n  ```\n  c«od»e\n  ```', key: 'Shift-Enter', after: '- a\n  ```\n  c\n  |e\n  ```' },
+    { rule: '…across one block’s lines, selected right to left too', precedent: 'Obsidian', before: '- a »b\n  c« d', key: 'Enter', after: '- a\n- | d' },
+    // On a code line the indent and a `- ` are code, so a range over them goes as any code does.
+    { rule: 'in code a range over the line’s own indent goes too', precedent: 'VS Code', before: '- a\n  ```\n    «  de»ep\n  ```', key: 'Enter', after: '- a\n  ```\n    \n  |ep\n  ```' },
+    { rule: 'in code a bullet-shaped range is code', precedent: 'CommonMark', before: '- a\n  ```\n  «- »x\n  ```', key: 'Enter', after: '- a\n  ```\n  \n  |x\n  ```' },
+    { rule: 'a fence-like line inside a longer fence is code', precedent: 'CommonMark', before: '- a\n  ````\n  ```p«y»\n  ````', key: 'Enter', after: '- a\n  ````\n  ```p\n  |\n  ````' },
+    // In the frontmatter the key is YAML's: after a bare key the value goes one level in.
+    { rule: 'in the frontmatter, Enter as the frontmatter has it at the caret', precedent: 'EtherPK', before: '---\nkey: «value»\n---\n- a', key: 'Enter', after: '---\nkey: \n  |\n---\n- a' },
+])
+
+// A range from the margin over a bullet's marker and all of its text, then Enter: CodeMirror's newline
+// replaces the line, and the child below is left after a blank line with no parent. Typing over the same
+// range does the same. Both are open.
+describe('Enter over a range that takes a bullet’s marker (known bug)', () => {
+    it.fails('leaves the child with a parent', () => {
+        const lines = press('«- a b»\n  - c\n- d', 'Enter').replace('|', '').split('\n')
+        const child = lines.indexOf('  - c')
+        expect(lines[child - 1]).toMatch(/^- /)
+    })
+})
+
+describe('Enter over a text selection is one edit (EtherPK)', () => {
+    it('one undo brings back the selected text and the block as it was', () => {
+        const editor = editorFixture('- a «wo»rd b')
+        editor.key('Enter')
+        expect(editor.text()).toBe('- a\n- rd b')
+        editor.key('Mod-z')
+        expect(editor.text()).toBe('- a word b')
+    })
+})
+
 // A line under a bullet is its continuation only once its indent reaches the bullet's content
 // column, and then whether the bullet is directly above it or the outline reaches it across a soft
 // line or a `*` item (continuationColumn, outliner.ts). The caret clamp, the highlight and the

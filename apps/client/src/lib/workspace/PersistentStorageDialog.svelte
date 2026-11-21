@@ -49,14 +49,14 @@
             type="button"
             data-testid="persistent-storage-not-now"
             onclick={notNow}
-            class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
+            class="gk-button"
             >Not now</button
         >
         <button
             type="submit"
             data-testid="persistent-storage-continue"
             data-autofocus
-            class="min-w-28 rounded-lg bg-neutral-900 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+            class="gk-button gk-button--primary min-w-28"
             >Continue</button
         >
     {/snippet}

@@ -61,7 +61,8 @@
         filesystemAssetTools,
     } from "#lib/storage/fs/asset-orphans.js";
     import { graphUrl } from "#lib/navigation/document-url.js";
-    import { graphAddressOf } from "#lib/navigation/graph-address.js";
+    import { graphAddressOf, graphsSharingAnAddress } from "#lib/navigation/graph-address.js";
+    import { chosenGraphState } from "#lib/workspace/chosen-graph.js";
     import { openChosenFolder } from "#lib/workspace/open-chosen-folder.js";
     import {
     } from "#lib/storage/synced/mirror-takeover.js";
@@ -696,6 +697,9 @@
         ),
     );
 
+    /** The folder graphs kept in folders with one name: a link to either asks which is meant (ADR 0192). */
+    const sharedAddressIds = $derived(graphsSharingAnAddress(folderGraphs));
+
     /** This device's records of the graphs on `server`. */
     function recordsFor(server: SyncServerView): GraphRecord[] {
         return graphs.filter(
@@ -892,8 +896,7 @@
                     server.createBlockedReason !== null,
             ),
     );
-    const SECONDARY_BUTTON =
-        "inline-flex items-center justify-center rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 pointer-coarse:min-h-11 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5";
+    const SECONDARY_BUTTON = "gk-button";
     /** The rule between the Sync tab's top-level sections. */
     const SECTION_RULE = "border-neutral-200 dark:border-white/10";
 
@@ -2291,7 +2294,7 @@
                 setStatus(outcome.message, "error");
                 return;
             }
-            await queueHistoryWrite(() => goto(graphUrl(graphAddressOf(outcome.graph))));
+            await queueHistoryWrite(() => goto(graphUrl(graphAddressOf(outcome.graph)), { state: chosenGraphState(outcome.graph) }));
         } catch (err) {
             // Closing the picker is a choice, not a failure: nothing is said and the page stays
             // as it was.
@@ -2528,7 +2531,8 @@
         void queueHistoryWrite(async () => {
             // The address needs the record: a folder graph is named by its folder (ADR 0192).
             const graph = await registry.getGraph(result.graphId);
-            await goto(graph ? graphUrl(graphAddressOf(graph)) : "/graphs");
+            if (graph) await goto(graphUrl(graphAddressOf(graph)), { state: chosenGraphState(graph) });
+            else await goto("/graphs");
         });
     }
 
@@ -2546,7 +2550,9 @@
             );
             return;
         }
-        await queueHistoryWrite(() => goto(graphUrl(graphAddressOf(graph))));
+        // The address of a folder graph is its folder's name, which another folder may share:
+        // the entry carries which graph was opened, so the workspace does not ask (chosen-graph.ts).
+        await queueHistoryWrite(() => goto(graphUrl(graphAddressOf(graph)), { state: chosenGraphState(graph) }));
     }
 
     /**
@@ -4221,7 +4227,7 @@
     <div>
         <label
             for="sync-url"
-            class="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300"
+            class="gk-label mb-1.5 block"
             >Sync server URL</label
         >
         <input
@@ -4244,9 +4250,7 @@
             aria-describedby={syncUrlError
                 ? "sync-url-help sync-url-error"
                 : "sync-url-help"}
-            class="block w-full rounded-lg border {syncUrlError
-                ? 'border-red-500'
-                : 'border-neutral-300 dark:border-neutral-700'} bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+            class="gk-input"
         />
         <p
             id="sync-url-help"
@@ -4270,7 +4274,7 @@
     <div>
         <label
             for="sync-token"
-            class="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300"
+            class="gk-label mb-1.5 block"
             >Personal Access Token</label
         >
         <input
@@ -4293,9 +4297,7 @@
             aria-describedby={syncTokenError
                 ? "sync-token-error sync-token-help"
                 : "sync-token-help"}
-            class="block w-full rounded-lg border {syncTokenError
-                ? 'border-red-500'
-                : 'border-neutral-300 dark:border-neutral-700'} bg-white dark:bg-white/10 px-3 py-2 text-sm font-mono text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+            class="gk-input font-mono"
         />
         {#if syncTokenError}
             <p
@@ -4326,14 +4328,14 @@
                 href="{customServerOrigin}/account/tokens"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="font-medium underline"
+                class="gk-link"
                 >Access tokens page</a
             >, or
             <a
                 href="{customServerOrigin}/register"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="font-medium underline"
+                class="gk-link"
                 >create an account</a
             > there first.
         {:else}
@@ -4356,7 +4358,7 @@
                         primaryServer,
                     );
                 }}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white"
+                class="gk-button"
                 >Cancel</button
             >
         {/if}
@@ -4364,7 +4366,7 @@
             type="submit"
             data-testid="sync-save"
             aria-busy={syncSaving}
-            class="aria-busy:cursor-progress rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
+            class="gk-button gk-button--primary aria-busy:cursor-progress"
             >{syncSaving
                 ? "Checking the connection…"
                 : "Save custom server"}</button
@@ -4380,7 +4382,7 @@
             <label for="graphs-agents-graph">Graph</label>
             <select
                 id="graphs-agents-graph"
-                class="max-w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 pointer-coarse:min-h-11"
+                class="gk-select max-w-full pointer-coarse:min-h-11"
                 value={agentsGraph}
                 onchange={(event) => chooseAgentsGraph(event.currentTarget.value)}
                 data-testid="graphs-agents-graph"
@@ -4399,7 +4401,7 @@
             <label for="graphs-agents-server">Sync Server</label>
             <select
                 id="graphs-agents-server"
-                class="max-w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 pointer-coarse:min-h-11"
+                class="gk-select max-w-full pointer-coarse:min-h-11"
                 value={agentsServer?.host}
                 onchange={(event) => (agentsServerHost = event.currentTarget.value)}
                 data-testid="graphs-agents-server"
@@ -4619,7 +4621,7 @@
                         signsInToManagedSync()
                             ? connectManagedSync()
                             : void openSyncPanel("add")}
-                    class="mt-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                    class="gk-button mt-2"
                     >{signsInToManagedSync()
                         ? "Sign in"
                         : "Connect to a Sync Server"}</button
@@ -4688,7 +4690,7 @@
                                                 item.id}
                                             onclick={() =>
                                                 void deletePartialImport(item)}
-                                            class="rounded-lg border border-red-300 px-3 py-1.5 font-medium text-red-700 hover:bg-red-50 disabled:cursor-progress dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-950/30"
+                                            class="gk-button gk-button--danger disabled:cursor-progress"
                                             >{deletingPartial === item.id
                                                 ? "Deleting…"
                                                 : "Delete permanently"}</button
@@ -4698,7 +4700,7 @@
                                             onclick={() =>
                                                 (confirmingPartialDelete =
                                                     null)}
-                                            class="rounded-lg border border-amber-300 px-3 py-1.5 hover:bg-amber-100 dark:border-amber-400/30 dark:hover:bg-amber-400/10"
+                                            class="gk-button"
                                             >Cancel</button
                                         >
                                     {:else if item.destination === "server" && item.graphId}
@@ -4708,7 +4710,7 @@
                                             onclick={() =>
                                                 (confirmingPartialDelete =
                                                     item.id)}
-                                            class="rounded-lg border border-amber-300 px-3 py-1.5 font-medium hover:bg-amber-100 dark:border-amber-400/30 dark:hover:bg-amber-400/10"
+                                            class="gk-button"
                                             >Delete the partial graph</button
                                         >
                                         <button
@@ -4716,7 +4718,7 @@
                                             data-testid="interrupted-import-keep"
                                             onclick={() =>
                                                 forgetInterruptedImport(item)}
-                                            class="rounded-lg border border-amber-300 px-3 py-1.5 hover:bg-amber-100 dark:border-amber-400/30 dark:hover:bg-amber-400/10"
+                                            class="gk-button"
                                             >Keep it</button
                                         >
                                     {:else}
@@ -4725,7 +4727,7 @@
                                             data-testid="interrupted-import-dismiss"
                                             onclick={() =>
                                                 forgetInterruptedImport(item)}
-                                            class="rounded-lg border border-amber-300 px-3 py-1.5 hover:bg-amber-100 dark:border-amber-400/30 dark:hover:bg-amber-400/10"
+                                            class="gk-button"
                                             >Dismiss</button
                                         >
                                     {/if}
@@ -4769,7 +4771,7 @@
                             type="button"
                             data-testid="storage-recovered-dismiss"
                             onclick={acknowledgeStorageRecoveries}
-                            class="shrink-0 rounded-lg border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-100 dark:hover:bg-amber-900/40"
+                            class="gk-button shrink-0"
                             >Dismiss</button
                         >
                     </div>
@@ -4781,6 +4783,7 @@
                     {graph}
                     {grip}
                     message={rowMessage[graph.id] ?? null}
+                    sharesFolderName={sharedAddressIds.has(graph.id)}
                     onopen={() => void openGraph(graph)}
                     onrename={() => renameGraph(graph)}
                     onsettings={() => void openLocalSettings(graph)}
@@ -4982,7 +4985,7 @@
                         synced storage, create a new graph with
                         <button
                             type="button"
-                            class="font-medium text-neutral-700 underline dark:text-neutral-200"
+                            class="gk-link"
                             onclick={() => (importDialog = true)}>Import</button
                         >.
                     </p>
@@ -5029,7 +5032,7 @@
                             type="button"
                             data-testid="managed-sync-connect"
                             onclick={connectManagedSync}
-                            class="mt-4 inline-flex items-center justify-center rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 pointer-coarse:min-h-11 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                            class="gk-button gk-button--primary mt-4"
                             >Sign in</button
                         >
                     </div>
@@ -5040,7 +5043,7 @@
                             aria-expanded={ownServerOpen}
                             aria-controls="sync-own-server"
                             onclick={toggleOwnServer}
-                            class="inline-flex items-center gap-1.5 rounded-lg py-1.5 pr-2 text-sm font-medium text-neutral-600 hover:text-neutral-950 pointer-coarse:min-h-11 dark:text-neutral-300 dark:hover:text-white"
+                            class="gk-button gk-button--quiet"
                         >
                             <svg
                                 class="h-4 w-4 motion-safe:transition-transform motion-safe:duration-150 {ownServerOpen
@@ -5147,7 +5150,7 @@
                                     tabindex={selected ? 0 : -1}
                                     onclick={() => showSyncPanel(server)}
                                     class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium pointer-coarse:min-h-11 {selected
-                                        ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                                        ? 'bg-(--gk-primary-bg) text-(--gk-primary-text)'
                                         : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white'}"
                                 >
                                     {@render serverIcon(server, "h-4 w-4")}
@@ -5177,7 +5180,7 @@
                                 onclick={() => void openSyncPanel("add")}
                                 class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium pointer-coarse:min-h-11 {syncPanel ===
                                 'add'
-                                    ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                                    ? 'bg-(--gk-primary-bg) text-(--gk-primary-text)'
                                     : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white'}"
                             >
                                 <svg
@@ -5283,7 +5286,7 @@
                                                 type="button"
                                                 data-testid="managed-sync-connect"
                                                 onclick={connectManagedSync}
-                                                class="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                                                class="gk-button gk-button--primary"
                                                 >Continue to secure sign in</button
                                             >
                                         </div>
@@ -5548,7 +5551,7 @@
                                 data-testid="device-storage-ask"
                                 aria-busy={askingToKeep}
                                 onclick={askToKeepData}
-                                class="inline-flex min-h-9 items-center rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5"
+                                class="gk-button"
                                 >Ask Firefox to keep it</button
                             >
                         {/if}
@@ -5768,7 +5771,7 @@
             <div>
                 <label
                     for="delete-confirm"
-                    class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
+                    class="gk-label mb-1.5 block"
                 >
                     Type <span
                         class="font-semibold text-neutral-700 dark:text-neutral-300"
@@ -5782,9 +5785,7 @@
                     autocomplete="off"
                     aria-invalid={deleteError ? "true" : undefined}
                     aria-describedby={deleteError ? "delete-error" : undefined}
-                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 {deleteError
-                        ? 'border-red-400 dark:border-red-500/60'
-                        : 'border-neutral-300 dark:border-neutral-700'}"
+                    class="gk-input"
                 />
             </div>
             <!-- A transient failure used to close the dialog and throw away the typed DELETE,
@@ -5807,7 +5808,7 @@
                     deleteConfirm = null;
                     discardUnsent = null;
                 }}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                class="gk-button"
                 >Cancel</button
             >
             {#if discardUnsent?.graphId === target.id && discardUnsent.unsent.length > 0}
@@ -5815,7 +5816,7 @@
                     type="button"
                     data-testid="discard-unsent-download"
                     onclick={() => downloadDiscardUnsent(target.name)}
-                    class="rounded-lg border border-neutral-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                    class="gk-button"
                     >Download unsent changes</button
                 >
             {/if}
@@ -5823,7 +5824,7 @@
                 type="submit"
                 disabled={deleteBusy || deleteText !== "DELETE"}
                 data-testid="graphs-delete-confirm"
-                class="min-w-44 rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                class="gk-button gk-button--danger min-w-44"
                 >{deleteBusy ? "Deleting…" : "Permanently delete"}</button
             >
         {/snippet}
@@ -5844,7 +5845,7 @@
             <div>
                 <label
                     for="create-graph-name"
-                    class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400"
+                    class="gk-label mb-1.5 block"
                     >Graph name</label
                 >
                 <input
@@ -5853,7 +5854,7 @@
                     bind:value={createName}
                     placeholder="e.g. Work Notes"
                     autocomplete="off"
-                    class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+                    class="gk-input"
                 />
                 <p
                     id="create-graph-hint"
@@ -5950,7 +5951,7 @@
             <button
                 type="button"
                 onclick={() => (createDialog = false)}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                class="gk-button"
                 >Cancel</button
             >
             <button
@@ -5960,7 +5961,7 @@
                     !chosenServer}
                 aria-describedby="create-graph-hint"
                 data-testid="create-graph-confirm"
-                class="min-w-36 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                class="gk-button gk-button--primary min-w-36"
                 >{createBusy ? "Creating…" : "Create graph"}</button
             >
         {/snippet}
@@ -6101,7 +6102,7 @@
                 type="button"
                 data-autofocus
                 onclick={() => (removeSynced = null)}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                class="gk-button"
                 >Cancel</button
             >
             {#if unsentDocuments > 0}
@@ -6109,7 +6110,7 @@
                     type="button"
                     data-testid="remove-synced-download"
                     onclick={downloadRemoveSyncedUnsent}
-                    class="rounded-lg border border-neutral-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                    class="gk-button"
                     >Download unsent changes</button
                 >
             {/if}
@@ -6117,7 +6118,7 @@
                 type="submit"
                 disabled={removeSyncedBusy}
                 data-testid="remove-synced-confirm"
-                class="rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                class="gk-button gk-button--danger"
                 >{unsentDocuments > 0
                     ? "Discard changes and remove"
                     : "Remove"}</button
@@ -6189,7 +6190,7 @@
                     discardUnsent = null;
                     forgetError = null;
                 }}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                class="gk-button"
                 >Cancel</button
             >
             {#if unsentCount > 0}
@@ -6197,14 +6198,14 @@
                     type="button"
                     data-testid="discard-unsent-download"
                     onclick={() => downloadDiscardUnsent(forgetConfirm!.name)}
-                    class="rounded-lg border border-neutral-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                    class="gk-button"
                     >Download unsent changes</button
                 >
                 <button
                     type="submit"
                     disabled={forgetBusy}
                     data-testid="graphs-forget-confirm"
-                    class="rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    class="gk-button gk-button--danger"
                     >Discard changes and forget</button
                 >
             {:else}
@@ -6212,7 +6213,7 @@
                     type="submit"
                     disabled={forgetBusy}
                     data-testid="graphs-forget-confirm"
-                    class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    class="gk-button gk-button--primary"
                     >Forget</button
                 >
             {/if}
@@ -6260,7 +6261,7 @@
                     leaveConfirm = null;
                     discardUnsent = null;
                 }}
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                class="gk-button"
                 >Cancel</button
             >
             {#if unsentCount > 0}
@@ -6268,7 +6269,7 @@
                     type="button"
                     data-testid="discard-unsent-download"
                     onclick={() => downloadDiscardUnsent(leaving.name)}
-                    class="rounded-lg border border-neutral-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                    class="gk-button"
                     >Download unsent changes</button
                 >
             {/if}
@@ -6276,7 +6277,7 @@
                 type="submit"
                 disabled={leaveBusy}
                 data-testid="graphs-leave-confirm"
-                class="min-w-32 rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                class="gk-button gk-button--danger min-w-32"
                 >{leaveBusy
                     ? "Leaving…"
                     : unsentCount > 0
@@ -6337,20 +6338,20 @@
                 type="button"
                 onclick={() => (staleCopy = null)}
                 data-testid="invite-unsent-cancel"
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                class="gk-button"
                 >Cancel</button
             >
             <button
                 type="button"
                 onclick={downloadStaleCopy}
                 data-testid="invite-unsent-download"
-                class="rounded-lg border border-neutral-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                class="gk-button"
                 >Download unsent changes</button
             >
             <button
                 type="submit"
                 data-testid="invite-unsent-discard"
-                class="rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700"
+                class="gk-button gk-button--danger"
                 >Discard changes to {documents} and accept</button
             >
         {/snippet}

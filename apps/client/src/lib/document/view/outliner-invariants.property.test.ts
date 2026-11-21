@@ -23,7 +23,7 @@ import { analysisFor } from './analysis/editor-analysis'
 import { interactiveFenceAugmentation } from './augmentations/interactive-fence'
 import { type InteractiveFence, registerInteractiveFence } from './augmentations/interactive-fence-contract'
 import { collapsedInteractiveFences, interactiveFences } from './augmentations/interactive-fence-state'
-import { isBlockSelection, snappedBlockSelection } from './block-select'
+import { isBlockSelection, rangeBlockOwner, snappedBlockSelection } from './block-select'
 import { clampColumn } from './caret-clamp'
 import { startAfterCaret } from './end-of-document'
 import { toggleBullet } from './outliner-keymap'
@@ -731,6 +731,72 @@ describe('outliner invariants under random key sequences', { timeout: 30_000 }, 
                 expect(noOrphans(lines)).toBe(true)
                 expect(indentsOnGrid(lines)).toBe(true)
                 expect(markersIntact(lines)).toBe(true)
+            }),
+            fuzz(300),
+        )
+    })
+
+    it('Enter or Shift+Enter over a range in a line’s text does what Backspace then the key at the caret does, and one undo restores it', () => {
+        // Editor Content Rules → Keyboard rules: a line break typed over a text selection replaces it, as
+        // any typed character does, then acts as at a caret. Without it the break went in at the margin.
+        fc.assert(
+            fc.property(scenarioArb, fc.double({ min: 0, max: 1, noNaN: true }), fc.boolean(), fc.constantFrom('Enter', 'Shift-Enter'), ({ outline, caretAt }, length, backwards, key) => {
+                const doc = render(outline)
+                const caret = editorFor(outline, caretAt)
+                const at = caret.head()
+                const line = caret.state.doc.lineAt(at)
+                // A range in the line's text: from the caret (which the clamp keeps at or right of the
+                // content column) toward the line's end. A fence line is structure, never split.
+                if (fenceLineInfo(line.text) || at === line.to || at < line.from + contentStart(line.text)) return
+                const head = at + Math.max(1, Math.round(length * (line.to - at)))
+                const [open, close] = backwards ? ['»', '«'] : ['«', '»']
+                const fixture = `${doc.slice(0, at)}${open}${doc.slice(at, head)}${close}${doc.slice(head)}`
+                const over = editorFixture(fixture)
+                const before = over.fixture()
+                over.key(key)
+                const stepwise = editorFixture(fixture)
+                stepwise.key('Backspace')
+                stepwise.key(key)
+                expect(over.fixture()).toBe(stepwise.fixture())
+                const lines = over.text().split('\n')
+                expect(noOrphans(lines)).toBe(true)
+                expect(markersIntact(lines)).toBe(true)
+                over.key('Mod-z')
+                expect(over.fixture()).toBe(before)
+            }),
+            fuzz(300),
+        )
+    })
+
+    it('Enter or Shift+Enter over a range across one block’s lines deletes it, then acts as at the caret, in one undo step', () => {
+        // Backspace over such a range lands the caret at the end of the block above (healRangeDelete), so
+        // the oracle is the plain delete of the selection, the one a cut makes, then the key at its caret.
+        fc.assert(
+            fc.property(scenarioArb, fc.double({ min: 0, max: 1, noNaN: true }), fc.boolean(), fc.constantFrom('Enter', 'Shift-Enter'), ({ outline, caretAt }, reach, backwards, key) => {
+                const doc = render(outline)
+                const caret = editorFor(outline, caretAt)
+                const at = caret.head()
+                const line = caret.state.doc.lineAt(at)
+                if (at < line.from + contentStart(line.text) || line.number === caret.state.doc.lines) return
+                // To a point on a later line, kept to the caret's block.
+                const head = line.to + 1 + Math.round(reach * (doc.length - line.to - 1))
+                const fixture = backwards ? `${doc.slice(0, at)}»${doc.slice(at, head)}«${doc.slice(head)}` : `${doc.slice(0, at)}«${doc.slice(at, head)}»${doc.slice(head)}`
+                const over = editorFixture(fixture)
+                if (isBlockSelection(over.state) || rangeBlockOwner(over.state) === null) return
+                if (over.state.doc.lineAt(Math.min(at, head)).number === over.state.doc.lineAt(Math.max(at, head)).number) return
+                const lineNumbers = [over.state.doc.lineAt(at).number, over.state.doc.lineAt(head).number]
+                for (let n = lineNumbers[0]; n <= lineNumbers[1]; n++) if (fenceLineInfo(over.state.doc.line(n).text)) return
+                const before = over.fixture()
+                over.key(key)
+                const stepwise = editorFixture(fixture)
+                stepwise.dispatch(stepwise.state.update(stepwise.state.replaceSelection(''), { userEvent: 'delete.selection' }))
+                stepwise.key(key)
+                expect(over.fixture()).toBe(stepwise.fixture())
+                const lines = over.text().split('\n')
+                expect(noOrphans(lines)).toBe(true)
+                expect(markersIntact(lines)).toBe(true)
+                over.key('Mod-z')
+                expect(over.fixture()).toBe(before)
             }),
             fuzz(300),
         )

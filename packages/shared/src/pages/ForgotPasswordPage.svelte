@@ -1,6 +1,6 @@
 <script lang="ts">
     import { useHydrated } from "../forms/hydration.svelte";
-    import { focusFirstInvalid, textFieldClass } from "../ui/index.svelte";
+    import { focusFirstInvalid } from "../ui/index.svelte";
     import type { PasswordResetAuthClient } from "../auth/page-clients";
     import AlertBanner from "../components/AlertBanner.svelte";
     import { pathWithQuery } from "../navigation/sign-in-return";
@@ -95,7 +95,7 @@
             This server does not send email, so it cannot send you a reset link. Ask the server's administrator to set a new password for you.
         </p>
         <p class="mt-6 text-center text-sm text-neutral-500">
-            <a href={signInHref} class="font-medium text-neutral-950 hover:underline">Back to sign in</a>
+            <a href={signInHref} class="gk-link">Back to sign in</a>
         </p>
     {:else if sent}
         <div class="text-center">
@@ -111,7 +111,7 @@
                 If an account exists for <span class="font-medium text-neutral-950">{sentEmail}</span>, we've sent a password reset link. The link expires in 1 hour.
             </p>
             <p class="mt-4 text-sm text-neutral-500">
-                <a href={signInHref} class="font-medium text-neutral-950 hover:underline">Back to sign in</a>
+                <a href={signInHref} class="gk-link">Back to sign in</a>
             </p>
         </div>
     {:else}
@@ -126,20 +126,20 @@
 
         <form onsubmit={handleSubmit} novalidate class="mt-6 space-y-4">
             <div>
-                <label for="email" class="block text-sm font-medium text-neutral-700 mb-1.5">Email</label>
-                <input id="email" type="email" bind:value={email} autocomplete="email" placeholder="you@example.com" onblur={blurEmail} oninput={inputEmail} aria-invalid={!!fieldError} aria-describedby={fieldError ? "email-error" : undefined} class={textFieldClass(!!fieldError)} />
+                <label for="email" class="gk-label block mb-1.5">Email</label>
+                <input id="email" type="email" bind:value={email} autocomplete="email" placeholder="you@example.com" onblur={blurEmail} oninput={inputEmail} aria-invalid={!!fieldError} aria-describedby={fieldError ? "email-error" : undefined} class="gk-input" />
                 {#if fieldError}
                     <p id="email-error" class="mt-1 text-sm text-red-600">{fieldError}</p>
                 {/if}
             </div>
 
-            <button type="submit" disabled={loading || !hydrated.ready} class="mt-2 w-full rounded-lg bg-neutral-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            <button type="submit" disabled={loading || !hydrated.ready} class="gk-button gk-button--primary mt-2 w-full">
                 {loading ? "Sending…" : "Send reset link"}
             </button>
         </form>
 
         <p class="mt-6 text-center text-sm text-neutral-500">
-            Remember your password? <a href={signInHref} class="font-medium text-neutral-950 hover:underline">Sign in</a>
+            Remember your password? <a href={signInHref} class="gk-link">Sign in</a>
         </p>
     {/if}
 </div>

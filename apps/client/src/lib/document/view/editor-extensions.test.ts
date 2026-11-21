@@ -101,6 +101,7 @@ describe('editor feature stack', () => {
             'fold-persistence',
             'bookmarks',
             'keep-caret-visible',
+            'column-shift',
             'selection-order',
             'view-hooks',
         ])

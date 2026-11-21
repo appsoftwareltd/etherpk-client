@@ -10,6 +10,9 @@
  *    after dockview's auto-scroll, removing the clipping — *except* that
  *    **activating a tab reveals it** (minimal scroll; stays put if already
  *    visible), so an off-screen tab made active scrolls into view like on mobile.
+ *  - Follows the edge a person drags when a strip changes width (`tab-strip-anchor.ts`): resizing a
+ *    Pane from its right slides the scroll with that edge, from its left keeps it, and an active
+ *    tab in view stays in view.
  *  - Renders a thin scrollbar that appears only when the pointer is within the
  *    top few pixels of an *overflowing* strip — at the very top of the pane, so
  *    it never interferes with the connected-tabs look along the bottom edge.
@@ -22,6 +25,7 @@ import type { DockviewApi } from 'dockview-core'
 import { setTrustedMarkup } from '#lib/security/trusted-types.js'
 import { iconSvg } from '#lib/surface/icons.js'
 
+import { scrollAfterResize, type StripEdges } from './tab-strip-anchor'
 import { markIcon, type TabMark } from './tab-renderer'
 
 /** How close to a strip's top edge the pointer must be to reveal the scrollbar. */
@@ -91,6 +95,54 @@ export function installTabStripScrollbar(api: DockviewApi, container: HTMLElemen
     const lists = () => [...container.querySelectorAll<HTMLElement>('.dv-tabs-container')]
     const overflowing = (el: HTMLElement) => el.scrollWidth > el.clientWidth + 1
     const desiredOf = (el: HTMLElement) => desired.get(el) ?? 0
+
+    // ── Resizing a strip ─────────────────────────────────────────────────────
+    // Each strip's edges when last measured, so a resize can tell which edge moved. A
+    // ResizeObserver, not dockview's onDidLayoutChange: its callback runs after layout and before
+    // paint, so the new scroll lands in the same frame as the new width (no flash of clipped
+    // tabs), and it sees every cause of a resize - a sash drag, a Sidebar toggle, the window.
+    // The edges are read only here: measured anywhere else between a resize and this callback
+    // they would already be the new ones, and the move would be lost.
+    const edges = new WeakMap<HTMLElement, StripEdges>()
+    const observed = new Set<HTMLElement>()
+    const edgesOf = (list: HTMLElement): StripEdges => {
+        const r = list.getBoundingClientRect()
+        return { left: r.left, right: r.right }
+    }
+    const resizeObserver = new ResizeObserver((entries) => {
+        for (const { target } of entries) {
+            const list = target as HTMLElement
+            const before = edges.get(list)
+            const after = edgesOf(list)
+            edges.set(list, after)
+            if (!before || dragging) continue
+            const active = list.querySelector<HTMLElement>('.dv-tab.dv-active-tab')
+            const next = scrollAfterResize({
+                before,
+                after,
+                scroll: desiredOf(list),
+                contentWidth: list.scrollWidth,
+                active: active ? { start: active.offsetLeft, end: active.offsetLeft + active.offsetWidth } : null,
+            })
+            desired.set(list, next)
+            if (list.scrollLeft !== next) list.scrollLeft = next
+        }
+        if (current) syncThumb()
+    })
+    /** Observe every strip there is, and let go of the ones that have gone with their Pane. */
+    function trackStrips() {
+        for (const list of observed) {
+            if (!list.isConnected) {
+                resizeObserver.unobserve(list)
+                observed.delete(list)
+            }
+        }
+        for (const list of lists()) {
+            if (observed.has(list)) continue
+            observed.add(list)
+            resizeObserver.observe(list)
+        }
+    }
 
     function syncThumb() {
         if (!current) return
@@ -278,7 +330,10 @@ export function installTabStripScrollbar(api: DockviewApi, container: HTMLElemen
         return false
     }
     const countObserver = new MutationObserver((mutations) => {
-        if (mutations.some(touchesTabStrip)) updateOverflowCounts()
+        if (mutations.some(touchesTabStrip)) {
+            updateOverflowCounts()
+            trackStrips()
+        }
     })
     countObserver.observe(container, { subtree: true, childList: true, characterData: true })
 
@@ -382,14 +437,17 @@ export function installTabStripScrollbar(api: DockviewApi, container: HTMLElemen
     container.addEventListener('wheel', onWheelCapture, { passive: true, capture: true })
     container.addEventListener('scroll', onScrollCapture, true)
     container.addEventListener('click', onOverflowClick, true)
-    // Activation reveals the active tab; other layout changes (resize) just hold position.
+    // Activation reveals the active tab; other layout changes hold the scroll the strip has (a
+    // resize has already moved it, in the ResizeObserver above).
     const activeSub = api.onDidActivePanelChange(revealActiveTab)
     const layoutSub = api.onDidLayoutChange(restoreDesired)
+    trackStrips()
 
     return {
         revealFrontTabs: revealActiveTab,
         dispose() {
             countObserver.disconnect()
+            resizeObserver.disconnect()
             activeSub.dispose()
             layoutSub.dispose()
             container.removeEventListener('mousemove', onMouseMove)

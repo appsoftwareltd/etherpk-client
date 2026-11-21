@@ -30,12 +30,12 @@
 </script>
 
 <div class="etherpk-tool-options" data-open={open || undefined} data-testid={`${testid}-tool-options`}>
-    <button type="button" class="etherpk-tool-options-toggle" aria-label={label} title={label} aria-expanded={open} aria-controls={listId} onclick={ontoggle} data-testid={`${testid}-tool-options-toggle`}>
+    <button type="button" class="etherpk-tool-options-toggle" data-own-button-style="a tab held against the page's edge, showing the colour in hand" aria-label={label} title={label} aria-expanded={open} aria-controls={listId} onclick={ontoggle} data-testid={`${testid}-tool-options-toggle`}>
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
         {@html iconSvg(open ? "pdf-page-next" : "pdf-page-previous")}
         <span class="size-5 rounded-full border border-neutral-400" style:background-color={colour} data-testid={`${testid}-tool-options-colour`}></span>
     </button>
-    <div id={listId} class="etherpk-tool-options-list flex flex-wrap items-center justify-center gap-1 rounded-2xl border border-(--gk-surface-2) bg-(--gk-surface-0) p-1 shadow">
+    <div id={listId} class="etherpk-tool-options-list flex flex-wrap items-center justify-center gap-1 rounded-xl border border-(--gk-surface-2) bg-(--gk-surface-0) p-1 shadow">
         {@render children()}
     </div>
 </div>
@@ -65,7 +65,7 @@
         border-right: 0;
         border-radius: 0.75rem 0 0 0.75rem;
         background: var(--gk-surface-1);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+        box-shadow: var(--gk-control-shadow);
         color: var(--gk-text-default);
     }
     .etherpk-tool-options-toggle:hover {

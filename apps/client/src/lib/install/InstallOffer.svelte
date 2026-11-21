@@ -47,14 +47,14 @@
                 type="button"
                 onclick={startInstall}
                 data-testid="install-offer-install"
-                class="rounded-lg bg-(--gk-accent) px-3 py-1.5 font-medium text-(--gk-surface-0) hover:bg-(--gk-accent-hover) pointer-coarse:min-h-11"
+                class="gk-button gk-button--primary"
                 >Install</button
             >
             <button
                 type="button"
                 onclick={notNow}
                 data-testid="install-offer-dismiss"
-                class="rounded-lg border border-(--gk-border-strong) px-3 py-1.5 font-medium text-(--gk-text-default) hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
+                class="gk-button"
                 >Not now</button
             >
         </div>

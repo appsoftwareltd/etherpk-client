@@ -473,18 +473,18 @@
     <p class="mb-3 text-sm text-neutral-500 dark:text-neutral-400">Administrators are named by ADMINISTRATOR_EMAIL_ADDRESS in the server configuration.</p>
     <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div class="flex items-center gap-1">
-            <button onclick={() => setRoleFilter("all")} class="rounded-full px-3 py-1 text-sm font-medium transition-colors {roleFilter === 'all' ? 'bg-neutral-950 dark:bg-white/15 text-white' : 'bg-neutral-100 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-white/15'}">All</button>
-            <button onclick={() => setRoleFilter("admin")} class="rounded-full px-3 py-1 text-sm font-medium transition-colors {roleFilter === 'admin' ? 'bg-neutral-950 dark:bg-white/15 text-white' : 'bg-neutral-100 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-white/15'}">Admin</button>
-            <button onclick={() => setRoleFilter("user")} class="rounded-full px-3 py-1 text-sm font-medium transition-colors {roleFilter === 'user' ? 'bg-neutral-950 dark:bg-white/15 text-white' : 'bg-neutral-100 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-white/15'}">User</button>
+            <button onclick={() => setRoleFilter("all")} type="button" class="gk-button gk-button--small" aria-pressed={roleFilter === "all"}>All</button>
+            <button onclick={() => setRoleFilter("admin")} type="button" class="gk-button gk-button--small" aria-pressed={roleFilter === "admin"}>Admin</button>
+            <button onclick={() => setRoleFilter("user")} type="button" class="gk-button gk-button--small" aria-pressed={roleFilter === "user"}>User</button>
         </div>
         <div class="flex items-center gap-3">
-            <input type="search" aria-label="Search users by email" value={searchValue} oninput={handleSearchInput} placeholder="Search by email…" class="w-56 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 focus:border-neutral-950 focus:outline-none focus:ring-1 focus:ring-neutral-950" />
+            <input type="search" aria-label="Search users by email" value={searchValue} oninput={handleSearchInput} placeholder="Search by email…" class="gk-input w-56" />
             <span class="text-sm text-neutral-500 dark:text-neutral-400">{total} user{total !== 1 ? "s" : ""}</span>
         </div>
     </div>
 
     <!-- ── User list ─────────────────────────────────────────────── -->
-    <div class="rounded-xl border border-neutral-950/8 bg-white shadow-sm divide-y divide-neutral-950/5">
+    <div class="rounded-xl border border-neutral-950/8 bg-white divide-y divide-neutral-950/5">
         {#if loading && users.length === 0}
             <!-- Loading skeleton: first load only, when there is nothing worth keeping on screen. -->
             {#each Array(3) as _, skeletonRow (skeletonRow)}
@@ -501,7 +501,7 @@
         {:else if error}
             <div class="px-6 py-8 text-center">
                 <p class="text-sm text-red-600">{error}</p>
-                <button onclick={() => fetchUsers(debouncedSearch, roleFilter, currentPage)} class="mt-2 text-sm text-neutral-500 hover:text-neutral-700 underline underline-offset-2">Retry</button>
+                <button onclick={() => fetchUsers(debouncedSearch, roleFilter, currentPage)} class="gk-link mt-2">Retry</button>
             </div>
         {:else if users.length === 0}
             <div class="px-6 py-8 text-center">
@@ -554,35 +554,35 @@
                         <!-- Ban / Unban -->
                         {#if !isSelf(user.id)}
                             {#if user.banned}
-                                <button onclick={() => unbanUser(user)} disabled={unbanning === user.id} class="rounded-md px-2 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-50">
+                                <button onclick={() => unbanUser(user)} disabled={unbanning === user.id} class="gk-button gk-button--small">
                                     {unbanning === user.id ? "\u2026" : "Unban"}
                                 </button>
                             {:else}
-                                <button onclick={() => openBanModal(user)} class="rounded-md px-2 py-1 text-sm font-medium text-amber-700 hover:bg-amber-50 transition-colors"> Ban </button>
+                                <button onclick={() => openBanModal(user)} class="gk-button gk-button--small"> Ban </button>
                             {/if}
                         {/if}
 
                         <!-- Reset password -->
-                        <button onclick={() => openResetPasswordModal(user)} class="rounded-md px-2 py-1 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors"> Reset password </button>
+                        <button onclick={() => openResetPasswordModal(user)} class="gk-button gk-button--small"> Reset password </button>
 
                         <!-- Reset two-factor: an administrator turns their own off from the Account page. -->
                         {#if user.twoFactorEnabled && !isSelf(user.id)}
-                            <button onclick={() => (resetTwoFactorUser = user)} class="rounded-md px-2 py-1 text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors"> Reset two-factor </button>
+                            <button onclick={() => (resetTwoFactorUser = user)} class="gk-button gk-button--small"> Reset two-factor </button>
                         {/if}
 
                         <!-- Impersonate -->
                         {#if !isSelf(user.id) && user.role !== "admin"}
-                            <button onclick={() => impersonateUser(user)} disabled={impersonating === user.id} class="rounded-md px-2 py-1 text-sm font-medium text-neutral-700 hover:bg-neutral-100 transition-colors disabled:opacity-50">
+                            <button onclick={() => impersonateUser(user)} disabled={impersonating === user.id} class="gk-button gk-button--small">
                                 {impersonating === user.id ? "Impersonating\u2026" : "Impersonate"}
                             </button>
                         {/if}
 
                         <!-- Sessions -->
-                        <button onclick={() => toggleSessions(user.id)} class="rounded-md px-2 py-1 text-sm font-medium transition-colors {expandedSessionsUserId === user.id ? 'bg-neutral-200 text-neutral-950' : 'text-neutral-600 hover:bg-neutral-100'}"> Sessions </button>
+                        <button onclick={() => toggleSessions(user.id)} class="gk-button gk-button--small" aria-pressed={expandedSessionsUserId === user.id}> Sessions </button>
 
                         <!-- Delete -->
                         {#if !isSelf(user.id)}
-                            <button onclick={() => openDeleteModal(user)} class="rounded-md px-2 py-1 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"> Delete </button>
+                            <button onclick={() => openDeleteModal(user)} class="gk-button gk-button--danger gk-button--small"> Delete </button>
                         {/if}
                     </div>
 
@@ -610,14 +610,14 @@
                                                     <span class="text-sm text-neutral-500 dark:text-neutral-400">Expires: {formatDateTime(session.expiresAt)}</span>
                                                 </div>
                                             </div>
-                                            <button onclick={() => revokeSession(session.token)} disabled={revokingSession === session.token} class="shrink-0 rounded-md px-2 py-1 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50">
+                                            <button onclick={() => revokeSession(session.token)} disabled={revokingSession === session.token} class="gk-button gk-button--danger gk-button--small shrink-0">
                                                 {revokingSession === session.token ? "\u2026" : "Revoke"}
                                             </button>
                                         </div>
                                     {/each}
                                 </div>
                                 <div class="mt-2 flex justify-end">
-                                    <button onclick={() => revokeAllSessions(user.id)} disabled={revokingAllSessions} class="rounded-md px-2.5 py-1 text-sm font-medium text-red-700 hover:bg-red-50 ring-1 ring-red-600/20 transition-colors disabled:opacity-50">
+                                    <button onclick={() => revokeAllSessions(user.id)} disabled={revokingAllSessions} class="gk-button gk-button--danger gk-button--small">
                                         {revokingAllSessions ? "Revoking\u2026" : "Revoke all sessions"}
                                     </button>
                                 </div>
@@ -638,7 +638,7 @@
                     if (currentPage > 1) currentPage--;
                 }}
                 disabled={currentPage <= 1}
-                class="rounded-lg ring-1 ring-neutral-950/15 bg-white px-3 py-1.5 text-sm font-medium text-neutral-950 hover:bg-neutral-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                class="gk-button"
             >
                 Previous
             </button>
@@ -650,7 +650,7 @@
                     if (currentPage < totalPages) currentPage++;
                 }}
                 disabled={currentPage >= totalPages}
-                class="rounded-lg ring-1 ring-neutral-950/15 bg-white px-3 py-1.5 text-sm font-medium text-neutral-950 hover:bg-neutral-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                class="gk-button"
             >
                 Next
             </button>
@@ -684,12 +684,12 @@
                 ends or you lift it.
             </p>
             <div>
-                <label for="ban-reason" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">Reason (optional)</label>
-                <input id="ban-reason" type="text" bind:value={banReason} placeholder="e.g. Terms of service violation" class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400" />
+                <label for="ban-reason" class="gk-label mb-1.5 block">Reason (optional)</label>
+                <input id="ban-reason" type="text" bind:value={banReason} placeholder="e.g. Terms of service violation" class="gk-input" />
             </div>
             <div>
-                <label for="ban-duration" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">Duration</label>
-                <select id="ban-duration" bind:value={banDuration} class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400">
+                <label for="ban-duration" class="gk-label mb-1.5 block">Duration</label>
+                <select id="ban-duration" bind:value={banDuration} class="gk-select w-full">
                     <option value="1h">1 hour</option>
                     <option value="24h">24 hours</option>
                     <option value="7d">7 days</option>
@@ -699,8 +699,8 @@
             </div>
         {/snippet}
         {#snippet footer()}
-            <button type="button" onclick={() => (banModalUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
-            <button type="submit" disabled={banning} data-testid="admin-ban-confirm" class="min-w-28 rounded-lg bg-amber-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50">
+            <button type="button" onclick={() => (banModalUser = null)} class="gk-button">Cancel</button>
+            <button type="submit" disabled={banning} data-testid="admin-ban-confirm" class="gk-button gk-button--danger min-w-28">
                 {banning ? "Banning\u2026" : "Ban user"}
             </button>
         {/snippet}
@@ -723,7 +723,7 @@
                 Set a new password for <strong>{user.name || user.email}</strong>. This signs them out everywhere and revokes their sync access, as their own password reset would.
             </p>
             <div>
-                <label for="new-password" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">New password</label>
+                <label for="new-password" class="gk-label mb-1.5 block">New password</label>
                 <input
                     id="new-password"
                     type="password"
@@ -732,7 +732,7 @@
                     autocomplete="new-password"
                     aria-invalid={resetPasswordError !== null}
                     aria-describedby={resetPasswordError ? "new-password-error new-password-help" : "new-password-help"}
-                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400 {resetPasswordError ? 'border-red-400' : 'border-neutral-300 dark:border-neutral-700'}"
+                    class="gk-input"
                 />
                 {#if resetPasswordError}
                     <p id="new-password-error" role="alert" class="mt-1.5 text-sm text-red-600">{resetPasswordError}</p>
@@ -741,8 +741,8 @@
             </div>
         {/snippet}
         {#snippet footer()}
-            <button type="button" onclick={() => (resetPasswordUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
-            <button type="submit" disabled={resettingPassword} data-testid="admin-reset-password-confirm" class="min-w-36 rounded-lg bg-neutral-950 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 disabled:opacity-50">
+            <button type="button" onclick={() => (resetPasswordUser = null)} class="gk-button">Cancel</button>
+            <button type="submit" disabled={resettingPassword} data-testid="admin-reset-password-confirm" class="gk-button gk-button--primary min-w-36">
                 {resettingPassword ? "Resetting\u2026" : "Reset password"}
             </button>
         {/snippet}
@@ -769,8 +769,8 @@
             </p>
         {/snippet}
         {#snippet footer()}
-            <button type="button" onclick={() => (resetTwoFactorUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
-            <button type="submit" disabled={resettingTwoFactor} data-testid="admin-reset-two-factor-confirm" class="min-w-36 rounded-lg bg-neutral-950 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 disabled:opacity-50">
+            <button type="button" onclick={() => (resetTwoFactorUser = null)} class="gk-button">Cancel</button>
+            <button type="submit" disabled={resettingTwoFactor} data-testid="admin-reset-two-factor-confirm" class="gk-button gk-button--primary min-w-36">
                 {resettingTwoFactor ? "Resetting\u2026" : "Turn off two-factor"}
             </button>
         {/snippet}
@@ -796,18 +796,18 @@
                 undone.
             </p>
             <div>
-                <label for="delete-confirm" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">
+                <label for="delete-confirm" class="gk-label mb-1.5 block">
                     Type <code class="rounded bg-neutral-100 dark:bg-white/10 px-1 py-0.5 text-sm font-mono">{user.email}</code> to confirm
                 </label>
-                <input id="delete-confirm" type="text" bind:value={deleteConfirmEmail} placeholder={user.email} autocomplete="off" aria-describedby="delete-confirm-hint" class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500" />
+                <input id="delete-confirm" type="text" bind:value={deleteConfirmEmail} placeholder={user.email} autocomplete="off" aria-describedby="delete-confirm-hint" class="gk-input" />
                 {#if deleteConfirmEmail !== user.email}
                     <p id="delete-confirm-hint" class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">Delete user stays unavailable until this matches exactly.</p>
                 {/if}
             </div>
         {/snippet}
         {#snippet footer()}
-            <button type="button" onclick={() => (deleteModalUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300">Cancel</button>
-            <button type="submit" disabled={deleting || deleteConfirmEmail !== user.email} data-testid="admin-delete-confirm" class="min-w-32 rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
+            <button type="button" onclick={() => (deleteModalUser = null)} class="gk-button">Cancel</button>
+            <button type="submit" disabled={deleting || deleteConfirmEmail !== user.email} data-testid="admin-delete-confirm" class="gk-button gk-button--danger min-w-32">
                 {deleting ? "Deleting\u2026" : "Delete user"}
             </button>
         {/snippet}

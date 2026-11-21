@@ -157,7 +157,7 @@
     ></div>
     <header class="match-list__header">
         <p class="match-list__summary" data-testid="match-list-summary">{find.search === "" ? "Type to find in this document." : find.matches.length === 0 ? "No matches." : summary}</p>
-        <button type="button" class="match-list__hide" data-testid="match-list-hide" onclick={() => controller.setListShown(false)}>Hide</button>
+        <button type="button" class="gk-button gk-button--quiet gk-button--small shrink-0" data-testid="match-list-hide" onclick={() => controller.setListShown(false)}>Hide</button>
     </header>
     {#if find.rows.length > 0}
         <div
@@ -242,17 +242,6 @@
         margin: 0;
         color: var(--gk-text-muted);
     }
-    .match-list__hide {
-        flex-shrink: 0;
-        padding: 0.125rem 0.5rem;
-        border-radius: 0.25rem;
-        color: var(--gk-control-text);
-        cursor: pointer;
-    }
-    .match-list__hide:hover {
-        background: var(--gk-control-hover);
-    }
-    .match-list__hide:focus-visible,
     .match-list__rows:focus-visible {
         outline: 2px solid var(--gk-accent);
         outline-offset: -2px;

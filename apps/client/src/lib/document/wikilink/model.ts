@@ -33,6 +33,14 @@ export function conceptOf(text: string): string {
 }
 
 /**
+ * The wikilink that names `concept`: the inverse of `conceptOf`. A scoped concept keeps its own
+ * brackets inside, so `[[Garden]] Notes` becomes `[[[[Garden]] Notes]]`.
+ */
+export function wikilinkTo(concept: string): string {
+    return `[[${concept}]]`
+}
+
+/**
  * The innermost (smallest) wikilink covering an offset, or undefined if none.
  * Maps a cursor/click position to the link it should act on.
  */

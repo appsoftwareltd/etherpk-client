@@ -56,7 +56,7 @@ function apply(target: { state: EditorState; dispatch: (tr: Transaction) => void
 }
 
 /** Enter: the next line at the right indent, or the next list item. */
-const enter: StateCommand = ({ state, dispatch }) => {
+export const frontmatterEnter: StateCommand = ({ state, dispatch }) => {
     const line = caretLine(state)
     if (!line) return false
     const head = state.selection.main.head
@@ -184,7 +184,7 @@ const backspace: StateCommand = ({ state, dispatch }) => {
 /** The bindings, for the live keymap and the rule tables. */
 export function frontmatterBindings(): KeyBinding[] {
     return [
-        { key: 'Enter', run: enter as KeyBinding['run'] },
+        { key: 'Enter', run: frontmatterEnter as KeyBinding['run'] },
         { key: 'Mod-Enter', run: leave as KeyBinding['run'] },
         { key: 'Tab', run: indent as KeyBinding['run'] },
         { key: 'Shift-Tab', run: outdent as KeyBinding['run'] },

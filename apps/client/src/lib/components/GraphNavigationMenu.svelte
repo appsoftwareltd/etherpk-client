@@ -19,21 +19,27 @@
      * registry record's cache, refreshed each time a graph is opened or its settings saved, so a
      * graph never opened on this device since it was coloured shows no colour until it is. The
      * open graph is marked by a tick and `aria-current`, since colour alone no longer says which
-     * row is open. The name's ink is chosen by the colour's luminance so it reads on any pick.
+     * row is open. Which graph is open is the workspace's to say, by id: two folder graphs kept in
+     * folders with one name have one address (ADR 0192), so the address would mark both, and a
+     * link to it would not say which to open. A row therefore carries its graph to the workspace
+     * with the navigation (chosen-graph.ts). The name's ink is chosen by the colour's luminance so it reads on any pick.
      */
     import { onMount } from "svelte";
 
-    import { afterNavigate } from "$app/navigation";
+    import { afterNavigate, goto } from "$app/navigation";
     import { page } from "$app/state";
     import { bandCornerClass } from "#lib/components/graph-menu-band.js";
     import { inkFor } from "#lib/contrast-ink.js";
     import { graphUrl } from "#lib/navigation/document-url.js";
-    import { graphAddressOf, parseGraphAddressPath, sameGraphAddress } from "#lib/navigation/graph-address.js";
+    import { currentGraphId, graphAddressOf, parseGraphAddressPath } from "#lib/navigation/graph-address.js";
+    import { queueHistoryWrite } from "#lib/navigation/history-writes.js";
     import { createIdbGraphRegistry, type GraphGroup, type GraphRecord } from "#lib/storage/index.js";
     import { iconSvg } from "#lib/surface/icons.js";
     import { serverHost } from "#lib/sync/sync-connections.js";
+    import { chosenGraphState } from "#lib/workspace/chosen-graph.js";
     import { graphAccentFor } from "#lib/workspace/graph-accent.svelte.js";
     import { graphGroups } from "#lib/workspace/graph-order-state.js";
+    import { openGraphId } from "#lib/workspace/open-graph-id.svelte.js";
 
     // Nothing here closes the menu by hand: the header does that on `afterNavigate`, so a link
     // is never torn out of the DOM by its own click handler on the way to the destination.
@@ -53,10 +59,29 @@
         loaded = true;
     }
 
-    /** Whether the page is in this graph: its address begins with the graph's own (ADR 0192). */
-    function isCurrent(graph: GraphRecord): boolean {
-        const here = parseGraphAddressPath(page.url.pathname)?.address;
-        return here !== undefined && sameGraphAddress(here, graphAddressOf(graph));
+    /**
+     * The graph the page is in: the one the workspace has open, and before it has one, the graph
+     * the address names when it names only one. While a link is asking which of two folders with
+     * one name is meant, no row is marked.
+     */
+    const currentId = $derived(
+        currentGraphId(
+            parseGraphAddressPath(page.url.pathname)?.address ?? null,
+            openGraphId.current,
+            groups.flatMap((group) => group.graphs),
+        ),
+    );
+
+    /**
+     * Follow a row with its graph in the history entry, so the workspace opens that graph and not
+     * whichever shares its address. A click that opens another tab or window is the browser's: it
+     * carries no state, and the new tab asks, as any link from outside does.
+     */
+    function follow(event: MouseEvent, graph: GraphRecord): void {
+        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        // Queued behind the workspace's own history writes, so none of them lands on the graph this opens.
+        void queueHistoryWrite(() => goto(graphUrl(graphAddressOf(graph)), { state: chosenGraphState(graph) }));
     }
 
     /** A group's graphs with their colours, in list order: live for the open graph, cached for the rest. */
@@ -82,47 +107,52 @@
     });
 </script>
 
-<div class="space-y-3 p-2">
+<div>
     {#if loaded && groups.length === 0}
-        <p data-testid="graph-menu-empty" class="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">
+        <p data-testid="graph-menu-empty" class="px-3 py-1.5 text-sm text-(--gk-text-muted)">
             No graphs yet.
         </p>
     {:else}
         {#each groups as group, groupIndex (group.origin)}
             {@const rows = rowsOf(group)}
             {@const label = labelOf(group)}
-            <div role="group" aria-labelledby="{labelId}-{groupIndex}">
+            {#if groupIndex > 0}<hr class="gk-menu-separator" />{/if}
+            <!-- Inset, so the group's rows read as one block with rounded ends (graph-menu-band.ts). -->
+            <div role="group" aria-labelledby="{labelId}-{groupIndex}" class="px-2 pb-1">
                 <p
                     id="{labelId}-{groupIndex}"
                     data-testid="graph-menu-group-label"
                     title={label}
-                    class="truncate px-3 pb-1 pt-1 text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400"
+                    class="truncate px-1 py-1 text-sm font-semibold uppercase tracking-wider text-(--gk-text-muted)"
                 >
                     {label}
                 </p>
                 {#each rows as { graph, accent }, index (graph.id)}
-                    {@const current = isCurrent(graph)}
-                    <!-- Inline styles win over the classes, so a coloured row drops the theme's
-                         fill and hover rather than fighting them; a brightness shift stands in
-                         for hover there. A row with no colour takes the neutral fill, a step
-                         stronger on the open graph. -->
+                    {@const current = graph.id === currentId}
+                    <!-- A menu row (`gk-menu-item`) with the band's corners. Inline styles win over the
+                         classes, so a coloured row drops the theme's fill and hover rather than
+                         fighting them; a brightness shift stands in for hover there. A row with no
+                         colour takes the menu's neutral fill, a step stronger on hover and on the
+                         open graph. -->
                     <a
                         href={graphUrl(graphAddressOf(graph))}
+                        onclick={(event) => follow(event, graph)}
                         aria-current={current ? "page" : undefined}
                         class={[
-                            "flex items-center gap-2 px-3 py-2 text-sm transition-colors",
+                            "gk-menu-item",
                             bandCornerClass(index, rows.length),
                             current ? "font-semibold" : "font-medium",
                             accent
                                 ? "hover:brightness-95 dark:hover:brightness-110"
                                 : current
-                                  ? "bg-neutral-200 text-neutral-950 dark:bg-white/15 dark:text-white"
-                                  : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200 hover:text-neutral-950 dark:bg-white/5 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white",
+                                  ? "bg-(--gk-selection) text-(--gk-text-strong)"
+                                  : "bg-(--gk-menu-hover) hover:bg-(--gk-selection)",
                         ]}
                         style:background-color={accent}
                         style:color={accent ? inkFor(accent) : null}
                         title={graph.name}
                         data-testid="graph-menu-row"
+                        data-graph-id={graph.id}
                     >
                         <span class="min-w-0 flex-1 truncate">{graph.name}</span>
                         {#if current}
@@ -137,11 +167,5 @@
         {/each}
     {/if}
 </div>
-<div class="border-t border-neutral-950/5 p-2 dark:border-white/10">
-    <a
-        href="/graphs"
-        class="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-white"
-    >
-        All Graphs
-    </a>
-</div>
+<hr class="gk-menu-separator" />
+<a href="/graphs" class="gk-menu-item">All Graphs</a>

@@ -198,6 +198,14 @@
             view.focus()
             view.dispatch({ selection: { anchor: pos } })
         }
+        // An edit and a caret brought into view in one task, as a key that types and moves does:
+        // the edit queues the overlays' redraw, and the scroll is still to come when it runs.
+        w.__editThenShowCaret = (at: number, text: string, caret: number) => {
+            const view = getActiveEditorView()
+            if (!view) return
+            view.dispatch({ changes: { from: at, insert: text } })
+            view.dispatch({ selection: { anchor: caret + text.length }, scrollIntoView: true })
+        }
         w.__setSelection = (anchor: number, head: number) => {
             const view = getActiveEditorView()
             if (!view) return

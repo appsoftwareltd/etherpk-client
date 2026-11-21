@@ -91,7 +91,7 @@
     }
 
     const command = $derived(setupCode.phase === "ready" ? loginCommand(serverBaseUrl, headlessClient, setupCode.code) : null);
-    const link = "underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-950 dark:hover:decoration-neutral-100";
+    const link = "gk-link";
 </script>
 
 <!-- What the Agent Token can and cannot do is what agent-token-policy.ts on the Sync Server allows:
@@ -125,7 +125,7 @@
             type="button"
             bind:this={loginCopyButton}
             onclick={() => copy(command)}
-            class="shrink-0 rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            class="gk-button shrink-0"
             data-testid="agents-copy-login">{copied ? "Copied" : "Copy"}</button
         >
     </div>
@@ -147,7 +147,7 @@
         type="button"
         onclick={makeSetupCode}
         disabled={setupCode.phase === "making"}
-        class="rounded-lg bg-neutral-950 dark:bg-white px-4 py-2 text-sm font-medium text-white dark:text-neutral-950 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-60"
+        class="gk-button gk-button--primary"
         data-testid="agents-make-setup-code"
     >
         <!-- One name in every state, the one the step above tells the person to click: after a

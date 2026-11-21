@@ -190,7 +190,7 @@
         justify-content: center;
         width: 100%;
         overflow: hidden;
-        border-radius: 5px;
+        border-radius: 6px;
         background: var(--gk-code-bg, rgba(127, 127, 127, 0.1));
     }
     /* Fills the frame: during a resize, until the picture at the new width arrives, it stretches

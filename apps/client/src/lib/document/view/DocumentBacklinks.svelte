@@ -107,7 +107,7 @@
     >
         <p class="error" data-testid="document-backlinks-error">
             Could not load the backlinks: the graph's index did not answer.
-            <button type="button" class="retry" onclick={() => loader.retry()}>Try again</button>
+            <button type="button" class="gk-link ml-1" onclick={() => loader.retry()}>Try again</button>
         </p>
     </section>
 {:else if backlinks.status === "ready" && backlinks.count > 0}
@@ -198,8 +198,7 @@
             color: var(--gk-text-default);
         }
     }
-    .toggle:focus-visible,
-    .retry:focus-visible {
+    .toggle:focus-visible {
         outline: 2px solid var(--gk-accent, #2563eb);
         outline-offset: 2px;
     }
@@ -238,15 +237,5 @@
     .error {
         margin: 0;
         color: var(--gk-text-muted);
-    }
-    .retry {
-        margin-left: 0.25rem;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: var(--gk-accent, #2563eb);
-        font: inherit;
-        text-decoration: underline;
-        cursor: pointer;
     }
 </style>

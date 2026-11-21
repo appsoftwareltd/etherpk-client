@@ -243,7 +243,7 @@
     {:else}
         <header class="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-(--gk-border-soft) px-4 py-3">
             <h2 class="text-base font-semibold text-(--gk-text-strong)">
-                <button type="button" class="hover:underline" onclick={openDocument} data-testid="version-history-document">{concept}</button>
+                <button type="button" class="gk-link" onclick={openDocument} data-testid="version-history-document">{concept}</button>
             </h2>
             {#if list.kind === "ready"}
                 <p class="text-sm text-(--gk-text-muted)" data-testid="version-history-policy">{policyNotice(list.policy)}</p>
@@ -360,17 +360,12 @@
                                     {reasonLabel(selected.reason)}, {versionMoment(selected.createdAt, new Date())}
                                 </p>
                             {/if}
-                            <!-- Two views of one version, as a segmented control: the one showing is filled. -->
+                            <!-- Two views of one version, as a segmented control: the one showing is pressed (`aria-pressed`), which fills it. -->
                             <div class="inline-flex rounded-lg border border-(--gk-control-border) p-0.5" role="group" aria-label="Show">
                                 {#each [["changes", "Changes"], ["text", "Full text"]] as const as [value, label] (value)}
                                     <button
                                         type="button"
-                                        class={[
-                                            "rounded-md px-2.5 py-0.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gk-accent) pointer-coarse:min-h-10",
-                                            shown === value
-                                                ? "bg-(--gk-surface-2) text-(--gk-text-strong)"
-                                                : "text-(--gk-text-muted) hover:text-(--gk-text-strong)",
-                                        ]}
+                                        class="gk-button gk-button--quiet gk-button--small"
                                         aria-pressed={shown === value}
                                         onclick={() => (shown = value)}
                                         data-testid="version-history-show-{value}">{label}</button

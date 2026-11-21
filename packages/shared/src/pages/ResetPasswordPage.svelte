@@ -1,6 +1,6 @@
 <script lang="ts">
     import { useHydrated } from "../forms/hydration.svelte";
-    import { focusFirstInvalid, textFieldClass } from "../ui/index.svelte";
+    import { focusFirstInvalid } from "../ui/index.svelte";
     import { touchAll, visibleErrors } from "../forms/field-errors";
     import type { PasswordResetAuthClient } from "../auth/page-clients";
     import { PASSWORD_HELP, WEAK_PASSWORD_CODE } from "../auth/password-strength";
@@ -137,7 +137,7 @@
             <h1 class="text-lg font-semibold text-neutral-950">Password reset</h1>
             <p class="mt-2 text-sm text-neutral-500">Your password has been successfully reset.</p>
             <p class="mt-4 text-sm text-neutral-500">
-                <a href={signInHref} class="font-medium text-neutral-950 hover:underline">Sign in with your new password</a>
+                <a href={signInHref} class="gk-link">Sign in with your new password</a>
             </p>
         </div>
     {:else if !token}
@@ -145,7 +145,7 @@
             <h1 class="text-lg font-semibold text-neutral-950">Invalid reset link</h1>
             <p class="mt-2 text-sm text-neutral-500">This password reset link is invalid or has expired. If you reloaded this page, open the link in your email again.</p>
             <p class="mt-4 text-sm text-neutral-500">
-                <a href={forgotPasswordHref} class="font-medium text-neutral-950 hover:underline">Request a new reset link</a>
+                <a href={forgotPasswordHref} class="gk-link">Request a new reset link</a>
             </p>
         </div>
     {:else}
@@ -160,8 +160,8 @@
 
         <form onsubmit={handleSubmit} novalidate class="mt-6 space-y-4">
             <div>
-                <label for="password" class="block text-sm font-medium text-neutral-700 mb-1.5">New password</label>
-                <input id="password" onblur={() => blurField("password")} oninput={() => inputField("password")} type="password" bind:value={password} autocomplete="new-password" aria-invalid={!!fieldErrors.password} aria-describedby={fieldErrors.password ? "pw-error pw-help" : "pw-help"} class={textFieldClass(!!fieldErrors.password)} />
+                <label for="password" class="gk-label block mb-1.5">New password</label>
+                <input id="password" onblur={() => blurField("password")} oninput={() => inputField("password")} type="password" bind:value={password} autocomplete="new-password" aria-invalid={!!fieldErrors.password} aria-describedby={fieldErrors.password ? "pw-error pw-help" : "pw-help"} class="gk-input" />
                 {#if fieldErrors.password}
                     <p id="pw-error" class="mt-1 text-sm text-red-600">{fieldErrors.password}</p>
                 {/if}
@@ -169,20 +169,20 @@
             </div>
 
             <div>
-                <label for="confirmPassword" class="block text-sm font-medium text-neutral-700 mb-1.5">Confirm new password</label>
-                <input id="confirmPassword" onblur={() => blurField("confirm")} oninput={() => inputField("confirm")} type="password" bind:value={confirmPassword} autocomplete="new-password" placeholder="Repeat new password" aria-invalid={!!fieldErrors.confirm} aria-describedby={fieldErrors.confirm ? "confirm-error" : undefined} class={textFieldClass(!!fieldErrors.confirm)} />
+                <label for="confirmPassword" class="gk-label block mb-1.5">Confirm new password</label>
+                <input id="confirmPassword" onblur={() => blurField("confirm")} oninput={() => inputField("confirm")} type="password" bind:value={confirmPassword} autocomplete="new-password" placeholder="Repeat new password" aria-invalid={!!fieldErrors.confirm} aria-describedby={fieldErrors.confirm ? "confirm-error" : undefined} class="gk-input" />
                 {#if fieldErrors.confirm}
                     <p id="confirm-error" class="mt-1 text-sm text-red-600">{fieldErrors.confirm}</p>
                 {/if}
             </div>
 
-            <button type="submit" disabled={loading || !hydrated.ready} class="mt-2 w-full rounded-lg bg-neutral-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            <button type="submit" disabled={loading || !hydrated.ready} class="gk-button gk-button--primary mt-2 w-full">
                 {loading ? "Resetting…" : "Reset password"}
             </button>
         </form>
 
         <p class="mt-6 text-center text-sm text-neutral-500">
-            <a href={signInHref} class="font-medium text-neutral-950 hover:underline">Back to sign in</a>
+            <a href={signInHref} class="gk-link">Back to sign in</a>
         </p>
     {/if}
 </div>

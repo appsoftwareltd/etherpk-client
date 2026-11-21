@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-shared",
-    "version": "0.39.0",
+    "version": "0.40.0",
     "license": "Elastic-2.0",
     "private": true,
     "type": "module",
@@ -102,6 +102,7 @@
             "default": "./src/auth/verification-resend.ts"
         },
         "./layers.css": "./src/ui/layers.css",
+        "./controls.css": "./src/ui/controls.css",
         "./dialog": {
             "svelte": "./src/components/Dialog.svelte",
             "types": "./src/components/Dialog.svelte",

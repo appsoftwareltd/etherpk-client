@@ -18,13 +18,16 @@
 @layer components {
     /* ── Buttons ─────────────────────────────────────────────────────────────── */
 
-    /* The everyday button: a thin border, in the control ink, filled faintly on hover. */
+    /* The everyday button: a thin border, in the control ink, filled faintly on hover. As tall as a
+       field (38px), so a row of the two lines up, and never narrower than twice its height or so:
+       a short label ("OK", "Save") does not draw a square. */
     .gk-button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
         gap: 0.375rem;
-        padding: 0.375rem 0.75rem;
+        min-width: 5rem;
+        padding: 0.5rem 0.75rem;
         border: 1px solid var(--gk-control-border);
         border-radius: 0.5rem;
         background: transparent;
@@ -72,6 +75,25 @@
         color: var(--gk-text-muted);
     }
 
+    /* The one action a page most wants taken, where the primary button is not enough: a plan to
+       choose on a pricing page. Emerald in both themes, used rarely. */
+    .gk-button--emphasis {
+        border-color: var(--gk-emphasis-bg);
+        background: var(--gk-emphasis-bg);
+        color: var(--gk-emphasis-text);
+        font-weight: 600;
+    }
+    .gk-button--emphasis:hover {
+        border-color: var(--gk-emphasis-hover);
+        background: var(--gk-emphasis-hover);
+    }
+    .gk-button--emphasis:disabled,
+    .gk-button--emphasis[aria-disabled='true'] {
+        border-color: var(--gk-surface-2);
+        background: var(--gk-surface-2);
+        color: var(--gk-text-muted);
+    }
+
     /* An action that removes or ends something. */
     .gk-button--danger {
         border-color: var(--gk-danger-border);
@@ -81,21 +103,26 @@
         background: var(--gk-danger-hover);
     }
 
-    /* A button with no border, in a toolbar or beside other text. */
+    /* A button with no border, in a toolbar or beside other text. It keeps the height of a button
+       of its size, so it lines up with the one beside it, and has less room at its sides. */
     .gk-button--quiet {
-        padding: 0.25rem 0.5rem;
+        padding-inline: 0.5rem;
         border-color: transparent;
-        border-radius: 0.375rem;
         color: var(--gk-text-muted);
+    }
+    /* It reads as text, so it has no minimum width, at either size. */
+    .gk-button.gk-button--quiet {
+        min-width: 0;
     }
     .gk-button--quiet:hover {
         background: var(--gk-menu-hover);
         color: var(--gk-text-strong);
     }
 
-    /* A button on the line of a heading or a row: 24px tall. */
+    /* A button in a toolbar or on a row of controls: 30px tall, as a small field is. */
     .gk-button--small {
-        padding: 0.0625rem 0.5rem;
+        min-width: 3.75rem;
+        padding: 0.25rem 0.5rem;
         border-radius: 0.375rem;
     }
 
@@ -112,19 +139,17 @@
     .gk-button--raised:hover {
         background: linear-gradient(var(--gk-control-hover), var(--gk-control-hover)), var(--gk-surface-0);
     }
-    .gk-icon-button.gk-button--raised:hover {
-        background: linear-gradient(var(--gk-menu-hover), var(--gk-menu-hover)), var(--gk-surface-0);
-    }
-
-    /* A toggle that is on (`aria-pressed="true"`) is drawn as the primary button, as the Client's
-       own toggles are. Raised or not: they come after `gk-button--raised`, and outweigh it. */
+    /* A toggle that is on (`aria-pressed="true"`), or a link to where the person is
+       (`aria-current`), is drawn as the primary button, as the Client's own toggles are. Raised or not: they come after `gk-button--raised`, and outweigh it. */
     .gk-button[aria-pressed='true'],
+    .gk-button[aria-current]:not([aria-current='false']),
     .gk-icon-button[aria-pressed='true'] {
         border-color: var(--gk-primary-bg);
         background: var(--gk-primary-bg);
         color: var(--gk-primary-text);
     }
     .gk-button[aria-pressed='true']:hover,
+    .gk-button[aria-current]:not([aria-current='false']):hover,
     .gk-icon-button[aria-pressed='true']:hover {
         border-color: var(--gk-primary-hover);
         background: var(--gk-primary-hover);
@@ -154,6 +179,26 @@
         background: transparent;
         color: var(--gk-text-subtle);
         cursor: not-allowed;
+    }
+
+    /* A raised icon button keeps the raised border and surface, which the icon button's own rule
+       above would otherwise clear: both are one class, and the later one wins. */
+    .gk-icon-button.gk-button--raised,
+    .gk-icon-button.gk-button--raised:disabled,
+    .gk-icon-button.gk-button--raised[aria-disabled='true'] {
+        border: 1px solid var(--gk-control-border);
+        background: var(--gk-surface-0);
+    }
+    .gk-icon-button.gk-button--raised:hover {
+        background: linear-gradient(var(--gk-menu-hover), var(--gk-menu-hover)), var(--gk-surface-0);
+    }
+    .gk-icon-button.gk-button--raised[aria-pressed='true'] {
+        border-color: var(--gk-primary-bg);
+        background: var(--gk-primary-bg);
+    }
+    .gk-icon-button.gk-button--raised[aria-pressed='true']:hover {
+        border-color: var(--gk-primary-hover);
+        background: var(--gk-primary-hover);
     }
 
     /* A button or a link that reads as a link: the accent, underlined, so a link inside a sentence
@@ -212,10 +257,31 @@
         font-size: 0.875rem;
         line-height: 1.25rem;
     }
+    /* A field and a select share one fill, so a select beside a field matches it. The fill is
+       solid: the browser's own option list takes the select's colours. */
+    .gk-input,
+    .gk-select {
+        background-color: var(--gk-field-bg);
+    }
     .gk-input {
         display: block;
         width: 100%;
-        background: var(--gk-field-bg);
+    }
+    /* A field or a select in a toolbar or on a row of controls: 30px tall. */
+    .gk-input--small,
+    .gk-select--small {
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.375rem;
+    }
+    /* A select's height is set outright, to the height its padding and line give a field. A
+       browser that draws the select itself (Firefox, Safari) sizes it from its own font metrics,
+       and it came out two or three pixels shorter than the field beside it. */
+    .gk-select {
+        box-sizing: border-box;
+        height: 2.375rem;
+    }
+    .gk-select--small {
+        height: 1.875rem;
     }
     textarea.gk-input {
         resize: vertical;
@@ -223,10 +289,6 @@
     .gk-input::placeholder {
         color: var(--gk-text-muted);
         opacity: 1;
-    }
-    /* A select's background is solid: the browser's own option list takes the select's colours. */
-    .gk-select {
-        background-color: var(--gk-menu-bg);
     }
     .gk-input:focus,
     .gk-select:focus {
@@ -240,7 +302,7 @@
     }
     .gk-input:disabled,
     .gk-select:disabled {
-        background: var(--gk-surface-1);
+        background-color: var(--gk-surface-1);
         color: var(--gk-text-muted);
         cursor: not-allowed;
     }

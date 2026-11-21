@@ -29,7 +29,7 @@
 {#if message}
     <div class="notice" data-testid="offline-shell-error" role="alert">
         <p>Could not open this page: {message}</p>
-        <button onclick={() => goto('/graphs')}>Go to graphs</button>
+        <button class="gk-button justify-self-center" onclick={() => goto('/graphs')}>Go to graphs</button>
     </div>
 {:else}
     <div class="notice" data-testid="offline-shell" role="status"><p>Opening your notes…</p></div>
@@ -44,14 +44,5 @@
         gap: 0.75rem;
         text-align: center;
         color: var(--gk-text-default);
-    }
-    .notice button {
-        border: 1px solid var(--gk-border-soft);
-        border-radius: 6px;
-        padding: 0.35rem 0.75rem;
-        background: var(--gk-surface-1);
-        color: inherit;
-        cursor: pointer;
-        font: inherit;
     }
 </style>

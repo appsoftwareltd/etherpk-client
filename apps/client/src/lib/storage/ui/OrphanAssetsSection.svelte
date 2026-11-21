@@ -98,7 +98,7 @@
         onclick={runScan}
         disabled={scanning}
         data-testid="orphan-scan"
-        class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
+        class="gk-button"
     >{scanning ? "Scanning…" : "Scan for orphaned assets"}</button>
     {#if scanResult}
         <p class="text-sm text-neutral-600 dark:text-neutral-300" data-testid="orphan-result">
@@ -135,7 +135,8 @@
                 onclick={runDelete}
                 disabled={deleting}
                 data-testid="orphan-delete"
-                class="rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-40 {deleteArmed ? 'bg-red-600 text-white hover:bg-red-500' : 'border border-red-300 dark:border-red-900 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40'}"
+                class="gk-button gk-button--danger"
+                aria-pressed={deleteArmed ? "true" : undefined}
             >{deleting ? "Deleting…" : deleteArmed ? `Really delete ${scanResult.orphans.length} assets${keptDeleted ? "" : " permanently"}?` : `Delete ${scanResult.orphans.length} orphaned ${scanResult.orphans.length === 1 ? "asset" : "assets"}`}</button>
         {/if}
     {/if}

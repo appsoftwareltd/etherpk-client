@@ -229,9 +229,10 @@
                         type="button"
                         onclick={close}
                         aria-label="Close"
+                        title="Close"
                         data-dialog-dismiss
                         data-testid="modal-close"
-                        class="rounded-lg p-1.5 pointer-coarse:-my-1.5 pointer-coarse:p-3 text-neutral-500 dark:text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-white/10 transition-colors"
+                        class="gk-icon-button pointer-coarse:-my-1.5"
                     >
                         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                             <path d="M6 18 18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />

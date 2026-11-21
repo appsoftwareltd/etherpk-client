@@ -90,7 +90,7 @@
                     <label class="flex items-start gap-2 text-sm text-neutral-950 dark:text-neutral-100">
                         <input
                             type="checkbox"
-                            class="mt-1 shrink-0"
+                            class="gk-checkbox mt-1"
                             checked={choice.present || ticked.includes(choice.key)}
                             disabled={choice.present}
                             data-autofocus={choice.key === firstEnabled ? "" : undefined}
@@ -120,9 +120,9 @@
     {/snippet}
 
     {#snippet footer()}
-        <button type="button" class="rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/10" onclick={onclose}>{missing.length === 0 ? "Close" : "Cancel"}</button>
+        <button type="button" class="gk-button" onclick={onclose}>{missing.length === 0 ? "Close" : "Cancel"}</button>
         {#if missing.length > 0}
-            <button type="submit" class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-3 py-2 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50" disabled={toAdd.length === 0 || adding} data-testid="add-frontmatter-add">{adding ? "Adding…" : "Add"}</button>
+            <button type="submit" class="gk-button gk-button--primary" disabled={toAdd.length === 0 || adding} data-testid="add-frontmatter-add">{adding ? "Adding…" : "Add"}</button>
         {/if}
     {/snippet}
 </Dialog>

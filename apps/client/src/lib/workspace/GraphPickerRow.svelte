@@ -9,12 +9,13 @@
     import type { GraphRecord } from '#lib/storage/index.js'
     import GraphGrip, { type GraphGripProps } from './GraphGrip.svelte'
     import { BADGE_ON_COLOUR, GRAPH_CARD, ICON_ON_COLOUR, OPEN_ON_COLOUR } from './graph-card'
-    import { OPEN_BUTTON, OPEN_ICON, RESET_ICON } from './graphs-page-icons'
+    import { OPEN_ICON, RESET_ICON } from './graphs-page-icons'
 
     let {
         graph,
         grip = null,
         message = null,
+        sharesFolderName = false,
         onopen,
         onrename,
         onsettings,
@@ -30,6 +31,11 @@
          * row that was clicked (AGENTS.md rule 6).
          */
         message?: { text: string; tone: 'info' | 'error' } | null
+        /**
+         * Another folder graph here is kept in a folder with this one's name. A link to either
+         * names both (ADR 0192) and asks which is meant, so the card says so while it is true.
+         */
+        sharesFolderName?: boolean
         onopen: () => void
         onrename: () => void
         onsettings: () => void
@@ -83,7 +89,7 @@
                     data-testid="graphs-demo-reset"
                     title="Reset the demo (puts every page back as it shipped)"
                     onclick={onreset}
-                    class="font-medium underline underline-offset-2 pointer-coarse:min-h-11 {accent ? '' : 'text-neutral-700 hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-white'}"
+                    class={accent ? 'font-medium underline underline-offset-2 pointer-coarse:min-h-11' : 'gk-link'}
                 >Reset the demo</button>
             </span>
         {:else if graph.backend !== 'server'}
@@ -103,7 +109,7 @@
         {/if}
     </div>
     <div class="ml-auto flex items-center gap-2">
-    <button data-testid="graphs-open" aria-label={`Open ${graph.name}`} onclick={onopen} class={accent ? OPEN_ON_COLOUR : OPEN_BUTTON}>
+    <button data-testid="graphs-open" aria-label={`Open ${graph.name}`} onclick={onopen} class={accent ? OPEN_ON_COLOUR : 'gk-button gk-button--primary shrink-0'}>
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d={OPEN_ICON} />
         </svg>
@@ -116,7 +122,7 @@
             : 'Rename (changes display name only - folder on disk retains its name)'}
         aria-label="Rename graph"
         onclick={onrename}
-        class={accent ? ICON_ON_COLOUR : 'shrink-0 rounded-lg p-1.5 pointer-coarse:p-3.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-white/10 dark:hover:text-neutral-300'}
+        class={accent ? ICON_ON_COLOUR : 'gk-icon-button'}
     >
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
@@ -129,7 +135,7 @@
         aria-label="Graph settings"
         data-testid={graph.backend === 'server' ? 'graphs-synced-settings' : 'graphs-settings'}
         onclick={onsettings}
-        class={accent ? ICON_ON_COLOUR : 'shrink-0 rounded-lg p-1.5 pointer-coarse:p-3 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-white/10 dark:hover:text-neutral-300'}
+        class={accent ? ICON_ON_COLOUR : 'gk-icon-button'}
     >
         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281Z" />
@@ -143,7 +149,7 @@
             ? 'Forget this graph (deletes the local browser cache - does not delete the remote synced graph)'
             : 'Forget this graph (does not delete files)'}
         onclick={onforget}
-        class={accent ? ICON_ON_COLOUR : 'shrink-0 rounded-lg p-1.5 pointer-coarse:p-3.5 text-neutral-400 hover:bg-neutral-100 hover:text-red-600 dark:hover:bg-white/10'}
+        class={accent ? ICON_ON_COLOUR : 'gk-icon-button'}
         aria-label="Forget graph"
     >
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
@@ -159,7 +165,7 @@
         title="Reset the demo (puts every page back as it shipped)"
         aria-label="Reset the demo"
         onclick={onreset}
-        class={accent ? ICON_ON_COLOUR : 'shrink-0 rounded-lg p-1.5 pointer-coarse:p-3.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-white/10 dark:hover:text-neutral-300'}
+        class={accent ? ICON_ON_COLOUR : 'gk-icon-button'}
     >
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d={RESET_ICON} />
@@ -168,6 +174,14 @@
     {/if}
     </div>
     </div>
+    {#if sharesFolderName && folderName}
+        <!-- Below the band, in the theme's own text colour, for the reason the status line is.
+             The advice is the choice screen's: a folder renamed on disk would break its links. -->
+        <p data-testid="graphs-shared-folder-name" class="px-4 py-2 text-sm text-neutral-600 dark:text-neutral-400">
+            Another folder is also named “{folderName}”, so a link to either one asks which you mean. Give each graph its own name or
+            colour to tell them apart.
+        </p>
+    {/if}
     {#if message}
         <!-- Below the band: red cannot be promised to read on a colour a person chose. -->
         <p

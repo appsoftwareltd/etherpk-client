@@ -71,6 +71,7 @@ import { fenceDeleteGuard, fencePad } from './fence-guard'
 import { type EditRefusal, editRefusalReporter } from './edit-refused'
 import { type EditorDocumentInfo, editorDocument } from './editor-document'
 import { endOfDocument } from './end-of-document'
+import { columnShift } from './column-shift'
 import { keepCaretVisible } from './keep-caret-visible'
 import { lineAnchor } from './line-anchor'
 import { shownRange, type ShownRangeOf, showsPart } from './shown-range'
@@ -370,6 +371,9 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // A shown caret stays shown when the editor shrinks: a phone's soft keyboard opening. It
         // decorates nothing and filters nothing, so its place in the list is free.
         { name: 'keep-caret-visible', extension: keepCaretVisible() },
+        // The layers follow the text when a pane's width moves a centred column sideways. Like the
+        // keeper above it decorates nothing and filters nothing, so its place in the list is free.
+        { name: 'column-shift', extension: columnShift() },
         // The last filter, so it runs first (filters run in reverse): every other filter reads the
         // selection an edit leaves, and none of them expects a range CodeMirror mapped backwards.
         { name: 'selection-order', extension: selectionOrder() },

@@ -3,7 +3,8 @@
  * Client's Graphs page (the Synced graphs group and the Sync tab) and Corporate's Billing page.
  * One sentence and one look on every origin. `SyncPlusOffer.svelte` renders it. The dashboard
  * keeps its own notice box, a live region that stays in place from "Confirming your plan" to the
- * answer so the answer is read out once, and styles it with these same classes.
+ * answer so the answer is read out once, and styles it with this same panel class. The offer's
+ * button is the primary `gk-button` everywhere.
  */
 
 export const SYNC_PLUS_OFFER_TEXT =
@@ -14,7 +15,3 @@ export const SYNC_PLUS_PRICING_LABEL = 'Sync+ Pricing'
 
 export const SYNC_PLUS_OFFER_PANEL_CLASS =
     'flex min-h-11 flex-col gap-3 rounded-lg bg-neutral-50 px-4 py-3 text-sm leading-5 text-neutral-950 ring-1 ring-neutral-950/10 sm:flex-row sm:items-center sm:justify-between dark:bg-white/5 dark:text-neutral-100 dark:ring-white/10'
-
-/** The primary button Corporate and the Sync Server use, and the Client uses for this offer too. */
-export const SYNC_PLUS_OFFER_BUTTON_CLASS =
-    'inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg bg-neutral-950 px-3 text-sm font-semibold text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100'

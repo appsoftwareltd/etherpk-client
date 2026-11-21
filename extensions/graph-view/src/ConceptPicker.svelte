@@ -103,7 +103,7 @@
             id="{uid}-list"
             role="listbox"
             aria-label={label}
-            class="absolute inset-x-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-md border border-(--gk-border-strong) bg-(--gk-surface-0) py-1 shadow-(--gk-shadow)"
+            class="absolute inset-x-0 top-full z-(--z-menu) mt-1 max-h-64 overflow-y-auto rounded-md border border-(--gk-border-strong) bg-(--gk-surface-0) py-1 shadow-(--gk-shadow)"
             data-testid="{testid}-options"
         >
             {#each matches as concept, index (concept.key)}

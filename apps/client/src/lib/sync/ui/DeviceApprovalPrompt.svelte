@@ -366,7 +366,7 @@
                     type="button"
                     onclick={close}
                     data-testid="device-approval-close"
-                    class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                    class="gk-button"
                 >Close</button>
             {:else}
                 <button
@@ -374,7 +374,7 @@
                     onclick={reject}
                     disabled={busy}
                     data-testid="device-approval-reject"
-                    class="rounded-lg border border-red-300 dark:border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-40"
+                    class="gk-button gk-button--danger"
                 >Reject</button>
                 {#if stage.kind === "offered"}
                     <!--
@@ -387,14 +387,14 @@
                         disabled={busy}
                         data-autofocus
                         data-testid="device-approval-not-now"
-                        class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
+                        class="gk-button"
                     >Not now</button>
                     <button
                         type="button"
                         onclick={chooseThisDevice}
                         disabled={busy}
                         data-testid="device-approval-choose"
-                        class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
+                        class="gk-button gk-button--primary"
                     >Show the code</button>
                 {:else if !tampered}
                     <button
@@ -402,7 +402,7 @@
                         onclick={approve}
                         disabled={busy || !stage.sas}
                         data-testid="device-approval-approve"
-                        class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40"
+                        class="gk-button gk-button--primary"
                     >{busy ? "Approving" : "Approve"}</button>
                 {/if}
             {/if}

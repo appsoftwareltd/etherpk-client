@@ -32,7 +32,7 @@
     <button
         type="button"
         onclick={copy}
-        class="shrink-0 rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+        class="gk-button shrink-0"
         data-testid="agents-copy-{key}">{copied ? "Copied" : "Copy"}</button
     >
 </div>

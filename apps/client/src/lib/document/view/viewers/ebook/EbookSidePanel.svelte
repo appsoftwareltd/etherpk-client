@@ -31,8 +31,6 @@
     let tab = $state<Tab>("contents");
 
     const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
-    const tabClass = (on: boolean) => `rounded-lg px-2 py-1 text-sm ${on ? "bg-(--gk-surface-2) font-medium text-(--gk-text-strong)" : "text-(--gk-text-default) hover:bg-(--gk-surface-2)"}`;
-    const rowButton = "ebook-tool shrink-0";
 
     let skim = $state<number | null>(null);
     const skimValue = $derived(skim ?? Math.round((reader.place?.fraction ?? 0) * 100));
@@ -42,12 +40,12 @@
 <aside class="etherpk-ebook-panel flex flex-col border-l border-(--gk-surface-2) bg-(--gk-surface-1)" aria-label="This EBook's contents and marks" data-testid="ebook-side-panel">
     <div class="flex items-center gap-1 border-b border-(--gk-surface-2) p-1.5">
         <div class="flex flex-1 flex-wrap gap-1" role="group" aria-label="Show">
-            <button type="button" class={tabClass(tab === "contents")} aria-pressed={tab === "contents"} onclick={() => (tab = "contents")} data-testid="ebook-panel-contents">Contents</button>
-            <button type="button" class={tabClass(tab === "highlights")} aria-pressed={tab === "highlights"} onclick={() => (tab = "highlights")} data-testid="ebook-panel-highlights">Highlights</button>
-            <button type="button" class={tabClass(tab === "bookmarks")} aria-pressed={tab === "bookmarks"} onclick={() => (tab = "bookmarks")} data-testid="ebook-panel-bookmarks">Bookmarks</button>
-            <button type="button" class={tabClass(tab === "links")} aria-pressed={tab === "links"} onclick={() => (tab = "links")} data-testid="ebook-panel-links">Linked from</button>
+            <button type="button" class="gk-button gk-button--quiet gk-button--small" aria-pressed={tab === "contents"} onclick={() => (tab = "contents")} data-testid="ebook-panel-contents">Contents</button>
+            <button type="button" class="gk-button gk-button--quiet gk-button--small" aria-pressed={tab === "highlights"} onclick={() => (tab = "highlights")} data-testid="ebook-panel-highlights">Highlights</button>
+            <button type="button" class="gk-button gk-button--quiet gk-button--small" aria-pressed={tab === "bookmarks"} onclick={() => (tab = "bookmarks")} data-testid="ebook-panel-bookmarks">Bookmarks</button>
+            <button type="button" class="gk-button gk-button--quiet gk-button--small" aria-pressed={tab === "links"} onclick={() => (tab = "links")} data-testid="ebook-panel-links">Linked from</button>
         </div>
-        <button type="button" class={rowButton} aria-label="Close panel" title="Close panel" onclick={onclose} data-testid="ebook-panel-close">
+        <button type="button" class="gk-icon-button" aria-label="Close panel" title="Close panel" onclick={onclose} data-testid="ebook-panel-close">
             <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
             {@html iconSvg("close")}
         </button>
@@ -97,7 +95,7 @@
             {#if reader.highlights.length === 0}
                 <p class="p-2 text-sm text-(--gk-text-muted)" data-testid="ebook-highlights-empty">Select some words and highlight them, and they are listed here.</p>
             {:else}
-                <button type="button" class="mb-1 w-full rounded-lg border border-neutral-300 px-2 py-1 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2) dark:border-neutral-700" onclick={onexport} data-testid="ebook-highlights-export">Export to a page</button>
+                <button type="button" class="gk-button gk-button--small mb-1 w-full" onclick={onexport} data-testid="ebook-highlights-export">Export to a page</button>
                 <ul class="flex flex-col gap-0.5">
                     {#each reader.highlights as highlight (highlight.id)}
                         <li class="flex items-start gap-1 rounded-lg hover:bg-(--gk-surface-2)" data-testid="ebook-highlight-row">
@@ -107,15 +105,15 @@
                                 <span class="line-clamp-3 break-words">{highlight.text}</span>
                                 {#if highlight.note}<span class="mt-0.5 block break-words text-(--gk-text-muted)" data-testid="ebook-highlight-note">{highlight.note}</span>{/if}
                             </button>
-                            <button type="button" class={rowButton} aria-label="Note" title={highlight.note ? "Change the note" : "Add a note"} onclick={() => reader.startNote(highlight)} data-testid="ebook-highlight-note-edit">
+                            <button type="button" class="gk-icon-button" aria-label="Note" title={highlight.note ? "Change the note" : "Add a note"} onclick={() => reader.startNote(highlight)} data-testid="ebook-highlight-note-edit">
                                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                                 {@html iconSvg("pdf-note")}
                             </button>
-                            <button type="button" class={rowButton} aria-label="Copy to journal" title="Copy to journal" onclick={() => oncopytojournal(highlight)} data-testid="ebook-highlight-copy">
+                            <button type="button" class="gk-icon-button" aria-label="Copy to journal" title="Copy to journal" onclick={() => oncopytojournal(highlight)} data-testid="ebook-highlight-copy">
                                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                                 {@html iconSvg("todays-journal")}
                             </button>
-                            <button type="button" class={rowButton} aria-label="Delete this highlight" title="Delete" onclick={() => reader.removeHighlight(highlight.id)} data-testid="ebook-highlight-delete">
+                            <button type="button" class="gk-icon-button" aria-label="Delete this highlight" title="Delete" onclick={() => reader.removeHighlight(highlight.id)} data-testid="ebook-highlight-delete">
                                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                                 {@html iconSvg("trash")}
                             </button>
@@ -131,7 +129,7 @@
                     {#each reader.bookmarks as mark (mark.id)}
                         <li class="flex items-center gap-1 rounded-lg hover:bg-(--gk-surface-2)" data-testid="ebook-panel-bookmark-row">
                             <button type="button" class="flex-1 p-1.5 text-left text-sm text-(--gk-text-default)" onclick={() => reader.goTo(mark.cfi)}>{mark.chapter ? `${mark.chapter}, ` : ""}{percent(mark.fraction)}</button>
-                            <button type="button" class={rowButton} aria-label={`Remove the bookmark at ${percent(mark.fraction)}`} title="Remove" onclick={() => reader.removeBookmark(mark.id)} data-testid="ebook-panel-bookmark-remove">
+                            <button type="button" class="gk-icon-button" aria-label={`Remove the bookmark at ${percent(mark.fraction)}`} title="Remove" onclick={() => reader.removeBookmark(mark.id)} data-testid="ebook-panel-bookmark-remove">
                                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                                 {@html iconSvg("trash")}
                             </button>

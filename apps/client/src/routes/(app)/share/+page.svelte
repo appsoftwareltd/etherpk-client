@@ -30,6 +30,7 @@
     import { isDemoGraph } from "#lib/demo/demo-graph.js";
     import { graphUrl } from "#lib/navigation/document-url.js";
     import { graphAddressOf } from "#lib/navigation/graph-address.js";
+    import { chosenGraphState } from "#lib/workspace/chosen-graph.js";
     import { NoteFileError, storeNoteFiles } from "#lib/document/quick-note-file-store.js";
     import { MAX_QUICK_NOTE_LENGTH } from "#lib/document/quick-notes.js";
     import { landShareDirectly, routeShare, shareFileStore, shareNamesFor, type ShareRoute } from "#lib/document/share-landing.js";
@@ -469,7 +470,7 @@
             ...(filesId ? { filesId, ...(task ? { task } : {}) } : {}),
         });
         forgetArrivedFiles(arrived);
-        void goto(graphUrl(graphAddressOf(graph)), { replace: true });
+        void goto(graphUrl(graphAddressOf(graph)), { replace: true, state: chosenGraphState(graph) });
     }
 
     /** The share's files are stored, or kept again for the workspace: the copy they arrived as can go. */
@@ -497,7 +498,7 @@
     async function openGraph(graph: GraphRecord) {
         cancelSyncWait?.abort();
         await landingDone;
-        await goto(graphUrl(graphAddressOf(graph)));
+        await goto(graphUrl(graphAddressOf(graph)), { state: chosenGraphState(graph) });
     }
 
 </script>
@@ -516,7 +517,7 @@
             </header>
             <a
                 href="/graphs"
-                class="inline-block rounded-lg border border-(--gk-border-strong) px-3 py-1.5 text-sm font-medium text-(--gk-text-default) hover:bg-(--gk-surface-2) pointer-coarse:py-2.5"
+                class="gk-button"
                 >Go to graphs</a
             >
         {/if}
@@ -589,13 +590,13 @@
                         type="button"
                         data-testid="share-copy"
                         onclick={copy}
-                        class="rounded-lg bg-(--gk-accent) px-3 py-1.5 text-sm font-medium text-(--gk-surface-0) hover:bg-(--gk-accent-hover) pointer-coarse:py-2.5"
+                        class="gk-button gk-button--primary"
                         >Copy text</button
                     >
                     <a
                         href="/graphs"
                         data-testid="share-graphs-link"
-                        class="rounded-lg border border-(--gk-border-strong) px-3 py-1.5 text-sm font-medium text-(--gk-text-default) hover:bg-(--gk-surface-2) pointer-coarse:py-2.5"
+                        class="gk-button"
                         >Go to graphs</a
                     >
                     {#if copied}
@@ -629,7 +630,7 @@
                         type="button"
                         data-testid="share-open-graph"
                         onclick={() => void openGraph(landing!.graph)}
-                        class="rounded-lg border border-(--gk-border-strong) px-3 py-1.5 text-sm font-medium text-(--gk-text-default) hover:bg-(--gk-surface-2) pointer-coarse:py-2.5"
+                        class="gk-button"
                         >Open graph</button
                     >
                 {/if}
@@ -664,7 +665,7 @@
                                         under = null;
                                         warm(graph);
                                     }}
-                                    class="size-4 shrink-0 accent-(--gk-accent) focus:outline-none"
+                                    class="gk-checkbox"
                                 />
                                 <span class="min-w-0 flex-1 truncate text-sm font-medium text-(--gk-text-strong)"
                                     >{graph.name}</span
@@ -691,7 +692,7 @@
                         type="checkbox"
                         bind:checked={asTask}
                         data-testid="share-task"
-                        class="size-4 shrink-0 accent-(--gk-accent)"
+                        class="gk-checkbox"
                     />
                     <span class="text-sm text-(--gk-text-strong)">Add as task</span>
                 </label>
@@ -699,7 +700,7 @@
                 <button
                     type="submit"
                     data-testid="share-add"
-                    class="w-full rounded-lg bg-(--gk-accent) px-5 py-2.5 text-sm font-medium text-(--gk-surface-0) hover:bg-(--gk-accent-hover) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gk-accent) sm:w-auto pointer-coarse:min-h-11"
+                    class="gk-button gk-button--primary w-full sm:w-auto"
                     >Add</button
                 >
                 {#if addError}

@@ -133,7 +133,7 @@
 {:else if slotState.status === "off"}
     <div class="flex h-full flex-col items-center justify-center gap-3 p-6 text-center" data-testid="extension-view-off">
         <p class="m-0 max-w-sm text-sm text-(--gk-text-muted)">{slot.displayName} is switched off on this device.</p>
-        <button type="button" class="action" disabled={busy} onclick={() => act(() => host.setOn(slot.extensionId, true))} data-testid="extension-view-switch-on"
+        <button type="button" class="gk-button" disabled={busy} onclick={() => act(() => host.setOn(slot.extensionId, true))} data-testid="extension-view-switch-on"
             >Switch it on</button
         >
     </div>
@@ -142,7 +142,7 @@
         <p class="m-0 max-w-sm text-sm text-(--gk-text-muted)">
             {slotState.status === "failed" ? slotState.message : `${slot.displayName} couldn't draw this view: ${drawError}`}
         </p>
-        <button type="button" class="action" disabled={busy} onclick={() => act(() => host.retry(slot.extensionId))} data-testid="extension-view-retry"
+        <button type="button" class="gk-button" disabled={busy} onclick={() => act(() => host.retry(slot.extensionId))} data-testid="extension-view-retry"
             >Try again</button
         >
     </div>
@@ -165,20 +165,5 @@
         .loading {
             animation-duration: 0ms;
         }
-    }
-    .action {
-        border: 1px solid var(--gk-border-strong);
-        border-radius: 0.375rem;
-        padding: 0.375rem 0.75rem;
-        font-size: 0.875rem;
-        font-weight: 500;
-        color: var(--gk-text-default);
-        background: transparent;
-    }
-    .action:hover:not(:disabled) {
-        background: var(--gk-surface-1);
-    }
-    .action:disabled {
-        color: var(--gk-text-muted);
     }
 </style>

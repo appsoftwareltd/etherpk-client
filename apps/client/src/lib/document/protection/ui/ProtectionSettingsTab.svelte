@@ -163,13 +163,13 @@
             type="button"
             onclick={onsetup}
             data-testid="protection-setup"
-            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
+            class="gk-button gk-button--primary"
         >Set up protection…</button>
     </div>
 {:else}
     <div class="space-y-4">
         <div>
-            <label for="protection-grace" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">
+            <label for="protection-grace" class="gk-label mb-1.5 block">
                 Lock after I switch away
             </label>
             <select
@@ -177,7 +177,7 @@
                 bind:value={maskGraceMs}
                 onchange={persist}
                 data-testid="protection-grace-select"
-                class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
+                class="gk-select w-full"
             >
                 {#each GRACE_CHOICES as choice (choice.ms)}
                     <option value={choice.ms}>{choice.label}</option>
@@ -190,7 +190,7 @@
         </div>
 
         <div>
-            <label for="protection-idle" class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">
+            <label for="protection-idle" class="gk-label mb-1.5 block">
                 Lock after this long with no activity
             </label>
             <select
@@ -198,7 +198,7 @@
                 bind:value={idleLockMs}
                 onchange={persist}
                 data-testid="protection-idle-select"
-                class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
+                class="gk-select w-full"
             >
                 {#each IDLE_CHOICES as choice (choice.ms)}
                     <option value={choice.ms}>{choice.label}</option>
@@ -220,7 +220,7 @@
                     bind:checked={closeOnLockNow}
                     onchange={persist}
                     data-testid="protection-close-on-lock"
-                    class="mt-0.5 h-4 w-4 rounded border-neutral-300 dark:border-neutral-700"
+                    class="gk-checkbox mt-0.5"
                 />
                 <span>Close protected documents when I lock now</span>
             </label>
@@ -251,14 +251,14 @@
                                 onclick={() => void cancelRemove()}
                                 disabled={passkeyBusy}
                                 data-testid="protection-remove-passkey-cancel"
-                                class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
+                                class="gk-button"
                             >Keep the passkey</button>
                             <button
                                 type="button"
                                 onclick={() => void removePasskey()}
                                 disabled={passkeyBusy}
                                 data-testid="protection-remove-passkey-confirm"
-                                class="rounded-lg border border-red-300 dark:border-red-500/60 px-3 py-1.5 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-40"
+                                class="gk-button gk-button--danger"
                             >{passkeyBusy ? "Removing…" : "Remove the passkey"}</button>
                         </div>
                     </div>
@@ -269,7 +269,7 @@
                             onclick={() => void bindPasskey()}
                             disabled={passkeyBusy || !isUnlocked}
                             data-testid="protection-replace-passkey"
-                            class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
+                            class="gk-button"
                         >{passkeyBusy ? "Waiting…" : "Bind a new passkey"}</button>
                         <button
                             type="button"
@@ -277,7 +277,7 @@
                             onclick={() => void askRemove()}
                             disabled={passkeyBusy}
                             data-testid="protection-remove-passkey"
-                            class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
+                            class="gk-button"
                         >Remove this device's passkey</button>
                     </div>
                     {#if !isUnlocked}
@@ -301,7 +301,7 @@
                     onclick={() => void bindPasskey()}
                     disabled={passkeyBusy || !isUnlocked}
                     data-testid="protection-bind-passkey"
-                    class="mt-2 rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5 disabled:opacity-40"
+                    class="gk-button mt-2"
                 >{passkeyBusy ? "Waiting…" : "Bind a passkey to this device"}</button>
                 {#if !isUnlocked}
                     <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
@@ -332,7 +332,7 @@
                         aria-label="Current passphrase"
                         autocomplete="current-password"
                         data-testid="protection-change-current"
-                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
+                        class="gk-input"
                     />
                     <input
                         type="password"
@@ -341,7 +341,7 @@
                         aria-label="New passphrase"
                         autocomplete="new-password"
                         data-testid="protection-change-next"
-                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
+                        class="gk-input"
                     />
                     <input
                         type="password"
@@ -350,7 +350,7 @@
                         aria-label="Confirm new passphrase"
                         autocomplete="new-password"
                         data-testid="protection-change-confirm"
-                        class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100"
+                        class="gk-input"
                     />
                     {#if changeError}
                         <p role="alert" class="text-sm text-red-600" data-testid="protection-change-error">{changeError}</p>
@@ -361,12 +361,12 @@
                             onclick={() => void changePassphrase()}
                             disabled={changeBusy}
                             data-testid="protection-change-submit"
-                            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-white dark:text-neutral-900 disabled:opacity-40"
+                            class="gk-button gk-button--primary"
                         >{changeBusy ? "Changing…" : "Change passphrase"}</button>
                         <button
                             type="button"
                             onclick={() => (changing = false)}
-                            class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400"
+                            class="gk-button"
                         >Cancel</button>
                     </div>
                 </div>
@@ -379,7 +379,7 @@
                     type="button"
                     onclick={() => (changing = true)}
                     data-testid="protection-change-open"
-                    class="mt-2 rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-white/5"
+                    class="gk-button mt-2"
                 >Change passphrase…</button>
             {/if}
         </div>

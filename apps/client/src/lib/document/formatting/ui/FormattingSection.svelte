@@ -245,14 +245,12 @@
      * under it, ignore a press meanwhile. `disabled` is kept for a button that cannot work yet (the
      * phrase is not typed), with the reason beside it.
      */
-    const button =
-        "rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 enabled:not-aria-disabled:hover:bg-neutral-50 dark:enabled:not-aria-disabled:hover:bg-white/5 disabled:opacity-40 aria-disabled:opacity-40 aria-disabled:cursor-default";
+    const button = "gk-button aria-disabled:cursor-default";
     /**
      * The fill an Approve carries. Disabled, it greys by colour rather than fading, so the label
      * stays readable (ADR 0106); the border is there in both states, so nothing shifts as it enables.
      */
-    const primary =
-        "rounded-lg border border-transparent bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-white dark:text-neutral-900 enabled:not-aria-disabled:hover:bg-neutral-800 dark:enabled:not-aria-disabled:hover:bg-neutral-200 disabled:border-neutral-300 disabled:bg-neutral-100 disabled:text-neutral-600 dark:disabled:border-neutral-700 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-300 aria-disabled:cursor-default aria-disabled:border-neutral-300 aria-disabled:bg-neutral-100 aria-disabled:text-neutral-600 dark:aria-disabled:border-neutral-700 dark:aria-disabled:bg-neutral-800 dark:aria-disabled:text-neutral-300";
+    const primary = "gk-button gk-button--primary aria-disabled:cursor-default";
 </script>
 
 <section bind:this={root} class="space-y-3" aria-labelledby="{uid}-heading" data-testid="formatting-section">
@@ -296,7 +294,7 @@
                 autocomplete="off"
                 autocapitalize="off"
                 spellcheck="false"
-                class="block w-full max-w-md rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+                class="gk-input max-w-md"
                 data-testid="formatting-confirm"
             />
         </div>
@@ -381,7 +379,7 @@
                         disabled={!session.backupConfirmed}
                         aria-disabled={session.busy}
                         aria-describedby={scanReason}
-                        class="font-medium text-neutral-700 dark:text-neutral-200 underline underline-offset-2 disabled:opacity-40 aria-disabled:opacity-40 aria-disabled:cursor-default"
+                        class="gk-link aria-disabled:opacity-40 aria-disabled:cursor-default"
                         >Scan again</button
                     >
                 </p>

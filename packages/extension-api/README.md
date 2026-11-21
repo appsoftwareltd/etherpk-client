@@ -418,7 +418,7 @@ thumbnail.addEventListener('click', () => void context.assets.viewImages({ refs:
 ### Icons
 
 `context.icons.svg(name)` draws one of the extension's own icons or one of the Client's, as markup the
-Client trusts. The Client's icons, which every `icon` field may name too, are `alias`, `archive`, `backlinks`, `bold`, `book`, `bookmark`, `bullet`, `calendar`, `check`, `clock`, `close`, `code`, `copy`, `download`, `ebook-back`, `ebook-read-aloud`, `ebook-text-size`, `fit`, `flag`, `fold`, `frontmatter`, `globe`, `graph`, `grip`, `headless-client`, `highlight`, `hourglass`, `image`, `import`, `indent`, `italic`, `list`, `lock`, `lock-open`, `more`, `move`, `move-down`, `move-up`, `new-page`, `open-external`, `outdent`, `page`, `pdf`, `pdf-eraser`, `pdf-hand`, `pdf-highlighter`, `pdf-note`, `pdf-page-next`, `pdf-page-previous`, `pdf-full-screen-exit`, `pdf-save`, `pdf-select`, `pdf-pen`, `pdf-print`, `pdf-signature`, `pageless`, `pane-below`, `pane-right`, `pin`, `quick-notes`, `redo`, `rename`, `reset`, `search`, `slash`, `spell-check`, `table`, `table-add-column`, `table-add-row`, `table-format`, `table-remove-column`, `table-remove-row`, `tag`, `task`, `task-reference`, `template`, `text-lines`, `today`, `todays-journal`, `tomorrow`, `trash`, `undo`, `view-larger`, `wikilink-close`, `wikilink-open`, `yesterday`, `zoom-in`, `zoom-out`. An
+Client trusts. The Client's icons, which every `icon` field may name too, are `alias`, `archive`, `backlinks`, `bold`, `book`, `bookmark`, `bullet`, `calendar`, `check`, `clock`, `close`, `code`, `copy`, `download`, `ebook-back`, `ebook-read-aloud`, `ebook-text-size`, `filter`, `fit`, `flag`, `fold`, `frontmatter`, `globe`, `graph`, `grip`, `headless-client`, `highlight`, `hourglass`, `image`, `import`, `indent`, `italic`, `list`, `lock`, `lock-open`, `more`, `move`, `move-down`, `move-up`, `new-page`, `open-external`, `outdent`, `page`, `pdf`, `pdf-eraser`, `pdf-hand`, `pdf-highlighter`, `pdf-note`, `pdf-page-next`, `pdf-page-previous`, `pdf-full-screen-exit`, `pdf-save`, `pdf-select`, `pdf-pen`, `pdf-print`, `pdf-signature`, `pageless`, `pane-below`, `pane-right`, `pin`, `quick-notes`, `redo`, `rename`, `reset`, `search`, `slash`, `spell-check`, `table`, `table-add-column`, `table-add-row`, `table-format`, `table-remove-column`, `table-remove-row`, `tag`, `task`, `task-reference`, `template`, `text-lines`, `today`, `todays-journal`, `tomorrow`, `trash`, `undo`, `view-larger`, `wikilink-close`, `wikilink-open`, `yesterday`, `zoom-in`, `zoom-out`. An
 icon may be added in a later release, never taken away. An unknown name draws a small dot.
 
 ### Settings sections
@@ -540,7 +540,8 @@ extension's own tests.
 | `gk-button--primary` | With `gk-button`, the one main action of a form or dialog. |
 | `gk-button--danger` | With `gk-button`, an action that removes or ends something. |
 | `gk-button--quiet` | With `gk-button`, a button with no border, in a toolbar or beside other text. |
-| `gk-button--small` | With `gk-button`, a button on the line of a heading or a row, 24px tall. |
+| `gk-button--emphasis` | With `gk-button`, the one action a page most wants taken, in emerald. Use it rarely: a plan to choose on a pricing page. |
+| `gk-button--small` | With `gk-button`, a button in a toolbar or on a row of controls, 30px tall, as a small field is. |
 | `gk-button--raised` | With `gk-button` or `gk-icon-button`, a button over content such as a map, a picture or code: a solid surface and a small shadow. |
 | `gk-icon-button` | A square button holding only an icon. Give it an `aria-label`. |
 | `gk-link` | A `<button>` or `<a>` that reads as a link: the accent colour, underlined. |
@@ -548,8 +549,9 @@ extension's own tests.
 | `gk-label` | A field's `<label>`. |
 | `gk-hint` | Help text under a field. |
 | `gk-error` | An error under a field. Set `aria-invalid="true"` on the control too. |
-| `gk-input` | An `<input>` or `<textarea>`, the full width of its column. |
+| `gk-input` | An `<input>` or `<textarea>`, the full width of its column. A field and a select have the same fill, border and height. |
 | `gk-select` | A `<select>`. Where the browser can, it draws the option list in the menu's colours, with `<optgroup>` labels and a tick on the chosen option. Elsewhere it shows the browser's own list. |
+| `gk-input--small`, `gk-select--small` | With `gk-input` or `gk-select`, a field or a select in a toolbar or on a row of controls, 30px tall. |
 | `gk-checkbox` | An `<input type="checkbox">`. |
 | `gk-menu` | A list of actions, such as a menu a button opens. |
 | `gk-menu-item` | A row of a `gk-menu`. |

@@ -204,18 +204,18 @@
                             </span>
                             <button
                                 onclick={() => (confirming = null)}
-                                class="rounded-lg px-2 py-1 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                                class="gk-button gk-button--small"
                             >Keep going</button>
                             <button
                                 onclick={() => requestCancel(activity)}
                                 data-testid="activity-cancel-confirm"
-                                class="rounded-lg border border-red-300 dark:border-red-500/40 px-2 py-1 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                class="gk-button gk-button--danger gk-button--small"
                             >Discard</button>
                         {:else}
                             <button
                                 onclick={() => requestCancel(activity)}
                                 data-testid="activity-cancel"
-                                class="rounded-lg px-2 py-1 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                                class="gk-button gk-button--small"
                             >Cancel</button>
                         {/if}
                     </div>
@@ -225,7 +225,7 @@
                             onclick={() => void runAction(activity)}
                             disabled={running.has(activity.id)}
                             data-testid="activity-action"
-                            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-3 py-1 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50"
+                            class="gk-button gk-button--primary gk-button--small"
                         >{activity.action.label}</button>
                     </div>
                 {/if}
@@ -282,8 +282,8 @@
                             disabled={action.disabled || runningActions.has(`${notice.id}:${action.label}`)}
                             data-testid={action.id}
                             class={action.primary
-                                ? "rounded-lg bg-neutral-900 dark:bg-neutral-100 px-3 py-1 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50"
-                                : "rounded-lg px-2 py-1 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-50"}
+                                ? "gk-button gk-button--primary gk-button--small"
+                                : "gk-button gk-button--quiet"}
                         >{action.label}</button>
                     {/each}
                 </div>

@@ -59,16 +59,6 @@ button:not(:disabled),
     cursor: pointer;
 }
 
-/* A native <select>'s option list takes its colours from the select's own background and
-   text colour, not from the page's color-scheme. The app's fields use a translucent white
-   background in dark mode (dark:bg-white/10), which composites to near-white in that list and
-   left dark-mode options as dark text on a light strip, with the highlighted one unreadable
-   (2026-09-19). A solid dark background on the select alone fixes the list; unlayered so it
-   ranks above the utility, and dark mode only. */
-html.dark select {
-    background-color: #1c1c1c;
-}
-
 /* Site-wide link colour (the accent, in both modes). Placed in the `base` layer so
    it ranks BELOW Tailwind's `utilities` layer — any explicit text-colour utility
    (text-white, text-neutral-600, …) wins in every state, including :hover. This keeps
@@ -156,6 +146,10 @@ html.dark select {
     --gk-primary-bg: #171717;
     --gk-primary-hover: #262626;
     --gk-primary-text: #ffffff;
+    /* The emphasis button (`gk-button--emphasis`): Tailwind's emerald 400, and 300 on hover, as hex, in both themes. */
+    --gk-emphasis-bg: #00d492;
+    --gk-emphasis-hover: #5ee9b5;
+    --gk-emphasis-text: #0a0a0a;
     --gk-danger-border: #fca5a5;
     --gk-danger-hover: #fef2f2;
     --gk-danger-surface: rgba(239, 68, 68, 0.12);
@@ -211,7 +205,9 @@ html.dark {
     --gk-control-text: #e5e5e5;
     --gk-control-hover: rgba(255, 255, 255, 0.05);
     --gk-control-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
-    --gk-field-bg: rgba(255, 255, 255, 0.1);
+    /* Solid, the grey a 10% white gave on surface-0: a select takes the same fill, and the
+       browser's own option list takes the select's colours, so a translucent one left it unreadable. */
+    --gk-field-bg: #2e2e2e;
     --gk-field-text: #f5f5f5;
     --gk-field-focus: rgba(212, 212, 212, 0.85);
     --gk-menu-bg: #1c1c1c;
@@ -221,6 +217,10 @@ html.dark {
     --gk-primary-bg: #f5f5f5;
     --gk-primary-hover: #e5e5e5;
     --gk-primary-text: #171717;
+    /* The emphasis button (`gk-button--emphasis`): Tailwind's emerald 400, and 300 on hover, as hex, in both themes. */
+    --gk-emphasis-bg: #00d492;
+    --gk-emphasis-hover: #5ee9b5;
+    --gk-emphasis-text: #0a0a0a;
     --gk-danger-border: rgba(239, 68, 68, 0.4);
     --gk-danger-hover: rgba(69, 10, 10, 0.3);
     --gk-text-danger: #fca5a5;

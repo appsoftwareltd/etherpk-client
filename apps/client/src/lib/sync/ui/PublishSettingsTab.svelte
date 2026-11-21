@@ -621,8 +621,7 @@
         return publications.map((p) => p.name).join(", ");
     }
 
-    const inputClass = "block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100";
-    const labelClass = "mb-1 block text-sm font-medium text-neutral-500 dark:text-neutral-400";
+    const labelClass = "gk-label mb-1 block";
     // EtherPK's control classes (controls.css, ADR 0151), which are disabled by colour rather than
     // opacity: a faded light button on the dark surface left its label unreadable ("Publish to
     // folder" with no folder chosen read as a blank grey block).
@@ -710,7 +709,7 @@
                         <input
                             id="publish-github-token"
                             bind:this={tokenInput}
-                            class={inputClass}
+                            class="gk-input"
                             type="password"
                             autocomplete="off"
                             spellcheck="false"
@@ -745,7 +744,7 @@
                 <details class="text-sm" data-testid="publish-github-steps">
                     <summary class="cursor-pointer font-medium text-neutral-700 dark:text-neutral-300">How to make a token</summary>
                     <ol class="mt-2 list-decimal space-y-1 pl-5 text-neutral-600 dark:text-neutral-400">
-                        <li>On GitHub, open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" class="underline">Settings → Developer settings → Fine-grained tokens → Generate new token</a>.</li>
+                        <li>On GitHub, open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" class="gk-link">Settings → Developer settings → Fine-grained tokens → Generate new token</a>.</li>
                         <li>Give it a name and an expiry date. When it expires, make a new one and replace it here.</li>
                         <li>For Resource owner, choose the account or organisation that owns the site's repository. An organisation's owners may have to approve the token before it works.</li>
                         <li>For Repository access, choose Only select repositories, and pick the site's repositories.</li>
@@ -779,14 +778,14 @@
                 >
                     <div>
                         <label for="publish-new-title" class={labelClass}>Name</label>
-                        <input id="publish-new-title" class={inputClass} bind:value={newTitle} placeholder="Docs Site" data-testid="publish-new-title" />
+                        <input id="publish-new-title" class="gk-input" bind:value={newTitle} placeholder="Docs Site" data-testid="publish-new-title" />
                         <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Becomes the title of the publication page and of the site.</p>
                     </div>
                     <div>
                         <label for="publish-new-id" class={labelClass}>Id</label>
                         <input
                             id="publish-new-id"
-                            class={inputClass}
+                            class="gk-input"
                             value={effectiveId}
                             oninput={(e) => {
                                 idTouched = true;
@@ -800,14 +799,14 @@
                     <div class="grid gap-3 sm:grid-cols-2">
                         <div>
                             <label for="publish-new-kind" class={labelClass}>Kind</label>
-                            <select id="publish-new-kind" class={inputClass} bind:value={newKind} data-testid="publish-new-kind">
+                            <select id="publish-new-kind" class="gk-select w-full" bind:value={newKind} data-testid="publish-new-kind">
                                 <option value="docs">Documentation</option>
                                 <option value="blog">Blog</option>
                             </select>
                         </div>
                         <div>
                             <label for="publish-new-selection" class={labelClass}>Documents</label>
-                            <select id="publish-new-selection" class={inputClass} bind:value={newSelection} data-testid="publish-new-selection">
+                            <select id="publish-new-selection" class="gk-select w-full" bind:value={newSelection} data-testid="publish-new-selection">
                                 <option value="named">Those that name this publication</option>
                                 <option value="all-public">Every public document</option>
                             </select>
@@ -816,12 +815,12 @@
                     <div class="grid gap-3 sm:grid-cols-2">
                         <div>
                             <label for="publish-new-home" class={labelClass}>Home page (optional)</label>
-                            <input id="publish-new-home" class={inputClass} bind:value={newHome} placeholder="Welcome" data-testid="publish-new-home" />
+                            <input id="publish-new-home" class="gk-input" bind:value={newHome} placeholder="Welcome" data-testid="publish-new-home" />
                             <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">The document whose content is the front page. Without one the front page lists the pages.</p>
                         </div>
                         <div>
                             <label for="publish-new-url" class={labelClass}>Site address (optional)</label>
-                            <input id="publish-new-url" class={inputClass} bind:value={newUrl} placeholder="https://docs.example.com" data-testid="publish-new-url" />
+                            <input id="publish-new-url" class="gk-input" bind:value={newUrl} placeholder="https://docs.example.com" data-testid="publish-new-url" />
                             <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Needed for the sitemap and the feed.</p>
                         </div>
                     </div>
@@ -862,7 +861,7 @@
                             <h4 class="text-sm font-semibold text-neutral-950 dark:text-neutral-100">{p.name}</h4>
                             <p class="text-sm text-neutral-500 dark:text-neutral-400">
                                 <code>{p.id}</code>
-                                {#if p.url}· <a href={p.url} rel="noopener" target="_blank" class="underline">{p.url}</a>{/if}
+                                {#if p.url}· <a href={p.url} rel="noopener" target="_blank" class="gk-link">{p.url}</a>{/if}
                             </p>
                         </div>
                         <button type="button" class={linkButton} onclick={() => onopenpage(p.concept)} data-testid="publication-{p.id}-open">Edit page</button>
@@ -875,7 +874,7 @@
                                 <label for="publication-{p.id}-theme" class={labelClass}>Theme</label>
                                 <select
                                     id="publication-{p.id}-theme"
-                                    class={inputClass}
+                                    class="gk-select w-full"
                                     bind:value={draft.theme}
                                     onchange={() => edited(p.id)}
                                     disabled={!!working}
@@ -896,7 +895,7 @@
                                     <label class="sr-only" for="publication-{p.id}-theme-url">Theme url</label>
                                     <input
                                         id="publication-{p.id}-theme-url"
-                                        class={inputClass + " mt-2"}
+                                        class="gk-input mt-2"
                                         bind:value={draft.themeUrl}
                                         oninput={() => edited(p.id)}
                                         placeholder="https://…/theme.json"
@@ -921,7 +920,7 @@
                                 <label for="publication-{p.id}-home" class={labelClass}>Home page</label>
                                 <input
                                     id="publication-{p.id}-home"
-                                    class={inputClass}
+                                    class="gk-input"
                                     bind:value={draft.home}
                                     oninput={() => edited(p.id)}
                                     placeholder="Lists the pages when empty"
@@ -936,14 +935,14 @@
                             </div>
                             <div>
                                 <label for="publication-{p.id}-kind" class={labelClass}>Kind</label>
-                                <select id="publication-{p.id}-kind" class={inputClass} bind:value={draft.kind} onchange={() => edited(p.id)} disabled={!!working} data-testid="publication-{p.id}-kind">
+                                <select id="publication-{p.id}-kind" class="gk-select w-full" bind:value={draft.kind} onchange={() => edited(p.id)} disabled={!!working} data-testid="publication-{p.id}-kind">
                                     <option value="docs">Documentation</option>
                                     <option value="blog">Blog</option>
                                 </select>
                             </div>
                             <div>
                                 <label for="publication-{p.id}-selection" class={labelClass}>Documents</label>
-                                <select id="publication-{p.id}-selection" class={inputClass} bind:value={draft.selection} onchange={() => edited(p.id)} disabled={!!working} data-testid="publication-{p.id}-selection">
+                                <select id="publication-{p.id}-selection" class="gk-select w-full" bind:value={draft.selection} onchange={() => edited(p.id)} disabled={!!working} data-testid="publication-{p.id}-selection">
                                     <option value="named">Those that name this publication</option>
                                     <option value="all-public">Every public document</option>
                                 </select>
@@ -952,7 +951,7 @@
                                 <label for="publication-{p.id}-url" class={labelClass}>Site address</label>
                                 <input
                                     id="publication-{p.id}-url"
-                                    class={inputClass}
+                                    class="gk-input"
                                     bind:value={draft.url}
                                     oninput={() => edited(p.id)}
                                     placeholder="https://docs.example.com"
@@ -966,7 +965,7 @@
                                     <label for="publication-{p.id}-recent" class={labelClass}>Posts on the front page</label>
                                     <input
                                         id="publication-{p.id}-recent"
-                                        class={inputClass}
+                                        class="gk-input"
                                         type="text"
                                         inputmode="numeric"
                                         pattern="[0-9]*"
@@ -994,7 +993,7 @@
                                             <label for="publication-{p.id}-include-{slot.name}" class={labelClass}>{slot.name}</label>
                                             <input
                                                 id="publication-{p.id}-include-{slot.name}"
-                                                class={inputClass}
+                                                class="gk-input"
                                                 value={draft.includes[slot.name] ?? ""}
                                                 oninput={(e) => {
                                                     draft.includes[slot.name] = (e.currentTarget as HTMLInputElement).value;
@@ -1114,7 +1113,7 @@
                                         <label for="publication-{p.id}-repository" class={labelClass}>Repository</label>
                                         <input
                                             id="publication-{p.id}-repository"
-                                            class={inputClass}
+                                            class="gk-input"
                                             value={repositoryDraft.repository}
                                             oninput={(e) => editRepository(p, { repository: (e.currentTarget as HTMLInputElement).value })}
                                             placeholder="you/garden-site"
@@ -1130,7 +1129,7 @@
                                         <label for="publication-{p.id}-branch" class={labelClass}>Branch</label>
                                         <input
                                             id="publication-{p.id}-branch"
-                                            class={inputClass}
+                                            class="gk-input"
                                             value={repositoryDraft.branch}
                                             oninput={(e) => editRepository(p, { branch: (e.currentTarget as HTMLInputElement).value })}
                                             placeholder="main"
@@ -1324,7 +1323,7 @@
                 >
                     <div>
                         <label for="theme-add-ref" class={labelClass}>Copy from</label>
-                        <select id="theme-add-ref" class={inputClass} bind:value={themeRef} data-testid="theme-add-ref">
+                        <select id="theme-add-ref" class="gk-select w-full" bind:value={themeRef} data-testid="theme-add-ref">
                             {#each bundledThemes as t (t.name)}
                                 <option value={t.name}>{t.title} (bundled)</option>
                             {/each}
@@ -1334,19 +1333,19 @@
                     {#if themeRef === "url"}
                         <div>
                             <label for="theme-add-url" class={labelClass}>Url</label>
-                            <input id="theme-add-url" class={inputClass} bind:value={themeUrl} placeholder="https://raw.githubusercontent.com/you/theme/main/theme.json" data-testid="theme-add-url" />
+                            <input id="theme-add-url" class="gk-input" bind:value={themeUrl} placeholder="https://raw.githubusercontent.com/you/theme/main/theme.json" data-testid="theme-add-url" />
                         </div>
                     {/if}
                     <div class="grid gap-3 sm:grid-cols-2">
                         <div>
                             <label for="theme-add-name" class={labelClass}>Name</label>
-                            <input id="theme-add-name" class={inputClass} bind:value={themeName} placeholder="My docs theme" data-testid="theme-add-name" />
+                            <input id="theme-add-name" class="gk-input" bind:value={themeName} placeholder="My docs theme" data-testid="theme-add-name" />
                         </div>
                         <div>
                             <label for="theme-add-id" class={labelClass}>Id</label>
                             <input
                                 id="theme-add-id"
-                                class={inputClass}
+                                class="gk-input"
                                 value={effectiveThemeId}
                                 oninput={(e) => {
                                     themeIdTouched = true;

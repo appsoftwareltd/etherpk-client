@@ -417,8 +417,8 @@
         previewSession?.close();
     });
 
-    const buttonClass = "rounded-md border border-neutral-300 dark:border-neutral-700 px-2.5 py-1 text-sm font-medium text-neutral-950 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50";
-    const primaryClass = "rounded-md bg-neutral-900 dark:bg-neutral-100 px-2.5 py-1 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50";
+    const buttonClass = "gk-button gk-button--small";
+    const primaryClass = "gk-button gk-button--primary gk-button--small";
 </script>
 
 <svelte:window onmessage={onPreviewMessage} />
@@ -433,14 +433,14 @@
         <header class="flex flex-wrap items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 px-3 py-2">
             <label class="flex items-center gap-2 text-sm text-neutral-950 dark:text-neutral-100">
                 <span class="text-neutral-500 dark:text-neutral-400">Theme</span>
-                <input class="rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-2 py-1 text-sm" bind:value={themeName} onchange={() => void rename()} data-testid="theme-view-name" />
+                <input class="gk-input gk-input--small" bind:value={themeName} onchange={() => void rename()} data-testid="theme-view-name" />
             </label>
             <span class="text-sm text-neutral-500 dark:text-neutral-400"><code>{theme.id}</code>{#if theme.origin} · from {theme.origin}{/if}{#if manifest && manifest.errors.length > 0} · <span class="text-red-700 dark:text-red-300">theme.json: {manifest.errors[0]}</span>{/if}</span>
             <span class="flex-1"></span>
-            <button type="button" class={previewOpen ? primaryClass : buttonClass} onclick={togglePreview} aria-pressed={previewOpen} data-testid="theme-view-preview-toggle">Preview</button>
+            <button type="button" class={buttonClass} onclick={togglePreview} aria-pressed={previewOpen} data-testid="theme-view-preview-toggle">Preview</button>
             <button type="button" class={buttonClass} onclick={exportZip} data-testid="theme-view-export">Export zip</button>
             {#if deleteArmed}
-                <button type="button" class="rounded-md bg-red-600 px-2.5 py-1 text-sm font-medium text-white hover:bg-red-500" onclick={() => void deleteTheme()} data-testid="theme-view-delete-confirm">Delete theme for everyone</button>
+                <button type="button" class="gk-button gk-button--danger gk-button--small" onclick={() => void deleteTheme()} data-testid="theme-view-delete-confirm">Delete theme for everyone</button>
                 <button type="button" class={buttonClass} onclick={() => (deleteArmed = false)}>Keep</button>
             {:else}
                 <button type="button" class={buttonClass} onclick={() => (deleteArmed = true)} data-testid="theme-view-delete">Delete…</button>
@@ -475,7 +475,7 @@
                             }}
                         >
                             <label class="sr-only" for="theme-new-file">New file path</label>
-                            <input id="theme-new-file" class="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-2 py-1 text-sm" bind:value={newPath} placeholder="partials/banner.html" data-testid="theme-new-file" />
+                            <input id="theme-new-file" class="gk-input gk-input--small" bind:value={newPath} placeholder="partials/banner.html" data-testid="theme-new-file" />
                             <div class="flex gap-1">
                                 <button type="submit" class={primaryClass} data-testid="theme-new-file-add">Add</button>
                                 <button type="button" class={buttonClass} onclick={() => (addingFile = false)}>Cancel</button>
@@ -512,7 +512,7 @@
                     <div class="flex flex-wrap items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-sm">
                         <label class="flex items-center gap-1 text-neutral-600 dark:text-neutral-400">
                             <span>Content</span>
-                            <select class="rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-2 py-1 text-sm text-neutral-950 dark:text-neutral-100" bind:value={previewChoice} onchange={() => void updatePreview()} disabled={previewBusy} data-testid="theme-view-preview-content">
+                            <select class="gk-select gk-select--small" bind:value={previewChoice} onchange={() => void updatePreview()} disabled={previewBusy} data-testid="theme-view-preview-content">
                                 {#each previewChoices ?? [] as p (p.id)}
                                     <option value={p.id}>{p.name}</option>
                                 {/each}
@@ -521,7 +521,7 @@
                         </label>
                         <label class="flex items-center gap-1 text-neutral-600 dark:text-neutral-400">
                             <span>Page</span>
-                            <select class="rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-2 py-1 text-sm text-neutral-950 dark:text-neutral-100" bind:value={previewPage} disabled={previewPageList.length === 0} data-testid="theme-view-preview-page">
+                            <select class="gk-select gk-select--small" bind:value={previewPage} disabled={previewPageList.length === 0} data-testid="theme-view-preview-page">
                                 {#each previewPageList as page (page)}
                                     <option value={page}>{page}</option>
                                 {/each}
@@ -537,7 +537,7 @@
                             <!-- A plain link: the preview route serves a top-level tab exactly as it serves the frame
                                  (same sandboxing response), so the site can be tested at full size, on a phone
                                  emulation, or with devtools. The srcdoc fallback has no url to open. -->
-                            <a class={`inline-block ${buttonClass}`} href={previewUrl} target="_blank" rel="noopener noreferrer" data-testid="theme-view-preview-open">Open in new tab</a>
+                            <a class={buttonClass} href={previewUrl} target="_blank" rel="noopener noreferrer" data-testid="theme-view-preview-open">Open in new tab</a>
                         {/if}
                     </div>
                     <p class="px-3 py-1 text-sm text-neutral-500 dark:text-neutral-400">

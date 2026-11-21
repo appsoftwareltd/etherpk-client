@@ -10,6 +10,7 @@ export {
     conceptOf,
     innermostWikilinkAt,
     wikilinkSegments,
+    wikilinkTo,
 } from './model'
 export { onDiskName, portableFileStem, publishSlug } from './derive'
 export { type CodeRange, codeRanges, isInCode } from './code-ranges'

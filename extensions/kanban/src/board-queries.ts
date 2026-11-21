@@ -41,7 +41,7 @@ export interface ReadBoardOptions {
  */
 export async function readBoard(source: TaskSource, concept: string | null, today: string, options: ReadBoardOptions = {}): Promise<BoardSnapshot> {
     const defaultLimit = options.sectionLimit ?? SECTION_PAGE_SIZE
-    const choice = { ...EVERY_TASK, ...options.filter }
+    const choice = choiceFor(concept, options.filter)
     const filter = boardFilterOf(choice, today)
     const lanes = await Promise.all(
         BOARD_LANES.map(async (lane): Promise<BoardLane> => {
@@ -71,14 +71,32 @@ export async function readBoard(source: TaskSource, concept: string | null, toda
     return { concept, today, lanes }
 }
 
+/**
+ * The Board Filter a board for `concept` is read through. A concept's board answers to its own
+ * concept, so a concept in the filter narrows only the Graph Kanban, which answers to none.
+ */
+function choiceFor(concept: string | null, filter: Partial<BoardFilterChoice> | undefined): BoardFilterChoice {
+    const choice = { ...EVERY_TASK, ...filter }
+    return concept === null ? choice : { ...choice, concept: null }
+}
+
+/**
+ * The concept a board's tasks are asked for: its own, or on the Graph Kanban the one its Board Filter
+ * chose. A Graph Kanban narrowed to a concept is asked exactly what that concept's board is, so the
+ * two show the same cards, a [[Subtask]] reached through its parent's card on both (ADR 0174).
+ */
+function askedConcept(concept: string | null, choice: BoardFilterChoice): string | null {
+    return concept ?? (choice.concept?.trim() || null)
+}
+
 function sectionQuery(concept: string | null, status: TaskStatus, priority: TaskPriorityFilter, today: string, choice: BoardFilterChoice): TaskQuery {
-    return { concept, statuses: [status], priorities: [priority], due: choice.due, groupBy: 'due', byFreeTag: true, asBoard: true, textFilter: choice.text, today }
+    return { concept: askedConcept(concept, choice), statuses: [status], priorities: [priority], due: choice.due, groupBy: 'due', byFreeTag: true, asBoard: true, textFilter: choice.text, today }
 }
 
 /** Every task in one lane, through `choice` (the whole lane, for its count, with {@link EVERY_TASK}). */
 function laneQuery(concept: string | null, status: TaskStatus, today: string, choice: BoardFilterChoice = EVERY_TASK): TaskQuery {
     const priorities = choice.priorities.length === 0 ? TASK_PRIORITY_FILTERS : choice.priorities
-    return { concept, statuses: [status], priorities, due: choice.due, groupBy: 'document', asBoard: true, textFilter: choice.text, today }
+    return { concept: askedConcept(concept, choice), statuses: [status], priorities, due: choice.due, groupBy: 'document', asBoard: true, textFilter: choice.text, today }
 }
 
 /** How many tasks {@link laneTasks} reads in one round trip. */
@@ -97,7 +115,7 @@ export async function laneTasks(
     today: string,
     { pageSize = LANE_PAGE_SIZE, filter }: { pageSize?: number; filter?: Partial<BoardFilterChoice> } = {},
 ): Promise<TaskHit[]> {
-    const query = laneQuery(concept, status, today, { ...EVERY_TASK, ...filter })
+    const query = laneQuery(concept, status, today, choiceFor(concept, filter))
     const tasks: TaskHit[] = []
     for (;;) {
         const page = await source.tasks(query, tasks.length, pageSize)

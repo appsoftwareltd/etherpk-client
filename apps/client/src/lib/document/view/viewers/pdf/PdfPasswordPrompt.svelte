@@ -27,13 +27,13 @@
             <span class="font-medium text-(--gk-text-strong)">{name}</span> is protected with a password.
         </p>
         <div class="flex flex-col gap-1">
-            <label class="text-sm font-medium text-(--gk-text-default)" for="pdf-password">Password</label>
+            <label class="gk-label" for="pdf-password">Password</label>
             <input
                 id="pdf-password"
                 {@attach focusField}
                 type="password"
                 autocomplete="off"
-                class="rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-2 py-1.5 text-sm text-(--gk-text-default) dark:border-neutral-700"
+                class="gk-input"
                 bind:value={password}
                 aria-invalid={wrong}
                 aria-describedby={wrong ? "pdf-password-error" : undefined}
@@ -44,7 +44,7 @@
             {/if}
         </div>
         <label class="flex items-start gap-2 text-sm text-(--gk-text-default)">
-            <input type="checkbox" class="mt-0.5" bind:checked={removeIt} data-testid="pdf-password-remove" />
+            <input type="checkbox" class="gk-checkbox mt-0.5" bind:checked={removeIt} data-testid="pdf-password-remove" />
             <span>
                 Save a copy without the password. This PDF stays locked.
                 {#if folderGraph}The copy sits unlocked in your folder if you add it to the graph.{/if}
@@ -53,7 +53,7 @@
         <div>
             <button
                 type="submit"
-                class="rounded-lg bg-(--gk-accent) px-3 py-1.5 text-sm font-medium text-(--gk-surface-0) hover:bg-(--gk-accent-hover) disabled:opacity-60"
+                class="gk-button gk-button--primary"
                 disabled={password === ""}
                 data-testid="pdf-password-submit">Open</button
             >

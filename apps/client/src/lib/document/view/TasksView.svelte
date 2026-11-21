@@ -24,6 +24,7 @@
         taskDateKey,
     } from "../backlinks";
     import ChoiceDropdown from "#lib/components/ChoiceDropdown.svelte";
+    import FilterInput from "#lib/components/FilterInput.svelte";
     import type { ViewRef } from "#lib/layout/index.js";
     import { attachContextMenu, openContextMenu, type TaskContextMenuTarget, tryGetActiveEventBus } from "#lib/surface/index.js";
     import { workspaceService } from "#lib/workspace/workspace-services.js";
@@ -32,7 +33,7 @@
     import { getActiveDocument } from "../active-document";
     import { conceptIsMissing, openConcept, openConceptAtLine } from "../open-concept";
     import { parseTaskTextFilter } from "../index-derive";
-    import { nameMatchKey } from "../name-match";
+    import { nameFilterDetail, rankNameFilter } from "../name-match";
     import { createSettleScheduler, TASK_TEXT_FILTER_SETTLE } from "../settle-scheduler";
     import {
         DUE_OPTIONS,
@@ -50,7 +51,6 @@
     import { toggleIndexedTask } from "../task-toggle";
     import { showCascadeNotice } from "../task-cascade-notice";
     import { undoTaskWrite } from "../task-write";
-    import { matchScore } from "./augmentations/wikilink-complete-core";
     import { wikilinkSegmentsInSource } from "../wikilink";
 
     const { view: _view }: { view: ViewRef } = $props();
@@ -58,8 +58,6 @@
     /** Rows fetched per "Show more". The list grows by raising the limit, never by
         stitching pages together — one request always returns one consistently ordered list. */
     const PAGE_SIZE = 100;
-    /** Enough to choose from without turning the sidebar into a list of the whole graph. */
-    const MAX_SUGGESTIONS = 8;
 
     const textFilterId = $props.id();
     let textFilterInput = $state<HTMLInputElement>();
@@ -137,15 +135,9 @@
     // typed before the index had read a new page otherwise never offered that page.
     const watchIndex = createSubscriber((update) => getActiveGraphIndex()?.onUpdated(update) ?? (() => {}));
     const suggestions = $derived.by(() => {
-        const q = nameMatchKey(nameQuery);
-        if (q === "") return [];
+        if (nameQuery.trim() === "") return [];
         watchIndex();
-        const all = getActiveGraphIndex()?.allConcepts() ?? [];
-        return all
-            .map((candidate) => ({ candidate, score: matchScore(nameMatchKey(candidate.display), q) }))
-            .filter((m): m is { candidate: (typeof all)[number]; score: number } => m.score !== null)
-            .sort((a, b) => b.score - a.score || a.candidate.display.localeCompare(b.candidate.display))
-            .slice(0, MAX_SUGGESTIONS);
+        return rankNameFilter(getActiveGraphIndex()?.allConcepts() ?? [], nameQuery);
     });
 
     function update(next: Partial<TaskFilterState>): void {
@@ -242,7 +234,7 @@
             nameSelected = Math.max(nameSelected - 1, 0);
         } else if (event.key === "Enter") {
             event.preventDefault();
-            const chosen = suggestions[nameSelected]?.candidate;
+            const chosen = suggestions[nameSelected];
             if (chosen) selectName(chosen.display);
         }
     }
@@ -627,7 +619,7 @@
                     data-testid="tasks-reset-filters"
                     title="Back to every unfinished task, every priority, any date, grouped by priority"
                     onclick={resetFilters}
-                    class="ml-auto shrink-0 text-sm text-(--gk-accent,#2563eb) hover:underline pointer-coarse:min-h-11"
+                    class="gk-link ml-auto shrink-0 pointer-coarse:min-h-11"
                 >
                     Reset filters
                 </button>
@@ -637,49 +629,30 @@
             </span>
         </div>
 
-        <!-- The Name Filter. Typing offers concepts; selecting one pins the filter. -->
-        <div class="relative">
-            <!-- oninput as well as onfocus: selecting a name and pressing Escape both close
-                 the list while focus STAYS in the input, so onfocus alone would never fire
-                 again and the box would look dead until it was blurred and refocused. -->
-            <!-- 8px between the field and its button, the Sidebar's own padding. -->
-            <div class="flex items-center gap-2">
-                <input
-                    data-testid="tasks-name-filter"
-                    placeholder="Concept Name (Page, or Journal) ..."
-                    aria-label="Filter tasks by name"
-                    autocomplete="off"
-                    bind:value={nameQuery}
-                    role="combobox"
-                    aria-expanded={suggestionsOpen}
-                    aria-controls="tasks-name-suggestions"
-                    aria-activedescendant={suggestionsOpen ? `tasks-name-suggestion-${nameSelected}` : undefined}
-                    onfocus={() => (nameFocused = true)}
-                    onblur={() => setTimeout(() => (nameFocused = false), 150)}
-                    onkeydown={onNameKeydown}
-                    oninput={onNameInput}
-                    class="min-w-0 flex-1 rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-sm text-(--gk-text-strong) placeholder:text-(--gk-text-subtle) focus:border-(--gk-border-strong) focus:outline-none pointer-coarse:min-h-11"
-                />
-                {#if filter.concept !== null}
-                    <!-- self-stretch: the row is items-center, and a button sized by its own
-                         (smaller) text sat shorter than the input beside it. Stretching pins it
-                         to the input's height whatever either font does. -->
-                    <button
-                        type="button"
-                        title="Clear the name filter"
-                        aria-label="Clear the name filter"
-                        data-testid="tasks-name-clear"
-                        onclick={() => selectName(null)}
-                        class="inline-flex shrink-0 items-center justify-center self-stretch rounded-md border border-(--gk-border-soft) px-2 text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-w-11"
-                    >
-                        <!-- heroicons/outline x-mark -->
-                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                {/if}
-            </div>
-
+        <!-- The Name Filter. Typing offers concepts; selecting one pins the filter. Drawn by the
+             filter box every task filter uses, as a Kanban Board's concept box is. -->
+        <!-- onfocus as well as oninput: selecting a name and pressing Escape both close the list
+             while focus STAYS in the input, so typing again has to open it. -->
+        <FilterInput
+            value={nameQuery}
+            ontext={(text) => {
+                nameQuery = text;
+                onNameInput();
+            }}
+            onclear={() => selectName(null)}
+            clearLabel="Clear the name filter"
+            clearTestid="tasks-name-clear"
+            data-testid="tasks-name-filter"
+            placeholder="Concept (Page / Journal)"
+            aria-label="Filter tasks by name"
+            role="combobox"
+            aria-expanded={suggestionsOpen}
+            aria-controls="tasks-name-suggestions"
+            aria-activedescendant={suggestionsOpen ? `tasks-name-suggestion-${nameSelected}` : undefined}
+            onfocus={() => (nameFocused = true)}
+            onblur={() => setTimeout(() => (nameFocused = false), 150)}
+            onkeydown={onNameKeydown}
+        >
             {#if suggestionsOpen}
                 <ul
                     id="tasks-name-suggestions"
@@ -688,7 +661,7 @@
                     data-testid="tasks-name-suggestions"
                     class="absolute z-10 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) shadow-lg"
                 >
-                    {#each suggestions as { candidate }, i (candidate.key)}
+                    {#each suggestions as candidate, i (candidate.key)}
                         <li>
                             <button
                                 type="button"
@@ -705,14 +678,14 @@
                             >
                                 <span class="min-w-0 flex-1 truncate">{candidate.display}</span>
                                 <span class="shrink-0 text-sm uppercase text-(--gk-text-subtle)">
-                                    {candidate.kind === "alias" ? `alias of ${candidate.canonical}` : candidate.kind === "pageless" ? "no page yet" : candidate.kind}
+                                    {nameFilterDetail(candidate)}
                                 </span>
                             </button>
                         </li>
                     {/each}
                 </ul>
             {/if}
-        </div>
+        </FilterInput>
 
         <!-- One press to ask about wherever the user now is. Named, so the press is
              predictable before it is made; hidden when no document is focused. max-w-full:
@@ -723,7 +696,7 @@
                 type="button"
                 data-testid="tasks-use-active"
                 onclick={() => selectName(activeConcept)}
-                class="max-w-full self-start text-left text-sm text-(--gk-accent,#2563eb) hover:underline pointer-coarse:min-h-11"
+                class="gk-link max-w-full self-start text-left pointer-coarse:min-h-11"
             >
                 ↳ Filter to {activeConcept}
             </button>
@@ -778,36 +751,19 @@
                 <div class="col-span-full" data-testid="tasks-text-filter-field">
                     <!-- As a dropdown's name is: above it on a desktop, left out on a phone for room. -->
                     <label for={textFilterId} class="mb-1 hidden text-sm text-(--gk-text-muted) lg:block" data-testid="tasks-text-filter-label">Task text / tag</label>
-                    <div class="flex items-center gap-2">
-                        <input
-                            id={textFilterId}
-                            bind:this={textFilterInput}
-                            type="text"
-                            data-testid="tasks-text-filter"
-                            placeholder="Task text / #tag"
-                            aria-label="Task text / tag"
-                            autocomplete="off"
-                            value={filter.textFilter}
-                            oninput={(event) => onTextFilterInput(event.currentTarget.value)}
-                            onkeydown={onTextFilterKeydown}
-                            class="min-w-0 flex-1 rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-sm text-(--gk-text-strong) placeholder:text-(--gk-text-subtle) focus:border-(--gk-border-strong) focus:outline-none pointer-coarse:min-h-11"
-                        />
-                        {#if filter.textFilter !== ""}
-                            <button
-                                type="button"
-                                title="Clear the text and tag filter"
-                                aria-label="Clear the text and tag filter"
-                                data-testid="tasks-text-clear"
-                                onclick={clearTextFilter}
-                                class="inline-flex shrink-0 items-center justify-center self-stretch rounded-md border border-(--gk-border-soft) px-2 text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-w-11"
-                            >
-                                <!-- heroicons/outline x-mark -->
-                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        {/if}
-                    </div>
+                    <FilterInput
+                        id={textFilterId}
+                        bind:input={textFilterInput}
+                        value={filter.textFilter}
+                        ontext={onTextFilterInput}
+                        onclear={clearTextFilter}
+                        clearLabel="Clear the text and tag filter"
+                        clearTestid="tasks-text-clear"
+                        data-testid="tasks-text-filter"
+                        placeholder="Task text / #tag"
+                        aria-label="Task text / tag"
+                        onkeydown={onTextFilterKeydown}
+                    />
                 </div>
             </div>
         </div>
@@ -836,7 +792,7 @@
                 title="Refresh tasks"
                 aria-label="Refresh tasks"
                 onclick={onRefreshPress}
-                class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-(--gk-surface-0) pointer-coarse:size-11 text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong)"
+                class="gk-icon-button gk-button--raised size-7 pointer-coarse:size-11"
             >
                 <!-- heroicons/outline arrow-path -->
                 <svg bind:this={refreshIcon} class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
@@ -897,7 +853,7 @@
                                             checked={isDone(hit)}
                                             aria-label="Toggle {shown.text}"
                                             onchange={() => void toggle(hit)}
-                                            class="mt-1.5 pointer-coarse:mt-0"
+                                            class="gk-checkbox mt-1.5 pointer-coarse:mt-0"
                                         />
                                     </label>
                                     <button
@@ -1002,7 +958,7 @@
                     type="button"
                     data-testid="tasks-show-more"
                     onclick={showMore}
-                    class="mt-2 w-full rounded-md border border-(--gk-border-soft) py-1.5 text-sm hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
+                    class="gk-button mt-2 w-full"
                 >
                     Show more
                 </button>

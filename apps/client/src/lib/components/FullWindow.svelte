@@ -132,7 +132,7 @@
     <div class={["full-window", dialog && "full-window--dialog", keyboardInset > 0 && "full-window--above-keyboard"]} style:bottom={keyboardInset > 0 ? `${keyboardInset}px` : undefined} role="dialog" aria-modal="true" aria-labelledby={titleId} tabindex="-1" {onkeydown} data-testid={testId}>
         <header class="flex shrink-0 items-center justify-between gap-3 border-b border-(--gk-border-soft) px-4 py-2">
             <h2 id={titleId} class="m-0 truncate text-sm font-semibold text-(--gk-text-default)">{title}</h2>
-            <button type="button" class="return" onclick={close} aria-label="Close" title="Close" data-testid="{testId}-return" {@attach focusOnOpen}><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg></button>
+            <button type="button" class="gk-icon-button" onclick={close} aria-label="Close" title="Close" data-testid="{testId}-return" {@attach focusOnOpen}><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg></button>
         </header>
         <div class="full-window__content relative min-h-0 flex-1">
             {@render children(close)}
@@ -200,26 +200,5 @@
         .full-window {
             animation: none;
         }
-    }
-    /* A close icon in a 2.25rem square, the hit area a phone needs (2.75rem on a coarse pointer). */
-    .return {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 2.25rem;
-        height: 2.25rem;
-        border: 1px solid var(--gk-border-strong);
-        border-radius: 0.375rem;
-        color: var(--gk-text-default);
-        background: transparent;
-    }
-    @media (pointer: coarse) {
-        .return {
-            width: 2.75rem;
-            height: 2.75rem;
-        }
-    }
-    .return:hover {
-        background: var(--gk-surface-1);
     }
 </style>

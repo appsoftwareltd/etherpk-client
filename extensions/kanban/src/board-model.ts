@@ -7,6 +7,7 @@
  * a lens over documents: nothing here is stored, and every card is a task line that the
  * [[Derived Index]] reported.
  */
+import { conceptKey } from '#lib/document/backlinks/index.js'
 import { TASK_PRIORITY_FILTERS, type TaskDueWindow, type TaskHit, type TaskPriorityFilter, type TaskStatus, type TaskSubtaskCount } from '#lib/document/index-db.js'
 import { bulletLabel, matchesTaskTextFilter, parseTaskTextFilter, type TaskTextFilter } from '#lib/document/index-derive.js'
 import { inDueWindow } from '#lib/document/task-due-window.js'
@@ -122,16 +123,22 @@ export interface BoardSection extends BoardSectionSpec {
 
 /**
  * What the [[Board Filter]]'s controls hold: the words and #tags typed, the priority chips chosen
- * (none chosen shows every priority; `null` is No priority) and the Due window.
+ * (none chosen shows every priority; `null` is No priority), the Due window, and on the Graph
+ * Kanban the [[Concept]] chosen in its concept box (null for every concept).
  */
 export interface BoardFilterChoice {
     text: string
     priorities: readonly TaskPriorityFilter[]
     due: TaskDueWindow
+    /**
+     * Only the tasks that answer to this concept, as its own board shows them. The Graph Kanban
+     * alone offers it: a concept's board already answers to its concept (`readBoard`).
+     */
+    concept: string | null
 }
 
 /** The Board Filter that hides nothing: how a board opens, since nothing remembers the filter. */
-export const EVERY_TASK: BoardFilterChoice = { text: '', priorities: [], due: 'any' }
+export const EVERY_TASK: BoardFilterChoice = { text: '', priorities: [], due: 'any', concept: null }
 
 /**
  * The [[Board Filter]] as a board is read through it: each part that narrows, the others null (or
@@ -141,10 +148,11 @@ export interface BoardFilter {
     text: TaskTextFilter | null
     priorities: readonly TaskPriorityFilter[] | null
     due: TaskDueWindow
+    concept: string | null
     today: string
 }
 
-/** True when `choice` hides any task: words typed, some priorities and not all chosen, or a Due window. */
+/** True when `choice` hides any task: words typed, some priorities and not all chosen, a Due window, or a concept. */
 export function boardFilterNarrows(choice: BoardFilterChoice): boolean {
     return boardFilterOf(choice, '') !== null
 }
@@ -154,8 +162,9 @@ export function boardFilterOf(choice: BoardFilterChoice, today: string): BoardFi
     const text = parseTaskTextFilter(choice.text)
     const every = choice.priorities.length === 0 || TASK_PRIORITY_FILTERS.every((priority) => choice.priorities.includes(priority))
     const priorities = every ? null : choice.priorities
-    if (text === null && priorities === null && choice.due === 'any') return null
-    return { text, priorities, due: choice.due, today }
+    const concept = choice.concept?.trim() || null
+    if (text === null && priorities === null && choice.due === 'any' && concept === null) return null
+    return { text, priorities, due: choice.due, concept, today }
 }
 
 export interface BoardLane extends BoardLaneSpec {
@@ -263,6 +272,13 @@ export interface PendingMove {
     to: BoardCell
     /** When the write finished (ms), or null while it is under way. */
     writtenAt: number | null
+    /**
+     * The concept the board answered to when the card was moved: its own, or the Graph Kanban's
+     * Board Filter concept, null for every task. The card was on that board, so its task answers to
+     * it; a board narrowed to another concept since cannot tell whether it does, and leaves the card
+     * to the index's next read (`laneWithMove`). Absent counts as null.
+     */
+    answersTo?: string | null
 }
 
 /**
@@ -328,7 +344,8 @@ function keyedToRead(board: BoardSnapshot, moves: readonly PendingMove[]): Pendi
 /**
  * Whether the [[Board Filter]] a lane was read through lets `card` through, placed in the `priority`
  * section: what the index's query would answer, for a card held on the board while its move is
- * written.
+ * written. The filter's concept is not asked here, since a card does not say what concepts its task
+ * answers to: a held move asks it of the board the card was moved on (`answersToFilterConcept`).
  */
 export function passesFilter(lane: Pick<BoardLane, 'filter'>, card: BoardCard, priority: TaskPriorityFilter): boolean {
     const filter = lane.filter
@@ -338,8 +355,27 @@ export function passesFilter(lane: Pick<BoardLane, 'filter'>, card: BoardCard, p
     return inDueWindow(card.due, filter.due, filter.today)
 }
 
+/**
+ * The concept the cards of `board` answer to: a concept board's own, or the Graph Kanban's Board
+ * Filter concept as the board was read, which is not the box's choice until the read through it has
+ * landed. What a move made on one of its cards records (`PendingMove.answersTo`).
+ */
+export function readConcept(board: Pick<BoardSnapshot, 'concept' | 'lanes'>): string | null {
+    return board.concept ?? board.lanes[0]?.filter?.concept ?? null
+}
+
+/**
+ * Whether a held card answers to the concept its lane was read through: known only when the card was
+ * moved on a board answering to that concept. Otherwise it may not, and the index's next read says.
+ */
+function answersToFilterConcept(lane: Pick<BoardLane, 'filter'>, move: PendingMove): boolean {
+    const concept = lane.filter?.concept ?? null
+    if (concept === null) return true
+    return move.answersTo != null && conceptKey(move.answersTo) === conceptKey(concept)
+}
+
 function laneWithMove(lane: BoardLane, move: PendingMove): BoardLane {
-    const passes = passesFilter(lane, move.card, move.to.priority)
+    const passes = passesFilter(lane, move.card, move.to.priority) && answersToFilterConcept(lane, move)
     let removedFromLane = 0
     const sections = lane.sections.map((section) => {
         const kept = section.cards.filter((card) => !sameTask(card, move.card))

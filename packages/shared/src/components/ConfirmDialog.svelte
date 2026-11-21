@@ -69,7 +69,7 @@
 
         {#if variant === "type-to-confirm"}
             <div>
-                <label for={inputId} class="mb-1.5 block text-sm font-medium text-neutral-500 dark:text-neutral-400">
+                <label for={inputId} class="gk-label mb-1.5 block">
                     Type <span class="font-semibold text-neutral-700 dark:text-neutral-300">{confirmValue}</span> to confirm
                 </label>
                 <input
@@ -78,7 +78,7 @@
                     bind:value={typedValue}
                     autocomplete="off"
                     aria-describedby={canConfirm ? undefined : hintId}
-                    class="block w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-neutral-950 dark:text-neutral-100 focus:border-neutral-950 dark:focus:border-neutral-400 focus:outline-none focus:ring-1 focus:ring-neutral-950 dark:focus:ring-neutral-400"
+                    class="gk-input"
                 />
                 <!-- Rule 7: the confirm button is disabled and therefore not focusable, so its
                      condition has to be readable from the field it depends on. -->
@@ -93,7 +93,7 @@
 
     {#snippet footer()}
         {#if !hideCancel}
-            <button type="button" data-testid="confirm-cancel" onclick={handleCancel} class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors">
+            <button type="button" data-testid="confirm-cancel" onclick={handleCancel} class="gk-button">
                 {cancelLabel}
             </button>
         {/if}
@@ -101,9 +101,7 @@
             type="submit"
             data-testid="confirm-accept"
             disabled={!canConfirm}
-            class="rounded-lg px-4 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed {destructive
-                ? 'bg-red-600 text-white hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700'
-                : 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200'}"
+            class={["gk-button", destructive ? "gk-button--danger" : "gk-button--primary"]}
         >
             {confirmLabel}
         </button>

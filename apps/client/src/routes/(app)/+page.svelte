@@ -21,6 +21,7 @@
 
     import { goto } from '$app/navigation'
     import { todayISO } from '#lib/document/calendar/month-grid-core.js'
+    import { chosenGraphState } from '#lib/workspace/chosen-graph.js'
     import { createIdbGraphRegistry, getLastGraphId, resolveGraphTarget, rootDestination } from '#lib/storage/index.js'
 
     let message = $state('')
@@ -33,7 +34,11 @@
                 if (cancelled) return
                 const target = resolveGraphTarget(graphs, getLastGraphId())
                 // Today is read at the moment of the launch: an installed app is opened days apart.
-                await goto(rootDestination(target, window.location.search, () => todayISO()), { replace: true })
+                // The graph resumed is carried with the entry: its address may be two folders' (chosen-graph.ts).
+                await goto(rootDestination(target, window.location.search, () => todayISO()), {
+                    replace: true,
+                    state: target.kind === 'open' ? chosenGraphState(target.graph) : {},
+                })
             } catch (err) {
                 message = (err as Error).message
             }
@@ -49,7 +54,7 @@
 {#if message}
     <div class="notice" data-testid="root-resolve-error">
         <p>Could not open your graphs: {message}</p>
-        <button onclick={() => goto('/graphs')}>Go to graphs</button>
+        <button class="gk-button justify-self-center" onclick={() => goto('/graphs')}>Go to graphs</button>
     </div>
 {:else}
     <div class="notice" data-testid="root-resolving"><p>Opening your notes…</p></div>
@@ -64,14 +69,5 @@
         gap: 0.75rem;
         text-align: center;
         color: var(--gk-text-default);
-    }
-    .notice button {
-        border: 1px solid var(--gk-border-soft);
-        border-radius: 6px;
-        padding: 0.35rem 0.75rem;
-        background: var(--gk-surface-1);
-        color: inherit;
-        cursor: pointer;
-        font: inherit;
     }
 </style>

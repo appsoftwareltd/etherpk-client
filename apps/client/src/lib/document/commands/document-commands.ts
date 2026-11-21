@@ -31,6 +31,7 @@ import type { ViewFavourites } from '#lib/layout/view-favourites.js'
 import { type Favourite, sanitizeFavourite, type ViewFavourite } from '../favourite-entry'
 import { addFavourite, isFavourite, moveFavourite, removeFavourite, restoreFavourite } from '../favourites'
 import { isJournalConcept } from '../journal-concept'
+import { wikilinkTo } from '../wikilink/model'
 import { copyFailureMessage, writeClipboardText } from './clipboard-text'
 
 export const FAVOURITE_ADD = 'favourites.add'
@@ -49,6 +50,11 @@ export const DOCUMENT_COPY_FILE_PATH = 'document.copyFilePath'
  * elsewhere, or a message to someone, needs. Resolves `true` once the name is on the clipboard.
  */
 export const DOCUMENT_COPY_NAME = 'document.copyName'
+/**
+ * Put a wikilink to a document on the clipboard: its name inside `[[` `]]`, ready to paste into
+ * another document. Resolves `true` once the link is on the clipboard.
+ */
+export const DOCUMENT_COPY_WIKILINK = 'document.copyWikilink'
 /** Open the Publish dialog for a document: its `public` switch and the publications it belongs to (ADR 0082). */
 export const DOCUMENT_PUBLISH = 'document.publish'
 /** Open a document's [[Version History]] in its own tab (ADR 0184). */
@@ -194,6 +200,25 @@ export function registerDocumentCommands(
     contributions: ContributionRegistry,
     deps: DocumentCommandDeps,
 ): () => void {
+    /**
+     * Copy text made from the target's concept (the name, or a wikilink to it), and say what was
+     * copied, or why not with the text in the message so it can be copied by hand. Nothing is
+     * awaited before the write, which has to start inside the menu click (clipboard-text.ts).
+     */
+    async function copyConceptText(arg: unknown, what: string, textOf: (concept: string) => string): Promise<boolean> {
+        const concept = conceptOf(arg)
+        if (concept === '') return false
+        const text = textOf(concept)
+        try {
+            await writeClipboardText(text)
+        } catch (err) {
+            deps.onError?.(copyFailureMessage(what, err, text))
+            return false
+        }
+        deps.onCopied?.(`Copied "${text}"`)
+        return true
+    }
+
     const disposers: (() => void)[] = []
 
     const guard = async (work: Promise<void>) => {
@@ -288,22 +313,11 @@ export function registerDocumentCommands(
             const concept = conceptOf(arg)
             if (concept !== '') deps.copyFilePath?.(concept)
         }),
-        // Written here rather than handed to the workspace like the path: a name needs nothing
-        // the workspace owns (no folder path, no store lookup), so the whole behaviour is
-        // testable in this module. Nothing is awaited before the write, which has to start
-        // inside the menu click (clipboard-text.ts).
-        commands.register(DOCUMENT_COPY_NAME, async (arg) => {
-            const concept = conceptOf(arg)
-            if (concept === '') return false
-            try {
-                await writeClipboardText(concept)
-            } catch (err) {
-                deps.onError?.(copyFailureMessage('name', err, concept))
-                return false
-            }
-            deps.onCopied?.(`Copied "${concept}"`)
-            return true
-        }),
+        // Written here rather than handed to the workspace like the path: a name or a wikilink
+        // needs nothing the workspace owns (no folder path, no store lookup), so the whole
+        // behaviour is testable in this module.
+        commands.register(DOCUMENT_COPY_NAME, (arg) => copyConceptText(arg, 'name', (concept) => concept)),
+        commands.register(DOCUMENT_COPY_WIKILINK, (arg) => copyConceptText(arg, 'wikilink', wikilinkTo)),
         commands.register(BACKLINKS_SHOW, (arg) => {
             const concept = conceptOf(arg)
             if (concept !== '') deps.showBacklinks?.(concept)
@@ -453,7 +467,7 @@ export function registerDocumentCommands(
             danger: true,
         }),
         // The copy rows: the last group, after the tab-management rows (tab-commands.ts,
-        // 90-120). Both hand the document to something outside the app - a wikilink typed
+        // 90-120). All three hand the document to something outside the app - a wikilink typed
         // elsewhere, an AI agent, another editor - which is a different errand from everything
         // above them. The group's separator sits on the name row because it always shows; the
         // path row joins it only where there is a file.
@@ -469,10 +483,19 @@ export function registerDocumentCommands(
             when: (target) => target.kind === 'document-tab',
         }),
         registerContextMenuItem(contributions, {
+            id: DOCUMENT_COPY_WIKILINK,
+            label: 'Copy wikilink to clipboard',
+            command: DOCUMENT_COPY_WIKILINK,
+            // Directly below Copy name, in its group: the same name, ready to paste as a link.
+            order: 195,
+            // On every document tab, as Copy name is, and for the same reason.
+            when: (target) => target.kind === 'document-tab',
+        }),
+        registerContextMenuItem(contributions, {
             id: DOCUMENT_COPY_FILE_PATH,
             label: 'Copy full file path to clipboard',
             command: DOCUMENT_COPY_FILE_PATH,
-            // Directly below Copy name, in its group (see above).
+            // Directly below Copy wikilink, last in the copy group (see above).
             order: 200,
             // The tab only: the row names the file behind the editor you are looking at. A
             // Favourites or Recents row could carry it too, but has not been asked for.

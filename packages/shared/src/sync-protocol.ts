@@ -34,8 +34,9 @@ export interface SyncProtocolLimits {
      */
     maxOutboundBufferedBytes: number
     /**
-     * Sockets one user may hold open on one graph. Every browser tab holds its own socket, so
-     * this is well above ordinary duplicate-tab use and only bites a script.
+     * Sockets one user may hold open on one graph. Every browser tab holds its own socket, and
+     * so does every Headless Client serving the graph to an agent, so a person with many of both
+     * can reach it. The socket over the limit is closed with {@link SOCKETS_LIMIT_CLOSE_CODE}.
      */
     maxSocketsPerUserGraph: number
 }
@@ -54,6 +55,14 @@ export const SYNC_PROTOCOL_LIMITS: Readonly<SyncProtocolLimits> = Object.freeze(
 })
 
 export type SyncProtocolLimitOverrides = Partial<SyncProtocolLimits>
+
+/**
+ * The close code the relay gives a socket over `maxSocketsPerUserGraph`: 4000 plus the HTTP
+ * status it mirrors, as 4401 and 4403 are. The socket has opened by then (a WebSocket cannot be
+ * refused with a code any earlier), so a client reads it as "no place for this connection yet",
+ * opens the graph from what the device holds, and asks again later.
+ */
+export const SOCKETS_LIMIT_CLOSE_CODE = 4429
 
 export const SYNC_ERROR_CODES = [
     'unsupported_version',

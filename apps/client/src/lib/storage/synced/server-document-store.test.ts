@@ -31,6 +31,54 @@ async function store(relay: ReturnType<typeof createLoopbackRelay>, keyring = cr
 }
 
 describe('ServerDocumentStore', () => {
+    it('scan answers from the Local Cache when the relay turns the session away (4429)', async () => {
+        // The relay's limit of connections for one account on one graph: the socket opens and is
+        // closed at once, on every attempt, for as long as the other tabs hold their places. The
+        // root can never catch up, and a scan that waited for it kept the graph from opening.
+        const cache = await openGraphCache(`g-turned-away-${++cacheSeq}`)
+        let attempts = 0
+        const connect = (): TransportSocket => {
+            attempts += 1
+            let onOpen = () => {}
+            let onClose: (event?: { code: number; reason: string }) => void = () => {}
+            queueMicrotask(() => {
+                onOpen()
+                onClose({ code: 4429, reason: 'too many connections for this graph' })
+            })
+            return {
+                send: () => {},
+                close: () => {},
+                onOpen: (cb) => { onOpen = cb },
+                onMessage: () => {},
+                onClose: (cb) => { onClose = cb },
+            }
+        }
+        const graph = createGraphSync({
+            graphId: 'g-turned-away',
+            rootDocId: ROOT,
+            keyring: createGraphKeyring('g-turned-away'),
+            relayUrl: 'ws://relay',
+            token: fixedSyncToken('t'),
+            cache,
+            connect,
+            turnedAwayRetryDelayMs: () => 20,
+        })
+        const s = createServerDocumentStore(graph, { readyTimeoutMs: 100 })
+        try {
+            const scanned = await Promise.race([
+                s.scan().then(() => 'scanned'),
+                new Promise((resolve) => setTimeout(() => resolve('still waiting'), 1_000)),
+            ])
+            expect(scanned).toBe('scanned')
+            expect(attempts).toBeGreaterThan(0)
+            expect(graph.activity().connection).toBe('turned-away')
+        } finally {
+            s.dispose()
+            graph.dispose()
+            cache.dispose()
+        }
+    })
+
     it('maps durable cache boundaries to targeted index changes and acknowledges exactly', async () => {
         const relay = createLoopbackRelay()
         const cacheName = `index-checkpoint-${++cacheSeq}`

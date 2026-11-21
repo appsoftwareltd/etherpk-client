@@ -167,7 +167,6 @@
     const button = "gk-button aria-disabled:cursor-progress";
     const primary = "gk-button gk-button--primary aria-disabled:cursor-progress";
     const danger = "gk-button gk-button--danger";
-    const input = "gk-input";
     const label = "gk-label block";
     const help = "gk-hint";
     const fieldError = "gk-error";
@@ -222,14 +221,14 @@
             </div>
             <div class="space-y-1">
                 <label class={label} for={`${fieldId}-name`}>Name <span class="font-normal text-(--gk-text-muted)">(optional)</span></label>
-                <input id={`${fieldId}-name`} class={input} bind:value={form.name} placeholder={info.label} autocomplete="off" />
+                <input id={`${fieldId}-name`} class="gk-input" bind:value={form.name} placeholder={info.label} autocomplete="off" />
             </div>
             {#if info.address !== "fixed"}
                 <div class="space-y-1">
                     <label class={label} for={`${fieldId}-address`}>Server address</label>
                     <input
                         id={`${fieldId}-address`}
-                        class={input}
+                        class="gk-input"
                         bind:value={form.address}
                         onblur={checkAddress}
                         oninput={() => errors.address && checkAddress()}
@@ -252,7 +251,7 @@
                 <div class="flex gap-2">
                     <input
                         id={`${fieldId}-key`}
-                        class={input}
+                        class="gk-input"
                         type={showKey ? "text" : "password"}
                         bind:value={form.apiKey}
                         oninput={() => errors.key && (errors = { ...errors, key: undefined })}
@@ -329,7 +328,7 @@
         <label class={label} for={`${fieldId}-instruction`}>Chat instruction</label>
         <textarea
             id={`${fieldId}-instruction`}
-            class="{input} min-h-24"
+            class="gk-input min-h-24"
             rows="4"
             maxlength={INSTRUCTION_LIMIT}
             value={settings.instruction}

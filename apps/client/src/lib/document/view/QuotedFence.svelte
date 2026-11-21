@@ -178,7 +178,7 @@
         display: block;
         height: auto;
         margin: 0.2rem 0;
-        border-radius: 5px;
+        border-radius: 6px;
     }
     /* The code panel's shade and corners (QuotedCode.svelte), where the picture is coming. */
     .quoted-fence__waiting {
@@ -187,7 +187,7 @@
         justify-content: center;
         min-height: 4rem;
         margin: 0.2rem 0;
-        border-radius: 5px;
+        border-radius: 6px;
         background: var(--gk-code-bg, rgba(127, 127, 127, 0.1));
     }
     /* Wait before saying anything, so a quick answer never flashes a message. */
@@ -246,7 +246,7 @@
         aspect-ratio: 16 / 9;
         max-height: 30rem;
         object-fit: cover;
-        border-radius: 5px;
+        border-radius: 6px;
         background: var(--gk-code-bg, rgba(127, 127, 127, 0.1));
     }
 </style>

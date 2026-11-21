@@ -793,6 +793,10 @@
     .ac-controls :global(.gk-select) {
         padding-block: 0.25rem;
     }
+    /* A select's height is set outright (it is not left to its padding), so the compact one says its own. */
+    .ac-controls :global(.gk-select) {
+        height: 1.875rem;
+    }
     /* The box and its words on one line. The words are a field's label (`gk-label`), as Model and
        Context are. */
     .ac-check {

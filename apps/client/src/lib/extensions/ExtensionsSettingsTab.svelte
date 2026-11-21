@@ -325,7 +325,7 @@
     // the wait cursor rather than the not-allowed one.
     const secondaryButton = "gk-button aria-disabled:cursor-progress";
     const primaryButton = "gk-button gk-button--primary aria-disabled:cursor-progress";
-    const link = "text-sm text-neutral-700 underline underline-offset-2 hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-neutral-100";
+    const link = "gk-link text-sm";
 </script>
 
 <div class="space-y-5" data-testid="extensions-tab">
@@ -344,7 +344,7 @@
                         disabled={switching.includes(row.id)}
                         onchange={(e) => toggle(row.id, (e.currentTarget as HTMLInputElement).checked)}
                         data-testid="extension-switch"
-                        class="mt-0.5 h-4 w-4 rounded border-neutral-300 dark:border-neutral-700"
+                        class="gk-checkbox mt-0.5"
                     />
                     <span>
                         <span class="font-medium">{row.name}</span>

@@ -85,7 +85,7 @@
     <a
         href={asset.url}
         download={asset.name}
-        class="inline-flex max-w-full items-center gap-1.5 rounded-md text-sm text-(--gk-accent) underline-offset-2 hover:underline pointer-coarse:min-h-11"
+        class="gk-link inline-flex max-w-full items-center gap-1.5 text-sm pointer-coarse:min-h-11"
         data-testid="quick-notes-asset"
         data-state="shown"
     >

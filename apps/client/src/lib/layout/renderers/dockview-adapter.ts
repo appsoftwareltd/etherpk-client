@@ -618,6 +618,18 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
     container.addEventListener('pointerdown', onSashPointerDown, true)
 
     /**
+     * A press on a sash starts dockview's drag and nothing else. Left to the browser, the press also
+     * began its own gesture: with text selected in an editor, the first few pixels of movement
+     * started a drag of that text, which cancels the pointer, and dockview ended its drag there, so
+     * the divider moved about 10px and stopped. The press took the keyboard from the editor too.
+     * dockview listens for `pointerdown`, which refusing the `mousedown` leaves alone.
+     */
+    function onSashMouseDown(event: MouseEvent): void {
+        if (event.target instanceof Element && event.target.closest('.dv-sash')) event.preventDefault()
+    }
+    container.addEventListener('mousedown', onSashMouseDown, true)
+
+    /**
      * dockview collapses an edge group when its front tab is clicked. A Sidebar opens and closes by
      * its toggle, and a click on one of its tabs only brings that tab forward, so the click is
      * refused before dockview sees it (it checks `defaultPrevented`). Not on the tab's ×, whose own
@@ -868,6 +880,7 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
             moveSub.dispose()
             layoutSub.dispose()
             container.removeEventListener('pointerdown', onSashPointerDown, true)
+            container.removeEventListener('mousedown', onSashMouseDown, true)
             container.removeEventListener('click', onTabClick, true)
             resizeObserver.disconnect()
             cancelAnimationFrame(resizeFrame)

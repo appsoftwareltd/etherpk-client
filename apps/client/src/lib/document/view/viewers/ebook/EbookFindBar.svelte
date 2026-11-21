@@ -55,22 +55,22 @@
             {@attach focusOnOpen}
             type="search"
             placeholder="Find in this EBook"
-            class="min-w-40 flex-1 rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-2 py-1 text-sm text-(--gk-text-default) dark:border-neutral-700"
+            class="gk-input gk-input--small min-w-40 flex-1"
             value={reader.findQuery}
             oninput={onInput}
             onkeydown={onKeydown}
             data-testid="ebook-find-input"
         />
         <span class="min-w-16 text-sm text-(--gk-text-muted)" role="status" data-testid="ebook-find-status">{status}</span>
-        <button type="button" class="ebook-tool" aria-label="Previous match" title="Previous match" onclick={() => goToMatch(current - 1)} data-testid="ebook-find-previous">
+        <button type="button" class="gk-icon-button" aria-label="Previous match" title="Previous match" onclick={() => goToMatch(current - 1)} data-testid="ebook-find-previous">
             <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
             {@html iconSvg("move-up")}
         </button>
-        <button type="button" class="ebook-tool" aria-label="Next match" title="Next match" onclick={() => goToMatch(current + 1)} data-testid="ebook-find-next">
+        <button type="button" class="gk-icon-button" aria-label="Next match" title="Next match" onclick={() => goToMatch(current + 1)} data-testid="ebook-find-next">
             <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
             {@html iconSvg("move-down")}
         </button>
-        <button type="button" class="ebook-tool" aria-label="Close find" title="Close find" onclick={() => reader.closeFind()} data-testid="ebook-find-close">
+        <button type="button" class="gk-icon-button" aria-label="Close find" title="Close find" onclick={() => reader.closeFind()} data-testid="ebook-find-close">
             <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
             {@html iconSvg("close")}
         </button>

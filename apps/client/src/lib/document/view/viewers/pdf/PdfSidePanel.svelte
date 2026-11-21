@@ -35,19 +35,16 @@
         return annotation.tool === "pen" ? "Drawing" : "Freehand highlight";
     }
 
-    const tabClass = (on: boolean) =>
-        `rounded-lg px-2 py-1 text-sm ${on ? "bg-(--gk-surface-2) font-medium text-(--gk-text-strong)" : "text-(--gk-text-default) hover:bg-(--gk-surface-2)"}`;
-    const rowButton = "pdf-tool shrink-0";
 </script>
 
 <aside class="etherpk-pdf-panel flex flex-col border-l border-(--gk-surface-2) bg-(--gk-surface-1)" aria-label="This PDF's annotations and marks" data-testid="pdf-side-panel">
     <div class="flex items-center gap-1 border-b border-(--gk-surface-2) p-1.5">
         <div class="flex flex-1 flex-wrap gap-1" role="group" aria-label="Show">
-            <button type="button" class={tabClass(tab === "annotations")} aria-pressed={tab === "annotations"} onclick={() => (tab = "annotations")} data-testid="pdf-panel-annotations">Annotations</button>
-            <button type="button" class={tabClass(tab === "marks")} aria-pressed={tab === "marks"} onclick={() => (tab = "marks")} data-testid="pdf-panel-marks">PDF Bookmarks</button>
-            <button type="button" class={tabClass(tab === "links")} aria-pressed={tab === "links"} onclick={() => (tab = "links")} data-testid="pdf-panel-links">Linked from</button>
+            <button type="button" class="gk-button gk-button--quiet gk-button--small" aria-pressed={tab === "annotations"} onclick={() => (tab = "annotations")} data-testid="pdf-panel-annotations">Annotations</button>
+            <button type="button" class="gk-button gk-button--quiet gk-button--small" aria-pressed={tab === "marks"} onclick={() => (tab = "marks")} data-testid="pdf-panel-marks">PDF Bookmarks</button>
+            <button type="button" class="gk-button gk-button--quiet gk-button--small" aria-pressed={tab === "links"} onclick={() => (tab = "links")} data-testid="pdf-panel-links">Linked from</button>
         </div>
-        <button type="button" class={rowButton} aria-label="Close panel" title="Close panel" onclick={onclose}>
+        <button type="button" class="gk-icon-button" aria-label="Close panel" title="Close panel" onclick={onclose}>
             <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
             {@html iconSvg("close")}
         </button>
@@ -65,11 +62,11 @@
                                 <span class="text-(--gk-text-muted)">p.{annotation.page}</span>
                                 <span class="line-clamp-3 break-words">{describe(annotation)}</span>
                             </button>
-                            <button type="button" class={rowButton} aria-label="Copy to journal" title="Copy to journal" onclick={() => oncopytojournal(annotation)} data-testid="pdf-annotation-copy">
+                            <button type="button" class="gk-icon-button" aria-label="Copy to journal" title="Copy to journal" onclick={() => oncopytojournal(annotation)} data-testid="pdf-annotation-copy">
                                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                                 {@html iconSvg("todays-journal")}
                             </button>
-                            <button type="button" class={rowButton} aria-label="Delete this annotation" title="Delete" onclick={() => reader.removeAnnotation(annotation.id)} data-testid="pdf-annotation-delete">
+                            <button type="button" class="gk-icon-button" aria-label="Delete this annotation" title="Delete" onclick={() => reader.removeAnnotation(annotation.id)} data-testid="pdf-annotation-delete">
                                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                                 {@html iconSvg("trash")}
                             </button>
@@ -85,7 +82,7 @@
                     {#each reader.bookmarks as mark (mark.id)}
                         <li class="flex items-center gap-1 rounded-lg hover:bg-(--gk-surface-2)" data-testid="pdf-panel-bookmark-row">
                             <button type="button" class="flex-1 p-1.5 text-left text-sm text-(--gk-text-default)" onclick={() => reader.goToPage(mark.page)}>Page {mark.page}</button>
-                            <button type="button" class={rowButton} aria-label={`Remove the PDF Bookmark on page ${mark.page}`} title="Remove" onclick={() => reader.removeBookmark(mark.id)}>
+                            <button type="button" class="gk-icon-button" aria-label={`Remove the PDF Bookmark on page ${mark.page}`} title="Remove" onclick={() => reader.removeBookmark(mark.id)}>
                                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                                 {@html iconSvg("trash")}
                             </button>

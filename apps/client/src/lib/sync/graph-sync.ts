@@ -12,7 +12,7 @@ import { sanitizeEbookBookmarks, type EbookBookmark, type EbookBookmarksChange }
 import { sanitizePdfBookmarks, type PdfBookmark, type PdfBookmarksChange } from '#lib/document/pdf/pdf-bookmarks.js'
 import { derivePdfStateIdSecret, pdfStateDocId } from '#lib/document/pdf/state-doc-id.js'
 import { performanceRecorder } from '#lib/diagnostics/performance.js'
-import { SYNC_PROTOCOL_LIMITS, type QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
+import { SOCKETS_LIMIT_CLOSE_CODE, SYNC_PROTOCOL_LIMITS, type QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
 import { CACHE_SEED, RECREATED, REMOTE, SUPPRESSED, createDocSync, type DocSync } from './doc-sync'
 import type { GraphCache } from './local-cache'
 import {
@@ -74,8 +74,11 @@ export interface SyncActivity {
     /**
      * `connecting` until the first socket opens, `open` while one is, `reconnecting` after it
      * closed while the next attempt waits, and `ended` once access has ended for good.
+     * `turned-away`: the relay closed the socket as it opened (4429), because this account
+     * already has as many connections to this graph as the Sync Server allows. The session asks
+     * again, slowly, and connects once another tab or device closes.
      */
-    connection: 'connecting' | 'open' | 'reconnecting' | 'ended'
+    connection: 'connecting' | 'open' | 'reconnecting' | 'turned-away' | 'ended'
     /** Documents this session holds with outbox operations the relay has not acknowledged. */
     unsentDocuments: number
     /** The server's current refusal of this graph's writes, from the refusal until a write is accepted. */
@@ -144,6 +147,12 @@ export interface GraphSyncDeps {
     retryDelayMs?: (attempt: number) => number
     /** The wait before retry round `round` of a refused write; a test swaps it. See reconnect-backoff.ts. */
     refusalRetryDelayMs?: (round: number) => number
+    /**
+     * How long to wait before connecting again after the relay turned the session away (4429),
+     * by how many times in a row it has. The refused-write schedule by default: the answer does
+     * not change until another tab or device closes.
+     */
+    turnedAwayRetryDelayMs?: (round: number) => number
     /** The wait before asking again for a new epoch's key; a test swaps it. See reconnect-backoff.ts. */
     keyRetryDelayMs?: (round: number) => number
     /**
@@ -1806,6 +1815,9 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     let openedAt = 0
     let forceToken = false
     let credentialRefusals = 0
+    /** Closes with 4429 in a row; a socket that closed any other way held a place, and ends the run. */
+    let turnedAwayRounds = 0
+    const turnedAwayDelay = deps.turnedAwayRetryDelayMs ?? ((round: number) => refusalRetryDelayMs(round))
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
     /** True while a retry waits on `reconnectTimer`: no socket is open or being made. */
     let retryWaiting = false
@@ -1821,6 +1833,25 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     function backOff(): void {
         attempts += 1
         scheduleConnect(retryDelay(attempts))
+    }
+
+    /**
+     * 4429: this account already holds every connection the Sync Server allows it on this graph
+     * (other tabs, other devices, agents). The relay opens the socket and closes it at once, so
+     * the ordinary backoff would be refused again within half a second for as long as they stay
+     * open. Ask on the slower schedule of a refused write: the answer changes only when one of
+     * them closes. True when `code` was that close, and the next attempt is scheduled.
+     */
+    function turnedAway(code: number | undefined): boolean {
+        if (code !== SOCKETS_LIMIT_CLOSE_CODE) {
+            turnedAwayRounds = 0
+            return false
+        }
+        connection = 'turned-away'
+        activityChanged()
+        turnedAwayRounds += 1
+        scheduleConnect(turnedAwayDelay(turnedAwayRounds))
+        return true
     }
 
     /** Stop for good: close the socket, never reconnect, and tell the owner once. */
@@ -1897,10 +1928,12 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                     socket = undefined
                     forgetSocketGeneration()
                     if (disposed || lost || protocolMismatch) return
+                    const code = event?.code
+                    if (turnedAway(code)) return
                     connection = 'reconnecting'
                     activityChanged()
                     // 4403: the membership ended. Retrying cannot help and only costs the server.
-                    if (event?.code === 4403) {
+                    if (code === 4403) {
                         endAccess({ kind: 'membership' })
                         return
                     }
@@ -1908,7 +1941,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                     // 4401: the relay refused the token or the credential behind it. Ask for a
                     // new one straight away, once; if the credential itself was revoked the
                     // Sync Server refuses that mint with 401 and access ends below.
-                    if (event?.code === 4401) {
+                    if (code === 4401) {
                         forceToken = true
                         credentialRefusals += 1
                         if (credentialRefusals === 1) {

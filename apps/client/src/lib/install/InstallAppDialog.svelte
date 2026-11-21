@@ -18,7 +18,7 @@
                 href={`${PUBLIC_DOCS_URL}/installing-etherpk-as-an-app`}
                 target="_blank"
                 rel="noopener"
-                class="text-(--gk-accent) underline hover:text-(--gk-accent-hover)">How installing works on each device</a
+                class="gk-link">How installing works on each device</a
             >
         </p>
     {/snippet}

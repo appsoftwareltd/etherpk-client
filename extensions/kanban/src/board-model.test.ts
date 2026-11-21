@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
     type BoardFilterChoice,
     boardFilterNarrows,
+    readConcept,
     boardFilterOf,
     EVERY_TASK,
     BOARD_LANES,
@@ -367,15 +368,54 @@ describe('a move into a lane under the priority and due filters', () => {
     })
 })
 
+describe('a move held on the Graph Kanban under a concept', () => {
+    // The Graph Kanban narrowed to a concept, its Doing lane read through it.
+    const narrowed = (snapshot: BoardSnapshot, concept: string): BoardSnapshot => ({
+        ...snapshot,
+        concept: null,
+        lanes: snapshot.lanes.map((lane) => ({ ...lane, filter: boardFilterOf({ ...EVERY_TASK, concept }, '2026-09-29') })),
+    })
+    const quote = card('Send the quote', 'Kitchen', 1)
+    const before = board([['open', null, [quote]]])
+    const held = (answersTo: string | null): PendingMove => ({ ...move(quote, 'doing', null), answersTo })
+
+    it('draws the card in its new lane when it was moved on a board answering to the same concept', () => {
+        expect(labelsAt(withPendingMoves(narrowed(before, 'Acme'), [held('acme')]), 'doing', null)).toEqual(['Send the quote'])
+    })
+
+    it('keeps the card off a board narrowed to a concept chosen after the move, which it may not answer to', () => {
+        // Moved on the whole Graph Kanban, or under another concept, then the concept box changed before the index caught up.
+        for (const answersTo of [null, 'Garden']) {
+            const shown = withPendingMoves(narrowed(before, 'Acme'), [held(answersTo)])
+            expect(labelsAt(shown, 'doing', null)).toEqual([])
+            expect(labelsAt(shown, 'open', null)).toEqual([])
+        }
+    })
+
+    it('records the concept the cards on screen were read through, not the one chosen since', () => {
+        // The concept box changed, and the read through it has not landed: the cards are still the whole graph's.
+        expect(readConcept({ ...before, concept: null })).toBeNull()
+        expect(readConcept(narrowed(before, 'Acme'))).toBe('Acme')
+        // A concept's own board answers to its concept, filter or none.
+        expect(readConcept(before)).toBe('Acme')
+    })
+
+    it('draws it on the whole Graph Kanban whatever it was moved under', () => {
+        expect(labelsAt(withPendingMoves({ ...before, concept: null }, [held('Garden')]), 'doing', null)).toEqual(['Send the quote'])
+    })
+})
+
 describe('the Board Filter as searched for', () => {
     it('is null while it hides nothing: no words, no priority chosen or every one, and Any date', () => {
         expect(boardFilterOf(EVERY_TASK, '2026-09-29')).toBeNull()
-        expect(boardFilterOf({ text: '  ', priorities: [1, 2, 3, null], due: 'any' }, '2026-09-29')).toBeNull()
+        expect(boardFilterOf({ text: '  ', priorities: [1, 2, 3, null], due: 'any', concept: null }, '2026-09-29')).toBeNull()
+        expect(boardFilterOf({ ...EVERY_TASK, concept: '  ' }, '2026-09-29')).toBeNull()
     })
 
     it('holds each part that narrows, and leaves the others open', () => {
-        expect(boardFilterOf({ text: '', priorities: [1, null], due: 'any' }, '2026-09-29')).toEqual({ text: null, priorities: [1, null], due: 'any', today: '2026-09-29' })
-        expect(boardFilterOf({ text: '', priorities: [], due: 'overdue' }, '2026-09-29')).toEqual({ text: null, priorities: null, due: 'overdue', today: '2026-09-29' })
+        expect(boardFilterOf({ ...EVERY_TASK, priorities: [1, null] }, '2026-09-29')).toEqual({ text: null, priorities: [1, null], due: 'any', concept: null, today: '2026-09-29' })
+        expect(boardFilterOf({ ...EVERY_TASK, due: 'overdue' }, '2026-09-29')).toEqual({ text: null, priorities: null, due: 'overdue', concept: null, today: '2026-09-29' })
+        expect(boardFilterOf({ ...EVERY_TASK, concept: 'Garden' }, '2026-09-29')).toEqual({ text: null, priorities: null, due: 'any', concept: 'Garden', today: '2026-09-29' })
     })
 
     it('says whether the board is narrowed, for the count beside the filter', () => {
@@ -383,6 +423,7 @@ describe('the Board Filter as searched for', () => {
         expect(boardFilterNarrows({ ...EVERY_TASK, priorities: [2] })).toBe(true)
         expect(boardFilterNarrows({ ...EVERY_TASK, due: 'today' })).toBe(true)
         expect(boardFilterNarrows({ ...EVERY_TASK, text: '#bug' })).toBe(true)
+        expect(boardFilterNarrows({ ...EVERY_TASK, concept: 'Garden' })).toBe(true)
     })
 })
 

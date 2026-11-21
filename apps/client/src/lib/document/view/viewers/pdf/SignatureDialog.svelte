@@ -209,8 +209,6 @@
         remembered = null;
     }
 
-    const tabClass = (on: boolean) =>
-        `rounded-lg px-2.5 py-1 text-sm ${on ? "bg-(--gk-surface-2) font-medium text-(--gk-text-strong)" : "text-(--gk-text-default) hover:bg-(--gk-surface-1)"}`;
 </script>
 
 <Dialog {open} title="Add your signature" {onclose} size="md" testId="pdf-signature-dialog">
@@ -222,14 +220,14 @@
         {#if remembered}
             <div class="flex items-center gap-3 rounded-lg border border-(--gk-surface-2) p-2">
                 <img src={remembered.url} alt="Your remembered signature" class="h-12 max-w-40 object-contain" />
-                <button type="button" class="rounded-lg border border-neutral-300 px-2.5 py-1 text-sm dark:border-neutral-700" onclick={() => place(remembered!.blob)} data-testid="pdf-signature-use-remembered">Use this</button>
-                <button type="button" class="rounded-lg px-2.5 py-1 text-sm text-(--gk-text-default) hover:bg-(--gk-surface-1)" onclick={forget} data-testid="pdf-signature-forget">Forget it</button>
+                <button type="button" class="gk-button gk-button--small" onclick={() => place(remembered!.blob)} data-testid="pdf-signature-use-remembered">Use this</button>
+                <button type="button" class="gk-button gk-button--quiet gk-button--small" onclick={forget} data-testid="pdf-signature-forget">Forget it</button>
             </div>
         {/if}
         <div class="flex gap-1" role="group" aria-label="How to make your signature">
-            <button type="button" class={tabClass(mode === "draw")} aria-pressed={mode === "draw"} onclick={() => (mode = "draw")}>Draw</button>
-            <button type="button" class={tabClass(mode === "type")} aria-pressed={mode === "type"} onclick={() => (mode = "type")} data-testid="pdf-signature-type-tab">Type</button>
-            <button type="button" class={tabClass(mode === "image")} aria-pressed={mode === "image"} onclick={() => (mode = "image")}>Picture</button>
+            <button type="button" class="gk-button gk-button--quiet gk-button--small" aria-pressed={mode === "draw"} onclick={() => (mode = "draw")}>Draw</button>
+            <button type="button" class="gk-button gk-button--quiet gk-button--small" aria-pressed={mode === "type"} onclick={() => (mode = "type")} data-testid="pdf-signature-type-tab">Type</button>
+            <button type="button" class="gk-button gk-button--quiet gk-button--small" aria-pressed={mode === "image"} onclick={() => (mode = "image")}>Picture</button>
         </div>
         {#if mode === "draw"}
             <canvas
@@ -244,11 +242,11 @@
                 onpointercancel={padUp}
                 data-testid="pdf-signature-pad"
             ></canvas>
-            <div><button type="button" class="rounded-lg px-2.5 py-1 text-sm text-(--gk-text-default) hover:bg-(--gk-surface-1)" onclick={clearPad}>Clear</button></div>
+            <div><button type="button" class="gk-button gk-button--quiet gk-button--small" onclick={clearPad}>Clear</button></div>
         {:else if mode === "type"}
             <label class="flex flex-col gap-1 text-sm font-medium text-(--gk-text-default)">
                 Your name
-                <input type="text" autocomplete="off" class="rounded-lg border border-neutral-300 bg-(--gk-surface-0) px-2 py-1.5 text-sm font-normal dark:border-neutral-700" bind:value={typed} data-testid="pdf-signature-typed" />
+                <input type="text" autocomplete="off" class="gk-input" bind:value={typed} data-testid="pdf-signature-typed" />
             </label>
         {:else}
             <div class="flex flex-wrap items-center gap-3">
@@ -268,8 +266,8 @@
     {/snippet}
     {#snippet footer()}
         <div class="flex justify-end gap-2">
-            <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium dark:border-neutral-700" onclick={onclose}>Cancel</button>
-            <button type="button" class="rounded-lg bg-(--gk-accent) px-3 py-1.5 text-sm font-medium text-(--gk-surface-0) hover:bg-(--gk-accent-hover)" onclick={submit} data-testid="pdf-signature-place">Place on the page</button>
+            <button type="button" class="gk-button" onclick={onclose}>Cancel</button>
+            <button type="button" class="gk-button gk-button--primary" onclick={submit} data-testid="pdf-signature-place">Place on the page</button>
         </div>
     {/snippet}
 </Dialog>

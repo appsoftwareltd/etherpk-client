@@ -560,7 +560,6 @@
                                     data-search-index={index}
                                     class="search__row"
                                     class:search__row--active={index === activeIndex}
-                                    class:search__row--draft={row.kind === "draft"}
                                     onpointermove={() => pointRow(index)}
                                     onclick={() => choose(selectable[index])}
                                 >
@@ -1020,35 +1019,30 @@
         align-self: center;
         color: var(--gk-text-subtle);
     }
-    /* The draft row carries a real-sized button, so it is taller than a match row and centres
-       its label on the button rather than sharing the text baseline. */
-    .search__row--draft {
-        align-items: center;
-        padding-block: 0.5rem;
-    }
-    /* Drawn as a button so the draft row reads as "create this", not as another match. */
-    .search__new-page {
-        flex-shrink: 0;
-        display: inline-flex;
-        align-items: center;
-        border: 1px solid var(--gk-accent);
-        border-radius: 0.375rem;
-        padding: 0.3125rem 0.75rem;
-        font-size: 0.875rem;
-        font-weight: 500;
-        line-height: 1.25;
-        color: var(--gk-accent);
-        white-space: nowrap;
-    }
-    /* A key cap rather than bare text, so it does not read as part of the row's detail. */
+    /* The "New page" label and the Enter key cap share one box, no taller than the row's line of
+       text (their line and border come to 20px). A row is then one height with either, both or
+       neither: the rows below stay where they are as the hint comes and goes with the arrow keys,
+       and as a name being typed loses its match to the row that creates it. */
+    .search__new-page,
     .search__enter-hint {
         flex-shrink: 0;
-        border: 1px solid var(--gk-border-soft);
+        border: 1px solid;
         border-radius: 0.25rem;
         padding: 0 0.375rem;
         font-family: inherit;
         font-size: 0.875rem;
-        line-height: 1.25rem;
+        line-height: calc(1.25rem - 2px);
+        white-space: nowrap;
+    }
+    /* Drawn as a button so the draft row reads as "create this", not as another match. */
+    .search__new-page {
+        border-color: var(--gk-accent);
+        font-weight: 500;
+        color: var(--gk-accent);
+    }
+    /* A key cap rather than bare text, so it does not read as part of the row's detail. */
+    .search__enter-hint {
+        border-color: var(--gk-border-soft);
         color: var(--gk-text-subtle);
     }
     .search__row:hover .search__new-page,

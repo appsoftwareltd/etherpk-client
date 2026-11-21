@@ -7,11 +7,13 @@
     import { onMount } from 'svelte'
 
     import { goto } from '$app/navigation'
+    import { page } from '$app/state'
 
     import LoadingSweep from '#lib/components/LoadingSweep.svelte'
     import { legacyGraphAddress } from '#lib/navigation/graph-address.js'
     import type { GraphRecord } from '#lib/storage/graph-registry.js'
     import { createIdbGraphRegistry } from '#lib/storage/graph-registry-idb.js'
+    import { chosenGraphState } from '#lib/workspace/chosen-graph.js'
 
     onMount(async () => {
         let graphs: GraphRecord[] = []
@@ -22,7 +24,9 @@
             console.warn('[graph-address] the graph list could not be read for an old address', error)
         }
         const next = legacyGraphAddress(location.pathname, location.search, graphs)
-        await goto(next === null ? '/graphs' : `${next}${location.hash}`, { replaceState: true })
+        // The id found the graph, which its new address may not do alone: two folders can have one name (chosen-graph.ts).
+        const held = graphs.find((graph) => graph.id === page.params.graphId)
+        await goto(next === null ? '/graphs' : `${next}${location.hash}`, { replace: true, state: held ? chosenGraphState(held) : {} })
     })
 </script>
 

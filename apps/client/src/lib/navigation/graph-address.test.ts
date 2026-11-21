@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
     graphAddressOf,
+    currentGraphId,
     graphAddressPath,
+    graphsSharingAnAddress,
     legacyGraphAddress,
     parseGraphAddressPath,
     resolveGraphAddress,
@@ -158,5 +160,40 @@ describe('an address round trip', () => {
                 }
             }),
         )
+    })
+})
+
+describe('graphsSharingAnAddress', () => {
+    it('names the folder graphs whose folders share a name, and no other graph', () => {
+        const graphs = [folder('f1', 'reports'), folder('f2', 'notes'), folder('f3', 'notes'), synced('s1'), browser('b1'), browser('b2')]
+        expect(graphsSharingAnAddress(graphs)).toEqual(new Set(['f2', 'f3']))
+    })
+
+    it('names none where every address is one graph\'s', () => {
+        expect(graphsSharingAnAddress([folder('f1', 'reports'), folder('f2', 'Reports'), synced('s1')])).toEqual(new Set())
+    })
+})
+
+describe('currentGraphId', () => {
+    const graphs = [folder('f1', 'reports'), folder('f2', 'notes'), folder('f3', 'notes'), synced('s1')]
+    const notes = { where: 'folder', name: 'notes' } as const
+
+    it('is the graph the workspace has open, whatever shares its address', () => {
+        expect(currentGraphId(notes, 'f3', graphs)).toBe('f3')
+        expect(currentGraphId(notes, 'f2', graphs)).toBe('f2')
+    })
+
+    it('is the one graph the address names while no graph is open yet', () => {
+        expect(currentGraphId({ where: 'folder', name: 'reports' }, null, graphs)).toBe('f1')
+        expect(currentGraphId({ where: 'sync', name: 's1' }, null, graphs)).toBe('s1')
+    })
+
+    it('is no graph while two share the address and none is open: the person has not said which', () => {
+        expect(currentGraphId(notes, null, graphs)).toBeNull()
+    })
+
+    it('is no graph off a workspace address, or at an address nothing here holds', () => {
+        expect(currentGraphId(null, null, graphs)).toBeNull()
+        expect(currentGraphId({ where: 'folder', name: 'garden' }, null, graphs)).toBeNull()
     })
 })

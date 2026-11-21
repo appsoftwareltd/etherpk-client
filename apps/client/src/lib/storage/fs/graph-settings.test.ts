@@ -2,10 +2,16 @@ import { describe, expect, it } from 'vitest'
 
 import { createMemoryDirectoryAdapter } from './memory-adapter'
 import {
+    CONTENT_WIDTH_HIGHEST,
+    CONTENT_WIDTH_LOWEST,
+    CONTENT_WIDTH_OFF,
+    DEFAULT_CONTENT_WIDTH,
     DEFAULT_IMAGE_DISPLAY_SIZE,
     DEFAULT_RECENT_COUNT,
     IMAGE_DISPLAY_SIZE_OFF,
     imageDisplaySizeOf,
+    maxContentWidthOf,
+    parseContentWidthField,
     normalizeHexColor,
     readGraphSettings,
     recentCountOf,
@@ -177,5 +183,31 @@ describe('graph settings', () => {
         expect(normalizeHexColor('#A1b2C3')).toBe('#a1b2c3')
         expect(normalizeHexColor('a1b2c3')).toBeNull()
         expect(normalizeHexColor('#gggggg')).toBeNull()
+    })
+
+    it('keeps a whole maxContentWidth of 0 or within bounds, and drops anything else', async () => {
+        const adapter = createMemoryDirectoryAdapter({ now: clock() })
+        for (const value of [CONTENT_WIDTH_OFF, CONTENT_WIDTH_LOWEST, 900, CONTENT_WIDTH_HIGHEST]) {
+            await adapter.write('etherpk', 'settings.json', JSON.stringify({ maxContentWidth: value }))
+            expect(await readGraphSettings(adapter)).toEqual({ maxContentWidth: value })
+        }
+        for (const value of [-1, 1, CONTENT_WIDTH_LOWEST - 1, CONTENT_WIDTH_HIGHEST + 1, 900.5, '900', null, Number.NaN]) {
+            await adapter.write('etherpk', 'settings.json', JSON.stringify({ maxContentWidth: value }))
+            expect(await readGraphSettings(adapter)).toEqual({})
+        }
+    })
+
+    it('reads the Document width field: blank is the default, a width within bounds or 0 is kept, else refused', () => {
+        expect(parseContentWidthField('')).toBeUndefined()
+        expect(parseContentWidthField('   ')).toBeUndefined()
+        expect(parseContentWidthField(' 720 ')).toBe(720)
+        expect(parseContentWidthField('0')).toBe(CONTENT_WIDTH_OFF)
+        for (const text of ['50', '4001', '72.5', '-600', '600px', '1e3', 'wide']) expect(parseContentWidthField(text)).toBeNull()
+    })
+
+    it('resolves the content width: the default when unset, none when 0, else the setting', () => {
+        expect(maxContentWidthOf({})).toBe(DEFAULT_CONTENT_WIDTH)
+        expect(maxContentWidthOf({ maxContentWidth: CONTENT_WIDTH_OFF })).toBeNull()
+        expect(maxContentWidthOf({ maxContentWidth: 1200 })).toBe(1200)
     })
 })

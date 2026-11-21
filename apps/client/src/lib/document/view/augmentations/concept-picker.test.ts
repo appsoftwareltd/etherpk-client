@@ -5,11 +5,13 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createCommandRegistry } from '../../../surface/command-registry'
 import { setActiveCommandRegistry } from '../../../surface/active-commands'
 import { conceptPicker, showConceptPicker } from './concept-picker'
-import { refreshPopovers } from './popover-menu'
+import { refreshOpenPopovers, refreshPopovers } from './popover-menu'
 
 // The concept picker (EtherPK's own, with the Command Menu's keys): a list at the caret that a
 // Command opens, `/kanban` the first (ADR 0113). It lives until the user picks, leaves, edits or
-// moves the caret, and a pick runs the Command it was opened for.
+// moves the caret, and a pick runs the Command it was opened for. Another popover's late answer
+// (the `#` helper's Free Tags, the frontmatter completion's lookups) refreshes every popover, and
+// leaves this one as it was.
 
 /** The surface the picker and its keys use in a live view: the state, and a dispatch. */
 function headlessView(doc: string) {
@@ -59,12 +61,26 @@ describe('the concept picker', () => {
         expect(isOpen(view)).toBe(true)
     })
 
-    it('closes on an edit, a caret move, Escape or a refresh, and does not come back', () => {
+    // The `#` helper asks for Free Tags whenever the editor takes the focus, and its answer lands
+    // when the index gives it. Opened by `/kanban` just after the focus arrived, the picker shut a
+    // moment later, under the person's eyes, when that answer came.
+    it("stays open when another popover's answer refreshes the popovers", () => {
+        for (const refresh of [refreshOpenPopovers, refreshPopovers]) {
+            const view = headlessView('- abc')
+            showConceptPicker(view, request)
+            view.dispatch({ effects: refresh.of(null) })
+            expect(isOpen(view)).toBe(true)
+            press(view, 'ArrowDown')
+            view.dispatch({ effects: refresh.of(null) })
+            expect(isOpen(view)).toBe(true)
+        }
+    })
+
+    it('closes on an edit, a caret move or Escape, and no refresh brings it back', () => {
         const closers: Array<(view: EditorView) => void> = [
             (view) => view.dispatch({ changes: { from: 5, insert: 'd' } }),
             (view) => view.dispatch({ selection: EditorSelection.cursor(0) }),
             (view) => press(view, 'Escape'),
-            (view) => view.dispatch({ effects: refreshPopovers.of(null) }),
         ]
         for (const close of closers) {
             const view = headlessView('- abc')
@@ -72,6 +88,7 @@ describe('the concept picker', () => {
             close(view)
             expect(isOpen(view)).toBe(false)
             view.dispatch({ effects: refreshPopovers.of(null) })
+            view.dispatch({ effects: refreshOpenPopovers.of(null) })
             expect(isOpen(view)).toBe(false)
         }
     })

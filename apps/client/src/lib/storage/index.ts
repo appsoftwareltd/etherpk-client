@@ -55,6 +55,7 @@ export {
 // Graph Settings (per-graph config persisted in etherpk/).
 export {
     type GraphSettings,
+    maxContentWidthOf,
     readGraphSettings,
     sanitizeGraphSettings,
     writeGraphSettings,

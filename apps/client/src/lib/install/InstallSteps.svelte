@@ -27,7 +27,7 @@
             type="button"
             onclick={startInstall}
             data-testid="app-install-prompt"
-            class="inline-flex items-center gap-1.5 rounded-lg bg-(--gk-text-strong) px-3 py-1.5 font-semibold text-(--gk-surface-0) shadow-sm transition-colors hover:bg-(--gk-text-default) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gk-text-strong) pointer-coarse:min-h-11"
+            class="gk-button gk-button--primary"
         >
             <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path

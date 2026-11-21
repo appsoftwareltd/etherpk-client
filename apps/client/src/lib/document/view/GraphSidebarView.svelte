@@ -75,7 +75,7 @@
     import { getActiveGraphIndex } from "#lib/document/backlinks/active-index.js";
     import { openConcept } from "#lib/document/open-concept.js";
     import { iconSvg } from "#lib/surface/icons.js";
-    import SyncStatus from "#lib/sync/ui/SyncStatus.svelte";
+    import { sidebarButton, sidebarIconButton } from "./sidebar-button.js";
     import {
         currentWorkspaceServices,
         type ProtectionControls,
@@ -114,15 +114,7 @@
     );
 
     /**
-     * A synced graph's sync status, for the foot of the Sidebar. Its fields are getters over the
-     * workspace's runes, so reading them in the template follows every change. Read once: the
-     * workspace publishes it with the graph's services, before any presenter mounts this View.
-     * Absent in the dev harnesses, which have no workspace.
-     */
-    const syncStatus = currentWorkspaceServices()?.sync;
-
-    /**
-     * How a View favourite's row reads (ADR 0169). Read once, like the sync status: the workspace
+     * How a View favourite's row reads (ADR 0169). Read once: the workspace
      * publishes it with the graph's services. Absent in the dev harnesses, where a View favourite
      * shows its stored kind and opens nothing.
      */
@@ -326,17 +318,6 @@
     const OPEN_JOURNAL_DAY = "document.openJournalDay";
 
     /**
-     * Every button, one look and one spacing: a solid grey fill and no visible border, darker on
-     * hover in the light theme and lighter in the dark. The border stays, transparent, for the
-     * outline a forced-colours mode draws. The padding is kept tight so that the default 304px
-     * Sidebar fits two buttons side by side, with a classic scrollbar beside them.
-     * `overflow-hidden` clips a label that cannot fit even in one column (the Sidebar at its
-     * narrowest, an extension's long title), rather than letting it spill into the next button.
-     */
-    const sidebarButton =
-        "flex min-w-0 items-center overflow-hidden rounded-md border border-transparent bg-(--gk-surface-2) px-1.5 py-1.5 text-left text-sm font-medium text-(--gk-text-strong) hover:bg-(--gk-border-strong) pointer-coarse:min-h-11";
-
-    /**
      * Under the phone layout the buttons are their icons alone, sharing one row across the
      * drawer's width (ADR 0139): a phone's drawer is narrow, and a row of icons keeps the top of it
      * short. Each keeps its name for a screen reader and its help text. Read once, because the
@@ -351,9 +332,6 @@
      */
     const iconRow =
         "grid grid-cols-[repeat(auto-fit,minmax(2.25rem,1fr))] gap-2 pointer-coarse:grid-cols-[repeat(auto-fit,minmax(2.75rem,1fr))]";
-    /** The same fill as `sidebarButton`, as wide as its column, and 44px tall under a finger. */
-    const sidebarIconButton =
-        "flex h-9 min-w-0 items-center justify-center rounded-md border border-transparent bg-(--gk-surface-2) text-(--gk-text-default) hover:bg-(--gk-border-strong) pointer-coarse:h-11";
 
     /**
      * How many columns the buttons take (`sidebarButtonColumns`): one row when every button fits
@@ -824,6 +802,7 @@
                         ? "protection-lock"
                         : "protection-unlock"}
                     data-state={unlocked ? "unlocked" : "locked"}
+                    data-own-button-style="filled with the accent while unlocked, the state worth noticing"
                     onclick={() =>
                         unlocked
                             ? protection?.lockNow()
@@ -1139,14 +1118,6 @@
                 </svg>
                 <span>Reset workspace</span>
             </button>
-        {/if}
-        {#if syncStatus?.isSynced}
-            <!-- Last in the footer, on every presenter: the toolbar and the phone's top bar have
-                 no room for it, and the foot of the Sidebar is where a status line is looked for. -->
-            <SyncStatus
-                indicator={syncStatus.indicator}
-                actions={syncStatus.actions}
-            />
         {/if}
     </div>
 </div>

@@ -792,8 +792,10 @@
     .tabmenu-item.active {
         background: var(--gk-surface-2);
     }
+    /* A step lighter than surface-2 in the dark theme, where the list's own surface is close to
+       it: the grey a selection takes. */
     :global(html.dark) .tabmenu-item.active {
-        background: #404040;
+        background: var(--gk-selection);
     }
     .tabmenu-label {
         flex: 1;

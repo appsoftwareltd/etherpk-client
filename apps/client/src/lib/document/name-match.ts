@@ -142,3 +142,30 @@ export function rankNames(candidates: readonly ConceptCandidate[], query: string
     }
     return rows
 }
+
+/** How many names a [[Name Filter]] offers: enough to choose from without listing the whole graph. */
+export const NAME_FILTER_LIMIT = 8
+
+/**
+ * The names a [[Name Filter]] offers for `query`, best match first, capped at `limit`: the
+ * [[Tasks View]]'s box and the Graph Kanban's concept box. The same matching as {@link rankNames},
+ * ties falling to the name A–Z, but no New page row and no rows of its own: choosing a name here
+ * asks about its tasks, never opens it, so the candidate itself is what the filter applies.
+ * [[Pageless Concept]]s are offered too, since a wikilink is enough to give a concept tasks.
+ */
+export function rankNameFilter(candidates: readonly ConceptCandidate[], query: string, limit = NAME_FILTER_LIMIT): ConceptCandidate[] {
+    const q = nameMatchKey(query)
+    if (q === '') return []
+    return candidates
+        .map((candidate) => ({ candidate, score: matchScore(nameMatchKey(candidate.display), q) }))
+        .filter((m): m is { candidate: ConceptCandidate; score: number } => m.score !== null)
+        .sort((a, b) => b.score - a.score || a.candidate.display.localeCompare(b.candidate.display))
+        .slice(0, limit)
+        .map((m) => m.candidate)
+}
+
+/** What a Name Filter's offer says beside the name: `page`, `journal`, `alias of Garden` or `no page yet`. */
+export function nameFilterDetail(candidate: ConceptCandidate): string {
+    if (candidate.kind === 'alias') return `alias of ${candidate.canonical ?? ''}`
+    return candidate.kind === 'pageless' ? 'no page yet' : candidate.kind
+}

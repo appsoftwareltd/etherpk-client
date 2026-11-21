@@ -109,7 +109,7 @@
                         <li>
                             <button
                                 type="button"
-                                class="text-left text-[var(--gk-accent,#007ACC)] underline underline-offset-2 hover:opacity-80"
+                                class="gk-link text-left"
                                 onclick={() => onopendocument(document.concept)}
                             >{document.concept}</button
                             >{#if document.references > 1}<span class="text-neutral-500 dark:text-neutral-400">
@@ -125,20 +125,20 @@
     {#snippet footer()}
         <button
             type="button"
-            class="rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/10"
+            class="gk-button"
             onclick={() => onchoose("cancel")}>Cancel</button
         >
         <button
             type="button"
             data-testid="delete-asset-unlink"
-            class="rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+            class="gk-button"
             onclick={() => onchoose("unlink")}>Remove from this document</button
         >
         {#if plan.deleteBytes}
             <button
                 type="button"
                 data-testid="delete-asset-confirm"
-                class="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-500"
+                class="gk-button gk-button--danger"
                 onclick={() => onchoose("delete")}>{keptDays === undefined || keptDays === 0 ? "Delete permanently" : "Delete"}</button
             >
         {/if}

@@ -7,7 +7,8 @@
  */
 
 import { foldedRanges, unfoldEffect } from '@codemirror/language'
-import { type ChangeSpec, EditorSelection, type EditorState, type Extension, MapMode, type StateCommand, type Transaction, type TransactionSpec } from '@codemirror/state'
+import { insertNewlineAndIndent } from '@codemirror/commands'
+import { ChangeSet, type ChangeSpec, EditorSelection, type EditorState, type Extension, MapMode, type StateCommand, StateEffect, Transaction, type TransactionSpec } from '@codemirror/state'
 import { type Command, type KeyBinding, keymap } from '@codemirror/view'
 
 import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
@@ -58,6 +59,7 @@ import { toggleBold, toggleHighlight, toggleItalic } from './wrap-selection'
 import { isBlockSelection, rangeBlockOwner, selectedBranches, shrinkBlockSelectionDown, shrinkBlockSelectionUp, snappedBlockSelection } from './block-select'
 import { analysisFor } from './analysis/editor-analysis'
 import { anchoredMove } from './anchored-move'
+import { frontmatterEnter } from './frontmatter-keys'
 import { caretContext, type FencedBlock, fencedBlockAt, lineInFrontmatter, outermostFencedBlockAt, unterminatedFenceOpenerAt } from './outliner-context'
 import { blockSelectionTaskLines, bulletToggleable, taskToggleable, toggledBullet } from './task-toggleable'
 
@@ -1672,6 +1674,137 @@ const selectLineEndInCode = lineBoundaryInCode(true, true)
 const selectLineStartInCode = lineBoundaryInCode(false, true)
 
 /**
+ * Enter at a caret, in dispatch order. Each yields (returns false) where it does not apply.
+ * - caretToLoneFenceEnd first, so that every Enter below sees a caret inside a lone fence's backticks
+ *   at the line's end.
+ * - enterAtFold before every other Enter: at the end of a folded bullet's text the new bullet goes
+ *   below the fold.
+ */
+const ENTER_AT_CARET: readonly StateCommand[] = [caretToLoneFenceEnd, enterAtFold, completeFence, enterInCode, enterBullet, splitContinuation]
+
+/** Shift+Enter at a caret, in dispatch order. */
+const SHIFT_ENTER_AT_CARET: readonly StateCommand[] = [caretToLoneFenceEnd, shiftEnterInCode, softNewline]
+
+/** The plain delete of the selection, as Backspace over a range within one line is. */
+const deleteSelection: StateCommand = ({ state, dispatch }) => {
+    dispatch(state.update(state.replaceSelection(''), { userEvent: 'delete.selection' }))
+    return true
+}
+
+/**
+ * Run `commands` against `state` in order until one handles the key, collecting the transactions they
+ * dispatch (a command may dispatch and still yield, as caretToLoneFenceEnd moves the caret and yields).
+ */
+function runChain(state: EditorState, commands: readonly StateCommand[]): { trs: Transaction[]; state: EditorState } {
+    const trs: Transaction[] = []
+    let current = state
+    const target: Target = {
+        get state() {
+            return current
+        },
+        dispatch: (tr: Transaction) => {
+            trs.push(tr)
+            current = tr.state
+        },
+    }
+    commands.some((command) => command(target))
+    return { trs, state: current }
+}
+
+/**
+ * Transactions made one after another from `state`, as one: their changes composed, their effects
+ * mapped on, the last one's selection and user event. The whole passes the filters again, so a guard
+ * that judges an edit against the state before it (the shown range of a part, `shown-range.ts`) judges
+ * the edit as the person made it, not only its steps.
+ */
+function asOneTransaction(state: EditorState, trs: readonly Transaction[]): Transaction {
+    let changes = ChangeSet.empty(state.doc.length)
+    let effects: readonly StateEffect<unknown>[] = []
+    for (const tr of trs) {
+        changes = changes.compose(tr.changes)
+        effects = [...StateEffect.mapEffects(effects, tr.changes), ...tr.effects]
+    }
+    const last = trs[trs.length - 1]
+    return state.update({
+        changes,
+        selection: last.state.selection,
+        effects,
+        userEvent: last.annotation(Transaction.userEvent) ?? 'input',
+        scrollIntoView: true,
+    })
+}
+
+/** Whether 0-based line `index` is a code line of one of `blocks`, between its fences. */
+function inCode(blocks: readonly FencedBlockRange[], index: number): boolean {
+    return blocks.some((b) => index > b.start && index < b.end)
+}
+
+/**
+ * Whether any of the 0-based lines `from` to `to` is a fence line, which is structure, never split:
+ * over its text Enter acts at its end (enterInCode, caretToLoneFenceEnd) and the selected backticks
+ * stay. A block's opener or closer is one, an inner pair's in a code sample too, and so is a lone fence
+ * in no block. A fence-like line inside a longer fence's code is code.
+ */
+function touchesFenceLine(state: EditorState, blocks: readonly FencedBlockRange[], from: number, to: number): boolean {
+    for (let index = from; index <= to; index++) {
+        if (blocks.some((b) => b.start === index || b.end === index)) return true
+        if (fenceLineInfo(state.doc.line(index + 1).text) && !inCode(blocks, index)) return true
+    }
+    return false
+}
+
+/**
+ * Whether the selection is a text range a line break replaces before acting as at a caret: one range,
+ * within one line or across the lines of one block, inside the text. A block selection is
+ * block-select.ts's, a prose range across lines is the delete heal's (it brings a bullet the range
+ * takes the marker of out of the list), and multiple ranges are CodeMirror's.
+ */
+function isRangeInText(state: EditorState): boolean {
+    const range = state.selection.main
+    if (state.selection.ranges.length !== 1 || range.empty || isBlockSelection(state)) return false
+    const first = state.doc.lineAt(range.from)
+    const last = state.doc.lineAt(range.to).number
+    if (first.number !== last && rangeBlockOwner(state) === null) return false
+    const blocks = analysisFor(state).fencedBlocks
+    if (touchesFenceLine(state, blocks, first.number - 1, last - 1)) return false
+    // On a code line every character is code, its indent and a `- ` included: the fence pad holds the
+    // column. Elsewhere only a selection in the text: one that takes a marker or the indent before it
+    // removes or moves the block, which the delete heal judges (a whole line typed over, Select All in
+    // a part).
+    return inCode(blocks, first.number - 1) || range.from >= first.from + contentStart(first.text)
+}
+
+/**
+ * Enter or Shift+Enter over a text selection ({@link isRangeInText}): the selection is deleted (the
+ * plain delete, which the delete heal and the fence guards judge), then the key acts at the caret that
+ * leaves, as one edit and one undo step. Typed over a selection, a line break replaces it as any
+ * character does (Obsidian, VS Code), and the break is the outline's own: Enter splits the block,
+ * Shift+Enter opens a soft line. CodeMirror's newline over the selection would put the rest of the
+ * line at the margin, outside the block.
+ */
+function lineBreakOverRange(atCaret: readonly StateCommand[]): StateCommand {
+    return (view) => {
+        const { state } = view
+        if (!isRangeInText(state)) return false
+        const deleted = runChain(state, [deleteSelection])
+        // A delete the guards refused leaves a selection: it is dispatched as it is, its refusal
+        // reported, and no line breaks.
+        if (!deleted.state.selection.main.empty) {
+            for (const tr of deleted.trs) view.dispatch(tr)
+            return true
+        }
+        // CodeMirror's newline last, as the default keymap under the outliner's runs it at a caret.
+        const broken = runChain(deleted.state, [...atCaret, insertNewlineAndIndent])
+        view.dispatch(asOneTransaction(state, [...deleted.trs, ...broken.trs]))
+        return true
+    }
+}
+
+// Frontmatter's own Enter first, as its bindings sit above the outliner's for a caret.
+const enterOverRange = lineBreakOverRange([frontmatterEnter, ...ENTER_AT_CARET])
+const shiftEnterOverRange = lineBreakOverRange(SHIFT_ENTER_AT_CARET)
+
+/**
  * The outliner key bindings in dispatch order (Dual Mode Editor.md → Keyboard scheme). Exported on
  * their own so the Node-level rule tests can dispatch by key name through the same yield chain the
  * live keymap uses; {@link outlinerKeymap} is the same list wrapped as an extension.
@@ -1684,14 +1817,9 @@ export function outlinerBindings(): readonly KeyBinding[] {
         { key: 'Tab', run: indentBranch },
         { key: 'Shift-Tab', run: shiftTabInCode },
         { key: 'Shift-Tab', run: outdentBranch },
-        // First, so that every Enter below sees a caret inside a lone fence's backticks at the line's end.
-        { key: 'Enter', run: caretToLoneFenceEnd },
-        // Before every other Enter: at the end of a folded bullet's text the new bullet goes below the fold.
-        { key: 'Enter', run: enterAtFold },
-        { key: 'Enter', run: completeFence },
-        { key: 'Enter', run: enterInCode },
-        { key: 'Enter', run: enterBullet },
-        { key: 'Enter', run: splitContinuation },
+        // Over a text selection first: the selection goes, then Enter acts at the caret it leaves.
+        { key: 'Enter', run: enterOverRange },
+        ...ENTER_AT_CARET.map((run) => ({ key: 'Enter', run })),
         { key: 'Mod-Enter', run: breakoutFromCode },
         { key: 'Mod-Enter', run: breakoutToProse },
         // Logical line ends inside a block (the defaults find the visual boundary, which under the
@@ -1727,9 +1855,8 @@ export function outlinerBindings(): readonly KeyBinding[] {
         { key: 'Backspace', run: backspaceEmptyBullet },
         { key: 'Backspace', run: backspaceMergeBullet },
         { key: 'Delete', run: deleteMergeNext },
-        { key: 'Shift-Enter', run: caretToLoneFenceEnd },
-        { key: 'Shift-Enter', run: shiftEnterInCode },
-        { key: 'Shift-Enter', run: softNewline },
+        { key: 'Shift-Enter', run: shiftEnterOverRange },
+        ...SHIFT_ENTER_AT_CARET.map((run) => ({ key: 'Shift-Enter', run })),
         // Consumed where the toggle is refused too, as the format toggles are, so the browser never acts on it.
         { key: 'Mod-Shift-Enter', run: toggleTask, preventDefault: true },
         // Primary chord is Alt-Arrow (shadows CodeMirror's structure-blind moveLineUp/Down, which

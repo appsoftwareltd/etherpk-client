@@ -157,7 +157,7 @@
                 onclick={copy}
                 data-autofocus
                 data-testid="recovery-copy"
-                class="flex-1 rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                class="gk-button flex-1"
             >
                 {copied ? "Copied" : "Copy"}
             </button>
@@ -165,7 +165,7 @@
                 type="button"
                 onclick={download}
                 data-testid="recovery-download"
-                class="flex-1 rounded-lg border border-neutral-300 dark:border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-white/5"
+                class="gk-button flex-1"
             >
                 Download
             </button>
@@ -184,7 +184,7 @@
                 type="checkbox"
                 bind:checked={acknowledged}
                 data-testid="recovery-ack"
-                class="mt-0.5 h-4 w-4 rounded border-neutral-300 dark:border-neutral-600"
+                class="gk-checkbox mt-0.5"
             />
             <span data-testid="recovery-ack-label">{acknowledgement}</span>
         </label>
@@ -198,7 +198,7 @@
                 type="button"
                 onclick={cancel}
                 data-testid="recovery-cancel"
-                class="rounded-lg px-3 py-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                class="gk-button"
             >
                 {cancelLabel}
             </button>
@@ -208,7 +208,7 @@
             onclick={() => { open = false; onconfirm(); }}
             disabled={!acknowledged}
             data-testid="recovery-confirm"
-            class="rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 py-1.5 text-sm font-medium text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            class="gk-button gk-button--primary"
         >
             {confirmLabel}
         </button>

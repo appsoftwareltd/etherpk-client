@@ -72,7 +72,7 @@
     .quoted-code {
         margin: 0.2rem 0;
         padding: 0.45em 0.7em;
-        border-radius: 5px;
+        border-radius: 6px;
         background: var(--gk-code-bg, rgba(127, 127, 127, 0.1));
     }
     /* Inside the scroller: a gap between the last line and the bar, and room after the longest

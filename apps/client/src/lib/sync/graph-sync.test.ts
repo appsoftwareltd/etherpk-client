@@ -2194,6 +2194,8 @@ describe('graph-sync access loss and backoff', () => {
         awaitSocket?: boolean
         /** How long each backoff waits; no wait by default, so a test sees the schedule, not the clock. */
         retryWaitMs?: number
+        /** Records each wait after the relay turned the session away (4429), by round. */
+        turnedAwayRounds?: number[]
     } = {}) {
         const sockets: ScriptedSocket[] = []
         const urls: string[] = []
@@ -2234,6 +2236,10 @@ describe('graph-sync access loss and backoff', () => {
                 delays.push(attempt)
                 return options.retryWaitMs ?? 0
             },
+            turnedAwayRetryDelayMs: (round) => {
+                options.turnedAwayRounds?.push(round)
+                return options.retryWaitMs ?? 0
+            },
         })
         if (options.awaitSocket !== false) await vi.waitFor(() => expect(sockets).toHaveLength(1))
         return { gs, sockets, urls, losses, delays }
@@ -2250,6 +2256,51 @@ describe('graph-sync access loss and backoff', () => {
         expect(sockets).toHaveLength(1)
         expect(losses).toEqual([{ kind: 'membership' }])
         expect(gs.accessLoss()).toEqual({ kind: 'membership' })
+        gs.dispose()
+    })
+
+    it('on 4429 says the relay turned the session away, and asks again on the slower schedule until one opens', async () => {
+        // The relay holds a limit of connections for one account on one graph. The socket opens
+        // and is closed at once, so a reconnect on the ordinary backoff would be refused again
+        // within half a second, for as long as the other tabs stay open.
+        const turnedAwayRounds: number[] = []
+        const { gs, sockets, losses, delays } = await scripted({ turnedAwayRounds })
+        sockets[0].open()
+        sockets[0].close(4429)
+        expect(gs.activity().connection).toBe('turned-away')
+        await vi.waitFor(() => expect(sockets).toHaveLength(2))
+        sockets[1].open()
+        sockets[1].close(4429)
+        expect(gs.activity().connection).toBe('turned-away')
+        await vi.waitFor(() => expect(sockets).toHaveLength(3))
+
+        expect(turnedAwayRounds).toEqual([1, 2])
+        expect(delays).toEqual([]) // never the ordinary reconnect backoff
+        expect(losses).toEqual([]) // access has not ended: a place frees when another tab closes
+
+        // A place freed: the session is connected again. When that connection drops it comes
+        // back on the ordinary backoff, and a refusal after it starts from round 1.
+        sockets[2].open()
+        expect(gs.activity().connection).toBe('open')
+        sockets[2].close(1006)
+        expect(gs.activity().connection).toBe('reconnecting')
+        await vi.waitFor(() => expect(sockets).toHaveLength(4))
+        expect(delays).toEqual([1])
+        sockets[3].open()
+        sockets[3].close(4429)
+        await vi.waitFor(() => expect(sockets).toHaveLength(5))
+        expect(turnedAwayRounds).toEqual([1, 2, 1])
+        gs.dispose()
+    })
+
+    it('reconnectNow asks again at once while turned away', async () => {
+        const { gs, sockets } = await scripted({ retryWaitMs: 60_000 })
+        sockets[0].open()
+        sockets[0].close(4429)
+        await settle()
+        expect(sockets).toHaveLength(1)
+        gs.reconnectNow()
+        await vi.waitFor(() => expect(sockets).toHaveLength(2))
         gs.dispose()
     })
 
@@ -2309,7 +2360,8 @@ describe('graph-sync access loss and backoff', () => {
         await vi.waitFor(() => expect(sockets).toHaveLength(2))
         sockets[1].close(1011)
         await vi.waitFor(() => expect(sockets).toHaveLength(3))
-        sockets[2].close(4429)
+        // 4429 has a schedule of its own (above); any code the session does not know backs off.
+        sockets[2].close(4499)
         await vi.waitFor(() => expect(sockets).toHaveLength(4))
 
         expect(delays).toEqual([1, 2, 3])

@@ -83,7 +83,7 @@
         <label class="flex items-start gap-2 text-sm text-neutral-950 dark:text-neutral-100">
             <input
                 type="checkbox"
-                class="mt-1 shrink-0"
+                class="gk-checkbox mt-1"
                 checked={tick.checked}
                 disabled={busy}
                 aria-disabled={tick.locked ? "true" : undefined}

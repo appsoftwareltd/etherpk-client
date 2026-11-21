@@ -41,16 +41,14 @@
      */
     const PANEL =
         "flex flex-col rounded-xl border p-5 md:row-span-5 md:grid md:grid-rows-subgrid md:gap-y-0";
-    const FOCUS =
-        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gk-accent)";
-    const PRIMARY = `inline-flex min-h-9 items-center justify-center rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 pointer-coarse:min-h-11 aria-busy:cursor-progress dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 ${FOCUS}`;
-    const SECONDARY = `inline-flex min-h-9 items-center justify-center rounded-lg border border-neutral-300 px-4 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 pointer-coarse:min-h-11 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-white/5 ${FOCUS}`;
+    const PRIMARY = "gk-button gk-button--primary aria-busy:cursor-progress";
+    const SECONDARY = "gk-button";
     /**
      * A link in a sentence. On a touch screen it becomes a row of its own beneath the words that
      * lead to it, tall enough to press; the punctuation that joined it to the sentence is hidden
      * there (`JOIN`).
      */
-    const TEXT_LINK = `text-left font-medium text-neutral-800 underline underline-offset-2 hover:text-neutral-950 pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center dark:text-neutral-100 dark:hover:text-white ${FOCUS}`;
+    const TEXT_LINK = "gk-link text-left pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center";
     const JOIN = "pointer-coarse:hidden";
     const CHECK_ICON = "M4.5 12.75l6 6 9-13.5";
     /** What Import can bring in. EtherPK's own export and folder graphs are named, as people moving between devices or from a folder to a synced graph look for them. */

@@ -125,6 +125,35 @@ export function resolveGraphAddress<Graph extends AddressedGraph>(address: Graph
 }
 
 /**
+ * The ids of the graphs whose address another registered graph shares: folder graphs kept in
+ * folders with one name. An address names each of them only with a question, so a surface that
+ * lists graphs says so beside them.
+ */
+export function graphsSharingAnAddress(graphs: readonly AddressedGraph[]): Set<string> {
+    const byAddress = new Map<string, string[]>()
+    for (const graph of graphs) {
+        const path = graphAddressPath(graphAddressOf(graph))
+        byAddress.set(path, [...(byAddress.get(path) ?? []), graph.id])
+    }
+    return new Set([...byAddress.values()].filter((ids) => ids.length > 1).flat())
+}
+
+/**
+ * The id of the graph the page is in, for a list that marks it, or null when no one graph is.
+ *
+ * `openId` is the graph a workspace has open, and it settles the matter: an address cannot say
+ * which of two folders with one name is open. Before a workspace has a graph (while the registry
+ * is read, or while the person is asked which folder), the address marks a graph only when it
+ * names one alone.
+ */
+export function currentGraphId(here: GraphAddress | null, openId: string | null, graphs: readonly AddressedGraph[]): string | null {
+    if (openId !== null) return openId
+    if (here === null) return null
+    const found = resolveGraphAddress(here, graphs)
+    return found.kind === 'held' ? found.graph.id : null
+}
+
+/**
  * Where an address of the shape used before ADR 0192, `/g/<id>/…`, goes now, or null when
  * `pathname` is not one. Kept for one release (MAINTENANCE.md).
  *
