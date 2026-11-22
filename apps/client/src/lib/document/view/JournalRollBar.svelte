@@ -65,7 +65,7 @@
                 class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                 data-testid="journal-roll-open"
                 aria-label="Open {day} in its own tab"
-                title="Open in its own tab"
+                data-tooltip="Open in its own tab" aria-description="Open in its own tab"
                 onclick={onopen}
             >
                 Open

@@ -10,8 +10,11 @@
     import { goto } from "$app/navigation";
     import { watchAppInstall } from "#lib/storage/app-install.js";
     import InstallAppDialog from "#lib/install/InstallAppDialog.svelte";
+    import TooltipHost from "#lib/surface/ui/TooltipHost.svelte";
     import { welcomeInstalledApp } from "#lib/install/install-notices.js";
     import { launchTarget } from "#lib/install/launch-target.js";
+    import { type FileLaunch, fileOfLaunch } from "#lib/plain/launched-file.js";
+    import { launchedFile } from "#lib/plain/launched-file.svelte.js";
 
     let { children, data } = $props();
 
@@ -21,7 +24,7 @@
     }
 
     /** Chromium's launch queue, where the manifest's `launch_handler` delivers a launch. */
-    type LaunchQueue = { setConsumer(consumer: (params: { targetURL?: string }) => void): void };
+    type LaunchQueue = { setConsumer(consumer: (params: { targetURL?: string } & FileLaunch) => void): void };
     // The address this page was opened at, read before any client-side navigation: the launch
     // that opened the page also arrives in the queue, and must not be carried out twice.
     const openedHref = typeof location === "undefined" ? "" : location.href;
@@ -67,6 +70,10 @@
         // share is carried out in this window.
         const queue = (window as Window & { launchQueue?: LaunchQueue }).launchQueue;
         queue?.setConsumer((params) => {
+            // A launch from a file in the device's file manager carries the file (the manifest's
+            // `file_handlers`): kept for `/open-file`, the launch's address, to show.
+            const file = fileOfLaunch(params);
+            if (file) launchedFile.set(file);
             const target = launchTarget(params.targetURL, location.origin, openedHref);
             if (target) void goto(target);
         });
@@ -79,3 +86,6 @@
 {@render children()}
 
 <InstallAppDialog />
+
+<!-- The one tooltip, for every control that carries `data-tooltip` (surface/tooltip.ts). -->
+<TooltipHost />

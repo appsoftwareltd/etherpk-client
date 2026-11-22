@@ -44,12 +44,14 @@
 
     const service = workspaceService("pdf");
     const folderGraph = service?.backend === "folder";
+    /** In a graph: there is a journal, pages and Favourites. False in a Plain Folder. */
+    const inGraph = !service?.plain;
 
     const reader = new PdfReader({
         graphId: currentWorkspaceServices()?.graphId ?? "unknown",
         target: () => target,
         name: () => displayName,
-        openState: (hash) => service?.state.open(hash) ?? Promise.resolve(refusingPdfState("Changes to this PDF cannot be saved here.")),
+        openState: (hash) => service?.state.open(hash, target) ?? Promise.resolve(refusingPdfState("Changes to this PDF cannot be saved here.")),
     });
 
     let root = $state<HTMLDivElement>();
@@ -664,7 +666,7 @@
 {#snippet turnPage(direction: "previous" | "next", className: string)}
     {@const previous = direction === "previous"}
     {@const label = previous ? "Previous page" : "Next page"}
-    <button type="button" class={className} aria-label={label} title={label} disabled={previous ? reader.page <= 1 : reader.page >= reader.pageCount} onclick={() => (previous ? reader.previousPage() : reader.nextPage())}>
+    <button type="button" class={className} aria-label={label} data-tooltip={label} disabled={previous ? reader.page <= 1 : reader.page >= reader.pageCount} onclick={() => (previous ? reader.previousPage() : reader.nextPage())}>
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
         {@html iconSvg(previous ? "pdf-page-previous" : "pdf-page-next")}
     </button>
@@ -704,31 +706,31 @@
 <!-- The buttons of the toolbar, in `button`'s style: the toolbar's own on a desktop, the Command Bar's where
      there is one. The page box and the zoom level are words, which the Command Bar has no room for. -->
 {#snippet tools(button: string)}
-    <button type="button" class={button} aria-label="Find in this PDF" title="Find in this PDF" onclick={() => reader.openFind()} data-testid="pdf-find-open">{@render icon("search")}</button>
+    <button type="button" class={button} aria-label="Find in this PDF" data-tooltip="Find in this PDF" onclick={() => reader.openFind()} data-testid="pdf-find-open">{@render icon("search")}</button>
     {@render turnPage("previous", `${button} max-sm:hidden`)}
     {#if !inBar}{@render pageBox()}{/if}
     {@render turnPage("next", `${button} max-sm:hidden`)}
     {#if !inBar}<span class="etherpk-pdf-divider max-sm:hidden"></span>{/if}
-    <button type="button" class={`${button} max-sm:hidden`} aria-label="Zoom out" title="Zoom out" onclick={() => reader.zoomOut()} data-testid="pdf-zoom-out">{@render icon("zoom-out")}</button>
+    <button type="button" class={`${button} max-sm:hidden`} aria-label="Zoom out" data-tooltip="Zoom out" onclick={() => reader.zoomOut()} data-testid="pdf-zoom-out">{@render icon("zoom-out")}</button>
     {#if !inBar}<span class="w-12 shrink-0 text-center text-sm text-(--gk-text-muted) max-sm:hidden" data-testid="pdf-zoom-level">{Math.round(reader.scale * 100)}%</span>{/if}
-    <button type="button" class={`${button} max-sm:hidden`} aria-label="Zoom in" title="Zoom in" onclick={() => reader.zoomIn()} data-testid="pdf-zoom-in">{@render icon("zoom-in")}</button>
-    <button type="button" class={`${button} max-sm:hidden`} aria-label="Fit the width" title="Fit the width" onclick={() => reader.fitWidth()} data-testid="pdf-fit-width">{@render icon("fit")}</button>
+    <button type="button" class={`${button} max-sm:hidden`} aria-label="Zoom in" data-tooltip="Zoom in" onclick={() => reader.zoomIn()} data-testid="pdf-zoom-in">{@render icon("zoom-in")}</button>
+    <button type="button" class={`${button} max-sm:hidden`} aria-label="Fit the width" data-tooltip="Fit the width" onclick={() => reader.fitWidth()} data-testid="pdf-fit-width">{@render icon("fit")}</button>
     {#if !inBar}<span class="etherpk-pdf-divider"></span>{/if}
     {#each shownTools as entry (entry.tool)}
-        <button type="button" class={button} aria-label={entry.label} title={blockedHere(entry.tool) ? NEEDS_TEXT[entry.tool] : entry.label} aria-pressed={reader.tool === entry.tool} disabled={blockedHere(entry.tool)} onclick={() => reader.setTool(entry.tool)} data-testid={`pdf-tool-${entry.tool}`} {@attach scrollIntoBar(entry.tool)}>{@render icon(entry.icon)}</button>
+        <button type="button" class={button} aria-label={entry.label} data-tooltip={blockedHere(entry.tool) ? NEEDS_TEXT[entry.tool] : entry.label} aria-description={blockedHere(entry.tool) ? NEEDS_TEXT[entry.tool] : entry.label} aria-pressed={reader.tool === entry.tool} disabled={blockedHere(entry.tool)} onclick={() => reader.setTool(entry.tool)} data-testid={`pdf-tool-${entry.tool}`} {@attach scrollIntoBar(entry.tool)}>{@render icon(entry.icon)}</button>
     {/each}
-    <button type="button" class={button} aria-label="Undo" title="Undo" disabled={!reader.canUndo} onclick={() => reader.undo()} data-testid="pdf-undo">{@render icon("undo")}</button>
-    <button type="button" class={button} aria-label="Redo" title="Redo" disabled={!reader.canRedo} onclick={() => reader.redo()} data-testid="pdf-redo">{@render icon("redo")}</button>
+    <button type="button" class={button} aria-label="Undo" data-tooltip="Undo" disabled={!reader.canUndo} onclick={() => reader.undo()} data-testid="pdf-undo">{@render icon("undo")}</button>
+    <button type="button" class={button} aria-label="Redo" data-tooltip="Redo" disabled={!reader.canRedo} onclick={() => reader.redo()} data-testid="pdf-redo">{@render icon("redo")}</button>
     {#if !inBar}<span class="etherpk-pdf-divider"></span>{/if}
-    <button type="button" class={[button, reader.bookmarkHere && "etherpk-pdf-bookmarked"]} aria-label={reader.bookmarkHere ? "Remove the PDF Bookmark on this page" : "Add a PDF Bookmark"} title={reader.bookmarkHere ? "Remove the PDF Bookmark on this page" : "Add a PDF Bookmark"} aria-pressed={!!reader.bookmarkHere} onclick={() => reader.toggleBookmark()} data-testid="pdf-bookmark">{@render icon("bookmark")}</button>
-    <button type="button" class={button} aria-label="Annotations and PDF Bookmarks" title="Annotations and PDF Bookmarks" aria-pressed={panelOpen} onclick={togglePanel} data-testid="pdf-panel-toggle">{@render icon("list")}</button>
-    <button type="button" class={`${button} max-sm:hidden`} aria-label="Add your signature" title="Add your signature" onclick={() => (signatureOpen = true)} data-testid="pdf-sign">{@render icon("pdf-signature")}</button>
-    <button type="button" class={button} aria-label="Save a copy" title="Save a copy" onclick={openSave} data-testid="pdf-save">{@render icon("pdf-save")}</button>
-    <button type="button" class={`${button} max-sm:hidden`} aria-label="Print" title="Print" onclick={() => (printOptionsOpen = true)} data-testid="pdf-print">{@render icon("pdf-print")}</button>
+    <button type="button" class={[button, reader.bookmarkHere && "etherpk-pdf-bookmarked"]} aria-label={reader.bookmarkHere ? "Remove the PDF Bookmark on this page" : "Add a PDF Bookmark"} data-tooltip={reader.bookmarkHere ? "Remove the PDF Bookmark on this page" : "Add a PDF Bookmark"} aria-pressed={!!reader.bookmarkHere} onclick={() => reader.toggleBookmark()} data-testid="pdf-bookmark">{@render icon("bookmark")}</button>
+    <button type="button" class={button} aria-label="Annotations and PDF Bookmarks" data-tooltip="Annotations and PDF Bookmarks" aria-pressed={panelOpen} onclick={togglePanel} data-testid="pdf-panel-toggle">{@render icon("list")}</button>
+    <button type="button" class={`${button} max-sm:hidden`} aria-label="Add your signature" data-tooltip="Add your signature" onclick={() => (signatureOpen = true)} data-testid="pdf-sign">{@render icon("pdf-signature")}</button>
+    <button type="button" class={button} aria-label="Save a copy" data-tooltip="Save a copy" onclick={openSave} data-testid="pdf-save">{@render icon("pdf-save")}</button>
+    <button type="button" class={`${button} max-sm:hidden`} aria-label="Print" data-tooltip="Print" onclick={() => (printOptionsOpen = true)} data-testid="pdf-print">{@render icon("pdf-print")}</button>
 {/snippet}
 
 {#snippet moreToggle(button: string)}
-    <button type="button" class={button} bind:this={moreButton} aria-label="More" title="More" aria-expanded={moreOpen} onpointerdown={inBar ? keepPress : undefined} onmousedown={inBar ? keepPress : undefined} onclick={() => (moreOpen = !moreOpen)} data-testid="pdf-more">{@render icon("more")}</button>
+    <button type="button" class={button} bind:this={moreButton} aria-label="More" data-tooltip="More" aria-expanded={moreOpen} onpointerdown={inBar ? keepPress : undefined} onmousedown={inBar ? keepPress : undefined} onclick={() => (moreOpen = !moreOpen)} data-testid="pdf-more">{@render icon("more")}</button>
 {/snippet}
 
 {#snippet barStrip()}
@@ -751,7 +753,7 @@
         <div bind:this={moreMenu} class={["etherpk-pdf-more gk-menu flex flex-col", inBar && "etherpk-pdf-more--above"]} role="group" aria-label="More for this PDF" data-testid="pdf-more-menu">
             <div class="flex items-center justify-between pr-1 pl-3">
                 <span class="text-sm font-medium text-(--gk-text-muted)">More</span>
-                <button type="button" class="gk-icon-button" aria-label="Close this menu" title="Close this menu" onclick={closeMoreMenu} data-testid="pdf-more-close">{@render icon("close")}</button>
+                <button type="button" class="gk-icon-button" aria-label="Close this menu" data-tooltip="Close this menu" onclick={closeMoreMenu} data-testid="pdf-more-close">{@render icon("close")}</button>
             </div>
             {#if inBar}
                 <!-- The page box lives here where the toolbar is on the Command Bar. -->
@@ -780,7 +782,9 @@
             <button type="button" class="gk-menu-item sm:hidden" onclick={() => { moreOpen = false; signatureOpen = true; }} data-testid="pdf-more-sign">Add your signature</button>
             <button type="button" class="gk-menu-item sm:hidden" onclick={() => { moreOpen = false; openSave(); }} data-testid="pdf-more-save">Save a copy</button>
             <button type="button" class="gk-menu-item sm:hidden" onclick={() => { moreOpen = false; printOptionsOpen = true; }} data-testid="pdf-more-print">Print</button>
-            <button type="button" class="gk-menu-item" onclick={toggleFavourite} data-testid="pdf-favourite">{favourite ? "Remove from favourites" : "Add to favourites"}</button>
+            {#if inGraph}
+                <button type="button" class="gk-menu-item" onclick={toggleFavourite} data-testid="pdf-favourite">{favourite ? "Remove from favourites" : "Add to favourites"}</button>
+            {/if}
             <button type="button" class="gk-menu-item" onclick={downloadOriginal} data-testid="pdf-download">Download the original</button>
             {#if service}
                 <button type="button" class="gk-menu-item" onclick={openRename} data-testid="pdf-rename">Rename…</button>
@@ -932,7 +936,7 @@
                                 type="button"
                                 class="gk-icon-button gk-button--raised size-10 pointer-coarse:size-11"
                                 aria-label={action.label}
-                                title={action.label}
+                                data-tooltip={action.label}
                                 onpointerdown={(event) => event.preventDefault()}
                                 onmousedown={(event) => event.preventDefault()}
                                 onclick={() => runFileAction(action)}
@@ -950,9 +954,9 @@
                         <div class="flex flex-wrap items-center justify-center gap-1" role="group" aria-label="Colour" data-testid="pdf-colours">
                             {#each ANNOTATION_COLOURS as { colour, label } (colour)}
                                 {@const on = reader.toolColour === colour}
-                                <button type="button" class={["size-6 rounded-full border pointer-coarse:size-8", on ? "border-(--gk-text-strong) ring-2 ring-(--gk-text-strong)" : "border-neutral-400"]} style:background-color={colour} aria-label={label} title={label} aria-pressed={on} onclick={() => reader.pickColour(colour)}></button>
+                                <button type="button" class={["size-6 rounded-full border pointer-coarse:size-8", on ? "border-(--gk-text-strong) ring-2 ring-(--gk-text-strong)" : "border-neutral-400"]} style:background-color={colour} aria-label={label} data-tooltip={label} aria-pressed={on} onclick={() => reader.pickColour(colour)}></button>
                             {/each}
-                            <label class={["etherpk-pdf-custom-colour relative size-6 cursor-pointer rounded-full pointer-coarse:size-8", usingCustom && "ring-2 ring-(--gk-text-strong)"]} title={usingCustom ? `Custom colour, ${colourName(reader.toolColour)}` : "Custom colour"}>
+                            <label class={["etherpk-pdf-custom-colour relative size-6 cursor-pointer rounded-full pointer-coarse:size-8", usingCustom && "ring-2 ring-(--gk-text-strong)"]} data-tooltip={usingCustom ? `Custom colour, ${colourName(reader.toolColour)}` : "Custom colour"}>
                                 <span class="absolute inset-1 rounded-full border border-(--gk-surface-0)" style:background-color={usingCustom ? reader.toolColour : reader.customColour}></span>
                                 <input type="color" class="absolute inset-0 size-full cursor-pointer opacity-0" aria-label="Custom colour" value={usingCustom ? reader.toolColour : reader.customColour} oninput={(event) => reader.pickCustomColour(event.currentTarget.value)} data-testid="pdf-custom-colour" />
                             </label>
@@ -962,7 +966,7 @@
                             <div class="flex items-center gap-1 sm:border-l sm:border-(--gk-surface-2) sm:pl-1" role="group" aria-label="Line thickness" data-testid="pdf-stroke-widths">
                                 {#each STROKE_WIDTHS[tool] as width, index (width)}
                                     {@const on = reader.strokeWidth(tool) === width}
-                                    <button type="button" class={["flex size-6 items-center justify-center rounded-md text-(--gk-text-default) pointer-coarse:size-8", on ? "bg-(--gk-surface-2) ring-2 ring-(--gk-text-strong)" : "hover:bg-(--gk-surface-2)"]} aria-label={STROKE_WIDTH_NAMES[index]} title={STROKE_WIDTH_NAMES[index]} aria-pressed={on} onclick={() => reader.setStrokeWidth(tool, width)} data-testid={`pdf-stroke-width-${index}`}>
+                                    <button type="button" class={["flex size-6 items-center justify-center rounded-md text-(--gk-text-default) pointer-coarse:size-8", on ? "bg-(--gk-surface-2) ring-2 ring-(--gk-text-strong)" : "hover:bg-(--gk-surface-2)"]} aria-label={STROKE_WIDTH_NAMES[index]} data-tooltip={STROKE_WIDTH_NAMES[index]} aria-pressed={on} onclick={() => reader.setStrokeWidth(tool, width)} data-testid={`pdf-stroke-width-${index}`}>
                                         <span class="w-4 rounded-full bg-current" style:height={`${WIDTH_SAMPLES[index]}px`}></span>
                                     </button>
                                 {/each}
@@ -979,7 +983,7 @@
                 {/if}
             </div>
             {#if panelOpen}
-                <PdfSidePanel {reader} {linkedFrom} onclose={togglePanel} onopendocument={(concept) => openConcept(concept)} oncopytojournal={copyToJournal} />
+                <PdfSidePanel {reader} {linkedFrom} onclose={togglePanel} onopendocument={(concept) => openConcept(concept)} oncopytojournal={inGraph ? copyToJournal : undefined} />
             {/if}
         </div>
         {#if inBar}{@render moreMenuBlock()}{/if}
@@ -1008,6 +1012,7 @@
         hasPassword={reader.protectedByPassword}
         startWithPasswordRemoved={reader.removePasswordAsked}
         {folderGraph}
+        canAddToGraph={inGraph}
         hasDigitalSignature={digitalSignature}
         {linkPlaces}
         defaultLink={reader.openedFrom?.concept ?? linkedFrom?.[0]?.concept ?? null}

@@ -6,9 +6,9 @@
  * The chords are read from the live keybinding table, never written into the text, so a chord an
  * extension binds later, or one that changes, shows without anyone editing the description.
  *
- * A control carries the text three ways, as the rest of the app does: a native `title` for the
- * mouse, `aria-description` for a screen reader, and `aria-keyshortcuts` for the chords as key
- * names. A `title` does not show on keyboard focus or on touch.
+ * A control carries the text three ways: `data-tooltip` for the Client's tooltip (tooltip.ts), which
+ * shows on hover, on keyboard focus and for a moment on a tap, `aria-description` for a screen
+ * reader, and `aria-keyshortcuts` for the chords as key names.
  */
 import { createSubscriber } from 'svelte/reactivity'
 
@@ -16,7 +16,7 @@ import { ariaKeyShortcut, chordsFor, formatChordHint, isApplePlatform, type Keyb
 
 /** The attributes a control spreads onto itself. */
 export interface ControlHelp {
-    title: string
+    'data-tooltip': string
     'aria-description': string
     'aria-keyshortcuts': string | undefined
 }
@@ -31,7 +31,7 @@ export function controlHelpText(description: string, chords: readonly string[], 
 export function controlHelp(description: string, chords: readonly string[], apple: boolean): ControlHelp {
     const text = controlHelpText(description, chords, apple)
     return {
-        title: text,
+        'data-tooltip': text,
         'aria-description': text,
         'aria-keyshortcuts': chords.length > 0 ? chords.map((chord) => ariaKeyShortcut(chord, apple)).join(' ') : undefined,
     }

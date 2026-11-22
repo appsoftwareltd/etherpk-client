@@ -38,6 +38,12 @@ export default defineConfig({
         sveltekit({
             preprocess: vitePreprocess(),
             adapter: adapter(),
+            compilerOptions: {
+                // `aria-description` is a global attribute in WAI-ARIA 1.3, so it belongs on any
+                // role, but Svelte's table of which role takes which attribute predates it. The
+                // Client gives a screen reader a tooltip's extra words with it (surface/tooltip.ts).
+                warningFilter: (warning) => !(warning.code.startsWith('a11y_role_supports_aria_props') && warning.message.includes("'aria-description'")),
+            },
             // A dev server writes its settings into the generated files under outDir, and reloads
             // them when another server rewrites them. The e2e configurations give each server they
             // start an outDir of its own, so it never reads a manual dev server's settings.

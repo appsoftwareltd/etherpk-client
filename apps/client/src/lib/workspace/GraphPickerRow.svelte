@@ -87,7 +87,7 @@
                 <button
                     type="button"
                     data-testid="graphs-demo-reset"
-                    title="Reset the demo (puts every page back as it shipped)"
+                    data-tooltip="Reset the demo (puts every page back as it shipped)" aria-description="Reset the demo (puts every page back as it shipped)"
                     onclick={onreset}
                     class={accent ? 'font-medium underline underline-offset-2 pointer-coarse:min-h-11' : 'gk-link'}
                 >Reset the demo</button>
@@ -117,7 +117,9 @@
     </button>
     <button
         data-testid="graphs-rename"
-        title={graph.backend === 'server'
+        data-tooltip={graph.backend === 'server'
+            ? 'Rename (changes graph name for all members)'
+            : 'Rename (changes display name only - folder on disk retains its name)'} aria-description={graph.backend === 'server'
             ? 'Rename (changes graph name for all members)'
             : 'Rename (changes display name only - folder on disk retains its name)'}
         aria-label="Rename graph"
@@ -129,7 +131,9 @@
         </svg>
     </button>
     <button
-        title={graph.backend === 'server'
+        data-tooltip={graph.backend === 'server'
+            ? 'Graph settings (shared by all members)'
+            : 'Graph settings'} aria-description={graph.backend === 'server'
             ? 'Graph settings (shared by all members)'
             : 'Graph settings'}
         aria-label="Graph settings"
@@ -145,7 +149,9 @@
     {#if !demo}
     <button
         data-testid="graphs-remove"
-        title={graph.backend === 'server'
+        data-tooltip={graph.backend === 'server'
+            ? 'Forget this graph (deletes the local browser cache - does not delete the remote synced graph)'
+            : 'Forget this graph (does not delete files)'} aria-description={graph.backend === 'server'
             ? 'Forget this graph (deletes the local browser cache - does not delete the remote synced graph)'
             : 'Forget this graph (does not delete files)'}
         onclick={onforget}
@@ -162,7 +168,7 @@
     <button
         type="button"
         data-testid="graphs-demo-reset-icon"
-        title="Reset the demo (puts every page back as it shipped)"
+        data-tooltip="Reset the demo (puts every page back as it shipped)" aria-description="Reset the demo (puts every page back as it shipped)"
         aria-label="Reset the demo"
         onclick={onreset}
         class={accent ? ICON_ON_COLOUR : 'gk-icon-button'}

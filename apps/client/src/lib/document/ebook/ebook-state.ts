@@ -107,7 +107,8 @@ export interface EbookStateStore {
 
 /** Reaches the stores of the open graph, for whichever backend it is on. */
 export interface EbookStateHost {
-    open(hash: string): Promise<EbookStateStore>
+    /** `target` is the tab's own name for the EBook, read by a host that keeps state by path too. */
+    open(hash: string, target?: string): Promise<EbookStateStore>
     /** Delete an EBook's state for good, with the EBook itself. */
     forget(hash: string): Promise<void>
 }

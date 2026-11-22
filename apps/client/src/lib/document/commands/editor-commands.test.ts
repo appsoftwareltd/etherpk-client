@@ -88,15 +88,18 @@ describe('registerEditorCommands — mobile wikilink shortcuts', () => {
 
         expect(commands.has('editor.insertWikilinkOpen')).toBe(true)
         expect(commands.has('editor.insertWikilinkClose')).toBe(true)
-        // The bullet toggle comes first after the slash, then the wikilink pair, the task toggle, and
-        // undo and redo: the strip scrolls on a phone, and buried among the block ops these were
-        // off-screen exactly when someone was on a task, or had just made a mistake.
+        // The bullet toggle comes first after the slash, then the wikilink pair, Outdent and Indent,
+        // the task toggle, and undo and redo: the strip scrolls on a phone, and buried among the
+        // block ops these were off-screen exactly when someone was shaping an outline, on a task,
+        // or had just made a mistake.
         const fixed = listCommandBarItems(contributions).filter((b) => !b.contextualGroup)
-        expect(fixed.slice(0, 8)).toMatchObject([
+        expect(fixed.slice(0, 10)).toMatchObject([
             { command: 'editor.openCommandMenu' },
             { command: 'editor.toggleBullet', icon: 'bullet', label: 'Bullet', bulletToggleOnly: true, pressed: 'bullet' },
             { command: 'editor.insertWikilinkOpen', label: 'Insert [[' },
             { command: 'editor.insertWikilinkClose', label: 'Insert ]]' },
+            { command: 'editor.outdent', outlinerOnly: true },
+            { command: 'editor.indent', convertibleOnly: true },
             { command: 'editor.toggleTask', taskToggleOnly: true },
             { command: 'editor.undo', undoOnly: true, writableOnly: true },
             { command: 'editor.redo', redoOnly: true, writableOnly: true },
@@ -279,7 +282,7 @@ describe('registerEditorCommands — table.insert', () => {
         const contributions = createContributionRegistry()
         const teardown = registerEditorCommands(createCommandRegistry(), contributions)
         const bar = listCommandBarItems(contributions)
-        expect(bar.find((b) => b.id === 'table.insert')).toMatchObject({ tableInsertOnly: true, writableOnly: true, order: 7 })
+        expect(bar.find((b) => b.id === 'table.insert')).toMatchObject({ tableInsertOnly: true, writableOnly: true })
         expect(bar.filter((b) => b.contextualGroup === 'table').map((b) => b.id)).toEqual([
             'table.addRow',
             'table.addColumn',
@@ -392,13 +395,13 @@ describe('registerEditorCommands — a locked Protected Document', () => {
             'editor.toggleBullet',
             'editor.insertWikilinkOpen',
             'editor.insertWikilinkClose',
+            'editor.outdent',
+            'editor.indent',
             'editor.toggleTask',
             'editor.undo',
             'editor.redo',
             'asset.upload',
             'table.insert',
-            'editor.outdent',
-            'editor.indent',
             'editor.moveUp',
             'editor.moveDown',
         ])
@@ -917,5 +920,35 @@ describe('registerEditorCommands — what the Command Bar and Command Menu offer
         ]
         for (const [query, id] of synonyms) expect(found(query), query).toContain(id)
         teardown()
+    })
+})
+
+describe('registerEditorCommands for a Plain Folder', () => {
+    function registered(plain: boolean) {
+        const commands = createCommandRegistry()
+        const contributions = createContributionRegistry()
+        registerEditorCommands(commands, contributions, { plain })
+        return {
+            commands,
+            menu: listCommandMenuItems(contributions, { inTable: true, tableInsertable: true, bodyWritable: true }).map((entry) => entry.id),
+            bar: listCommandBarItems(contributions).map((entry) => entry.id),
+        }
+    }
+
+    it('leaves out what writes a graph’s syntax, and keeps what edits text', () => {
+        const plain = registered(true)
+        for (const id of ['date.today', 'date.pick', 'editor.insertWikilinkOpen', 'task.bar.priority', 'search.open', 'workspace.reset']) {
+            expect(plain.commands.has(id)).toBe(false)
+            expect([...plain.menu, ...plain.bar]).not.toContain(id)
+        }
+        for (const id of ['editor.bold', 'table.insert', 'editor.insertCodeBlock', 'document.findReplace']) expect(plain.menu).toContain(id)
+        for (const id of ['editor.toggleBullet', 'editor.indent', 'editor.undo']) expect(plain.bar).toContain(id)
+    })
+
+    it('changes nothing for a graph', () => {
+        const graph = registered(false)
+        expect(graph.commands.has('date.today')).toBe(true)
+        expect(graph.menu).toContain('date.today')
+        expect(graph.bar).toContain('editor.insertWikilinkOpen')
     })
 })

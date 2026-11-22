@@ -63,7 +63,7 @@ export function buildActionCluster<T>(view: EditorView, options: ActionClusterOp
         const button = wrap.appendChild(document.createElement('button'))
         button.type = 'button'
         button.className = options.buttonClass
-        button.title = action.label
+        button.dataset.tooltip = action.label
         button.setAttribute('aria-label', `${action.label} ${options.name}`)
         button.setAttribute(options.actionAttr, action.command)
         // The icon markup is in-repo constant text (surface/icons.ts), never document content.
@@ -96,7 +96,7 @@ export function showConfirmation(button: HTMLButtonElement): void {
     if (!state || !confirm) return
     const paint = (icon: string, label: string, done: boolean) => {
         setTrustedMarkup(button, iconSvg(icon, { size: state.size }))
-        button.title = label
+        button.dataset.tooltip = label
         button.setAttribute('aria-label', `${label} ${state.name}`)
         button.classList.toggle(`${state.buttonClass}--done`, done)
     }

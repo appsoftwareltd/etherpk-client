@@ -35,7 +35,7 @@
      * the click's user gesture, and the empty-folder check must fail while there is still
      * a dialog to show the message in. After that the [[Activity Toast]] owns the run.
      */
-    import { tick } from "svelte";
+    import { onMount, tick } from "svelte";
     import { ActivityConflictError, isRunning } from "#lib/activity/store.js";
     import { isFsaSupported, isPickerCancel, pickGraphDirectory } from "#lib/storage/index.js";
     import type { GraphRegistry } from "#lib/storage/graph-registry.js";
@@ -60,6 +60,8 @@
         type PreparedSource,
         type ServerImportResult,
     } from "../run-import";
+    import { type WalkableDirectory, walkDirectory } from "../directory-handle-source";
+    import { describeSource } from "../source";
     import { prepareZipSource } from "../zip-source";
     import { encryptedNotePaths } from "../asnotes-layout";
     import { protectionToUnlock } from "../source-protection";
@@ -74,6 +76,8 @@
         getWrapKey,
         ensureVaultReady,
         opfsDestination = false,
+        sourceFolder = null,
+        sourceFormat = null,
         onclose,
         onimported,
         onsettled,
@@ -97,6 +101,17 @@
         ensureVaultReady?: (origin: string) => Promise<void>;
         /** Dev/e2e gate (?fs=opfs): materialise into an OPFS folder instead of the FSA picker. */
         opfsDestination?: boolean;
+        /**
+         * A folder the person has already chosen, on the Graphs page, as what to import: the
+         * dialog opens with it read, as if it had been picked here. The import copies from it and
+         * never writes to it.
+         */
+        sourceFolder?: FileSystemDirectoryHandle | null;
+        /**
+         * What `sourceFolder` was read as when it was chosen. The walk here leaves out the
+         * directories another tool marks its folder with (`.obsidian`), so it cannot tell by itself.
+         */
+        sourceFormat?: ImportFormat | null;
         onclose: () => void;
         /** "Open" on the finished toast, or the fresh-account key ritual. Never fires on its own. */
         onimported: (result: { graphId: string } | ServerImportResult) => void;
@@ -217,6 +232,24 @@
         open = false;
         onclose();
     }
+
+    /** Read a folder handed over by the Graphs page, as the source picker would have. */
+    async function readSourceFolder(folder: FileSystemDirectoryHandle) {
+        busy = true;
+        error = null;
+        try {
+            const files = await walkDirectory(folder as unknown as WalkableDirectory);
+            if (files.length === 0) error = "That folder holds no files.";
+            else accept({ ...describeSource(files, folder.name), ...(sourceFormat ? { format: sourceFormat } : {}) });
+        } catch (e) {
+            error = `Could not read that folder: ${(e as Error).message}`;
+        } finally {
+            busy = false;
+        }
+    }
+    onMount(() => {
+        if (sourceFolder) void readSourceFolder(sourceFolder);
+    });
 
     function onSourcePicked() {
         const files = sourceInput?.files;

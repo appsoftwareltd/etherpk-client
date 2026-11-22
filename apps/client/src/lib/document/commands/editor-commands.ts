@@ -8,6 +8,7 @@
  * ids below. Handlers no-op when no editor is focused or the caret is not in a table.
  */
 
+import { indentLess, indentMore } from '@codemirror/commands'
 import type { EditorView } from '@codemirror/view'
 
 import { showNotice } from '#lib/activity/notices.js'
@@ -36,6 +37,8 @@ import {
     toggleFoldAtCaret,
     toggleTask,
 } from '../view/outliner-keymap'
+import { indentListItem, outdentListItem } from '../view/list-items-keymap'
+import { isTextFile } from '../view/text-file'
 import type { MarkdownTable } from '../markdown-table'
 import {
     addColumns,
@@ -113,15 +116,47 @@ function editTableAtCursor(
     return true
 }
 
-/** Register the date + table Commands and their Command Menu descriptors. Returns a teardown. */
+/**
+ * What a [[Plain Folder]] leaves out of the editor's Commands, by id: the ones that write a graph's
+ * syntax (a day as a wikilink, `[[`, a task's tags) or act on a graph (its search, its workspace).
+ * A file there is plain markdown, and a row that wrote `[[2026-11-21]]` into it would write text.
+ */
+const GRAPH_ONLY = new Set([
+    'date.today',
+    'date.yesterday',
+    'date.tomorrow',
+    'date.pick',
+    'editor.insertWikilinkOpen',
+    'editor.insertWikilinkClose',
+    'task.bar.priority',
+    'task.bar.status',
+    'task.bar.due',
+    'task.bar.menu',
+    'search.open',
+    'workspace.reset',
+    'asset.upload',
+])
+
+/**
+ * Register the date + table Commands and their Command Menu descriptors. Returns a teardown.
+ * With `plain`, for a Plain Folder's workspace, the graph's own are left out ({@link GRAPH_ONLY}).
+ */
 export function registerEditorCommands(
     commands: CommandRegistry,
     contributions: ContributionRegistry,
+    options: { plain?: boolean } = {},
 ): () => void {
     const offs: (() => void)[] = []
-    const command = (id: string, handler: (arg?: unknown) => void) => offs.push(commands.register(id, handler))
-    const item = (descriptor: CommandMenuItem) => offs.push(registerCommandMenuItem(contributions, descriptor))
-    const barItem = (descriptor: CommandBarItem) => offs.push(registerCommandBarItem(contributions, descriptor))
+    const wanted = (id: string) => !(options.plain && GRAPH_ONLY.has(id))
+    const command = (id: string, handler: (arg?: unknown) => void) => {
+        if (wanted(id)) offs.push(commands.register(id, handler))
+    }
+    const item = (descriptor: CommandMenuItem) => {
+        if (wanted(descriptor.id)) offs.push(registerCommandMenuItem(contributions, descriptor))
+    }
+    const barItem = (descriptor: CommandBarItem) => {
+        if (wanted(descriptor.id)) offs.push(registerCommandBarItem(contributions, descriptor))
+    }
 
     /** A handler that needs the focused editor; no-ops when there is none. */
     const withView = (fn: (view: EditorView, arg?: unknown) => void) => (arg?: unknown) => {
@@ -146,12 +181,15 @@ export function registerEditorCommands(
     // Thin wrappers over the CM-native outliner commands, reachable from the mobile
     // Command Bar (and any future keybinding/palette). The keymap still calls the CM
     // commands directly — these wrappers are additive (Dual Mode Editor.md → Command Bar).
-    command('editor.indent', withWritableView((view) => void indentBranch(view)))
-    command('editor.outdent', withWritableView((view) => void outdentBranch(view)))
-    command('editor.moveUp', withWritableView((view) => void moveBranchUp(view)))
-    command('editor.moveDown', withWritableView((view) => void moveBranchDown(view)))
-    command('editor.toggleTask', withWritableView((view) => void toggleTask(view)))
-    command('editor.toggleBullet', withWritableView((view) => void toggleBullet(view)))
+    // A text file that is not markdown has no outline: indent moves its text, and the rest do nothing.
+    const inOutline = (fn: (view: EditorView) => void) => withWritableView((view) => void (view.state.facet(isTextFile) || fn(view)))
+    // In a Plain Folder the other list kinds answer first, as they do to the keys (list-items-keymap.ts).
+    command('editor.indent', withWritableView((view) => void (view.state.facet(isTextFile) ? indentMore(view) : indentListItem(view) || indentBranch(view))))
+    command('editor.outdent', withWritableView((view) => void (view.state.facet(isTextFile) ? indentLess(view) : outdentListItem(view) || outdentBranch(view))))
+    command('editor.moveUp', inOutline((view) => void moveBranchUp(view)))
+    command('editor.moveDown', inOutline((view) => void moveBranchDown(view)))
+    command('editor.toggleTask', inOutline((view) => void toggleTask(view)))
+    command('editor.toggleBullet', inOutline((view) => void toggleBullet(view)))
     command('editor.toggleFold', withView((view) => void toggleFoldAtCaret(view)))
     command('editor.openCommandMenu', withView((view) => openCommandMenu(view)))
     // The bracket buttons. Over a selection the wrap rule takes (one line, not only whitespace, not
@@ -282,26 +320,29 @@ export function registerEditorCommands(
         command: 'editor.insertWikilinkClose',
         writableOnly: true,
     })
-    barItem({ id: 'asset.upload', icon: 'image', label: 'Upload', order: 6, command: 'asset.upload', writableOnly: true })
+    barItem({ id: 'asset.upload', icon: 'image', label: 'Upload', order: 8, command: 'asset.upload', writableOnly: true })
     // Insert is never dead the way the edits are, so it is a fixed button: greyed only where no
     // table can go (code, frontmatter, inside a table), where its Command refuses.
-    barItem({ id: 'table.insert', icon: 'table', label: 'Insert table', order: 7, command: 'table.insert', tableInsertOnly: true, writableOnly: true })
-    barItem({ id: 'editor.outdent', icon: 'outdent', label: 'Outdent', order: 10, command: 'editor.outdent', outlinerOnly: true, writableOnly: true })
+    barItem({ id: 'table.insert', icon: 'table', label: 'Insert table', order: 9, command: 'table.insert', tableInsertOnly: true, writableOnly: true })
+    // Outdent and Indent come straight after the `[[ ]]` pair (orders 4 and 5): with the bullet
+    // toggle they are how a phone shapes an outline while typing, so they sit in the strip's first
+    // screenful, ahead of the task toggle.
+    barItem({ id: 'editor.outdent', icon: 'outdent', label: 'Outdent', order: 4, command: 'editor.outdent', outlinerOnly: true, writableOnly: true })
     // Indent is live on prose too: there it makes the line a block (the mobile way into block mode).
-    barItem({ id: 'editor.indent', icon: 'indent', label: 'Indent', order: 20, command: 'editor.indent', convertibleOnly: true, writableOnly: true })
+    barItem({ id: 'editor.indent', icon: 'indent', label: 'Indent', order: 5, command: 'editor.indent', convertibleOnly: true, writableOnly: true })
     barItem({ id: 'editor.moveUp', icon: 'move-up', label: 'Move up', order: 30, command: 'editor.moveUp', outlinerOnly: true, writableOnly: true })
     barItem({ id: 'editor.moveDown', icon: 'move-down', label: 'Move down', order: 40, command: 'editor.moveDown', outlinerOnly: true, writableOnly: true })
-    // Order 4, after the `[[ ]]` triggers, not 50 among the block ops: on a phone the strip
+    // Order 6, after Outdent and Indent, not 50 among the block ops: on a phone the strip
     // scrolls, and at 50 the one button people reach for on a task was off-screen.
     // `taskToggleOnly`, not `outlinerOnly`: on prose the toggle MAKES the line a task, so the
     // button is live there too; it is disabled only where the command refuses (heading, code,
     // frontmatter) — the two read the same predicate.
-    barItem({ id: 'editor.toggleTask', icon: 'task', label: 'Toggle task', order: 4, command: 'editor.toggleTask', taskToggleOnly: true, writableOnly: true })
-    // Order 5, still in the strip's first screenful: undo is the button reached for in a hurry, and a
+    barItem({ id: 'editor.toggleTask', icon: 'task', label: 'Toggle task', order: 6, command: 'editor.toggleTask', taskToggleOnly: true, writableOnly: true })
+    // Order 7, at the edge of the strip's first screenful: undo is the button reached for in a hurry, and a
     // soft keyboard has no Mod-z. Greyed on an empty stack (`undoOnly` / `redoOnly` ←
     // `editorContext.canUndo` / `canRedo`), so the pair also shows whether there is anything to undo.
-    barItem({ id: 'editor.undo', icon: 'undo', label: 'Undo', order: 5, command: 'editor.undo', undoOnly: true, writableOnly: true })
-    barItem({ id: 'editor.redo', icon: 'redo', label: 'Redo', order: 5, command: 'editor.redo', redoOnly: true, writableOnly: true })
+    barItem({ id: 'editor.undo', icon: 'undo', label: 'Undo', order: 7, command: 'editor.undo', undoOnly: true, writableOnly: true })
+    barItem({ id: 'editor.redo', icon: 'redo', label: 'Redo', order: 7, command: 'editor.redo', redoOnly: true, writableOnly: true })
     barItem({ id: 'editor.toggleFold', icon: 'fold', label: 'Fold', order: 60, command: 'editor.toggleFold', outlinerOnly: true })
     // Last of the scrolling buttons: the pinned group at the bar's right end is for the buttons
     // extensions pin there, and zoom is set once and left.

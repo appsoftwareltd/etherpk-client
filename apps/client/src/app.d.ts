@@ -23,6 +23,11 @@ declare global {
              */
             etherpkSettings?: { tab: import('#lib/workspace/device-memory.js').SettingsTab; pushed: boolean }
             /**
+             * The [[Plain Folder]] this entry is in, by id. An address cannot say which of two
+             * folders with one name is meant (ADR 0194).
+             */
+            etherpkPlainFolder?: string
+            /**
              * The graph this entry is in, by id (chosen-graph.ts). An address cannot say which of
              * two folder graphs kept in folders with one name is meant (ADR 0192).
              */
@@ -38,6 +43,15 @@ declare global {
 
     /** This Client's release (`apps/client/package.json`), frozen in by vite.config.ts. */
     const __RELEASE_VERSION__: string
+}
+
+// `aria-description` (WAI-ARIA 1.3) is read by browsers and screen readers, but Svelte's element
+// types predate it. A button whose tooltip says more than its name gives a screen reader the same
+// words with it (surface/tooltip.ts, scripts/repository-rules.test.mjs).
+declare module 'svelte/elements' {
+    interface AriaAttributes {
+        'aria-description'?: string | undefined | null
+    }
 }
 
 export {}

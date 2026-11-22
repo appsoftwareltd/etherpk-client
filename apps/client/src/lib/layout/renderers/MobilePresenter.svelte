@@ -451,7 +451,7 @@
         <button
             class="toggle"
             data-testid="mobile-toggle-left"
-            title="Toggle document tree"
+            data-tooltip="Toggle document tree"
             aria-label="Toggle document tree"
             aria-expanded={leftOpen}
             onclick={() => toggleSidebarExclusive('left')}
@@ -528,7 +528,7 @@
         <button
             class="toggle"
             data-testid="mobile-toggle-right"
-            title="Toggle backlinks"
+            data-tooltip="Toggle backlinks"
             aria-label="Toggle backlinks"
             aria-expanded={rightOpen}
             onclick={() => toggleSidebarExclusive('right')}
@@ -577,7 +577,7 @@
                         <button
                             class="tabmenu-close"
                             data-testid="mobile-tab-close"
-                            title="Close"
+                            data-tooltip="Close" aria-description="Close"
                             aria-label="Close {title}"
                             onclick={() => controller.closeView(v.view)}
                             onkeydown={onListKeydown}

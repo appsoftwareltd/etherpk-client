@@ -57,7 +57,7 @@ pgdata/
 
 .agenttest
 
-# EtherPK extension local state (managed by extension, always ignored)
+# EtherPK state
 
 .etherpk/
 

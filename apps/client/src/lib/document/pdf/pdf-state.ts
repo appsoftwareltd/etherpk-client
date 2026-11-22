@@ -167,7 +167,11 @@ export interface PdfStateStore {
 
 /** Reaches the stores of the open graph, for whichever backend it is on. */
 export interface PdfStateHost {
-    open(hash: string): Promise<PdfStateStore>
+    /**
+     * `target` is the tab's own name for the PDF. A host that keeps state by where the file is as
+     * well as by its bytes (a Plain Folder's) reads it; the others go by the hash alone.
+     */
+    open(hash: string, target?: string): Promise<PdfStateStore>
     /** Delete a PDF's state for good, with the PDF itself. */
     forget(hash: string): Promise<void>
 }

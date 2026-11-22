@@ -62,7 +62,7 @@
         <button
             type="button"
             class={["action", { done: shown !== action }]}
-            title={shown.label}
+            data-tooltip={shown.label} aria-description={shown.label}
             aria-label="{shown.label} {name}"
             {...{ [`data-${kind}-action`]: action.command }}
             onclick={(event) => {

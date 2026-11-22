@@ -30,7 +30,7 @@
 </script>
 
 <div class="etherpk-tool-options" data-open={open || undefined} data-testid={`${testid}-tool-options`}>
-    <button type="button" class="etherpk-tool-options-toggle" data-own-button-style="a tab held against the page's edge, showing the colour in hand" aria-label={label} title={label} aria-expanded={open} aria-controls={listId} onclick={ontoggle} data-testid={`${testid}-tool-options-toggle`}>
+    <button type="button" class="etherpk-tool-options-toggle" data-own-button-style="a tab held against the page's edge, showing the colour in hand" aria-label={label} data-tooltip={label} aria-expanded={open} aria-controls={listId} onclick={ontoggle} data-testid={`${testid}-tool-options-toggle`}>
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
         {@html iconSvg(open ? "pdf-page-next" : "pdf-page-previous")}
         <span class="size-5 rounded-full border border-neutral-400" style:background-color={colour} data-testid={`${testid}-tool-options-colour`}></span>

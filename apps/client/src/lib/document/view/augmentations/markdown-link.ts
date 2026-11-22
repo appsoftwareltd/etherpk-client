@@ -19,14 +19,14 @@
  */
 
 import { syntaxTree } from '@codemirror/language'
-import { EditorSelection, type EditorState, type Extension, type Range } from '@codemirror/state'
+import { EditorSelection, type EditorState, type Extension, Facet, type Range } from '@codemirror/state'
 import { Decoration, EditorView, type MouseSelectionStyle, WidgetType } from '@codemirror/view'
 
 import { fileLinkActions, LINK_COPY_PATH, runLinkCommand } from '../../link-affordances'
 import { hiddenSyntax, hiddenSyntaxPieces, hiddenSyntaxPlugin, type HiddenSyntaxSpec } from './base-renderer'
 import { assetLinkSpec } from './asset-link'
 import { actionClusterTheme, buildActionCluster, confirmClusterAction } from './inline-actions'
-import { caretBesideLink, type LinkPiece, linkPieces } from './markdown-link-core'
+import { caretBesideLink, isOpenableUrl, type LinkPiece, linkPieces } from './markdown-link-core'
 
 /** The clickable mark. One class for all three shapes — link-cursor.ts keys its cursor off it. */
 function linkMark(href: string): Decoration {
@@ -74,6 +74,17 @@ class FileLinkActionsWidget extends WidgetType {
     }
 }
 
+/** Follows a link whose destination is a path, not an address: a file of a [[Plain Folder]]. */
+export type RelativeLinkOpener = (href: string, placement: 'tab' | 'right' | 'below') => void
+
+/**
+ * The opener for links between files, where there is one. Its presence is also what says every
+ * relative destination is a link here, a reference into an `assets` folder included.
+ */
+const relativeLinkOpener = Facet.define<RelativeLinkOpener, RelativeLinkOpener | null>({
+    combine: (openers) => openers[0] ?? null,
+})
+
 /**
  * Links as a declaration over the base renderer (base-renderer.ts). Line-kind reveal
  * (reveal-policy.ts): a link's syntax shows raw while the caret is on its line.
@@ -87,6 +98,7 @@ export const markdownLinkSpec: HiddenSyntaxSpec = {
             from,
             to,
             isActiveLine: (pos) => reveal.lineRevealedAt(pos),
+            assetRefsAreLinks: state.facet(relativeLinkOpener) !== null,
         })) {
             switch (piece.kind) {
                 case 'link':
@@ -189,7 +201,7 @@ const theme = EditorView.baseTheme({
 })
 
 /** The markdown-link augmentation: render link text + plain-click to open (prose and outliner blocks). */
-export function markdownLinkAugmentation(): Extension {
+export function markdownLinkAugmentation(options: { openRelative?: RelativeLinkOpener } = {}): Extension {
     // Plain click opens; the mod key suppresses it, leaving the click to place the caret and
     // start a selection inside the link text (the wikilink / asset-link rule). Taken on
     // `mousedown`, before the caret lands on the line and rebuilds this decoration.
@@ -213,10 +225,21 @@ export function markdownLinkAugmentation(): Extension {
             const href = el.getAttribute('data-href')
             if (!href) return false
             event.preventDefault()
-            window.open(href, '_blank', 'noopener,noreferrer')
+            // A path, where the workspace can follow one: the file opens in a tab here. An address
+            // (or a path in a graph, which has nowhere to lead) goes to the browser.
+            const openRelative = view.state.facet(relativeLinkOpener)
+            if (openRelative && !isOpenableUrl(href)) openRelative(href, 'tab')
+            else window.open(href, '_blank', 'noopener,noreferrer')
             return true
         },
     })
 
-    return [linkSyntax, clickHandler, besideLink, theme, actionClusterTheme('cm-file-link-actions', 'cm-file-link-action')]
+    return [
+        linkSyntax,
+        clickHandler,
+        besideLink,
+        theme,
+        actionClusterTheme('cm-file-link-actions', 'cm-file-link-action'),
+        options.openRelative ? relativeLinkOpener.of(options.openRelative) : [],
+    ]
 }

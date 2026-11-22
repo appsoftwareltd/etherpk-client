@@ -164,7 +164,9 @@
                 class="gk-icon-button"
                 aria-pressed={pinned !== null}
                 aria-label={pinned !== null ? `Unpin from ${pinned}` : concept ? `Pin to ${concept}` : "Pin"}
-                title={pinned !== null
+                data-tooltip={pinned !== null
+                    ? `Pinned to ${pinned} - click to follow the editor again`
+                    : "Keep showing this document's backlinks while you open others"} aria-description={pinned !== null
                     ? `Pinned to ${pinned} - click to follow the editor again`
                     : "Keep showing this document's backlinks while you open others"}
                 data-testid="backlinks-pin"

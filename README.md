@@ -9,6 +9,28 @@ The source of the [EtherPK](https://etherpk.com) Client and Headless Client, ava
 
 [Try the demo](https://app.etherpk.com/demo) from [etherpk.com](<https://etherpk.com>). It runs in your browser and needs no account (data remains in your browser).
 
+## One Markdown Notes App For Everything
+
+**Fast, Private, Secure Knowledge Management**
+
+Write, think, link your ideas, manage tasks, hand work to AI agents, publish to the web. Your data
+stays yours.
+
+EtherPK is a notes app and PKMS with a lot to offer.
+
+- Long-form prose and outliner features in the same documents
+- Robust wikilinking and aliasing
+- Plain local markdown files, or Sync+ with export
+- Task management and Kanban boards
+- PDF and EBook Reader
+- Document Versioning
+- Real-time collaboration
+- Quick Notes, with sharing from other apps
+- End-to-end encryption
+- Static site publishing
+- AI agent integration
+- Source-available Client
+
 **Document Editor (Prose and Outliner Blocks)**
 
 ![The EtherPK Client in the dark theme: a page in the editor, with prose, headings and an outline of bullets full of wikilinks, and the page's Backlinks beside it](.github/assets/etherpk-page.webp)
@@ -31,8 +53,9 @@ The source of the [EtherPK](https://etherpk.com) Client and Headless Client, ava
 
 EtherPK is a personal knowledge base in plain Markdown. Journal entries hold daily thinking, pages
 hold what outlives a day, and `[[wikilinks]]` tie them into a knowledge graph. The **Client** is the
-editor: a SvelteKit app that opens a graph from a folder on your computer, or from a Sync Server
-that stores graphs end-to-end encrypted and cannot read them. The **Headless Client** is the same
+editor: a SvelteKit app that opens a graph from a folder on your device, or from a Sync Server
+that stores graphs end-to-end encrypted and cannot read them. It also edits any folder of Markdown
+files where it is, as a Plain Folder, without making it a graph. The **Headless Client** is the same
 engine without an editor: an MCP server that gives an AI agent one of your graphs.
 
 User documentation is at <https://docs.etherpk.com>.
@@ -70,6 +93,9 @@ Open <http://localhost:3000>. With no settings the Client works with graph folde
 computer and offers a **Custom server** form for connecting to a Sync Server by its address. The
 settings it reads are listed, with their defaults, in
 [`apps/client/.env.example`](apps/client/.env.example) - pass them with `--env-file`.
+
+An example Docker Compose file is in
+[Running EtherPK With Docker](https://docs.etherpk.com/running-etherpk-with-docker).
 
 ### Node bundle
 

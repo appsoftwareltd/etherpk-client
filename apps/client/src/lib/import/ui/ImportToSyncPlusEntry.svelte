@@ -31,7 +31,7 @@
             type="button"
             onclick={open}
             data-testid="import-to-sync-plus-header"
-            title="Copy this folder graph into a new synced graph, end-to-end encrypted and on all your devices."
+            data-tooltip="Copy this folder graph into a new synced graph, end-to-end encrypted and on all your devices." aria-description="Copy this folder graph into a new synced graph, end-to-end encrypted and on all your devices."
             class="gk-button hidden lg:inline-flex"
         >
             <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">

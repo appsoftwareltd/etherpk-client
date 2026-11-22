@@ -459,7 +459,7 @@
                     </div>
                     <span id="search-ghost-hint" class="sr-only">Press Tab to complete {ghost.suggestion.text}:</span>
                 {/if}
-                <button type="button" class="search__close" aria-label="Close search" title="Close search" onclick={dismiss} data-testid="search-close">
+                <button type="button" class="search__close" aria-label="Close search" data-tooltip="Close search" onclick={dismiss} data-testid="search-close">
                     <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                     {@html iconSvg("close", { size: 18 })}
                 </button>

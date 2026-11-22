@@ -10,7 +10,7 @@
  */
 
 import { foldedRanges, foldEffect, unfoldEffect } from '@codemirror/language'
-import type { EditorState, Extension, StateEffect } from '@codemirror/state'
+import { type EditorState, type Extension, Facet, type StateEffect } from '@codemirror/state'
 import { type EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
 import { conceptKey } from '../../backlinks/backlink-index'
@@ -99,6 +99,12 @@ export function foldsToEffects(state: EditorState, lines: readonly number[]): St
 
 const isProtected = (state: EditorState) => state.facet(isProtectedDocumentFacet)()
 
+/**
+ * How a document is named in the fold memory. A graph's documents are concepts, which fold case. A
+ * Plain Folder's are paths, which do not: `README.md` and `readme.md` can be two files.
+ */
+const foldKey = Facet.define<(name: string) => string, (name: string) => string>({ combine: (values) => values[0] ?? conceptKey })
+
 const persistence = ViewPlugin.fromClass(
     class {
         /** The document's key in the memory, or null outside a document (nothing is kept). */
@@ -110,7 +116,7 @@ const persistence = ViewPlugin.fromClass(
 
         constructor(readonly view: EditorView) {
             const doc = view.state.facet(editorDocument)
-            this.key = doc ? conceptKey(doc.concept) : null
+            this.key = doc ? view.state.facet(foldKey)(doc.concept) : null
             this.unsubscribe = this.key ? activeFoldMemory().subscribe(this.key, (source) => source !== this && this.follow()) : () => {}
             this.restore()
         }
@@ -168,7 +174,10 @@ const persistence = ViewPlugin.fromClass(
     },
 )
 
-/** Keep this editor's folds on the device (fold-memory.ts). Needs `editorDocument` to know which document. */
-export function foldPersistence(): Extension {
-    return persistence
+/**
+ * Keep this editor's folds on the device (fold-memory.ts). Needs `editorDocument` to know which
+ * document. `key` names the document in the memory, when a concept's own key is not its name.
+ */
+export function foldPersistence(key?: (name: string) => string): Extension {
+    return key ? [foldKey.of(key), persistence] : persistence
 }

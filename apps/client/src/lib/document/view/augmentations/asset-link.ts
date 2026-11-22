@@ -111,7 +111,7 @@ class AssetExtensionWidget extends WidgetType {
         attachAssetContextMenu(view, pill, resolve)
         if (!action) return pill
         pill.setAttribute('type', 'button')
-        pill.setAttribute('title', action)
+        pill.setAttribute('data-tooltip', action)
         pill.setAttribute('aria-label', `${action} ${displayNameForRef(this.ref)}`)
         // mousedown, as the link and the actions take it, before the editor would place the caret.
         pill.addEventListener('mousedown', (event) => {

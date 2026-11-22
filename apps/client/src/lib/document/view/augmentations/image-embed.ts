@@ -40,7 +40,7 @@
  * asks again (`asset-load-retry.ts`); any other failure shows the broken state.
  */
 
-import { type EditorState, type Extension, findClusterBreak, type Range, StateEffect, StateField, type TransactionSpec } from '@codemirror/state'
+import { type EditorState, type Extension, Facet, findClusterBreak, type Range, StateEffect, StateField, type TransactionSpec } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
 
 import { AssetUnavailableError, type ResolvedAsset, assetNameFromRef } from '#lib/storage/fs/asset-store.js'
@@ -90,6 +90,36 @@ export interface ImageEmbedOptions {
     /** Resolve an [[Asset Reference]] to its bytes, name and type; `null` ⇒ render a broken-image
      *  affordance. The widget needs more than the url: the overlay's download names the file. */
     resolveAsset: (ref: string) => Promise<ResolvedAsset | null>
+    /**
+     * Whether a picture at an address on the network may load. Without it every such picture
+     * loads, as in a graph. A [[Plain Folder]] gives one: its pictures wait for the person's word.
+     */
+    remote?: RemoteImagePolicy
+}
+
+/**
+ * The say over pictures fetched from the network (`http:` and `https:` addresses). A picture
+ * embedded in the text (`data:`) or held by the page (`blob:`) is not one.
+ */
+export interface RemoteImagePolicy {
+    allowed(): boolean
+    /** The person asked for remote pictures to load. */
+    allow(): void
+    /** Told when the answer changes. Returns an unsubscribe. */
+    onChange(listener: () => void): () => void
+}
+
+const remoteImagePolicy = Facet.define<RemoteImagePolicy, RemoteImagePolicy | null>({ combine: (policies) => policies[0] ?? null })
+
+const NETWORK_ADDRESS = /^https?:/i
+
+/** The host a picture would be fetched from, for the sentence that says it was not. */
+function hostOf(url: string): string {
+    try {
+        return new URL(url.trim()).host
+    } catch {
+        return 'the network'
+    }
 }
 
 /** How far the action overlay is inset from the image's top-right corner. */
@@ -421,35 +451,108 @@ class ImageWidget extends WidgetType {
                 if (img.complete && img.naturalWidth > 0) reveal()
             })
         }
+        const held = this.heldBack(view, placeholder, () => start(this.url))
+        if (held) pendingLoads.set(root, held)
+        else this.fetchPicture(root, placeholder, start, fail)
+        return root
+    }
+
+    /**
+     * A picture on the network waits for the person's word where a policy says so: fetching it
+     * tells the address this file was read. Returns what stops the wait, or null to load it now.
+     */
+    private heldBack(view: EditorView, placeholder: HTMLElement, load: () => void): (() => void) | null {
+        // Asked only of a picture that would be fetched from the network.
+        const policy = NETWORK_ADDRESS.test(this.url.trim()) ? view.state.facet(remoteImagePolicy) : null
+        if (!policy || policy.allowed()) return null
+        this.showBlocked(placeholder, policy)
+        const off = policy.onChange(() => {
+            if (!policy.allowed()) return
+            off()
+            this.clearBlocked(placeholder)
+            load()
+        })
+        return off
+    }
+
+    /** Start the picture from its address, or from the Asset Store when it names an asset. */
+    private fetchPicture(root: HTMLElement, placeholder: HTMLElement, start: (url: string) => void, fail: () => void): void {
         if (isDirectImageUrl(this.url)) {
             start(this.url)
-        } else {
-            // A synced asset is downloaded first. A failure that may pass (the connection, a server
-            // failing for a moment) is not a missing image: the placeholder says so and the resolve
-            // is asked again. A damaged file is shown broken, as a missing one is.
-            let reported = false
-            const cancel = loadAssetWithRetry(() => this.resolveAsset(this.url), {
-                resolved: (resolved) => start(resolved.url),
-                missing: fail,
-                unavailable: (error) => {
-                    if (!reported) console.warn('[image] could not load an asset; retrying', error)
-                    reported = true
-                    this.showUnavailable(placeholder)
-                },
-                failed: (error) => {
-                    console.warn('[image] could not read an asset', error)
-                    fail()
-                },
-            }, { retryable: (error) => error instanceof AssetUnavailableError })
-            pendingLoads.set(root, cancel)
+            return
         }
-        return root
+        // A synced asset is downloaded first. A failure that may pass (the connection, a server
+        // failing for a moment) is not a missing image: the placeholder says so and the resolve
+        // is asked again. A damaged file is shown broken, as a missing one is.
+        let reported = false
+        const cancel = loadAssetWithRetry(() => this.resolveAsset(this.url), {
+            resolved: (resolved) => start(resolved.url),
+            missing: fail,
+            unavailable: (error) => {
+                if (!reported) console.warn('[image] could not load an asset; retrying', error)
+                reported = true
+                this.showUnavailable(placeholder)
+            },
+            failed: (error) => {
+                console.warn('[image] could not read an asset', error)
+                fail()
+            },
+        }, { retryable: (error) => error instanceof AssetUnavailableError })
+        pendingLoads.set(root, cancel)
     }
 
     /** The widget left the document: stop asking for its picture. */
     destroy(dom: HTMLElement): void {
         pendingLoads.get(dom)?.()
         pendingLoads.delete(dom)
+    }
+
+    /**
+     * A picture on the network that has not been asked for: the placeholder says where it would
+     * come from and offers to load remote pictures, in place of a spinner for a fetch that is not
+     * happening.
+     */
+    private showBlocked(placeholder: HTMLElement, policy: RemoteImagePolicy): void {
+        placeholder.classList.add('cm-md-image--blocked')
+        placeholder.setAttribute('role', 'group')
+        placeholder.setAttribute('aria-label', 'Remote image not loaded')
+        placeholder.setAttribute('data-testid', 'remote-image-blocked')
+        placeholder.style.width = ''
+        placeholder.style.height = ''
+        placeholder.style.minHeight = ''
+        placeholder.replaceChildren()
+        const note = placeholder.appendChild(document.createElement('span'))
+        note.textContent = `Image from ${hostOf(this.url)} not loaded.`
+        const button = placeholder.appendChild(document.createElement('button'))
+        button.type = 'button'
+        button.className = 'gk-button gk-button--small'
+        button.textContent = 'Load remote images in this folder'
+        button.setAttribute('data-testid', 'remote-images-load')
+        // mousedown, so the press does not first move the caret onto the line and rebuild the widget.
+        // And it stops here: a press on the widget otherwise reveals the line's markdown.
+        button.addEventListener('mousedown', (event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            policy.allow()
+        })
+        button.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                policy.allow()
+            }
+        })
+    }
+
+    /** Back to the loading placeholder, once remote pictures are asked for. */
+    private clearBlocked(placeholder: HTMLElement): void {
+        placeholder.classList.remove('cm-md-image--blocked')
+        placeholder.removeAttribute('data-testid')
+        placeholder.setAttribute('role', 'status')
+        placeholder.setAttribute('aria-label', 'Loading image')
+        placeholder.replaceChildren()
+        placeholder.appendChild(document.createElement('span')).className = 'cm-md-image-spinner'
+        placeholder.style.width = '12em'
+        placeholder.style.minHeight = '3em'
     }
 
     /**
@@ -837,6 +940,20 @@ const theme = EditorView.baseTheme({
         background: 'var(--gk-code-bg, rgba(127,127,127,0.10))',
         borderRadius: '3px',
     },
+    // A remote picture not asked for: a row in a frame of its own, the sentence and the button
+    // that loads them. Chrome inside the text keeps to 14px whatever the editor's zoom.
+    '.cm-md-image--blocked': {
+        justifyContent: 'flex-start',
+        flexWrap: 'wrap',
+        gap: '0.5em 0.75em',
+        padding: '0.5em 0.75em',
+        background: 'transparent',
+        border: '1px dashed var(--gk-border-strong)',
+        borderRadius: '8px',
+        color: 'var(--gk-text-muted)',
+        fontSize: 'max(0.875rem, 0.85em)',
+        lineHeight: '1.4',
+    },
     // A resolve that will be tried again: the note covers the placeholder without adding to its
     // height, at a line height that lets two lines sit in the default box.
     '.cm-md-image-unavailable': {
@@ -953,5 +1070,5 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
     })
 
     // Field order matters: frozen-height → uploading → imageField (reads both).
-    return [frozenHeightField, uploadingImagesField, imageField, pointer, theme, imageResizeTheme]
+    return [frozenHeightField, uploadingImagesField, imageField, pointer, theme, imageResizeTheme, options.remote ? remoteImagePolicy.of(options.remote) : []]
 }

@@ -19,6 +19,7 @@
             "files": [{ "name": "files", "accept": ["*/*", "image/*", "video/*", "audio/*", "text/*", "application/*", "message/*", "font/*", "model/*"] }]
         }
     },
+    "file_handlers": [{ "action": "/open-file", "accept": { "text/markdown": [".md", ".markdown"] }, "launch_type": "single-client" }],
     "shortcuts": [
         { "name": "Today's journal", "short_name": "Today", "url": "/?shortcut=today&source=pwa" },
         { "name": "Search", "url": "/?shortcut=search&source=pwa" },

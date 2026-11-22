@@ -21,6 +21,13 @@ describe('launchTarget', () => {
         expect(launchTarget('https://app.test/g/garden/d/Beans', origin, opened)).toBe('/g/garden/d/Beans')
     })
 
+    it('goes to a file of a Plain Folder, and to the page that shows a file opened from the file manager', () => {
+        expect(launchTarget('https://app.test/folder/garden/f/guide/watering.md', origin, opened)).toBe('/folder/garden/f/guide/watering.md')
+        expect(launchTarget('https://app.test/open-file', origin, opened)).toBe('/open-file')
+        // The launch that opened the page itself is not carried out twice.
+        expect(launchTarget('https://app.test/open-file', origin, 'https://app.test/open-file')).toBeNull()
+    })
+
     it('leaves the person where they are for a page that is no place in a graph', () => {
         expect(launchTarget('https://app.test/graphs', origin, opened)).toBeNull()
         expect(launchTarget('https://app.test/home', origin, opened)).toBeNull()

@@ -67,7 +67,7 @@
             onclick={onclear}
             class="gk-icon-button absolute top-1/2 right-0.5 -translate-y-1/2"
             aria-label={clearLabel ?? "Clear the filter"}
-            title={clearLabel ?? "Clear the filter"}
+            data-tooltip={clearLabel ?? "Clear the filter"}
             data-testid={clearTestid}
         >
             <!-- In-repo constant markup from the icon table, never user content. -->

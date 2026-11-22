@@ -46,7 +46,7 @@
         <button
             type="button"
             class="end-button gk-button gk-button--quiet gk-button--small"
-            title={button.hint}
+            data-tooltip={button.hint} aria-description={button.hint}
             data-testid={`end-of-document-${button.kind}`}
             onmousedown={keepEditorFocus}
             onclick={() => onstart(button.kind)}

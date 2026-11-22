@@ -20,7 +20,7 @@ export interface StoredOpfsFolder {
     opfsPath: string[]
 }
 
-function isStoredOpfsFolder(value: unknown): value is StoredOpfsFolder {
+export function isStoredOpfsFolder(value: unknown): value is StoredOpfsFolder {
     if (typeof value !== 'object' || value === null) return false
     const path = (value as Partial<StoredOpfsFolder>).opfsPath
     return Array.isArray(path) && path.every((name) => typeof name === 'string' && name.length > 0)
@@ -30,11 +30,28 @@ function isDirectoryHandle(value: unknown): value is FileSystemDirectoryHandle {
     return typeof value === 'object' && value !== null && (value as { kind?: unknown }).kind === 'directory'
 }
 
-async function folderAt(root: FileSystemDirectoryHandle, path: readonly string[]): Promise<FileSystemDirectoryHandle> {
+/** The folder at `path` from the OPFS root. Rejects with a `NotFoundError` when it is gone. */
+export async function folderAt(root: FileSystemDirectoryHandle, path: readonly string[]): Promise<FileSystemDirectoryHandle> {
     let folder = root
     // No `create`: a folder that is gone must read as gone, not come back empty.
     for (const name of path) folder = await folder.getDirectoryHandle(name)
     return folder
+}
+
+/**
+ * What to store for a folder's handle: its path when the folder is inside OPFS, else the handle
+ * itself. Shared with the Plain Folder registry, which keeps folders the same way.
+ */
+export async function handleForStorage(handle: unknown, opfsRoot: () => Promise<FileSystemDirectoryHandle>): Promise<unknown> {
+    if (!isDirectoryHandle(handle)) return handle
+    let path: string[] | null
+    try {
+        path = await (await opfsRoot()).resolve(handle)
+    } catch {
+        // No OPFS to resolve against, so nothing but the folder picker could have made the handle.
+        return handle
+    }
+    return path === null ? handle : ({ opfsPath: path } satisfies StoredOpfsFolder)
 }
 
 export function withOpfsFoldersByPath(
@@ -42,15 +59,9 @@ export function withOpfsFoldersByPath(
     opfsRoot: () => Promise<FileSystemDirectoryHandle>,
 ): GraphStoragePort {
     async function toStored(record: GraphRecord): Promise<GraphRecord> {
-        if (record.backend !== 'filesystem' || !isDirectoryHandle(record.handle)) return record
-        let path: string[] | null
-        try {
-            path = await (await opfsRoot()).resolve(record.handle)
-        } catch {
-            // No OPFS to resolve against, so nothing but the folder picker could have made the handle.
-            return record
-        }
-        return path === null ? record : { ...record, handle: { opfsPath: path } satisfies StoredOpfsFolder }
+        if (record.backend !== 'filesystem') return record
+        const handle = await handleForStorage(record.handle, opfsRoot)
+        return handle === record.handle ? record : { ...record, handle }
     }
 
     return {

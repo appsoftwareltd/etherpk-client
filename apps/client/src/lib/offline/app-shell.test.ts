@@ -21,6 +21,11 @@ describe('isAppPagePath', () => {
         }
     })
 
+    it('names a Plain Folder’s workspace and the page a file opened from the file manager lands on', () => {
+        for (const path of ['/folder/garden', '/folder/Garden%20Notes/f/guide/watering.md', '/open-file']) expect(isAppPagePath(path), path).toBe(true)
+        for (const path of ['/folder', '/folders/garden', '/open-file/x']) expect(isAppPagePath(path), path).toBe(false)
+    })
+
     it('still names an address of the shape before ADR 0192, which is sent on to the new one', () => {
         expect(isAppPagePath('/g/0d4c/d/Garden')).toBe(true)
     })

@@ -175,7 +175,7 @@
             >{#if assetExtension(part.ref)}{@const action = assetExtensionAction(part.ref)}{#if action}<button
                 type="button"
                 class="asset__extension"
-                title={action}
+                data-tooltip={action} aria-description={action}
                 aria-label={`${action} ${part.text}`}
                 data-testid="asset-extension"
                 onclick={(event) => {

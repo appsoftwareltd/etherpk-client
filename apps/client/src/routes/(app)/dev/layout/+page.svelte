@@ -199,24 +199,24 @@
 
         <span class="grp" title="One-click opens. Open the same one twice to see the singleton rule: it focuses, it does not remount (watch the mounts counter).">
             quick:
-            <button data-testid="quick-doc-a" title="Open document:doc-A in main" onclick={() => openTracked({ kind: 'document', target: 'doc-A' })}>doc A</button>
-            <button data-testid="quick-doc-b" title="Open document:doc-B in main" onclick={() => openTracked({ kind: 'document', target: 'doc-B' })}>doc B</button>
-            <button data-testid="quick-backlinks" title="Open backlinks:doc-A — lands in the right sidebar (its natural region)" onclick={() => openTracked({ kind: 'backlinks', target: 'doc-A' })}>backlinks→R</button>
-            <button data-testid="quick-tasks" title="Open tasks:tasks — lands in the right sidebar beside backlinks" onclick={() => openTracked({ kind: 'tasks', target: 'tasks' })}>tasks→R</button>
-            <button data-testid="quick-asset" title="Open asset:img-1 in main" onclick={() => openTracked({ kind: 'asset', target: 'img-1' }, { region: 'main' })}>asset→main</button>
-            <button data-testid="quick-open-editor" title="Open the real CodeMirror editor in main" onclick={() => openTracked({ kind: 'document-editor', target: 'lifecycle-doc' })}>editor→main</button>
+            <button data-testid="quick-doc-a" data-tooltip="Open document:doc-A in main" aria-description="Open document:doc-A in main" onclick={() => openTracked({ kind: 'document', target: 'doc-A' })}>doc A</button>
+            <button data-testid="quick-doc-b" data-tooltip="Open document:doc-B in main" aria-description="Open document:doc-B in main" onclick={() => openTracked({ kind: 'document', target: 'doc-B' })}>doc B</button>
+            <button data-testid="quick-backlinks" data-tooltip="Open backlinks:doc-A — lands in the right sidebar (its natural region)" aria-description="Open backlinks:doc-A — lands in the right sidebar (its natural region)" onclick={() => openTracked({ kind: 'backlinks', target: 'doc-A' })}>backlinks→R</button>
+            <button data-testid="quick-tasks" data-tooltip="Open tasks:tasks — lands in the right sidebar beside backlinks" aria-description="Open tasks:tasks — lands in the right sidebar beside backlinks" onclick={() => openTracked({ kind: 'tasks', target: 'tasks' })}>tasks→R</button>
+            <button data-testid="quick-asset" data-tooltip="Open asset:img-1 in main" aria-description="Open asset:img-1 in main" onclick={() => openTracked({ kind: 'asset', target: 'img-1' }, { region: 'main' })}>asset→main</button>
+            <button data-testid="quick-open-editor" data-tooltip="Open the real CodeMirror editor in main" aria-description="Open the real CodeMirror editor in main" onclick={() => openTracked({ kind: 'document-editor', target: 'lifecycle-doc' })}>editor→main</button>
         </span>
 
         <span class="grp" title="Close Views. 'active' closes whichever View is focused (incl. a forceNew copy). 'doc-A' closes the canonical document:doc-A only — forceNew copies keep their own handle and are not closed by ref.">
             close:
-            <button data-testid="close-active" title="Close the focused View" onclick={closeActive}>active</button>
-            <button data-testid="close-doc-a" title="Close the canonical document:doc-A (not its forceNew copies)" onclick={() => withRefresh(() => controller?.closeView({ kind: 'document', target: 'doc-A' }))}>doc A</button>
+            <button data-testid="close-active" data-tooltip="Close the focused View" aria-description="Close the focused View" onclick={closeActive}>active</button>
+            <button data-testid="close-doc-a" data-tooltip="Close the canonical document:doc-A (not its forceNew copies)" aria-description="Close the canonical document:doc-A (not its forceNew copies)" onclick={() => withRefresh(() => controller?.closeView({ kind: 'document', target: 'doc-A' }))}>doc A</button>
         </span>
 
         <span class="grp" title="Collapse / expand a docked Sidebar region. Also writes the sidebar-collapsed settings cookie.">
             sidebars:
-            <button data-testid="toggle-left" title="Collapse/expand the left sidebar" onclick={() => withRefresh(() => controller?.toggleSidebar('left'))}>toggle L</button>
-            <button data-testid="toggle-right" title="Collapse/expand the right sidebar" onclick={() => withRefresh(() => controller?.toggleSidebar('right'))}>toggle R</button>
+            <button data-testid="toggle-left" data-tooltip="Collapse/expand the left sidebar" aria-description="Collapse/expand the left sidebar" onclick={() => withRefresh(() => controller?.toggleSidebar('left'))}>toggle L</button>
+            <button data-testid="toggle-right" data-tooltip="Collapse/expand the right sidebar" aria-description="Collapse/expand the right sidebar" onclick={() => withRefresh(() => controller?.toggleSidebar('right'))}>toggle R</button>
         </span>
 
         <span class="grp" title="Swap presenters over the same controller + state. Desktop = dockview; force-mobile = single-active-View presenter.">
@@ -229,7 +229,7 @@
             state:
             <button
                 data-testid="reset"
-                title="Clear stored layout and return to the default"
+                data-tooltip="Clear stored layout and return to the default" aria-description="Clear stored layout and return to the default"
                 onclick={() =>
                     withRefresh(() => {
                         opened.clear()
@@ -237,7 +237,7 @@
                         void store?.clear(GRAPH_ID)
                         controller?.restore(null)
                     })}>reset</button>
-            <button data-testid="reload" title="Full page reload — layout should restore from the store" onclick={() => location.reload()}>⟳ reload</button>
+            <button data-testid="reload" data-tooltip="Full page reload — layout should restore from the store" aria-description="Full page reload — layout should restore from the store" onclick={() => location.reload()}>⟳ reload</button>
         </span>
 
         <span class="grp readout" title="mounts = total DevViews ever mounted (singleton reveal must NOT increment it; forceNew must). live = currently mounted. active = focused panel id.">

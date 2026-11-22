@@ -1,0 +1,55 @@
+/**
+ * The [[Plain Folder]] that is open, for the Views of its workspace.
+ *
+ * A View is mounted by the Layout with nothing but the thing it shows, so what it needs from the
+ * workspace around it comes through a module, as a graph's Views read the workspace services. The
+ * workspace publishes the session when the folder opens and clears it when it closes. One folder is
+ * open at a time: the route mounts a new workspace for another.
+ */
+import type { FolderTreeAdapter } from './folder-tree-adapter'
+import type { PlainFolderStore } from './plain-folder-store'
+import type { PlainMedia } from './plain-media'
+import type { LinkPlacement } from './plain-profile'
+
+export interface PlainSession {
+    /** The folder's id in this device's registry. Two folders can share a name, so this says which is open. */
+    readonly id: string
+    /** The folder's own name. */
+    readonly name: string
+    readonly tree: FolderTreeAdapter
+    readonly store: PlainFolderStore
+    readonly media: PlainMedia
+    /** The path of the file in front, or null. Reactive. */
+    readonly activePath: string | null
+    /** Goes up each time the folder may have changed on disk, so a listing is read again. Reactive. */
+    readonly listingEpoch: number
+    /** The directories that hold an EtherPK graph of their own (folder-index.ts). Reactive. */
+    readonly graphFolders: readonly string[]
+    /** Open the graph kept in the directory at `path` as a graph, leaving this folder. */
+    openAsGraph(path: string): Promise<void>
+    /** Open the file at `path`, in a tab or beside the one in front. */
+    openFile(path: string, placement?: LinkPlacement): Promise<void>
+    /** Say the folder's listing may have changed: something here created, moved or removed an entry. */
+    listingChanged(): void
+    /** The tree moved `from` to `to`: the tabs showing files there follow. */
+    entryMoved(from: string, to: string): void
+    /** The files kept at the top of the tree (plain-favourites.ts). Reactive. */
+    readonly favourites: readonly string[]
+    /** Add `path` to the Favourites, or remove it. Rejects when the folder could not be written. */
+    toggleFavourite(path: string): Promise<void>
+    /** A move may have broken links between files: find them and offer to mend them. */
+    linksMayHaveBroken(from: string, to: string): void
+    /** The tree removed `path`: the tabs showing files there close. */
+    entryRemoved(path: string): void
+}
+
+let published = $state.raw<PlainSession | null>(null)
+
+export const plainSession = {
+    get current(): PlainSession | null {
+        return published
+    },
+    set(next: PlainSession | null): void {
+        published = next
+    },
+}

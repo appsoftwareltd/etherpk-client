@@ -25,6 +25,9 @@ import { fenceInText, isProtectedDocumentFacet } from './augmentations/protected
 export const LOCKED_BODY_MESSAGE = 'This document is locked. Unlock it to edit or add assets.'
 
 export function bodyWritable(state: EditorState, status = getActiveProtectionStatus()): boolean {
+    // An editor opened read-only takes no edit from anything: a file of a [[Plain Folder]] that is
+    // not UTF-8, or is over the editing limit.
+    if (state.readOnly) return false
     if (!state.facet(isProtectedDocumentFacet)()) return true
     return (status?.isReadable() ?? false) && !fenceInText(state.doc)
 }

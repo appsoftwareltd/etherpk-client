@@ -64,6 +64,20 @@
     import { graphAddressOf, graphsSharingAnAddress } from "#lib/navigation/graph-address.js";
     import { chosenGraphState } from "#lib/workspace/chosen-graph.js";
     import { openChosenFolder } from "#lib/workspace/open-chosen-folder.js";
+    import { examineChosenFolder, registerPlainFolder } from "#lib/plain/choose-folder.js";
+    import type { FolderChoice, FolderVerdict } from "#lib/plain/classify-folder.js";
+    import type { ImportFormat } from "#lib/import/types.js";
+    import { chosenPlainFolderState, plainFolderUrl } from "#lib/plain/plain-address.js";
+    import type { PlainFolderRecord } from "#lib/plain/plain-folder-registry.js";
+    import { createIdbPlainFolderRegistry } from "#lib/plain/plain-folder-registry-idb.js";
+    import OpenFolderDialog from "#lib/plain/ui/OpenFolderDialog.svelte";
+    import PlainFoldersSection from "#lib/plain/ui/PlainFoldersSection.svelte";
+    import { createWebTreeAdapter } from "#lib/plain/web-tree-adapter.js";
+    import { forgetRemoteImageTrust } from "#lib/plain/remote-images.js";
+    import { LOCAL_LAYOUT_KEY_PREFIX } from "#lib/layout/store.js";
+    import { readKnownGraphFolders } from "#lib/storage/folder-ownership.js";
+    import { carriesFiles, dropRefusal, droppedHandle } from "#lib/plain/dropped-entry.js";
+    import { launchedFile } from "#lib/plain/launched-file.svelte.js";
     import {
     } from "#lib/storage/synced/mirror-takeover.js";
     import { deleteAssetCopies } from "#lib/storage/synced/asset-copies.js";
@@ -220,6 +234,7 @@
         MANAGED_SERVER_ICON,
         NOT_SET_ICON,
     } from "#lib/workspace/graphs-page-icons.js";
+    import { NOT_SYNCED_NOTE } from "#lib/workspace/graph-card.js";
     import { forgetGraphOnDevice } from "#lib/workspace/graph-device-memory.js";
     import { isDemoGraph } from "#lib/demo/demo-graph.js";
     import GraphChoicePanels from "#lib/workspace/GraphChoicePanels.svelte";
@@ -678,6 +693,27 @@
     let createPending = $state(false);
     // Import a graph from a Logseq / Obsidian / EtherPK / AS Notes source folder.
     let importDialog = $state(false);
+    /** A folder the person chose on the way to an import: the dialog opens with it as its source. */
+    let importSourceFolder = $state.raw<FileSystemDirectoryHandle | null>(null);
+    let importSourceFormat = $state<ImportFormat | null>(null);
+
+    // Plain Folders (ADR 0194): kept apart from the graphs, in a registry of their own.
+    const plainRegistry = createIdbPlainFolderRegistry();
+    let plainFolders = $state.raw<PlainFolderRecord[]>([]);
+    /** A chosen folder that is not a graph, and the question it raises. */
+    let folderQuestion = $state.raw<{ handle: FileSystemDirectoryHandle; verdict: Extract<FolderVerdict, { kind: "ask" }> } | null>(null);
+    let folderQuestionBusy = $state(false);
+    let folderQuestionError = $state<string | null>(null);
+    let plainFolderMessage = $state.raw<{ id: string; text: string; tone: "info" | "error" } | null>(null);
+
+    /** A list that cannot be read leaves the section out; the graphs above are not held up by it. */
+    async function listPlainFolders(): Promise<void> {
+        try {
+            plainFolders = await plainRegistry.list();
+        } catch (err) {
+            console.error("Could not read the Plain Folder list:", err);
+        }
+    }
     /** The graph list could not be read at all, which is not the same as there being none. */
     let registryUnreadable = $state(false);
     /** The registry has answered once (or failed to): until then an empty list means nothing. */
@@ -1099,6 +1135,7 @@
             // Before the list shows, so the Agents tab never calls a folder a graph in the browser.
             await readLocalFolders(listed).catch(() => undefined);
             graphs = listed;
+            await listPlainFolders();
         } catch (err) {
             // A registry that cannot be read is not a registry that is empty, and the two used
             // to look identical: the list rejected, everything after it was skipped, and the
@@ -2276,6 +2313,62 @@
         syncPlusDialog = null;
     }
 
+    /** The person answered the question a chosen folder raised. Nothing was written before this. */
+    async function answerFolderQuestion(choice: FolderChoice) {
+        const question = folderQuestion;
+        if (!question || folderQuestionBusy) return;
+        folderQuestionBusy = true;
+        folderQuestionError = null;
+        try {
+            if (choice === "import") {
+                // The import copies into a new graph and never writes here; its own dialog takes over.
+                importSourceFolder = question.handle;
+                importSourceFormat = question.verdict.probe.format;
+                folderQuestion = null;
+                importDialog = true;
+            } else if (choice === "graph") {
+                const refusal = await openAsFolderGraph(question.handle);
+                if (refusal) folderQuestionError = refusal;
+                else folderQuestion = null;
+            } else {
+                const folder = await registerPlainFolder(question.handle, plainRegistry, () => crypto.randomUUID(), Date.now);
+                folderQuestion = null;
+                await openPlainFolder(folder);
+            }
+        } catch (err) {
+            console.error("Could not open the chosen folder:", err);
+            folderQuestionError = `Could not open that folder: ${err instanceof Error ? err.message : String(err)}. Try again, or choose a different one.`;
+        } finally {
+            folderQuestionBusy = false;
+        }
+    }
+
+    /** Open a Plain Folder from its card: the browser asks again for a picked folder's access, which needs this press. */
+    async function openPlainFolderCard(folder: PlainFolderRecord) {
+        plainFolderMessage = null;
+        try {
+            if (!(await ensurePermission(folder.handle))) {
+                plainFolderMessage = { id: folder.id, text: "The browser did not grant access to this folder. Press Open and choose Allow.", tone: "error" };
+                return;
+            }
+            await openPlainFolder(folder);
+        } catch (err) {
+            plainFolderMessage = { id: folder.id, text: `Could not open this folder: ${err instanceof Error ? err.message : String(err)}`, tone: "error" };
+        }
+    }
+
+    /** Forget a Plain Folder on this device, with what this browser kept for it. The folder is not touched. */
+    async function forgetPlainFolder(folder: PlainFolderRecord) {
+        try {
+            await plainRegistry.remove(folder.id);
+            localStorage.removeItem(`${LOCAL_LAYOUT_KEY_PREFIX}plain-folder:${folder.id}`);
+            forgetRemoteImageTrust(folder.id, localStorage);
+            await listPlainFolders();
+        } catch (err) {
+            plainFolderMessage = { id: folder.id, text: `Could not forget this folder: ${err instanceof Error ? err.message : String(err)}`, tone: "error" };
+        }
+    }
+
     /** A choice panel's button was pressed. A link to the account site is an anchor and never arrives here. */
     function runChoice(action: GraphChoiceAction) {
         if (action.kind === "open-folder") void openFolder();
@@ -2284,17 +2377,23 @@
         else if (action.kind !== "link") startCreateServerGraph();
     }
 
+    /** Register the folder as a Folder graph and open it: what choosing a folder always did until ADR 0194. */
+    async function openAsFolderGraph(handle: FileSystemDirectoryHandle): Promise<string | null> {
+        // A mirror's folder is refused, a folder already open as a graph opens as that
+        // graph, and any other is registered (open-chosen-folder.ts).
+        const outcome = await openChosenFolder(handle, registry);
+        if (outcome.kind === "refused") return outcome.message;
+        await queueHistoryWrite(() => goto(graphUrl(graphAddressOf(outcome.graph)), { state: chosenGraphState(outcome.graph) }));
+        return null;
+    }
+
+    function openPlainFolder(folder: PlainFolderRecord): Promise<void> {
+        return queueHistoryWrite(() => goto(plainFolderUrl(folder.name), { state: chosenPlainFolderState(folder) }));
+    }
+
     async function openFolder() {
         try {
-            const handle = await pickGraphDirectory();
-            // A mirror's folder is refused, a folder already open as a graph opens as that
-            // graph, and any other is registered (open-chosen-folder.ts).
-            const outcome = await openChosenFolder(handle, registry);
-            if (outcome.kind === "refused") {
-                setStatus(outcome.message, "error");
-                return;
-            }
-            await queueHistoryWrite(() => goto(graphUrl(graphAddressOf(outcome.graph)), { state: chosenGraphState(outcome.graph) }));
+            await openFolderHandle(await pickGraphDirectory());
         } catch (err) {
             // Closing the picker is a choice, not a failure: nothing is said and the page stays
             // as it was.
@@ -2304,6 +2403,50 @@
                 "Could not open that folder. Try again, or choose a different one.",
                 "error",
             );
+        }
+    }
+
+    /**
+     * A folder or a markdown file dropped onto the page from the device's file manager: the folder
+     * is opened as **Open folder** opens one, and the file is shown on its own (dropped-entry.ts).
+     */
+    async function openDropped(event: DragEvent) {
+        if (!carriesFiles(event.dataTransfer) || (event.target as Element | null)?.closest?.("dialog, [role='dialog']")) return;
+        event.preventDefault();
+        try {
+            const dropped = await droppedHandle(event.dataTransfer);
+            const refusal = dropRefusal(dropped);
+            if (refusal) setStatus(refusal, "error");
+            else if (dropped!.kind === "directory") await openFolderHandle(dropped as FileSystemDirectoryHandle);
+            else {
+                launchedFile.set(dropped as FileSystemFileHandle);
+                await goto("/open-file");
+            }
+        } catch (err) {
+            console.error("Could not open what was dropped:", err);
+            setStatus("Could not open what was dropped. Use Open folder instead.", "error");
+        }
+    }
+
+    /** Open a folder the person chose or dropped. Rejects when it cannot be read. */
+    async function openFolderHandle(handle: FileSystemDirectoryHandle) {
+        // Look inside before anything is written: a graph's folder opens as before, and any
+        // other folder is asked about (choose-folder.ts).
+        const chosen = await examineChosenFolder(handle, {
+            plainFolders: () => plainRegistry.list(),
+            knownFolders: () => readKnownGraphFolders(),
+            treeOf: createWebTreeAdapter,
+        });
+        if (chosen.kind === "refused") {
+            setStatus(chosen.message, "error");
+        } else if (chosen.kind === "plain-folder") {
+            await openPlainFolder(chosen.folder);
+        } else if (chosen.kind === "folder-graph") {
+            const refusal = await openAsFolderGraph(handle);
+            if (refusal) setStatus(refusal, "error");
+        } else {
+            folderQuestionError = null;
+            folderQuestion = { handle, verdict: chosen.verdict };
         }
     }
 
@@ -4189,7 +4332,14 @@
 </script>
 
 <svelte:head><title>Graphs · EtherPK</title></svelte:head>
-<svelte:document onvisibilitychange={onVisible} />
+<!-- A folder or a markdown file dragged in from the file manager is opened where it is dropped (openDropped). -->
+<svelte:document
+    onvisibilitychange={onVisible}
+    ondragover={(event) => {
+        if (carriesFiles(event.dataTransfer)) event.preventDefault();
+    }}
+    ondrop={(event) => void openDropped(event)}
+/>
 
 {#snippet loadingSkeleton(label: string)}
     <!-- Mirrors the list it stands in for: a heading line, then a card per graph. The server renders
@@ -4467,7 +4617,7 @@
                         data-testid="graphs-open-folder"
                         onclick={openFolder}
                         class={SECONDARY_BUTTON}
-                        >Open folder (Folder Graph)</button
+                        >Open folder</button
                     >
                 {/if}
                 <button
@@ -4879,11 +5029,13 @@
                                         d={FOLDER_GRAPHS_ICON}
                                     />
                                 </svg>
+                                <!-- Said on both groups that EtherPK does not sync, this one and Plain Folders below. -->
+                                <span class={NOT_SYNCED_NOTE}>(not synced)</span>
                             </h2>
                             <p
                                 class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
                             >
-                                Folders on this computer, in plain Markdown
+                                Folders on this device, in plain Markdown
                                 files, and the demo.
                             </p>
                         </div>
@@ -4917,6 +5069,9 @@
                         {/if}
                     </section>
                 {/if}
+
+                <!-- Not graphs, so below them and in a section that says so (ADR 0194). -->
+                <PlainFoldersSection folders={plainFolders} message={plainFolderMessage} onopen={(folder) => void openPlainFolderCard(folder)} onforget={(folder) => void forgetPlainFolder(folder)} />
 
                 {#if !firstRun && servers.length === 0}
                     <!-- A returning browser with no Sync Server: the way to one, where its graphs would be. -->
@@ -5599,6 +5754,17 @@
     {/key}
 {/if}
 
+{#if folderQuestion}
+    <OpenFolderDialog
+        name={folderQuestion.handle.name}
+        verdict={folderQuestion.verdict}
+        busy={folderQuestionBusy}
+        error={folderQuestionError}
+        onchoose={(choice) => void answerFolderQuestion(choice)}
+        onclose={() => (folderQuestion = null)}
+    />
+{/if}
+
 {#if importDialog}
     <!-- Each server is offered with why it cannot take the graph, when it cannot; a background
          import finishes on the server it started on. -->
@@ -5621,7 +5787,13 @@
         getWrapKey={unlockVaultInteractively}
         ensureVaultReady={importVaultReady}
         opfsDestination={dev && page.url.searchParams.get("fs") === "opfs"}
-        onclose={() => (importDialog = false)}
+        sourceFolder={importSourceFolder}
+        sourceFormat={importSourceFormat}
+        onclose={() => {
+            importDialog = false;
+            importSourceFolder = null;
+            importSourceFormat = null;
+        }}
         onimported={onImported}
         onsettled={onImportSettled}
     />

@@ -52,7 +52,7 @@ import {
     renameSteps,
 } from '../rename'
 
-import type { DirectoryAdapter, Subdir } from './directory-adapter'
+import type { DirectoryAdapter, FileContent, Subdir } from './directory-adapter'
 import { type Debounced, debounce } from './debounce'
 import { parseFrontmatter } from './frontmatter'
 import { type DocumentKind, aliasesOf, conceptKey, fileStem } from './identity'
@@ -679,10 +679,12 @@ export function createFilesystemDocumentStore(
         doc.queued = false
         const snapshot = doc.buffer
         const written = proposedToStored(doc, snapshot)
-        doc.saving = adapter
-            .write(doc.subdir, doc.fileName, written)
+        doc.saving = writeChecked(doc, written)
             .then(
                 (res) => {
+                    // Stopped at the file: another program changed it, and `followDisk` has
+                    // raised the conflict or reloaded the buffer. Nothing was written.
+                    if (!res) return
                     doc.saveError = null
                     doc.baseText = written
                     doc.lastModified = res.lastModified
@@ -715,6 +717,45 @@ export function createFilesystemDocumentStore(
                 // failed leaves `dirty` true, so it is retried once with the latest buffer.
                 if (doc.queued && doc.dirty) runSave(doc)
             })
+    }
+
+    /**
+     * Write `written` to the document's file, after reading the file to see that it is still what
+     * the buffer last synced with. A folder is written by other programs too (an editor, an
+     * agent, a git checkout), and a rescan runs only on window focus and a light poll, so a save
+     * that wrote blind replaced whatever they had put there while the tab had focus.
+     *
+     * Resolves with the file's stamps once it holds `written`, or null when the save stopped: the
+     * file had moved, and the buffer was reloaded or a conflict raised (`followDisk`). A file
+     * that already holds `written` is left as it is. One that is gone is written back, since an
+     * edit outranks a delete (ADR 0039 §4).
+     *
+     * The File System Access API has no compare-and-set, so a write landing after this read and
+     * before ours cannot be seen (spec/folder-save, `bugs/Window.cfg`). The write follows the
+     * read with nothing between them, to keep that moment as short as it can be.
+     */
+    async function writeChecked(doc: OpenDoc, written: string): Promise<{ lastModified: number; size: number } | null> {
+        const disk = await fileBeforeSave(doc)
+        if (disk !== null && disk.text !== doc.baseText) {
+            if (disk.text === written) return disk
+            followDisk(doc, disk)
+            return null
+        }
+        return adapter.write(doc.subdir, doc.fileName, written)
+    }
+
+    /**
+     * The document's file as it is now, or null when there is none. A file that is there and
+     * cannot be read rejects: "could not read" must never be taken for "absent", or a lapsed
+     * permission would have the buffer written over a file never seen.
+     */
+    async function fileBeforeSave(doc: OpenDoc): Promise<FileContent | null> {
+        try {
+            return await adapter.read(doc.subdir, doc.fileName)
+        } catch (error) {
+            if (!(await adapter.exists(doc.subdir, doc.fileName))) return null
+            throw error
+        }
     }
 
     /** Resolves once no write is in flight for `doc`, including any that were queued behind it. */
@@ -1168,6 +1209,14 @@ export function createFilesystemDocumentStore(
                 doc.conflict = null
                 notify(doc, doc.buffer)
             } else {
+                // The file may have moved again while the person was choosing. Writing now would
+                // replace a version they were never shown, so show that one and ask again.
+                const disk = await fileBeforeSave(doc)
+                if (disk !== null && disk.text !== doc.conflict.diskText && disk.text !== doc.buffer) {
+                    doc.conflict = { target: doc.target, diskText: disk.text, bufferText: doc.buffer }
+                    onConflict?.(doc.conflict)
+                    throw new Error('another program changed the file again while you were choosing')
+                }
                 const res = await adapter.write(doc.subdir, doc.fileName, doc.buffer)
                 doc.baseText = doc.buffer
                 doc.lastModified = res.lastModified

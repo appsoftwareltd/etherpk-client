@@ -16,6 +16,11 @@ export interface PdfGraphService {
     state: PdfStateHost
     /** `folder` keeps every file on disk, and a person's reading place stays on the device. */
     backend: 'folder' | 'synced'
+    /**
+     * The file is in a Plain Folder, not a graph: there is no journal to copy a highlight to, no
+     * page to export to, no graph to add a copy to and no Favourites, so a reader leaves those out.
+     */
+    plain?: true
     /** Delete the PDF, when nothing links to it. Its state goes with it. */
     deleteAsset(target: string, hash: string): Promise<AssetDeleteAnswer>
     /** Give the PDF a new name, in its links too. Answers the name and identity it has afterwards. */

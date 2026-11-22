@@ -16,7 +16,7 @@
     aria-checked={on}
     class="switch"
     data-testid="backlinks-highlight"
-    title="Show the rest of each reference in grey, and the link to this document in bold"
+    data-tooltip="Show the rest of each reference in grey, and the link to this document in bold" aria-description="Show the rest of each reference in grey, and the link to this document in bold"
     onclick={() => onchange(!on)}
 >
     <span class="switch__label">Highlight reference</span>

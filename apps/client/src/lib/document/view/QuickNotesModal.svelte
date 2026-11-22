@@ -465,7 +465,7 @@
                                 onclick={() => remove(note)}
                                 disabled={deleting.has(note.id)}
                                 aria-label="Delete note"
-                                title="Delete note"
+                                data-tooltip="Delete note"
                                 class="gk-icon-button absolute top-1 right-1 pointer-coarse:top-0 pointer-coarse:right-0"
                             >
                                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">

@@ -617,7 +617,7 @@
                 <button
                     type="button"
                     data-testid="tasks-reset-filters"
-                    title="Back to every unfinished task, every priority, any date, grouped by priority"
+                    data-tooltip="Back to every unfinished task, every priority, any date, grouped by priority" aria-description="Back to every unfinished task, every priority, any date, grouped by priority"
                     onclick={resetFilters}
                     class="gk-link ml-auto shrink-0 pointer-coarse:min-h-11"
                 >
@@ -789,7 +789,7 @@
             <button
                 type="button"
                 data-testid="tasks-refresh"
-                title="Refresh tasks"
+                data-tooltip="Refresh tasks"
                 aria-label="Refresh tasks"
                 onclick={onRefreshPress}
                 class="gk-icon-button gk-button--raised size-7 pointer-coarse:size-11"

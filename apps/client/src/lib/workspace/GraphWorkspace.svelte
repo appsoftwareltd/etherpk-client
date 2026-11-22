@@ -615,7 +615,8 @@
     import { isScopedBy, rewriteWikilinkScope } from "#lib/document/wikilink/rename.js";
     import { asksSomething, createLinkRenameController, type ProposedRename } from "./link-rename-controller";
     import { createReplaceRenames, type ReplaceOutcome, type ReplaceQuestion, type ReplaceRequest } from "./replace-renames";
-    import { findOrigin, requestFind } from "#lib/document/find/find-events.js";
+    import { requestFind } from "#lib/document/find/find-events.js";
+    import { registerFindCommands } from "#lib/document/commands/find-commands.js";
     import { EditorView } from "@codemirror/view";
     import {
         createGraphSync,
@@ -4960,22 +4961,9 @@
                 typeof argument === "string" ? argument : "",
             ),
         );
-        // Find and Replace in the document in front (ADR 0153). The request goes to the find box of
-        // the View holding the focus, or the active editor while it is on screen (`findOrigin`);
-        // on a journal tab that may be an older day's.
-        for (const [id, action] of [
-            ["document.find", "open"],
-            ["document.findReplace", "open-replace"],
-            ["document.findNext", "next"],
-            ["document.findPrevious", "previous"],
-            ["document.findNextLine", "next-line"],
-            ["document.findPreviousLine", "previous-line"],
-        ] as const) {
-            commandRegistry.register(id, () => {
-                const origin = findOrigin();
-                if (origin) requestFind(origin, action);
-            });
-        }
+        // Find and Replace in the document in front (ADR 0153), shared with a Plain Folder's
+        // workspace. The Commands live as long as this registry does, so nothing detaches them.
+        registerFindCommands(commandRegistry);
         // Tasks is a resident of the right Sidebar, so this never creates it: openView, given
         // an identity that is already open, FOCUSES that tab. It does not expand a collapsed
         // region, though — placeInstance only adds and focuses — so a focused tab in a

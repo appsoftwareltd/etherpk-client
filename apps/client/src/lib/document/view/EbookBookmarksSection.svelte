@@ -68,7 +68,7 @@
                     {#each group.items as bookmark (bookmark.id)}
                         <li class="group/row relative">
                             <button type="button" class="w-full rounded-md py-1 pr-7 pl-6 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)" onclick={() => openPlace(bookmark)} data-testid="ebook-bookmark-row">{rowLabel(bookmark)}</button>
-                            <button type="button" class="absolute top-1 right-1 rounded p-0.5 text-(--gk-text-muted) hover:bg-(--gk-surface-2)" aria-label={`Remove the bookmark at ${rowLabel(bookmark)}`} title="Remove" onclick={() => remove(bookmark)} data-testid="ebook-bookmark-remove">
+                            <button type="button" class="absolute top-1 right-1 rounded p-0.5 text-(--gk-text-muted) hover:bg-(--gk-surface-2)" aria-label={`Remove the bookmark at ${rowLabel(bookmark)}`} data-tooltip="Remove" aria-description="Remove" onclick={() => remove(bookmark)} data-testid="ebook-bookmark-remove">
                                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                                 {@html iconSvg("close", { size: 14 })}
                             </button>

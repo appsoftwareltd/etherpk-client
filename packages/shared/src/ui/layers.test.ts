@@ -24,8 +24,8 @@ function layers(): Map<string, number> {
 }
 
 describe('layers.css', () => {
-    it('stacks window < backdrop < toast < dialog < menu < search', () => {
-        const order = ['--z-window', '--z-backdrop', '--z-toast', '--z-dialog', '--z-menu', '--z-search']
+    it('stacks window < backdrop < toast < dialog < menu < search < tooltip', () => {
+        const order = ['--z-window', '--z-backdrop', '--z-toast', '--z-dialog', '--z-menu', '--z-search', '--z-tooltip']
         const values = order.map((name) => layers().get(name))
         expect(values.every((value) => value !== undefined), `every layer is defined: ${values.join(', ')}`).toBe(true)
         expect([...values].sort((a, b) => a! - b!)).toEqual(values)
@@ -55,6 +55,7 @@ describe('layers.css', () => {
         ['apps/client/src/lib/surface/ui/ContextMenu.svelte', ['--z-menu']],
         ['apps/client/src/lib/document/view/SearchModal.svelte', ['--z-search']],
         ['apps/client/src/lib/components/FullWindow.svelte', ['--z-window']],
+        ['apps/client/src/lib/surface/ui/TooltipHost.svelte', ['--z-tooltip']],
     ])('%s takes its layer from the sheet', ([file, tokens], ctx) => {
         const app = /^apps\/([^/]+)\//.exec(file)?.[1]
         if (app && !hasApp(app)) return ctx.skip()

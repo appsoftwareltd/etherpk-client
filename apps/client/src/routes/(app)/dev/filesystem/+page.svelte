@@ -257,7 +257,7 @@
                         />
                         <button
                             class="gk-button gk-button--primary"
-                            title="Create page"
+                            data-tooltip="Create page" aria-description="Create page"
                             data-testid="fs-create-page"
                             onclick={createPage}
                             disabled={newPageTitle.trim() === ''}

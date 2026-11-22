@@ -882,7 +882,7 @@
                             null
                                 ? 'cursor-default'
                                 : ''}"
-                            title={row.name}
+                            data-tooltip={row.name} aria-description={row.name}
                         >
                             <!-- The row centres this block whole, whatever its height under a
                                  coarse pointer. Inside it the icon is one line tall, so it stays
@@ -997,7 +997,7 @@
                             data-testid="recent-pdf-row"
                             onclick={() => getActiveLayoutController().openView({ kind: "asset", target: entry.target })}
                             class="flex w-full touch-manipulation select-none items-center gap-1.5 rounded-md py-1 pr-2 pl-6 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)"
-                            title={entry.name}
+                            data-tooltip={entry.name} aria-description={entry.name}
                         >
                             <span class="-ml-5 inline-flex w-3.5 shrink-0 text-(--gk-text-muted)" data-testid="recent-pdf-icon">
                                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
@@ -1015,7 +1015,7 @@
                             {@attach menuTarget("recent", concept)}
                             onclick={() => open(concept)}
                             class="flex w-full touch-manipulation select-none items-center gap-1.5 rounded-md py-1.5 pr-8 pl-6 text-left text-sm hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
-                            title={concept}
+                            data-tooltip={concept} aria-description={concept}
                         >
                             <span class="min-w-0 flex-1 truncate"
                                 >{concept}</span

@@ -104,7 +104,7 @@
         <div class="flex flex-wrap items-end gap-6">
             {#snippet specimen(label: string, attributes: Record<string, unknown>, icon: string)}
                 <div class="flex flex-col items-center gap-1.5">
-                    <button type="button" class="gk-icon-button" aria-label={label} title={label} {...attributes}>{@html iconSvg(icon)}</button>
+                    <button type="button" class="gk-icon-button" aria-label={label} data-tooltip={label} {...attributes}>{@html iconSvg(icon)}</button>
                     <span class="gk-hint">{label}</span>
                 </div>
             {/snippet}
@@ -114,7 +114,7 @@
             {@render specimen("Pressed", { "aria-pressed": "true", "data-testid": "style-guide-icon-button-pressed" }, "filter")}
             {@render specimen("Disabled", { disabled: true }, "close")}
             <div class="flex flex-col items-center gap-1.5">
-                <button type="button" class="gk-icon-button gk-button--raised" aria-label="Raised" title="Raised" data-testid="style-guide-icon-button-raised">{@html iconSvg("search")}</button>
+                <button type="button" class="gk-icon-button gk-button--raised" aria-label="Raised" data-tooltip="Raised" data-testid="style-guide-icon-button-raised">{@html iconSvg("search")}</button>
                 <span class="gk-hint">Raised</span>
             </div>
         </div>
@@ -124,9 +124,9 @@
                 <option>Newest</option>
             </select>
             <span class="flex items-center gap-1">
-                <button type="button" class="gk-icon-button" aria-label="Filter" title="Filter">{@html iconSvg("filter")}</button>
-                <button type="button" class="gk-icon-button" aria-label="Pin" title="Pin">{@html iconSvg("pin")}</button>
-                <button type="button" class="gk-icon-button" aria-label="Close" title="Close">{@html iconSvg("close")}</button>
+                <button type="button" class="gk-icon-button" aria-label="Filter" data-tooltip="Filter">{@html iconSvg("filter")}</button>
+                <button type="button" class="gk-icon-button" aria-label="Pin" data-tooltip="Pin">{@html iconSvg("pin")}</button>
+                <button type="button" class="gk-icon-button" aria-label="Close" data-tooltip="Close">{@html iconSvg("close")}</button>
             </span>
         </div>
     </section>
@@ -145,7 +145,7 @@
         </div>
         <div class="grid w-76 grid-cols-3 gap-2 rounded-lg border border-(--gk-border-soft) bg-(--gk-surface-1) p-2">
             {#each [["search", "Search"], ["todays-journal", "Today's journal"], ["quick-notes", "Quick notes"]] as [icon, label] (label)}
-                <button type="button" class={sidebarIconButton} aria-label={label} title={label}>{@html iconSvg(icon, { size: 18 })}</button>
+                <button type="button" class={sidebarIconButton} aria-label={label} data-tooltip={label}>{@html iconSvg(icon, { size: 18 })}</button>
             {/each}
         </div>
         <p class="gk-hint">Labelled in the Sidebar (34px), and the icon alone under the phone layout (36px, 44px under a finger).</p>

@@ -84,7 +84,7 @@
                             type="button"
                             data-testid="pdf-bookmark-remove"
                             aria-label={`Remove the PDF Bookmark on page ${bookmark.page} of ${group.name}`}
-                            title="Remove"
+                            data-tooltip="Remove" aria-description="Remove"
                             onclick={() => remove(bookmark)}
                             class="absolute top-1/2 right-1 inline-flex -translate-y-1/2 rounded p-1 text-(--gk-text-subtle) hover:bg-(--gk-surface-2)"
                         >

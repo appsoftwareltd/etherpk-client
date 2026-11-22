@@ -164,6 +164,24 @@ export const ICON_PATHS: Record<string, string> = {
     trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .8h3.8a1 1 0 0 0 1-.8l.6-8.2M6.8 7v4M9.2 7v4"/>',
     /** A cross: close this. */
     close: '<path d="M4 4l8 8M12 4l-8 8"/>',
+
+    // A Plain Folder's file tree (ADR 0194).
+    /** A closed folder: a directory of files, or a Plain Folder itself. */
+    folder: '<path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>',
+    /** A folder with its front tilted down: a directory shown open. */
+    'folder-open': '<path d="M2 12V4.5a1 1 0 0 1 1-1h3l1.5 1.5H12a1 1 0 0 1 1 1V7"/><path d="M2 12l1.6-4.3A1 1 0 0 1 4.5 7H14l-1.7 5.3a1 1 0 0 1-1 .7H3a1 1 0 0 1-1-1z"/>',
+    /** A folder holding a plus: create a directory here. */
+    'new-folder': '<path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/><path d="M8 7.2v3.6M6.2 9h3.6"/>',
+    /** A page holding a plus: create a file here. */
+    'new-file': '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z"/><path d="M9 2v4h4M8 8.2v3.6M6.2 10h3.6"/>',
+    /** A page with lines of text: a markdown or text file. */
+    'file-text': '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z"/><path d="M9 2v4h4M6 9h4M6 11.5h4"/>',
+    /** One arrow round a circle: read this again from where it is kept. */
+    refresh: '<path d="M13 8a5 5 0 1 1-1.5-3.560"/><path d="M13 2.5v3h-3"/>',
+    /** A chevron pointing right: a directory, closed. */
+    'tree-closed': '<path d="M6 4l4 4-4 4"/>',
+    /** A page with a tick: go to a file by its name. */
+    'go-to-file': '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z"/><path d="M9 2v4h4M6 10.2 7.5 11.7 10.2 8.7"/>',
     /** A frame split down the middle, an arrow in its right half: open this in the Pane to the right. */
     'pane-right': '<rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M8 3v10"/><path d="M9.6 8h2.6M10.9 6.7 12.2 8l-1.3 1.3"/>',
     /** A frame split across the middle, an arrow in its lower half: open this in the Pane below. */

@@ -122,6 +122,12 @@ export interface LinkScan {
      * nothing on it is hidden — the reveal that makes a rendered link editable.
      */
     isActiveLine: (pos: number) => boolean
+    /**
+     * True in a [[Plain Folder]], where nothing else owns a reference into an `assets` folder: it
+     * is a link to a file like any other. In a graph such a target is an [[Asset]]'s, and is
+     * skipped here because asset-link.ts draws it.
+     */
+    assetRefsAreLinks?: boolean
 }
 
 /**
@@ -146,7 +152,8 @@ export interface LinkScan {
  * and any target {@link safeHref} refuses.
  */
 export function linkPieces(scan: LinkScan): LinkPiece[] {
-    const { tree, sliceDoc, from, to, isActiveLine } = scan
+    const { tree, sliceDoc, from, to, isActiveLine, assetRefsAreLinks = false } = scan
+    const ownedElsewhere = (target: string) => !assetRefsAreLinks && assetNameFromRef(target) !== null
     const pieces: LinkPiece[] = []
     const hideOffLine = (at: number, hideFrom: number, hideTo: number) => {
         if (hideTo > hideFrom && !isActiveLine(at)) pieces.push({ kind: 'hide', from: hideFrom, to: hideTo })
@@ -161,7 +168,7 @@ export function linkPieces(scan: LinkScan): LinkPiece[] {
                 const link = parseInlineLink(sliceDoc(node.from + bang, node.to))
                 if (!link) return // a `[[wikilink]]`'s inner `[…]`, a reference link, …
                 if (bang && isImageTarget(link.url)) return // a real image — the embed owns it
-                if (assetNameFromRef(link.url) !== null) return
+                if (ownedElsewhere(link.url)) return
                 const piece = targetPiece(link.url)
                 if (!piece) return // not openable — leave the whole thing raw
                 const labelFrom = node.from + bang + 1
@@ -182,7 +189,7 @@ export function linkPieces(scan: LinkScan): LinkPiece[] {
             const parent = node.node.parent
             if (parent && (parent.name === 'Link' || parent.name === 'Image')) return
             const target = sliceDoc(node.from, node.to)
-            if (assetNameFromRef(target) !== null) return
+            if (ownedElsewhere(target)) return
             const piece = targetPiece(target)
             if (!piece) return
             const construct = parent?.name === 'Autolink' ? { from: parent.from, to: parent.to } : { from: node.from, to: node.to }

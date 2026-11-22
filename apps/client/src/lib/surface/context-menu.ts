@@ -45,6 +45,22 @@ export type ContextMenuTarget =
     | BookmarkGroupContextMenuTarget
     | ViewFavouriteContextMenuTarget
     | ExtensionContextMenuTarget
+    | PlainEntryContextMenuTarget
+
+/**
+ * An entry of a [[Plain Folder]]'s file tree, named by its path from the folder's root, or the
+ * tree's own background (`entry: 'root'`, with the empty path): where a new file would go.
+ */
+export interface PlainEntryContextMenuTarget {
+    kind: 'plain-entry'
+    path: string
+    entry: 'file' | 'directory' | 'root'
+    /**
+     * The entry is, or is inside, a directory that holds an EtherPK graph of its own. Its files
+     * are that graph's to change, so the tree offers to open the graph and nothing that writes.
+     */
+    inGraph?: boolean
+}
 
 /**
  * A line of a document in an editor: what a right-click on text raises when nothing claims it

@@ -310,7 +310,9 @@ function noteLinks(notes: ObsidianNote[], assetPlan: AssetPlan, report: ReportEn
         })
         return `${label} ([[${concept}]])`
     }
-    return { resolveNote, resolveAssetByName, resolveAssetByPath, linkWithLabel }
+    /** The note at exactly this root-relative path, or null. */
+    const notePath = (path: string): ObsidianNote | null => byPath.get(path.replace(/\.md$/i, '').toLowerCase()) ?? null
+    return { resolveNote, notePath, resolveAssetByName, resolveAssetByPath, linkWithLabel }
 }
 
 type NoteLinks = ReturnType<typeof noteLinks>
@@ -403,8 +405,14 @@ function convertMarkdownLinks(text: string, note: ObsidianNote, links: NoteLinks
             assetPlan.markReferenced(asset)
             return `${bang}[${label}](${asset.ref})`
         }
-        if (/\.md$/i.test(ref)) {
-            const resolved = links.resolveNote(normaliseRef(ref, note.dir), note.concept) ?? links.resolveNote(ref, note.concept)
+        // The path without a heading (`soil.md#clay`): a wikilink names a page, so the heading is dropped.
+        const path = ref.split(/[?#]/)[0]
+        if (/\.md$/i.test(path)) {
+            // A markdown link is a path from the note that holds it, so the note beside it is tried
+            // first: `soil.md` in `guide/` is `guide/soil.md`, whatever else is named soil. Obsidian
+            // also writes them from the vault's top, and by name alone, which are tried after.
+            const beside = links.notePath(normaliseRef(`./${path}`, note.dir))
+            const resolved = beside ?? links.resolveNote(normaliseRef(path, note.dir), note.concept) ?? links.resolveNote(path, note.concept)
             if (resolved) return links.linkWithLabel(label, resolved, resolved.concept, note.concept)
         }
         return all

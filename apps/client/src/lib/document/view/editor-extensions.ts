@@ -12,6 +12,8 @@
  * asset store, the graph index) and plain callbacks where the View owns the side effect.
  */
 
+import { pathCompletion } from './augmentations/path-complete'
+import type { LinkPlacement, PlainProfile } from '#lib/plain/plain-profile.js'
 import type { Extension } from '@codemirror/state'
 import { EditorView, type ViewUpdate } from '@codemirror/view'
 
@@ -155,6 +157,12 @@ export interface EditorExtensionServices {
      * act on the text, as in an editor with a `shownRange`.
      */
     partOfDocument?: boolean
+    /**
+     * The file is one of a [[Plain Folder]] (ADR 0194): the graph's features are left out, and
+     * links and picture lines are resolved by path through this. Needs `document`, whose `concept`
+     * is then the file's path.
+     */
+    plain?: PlainProfile
 }
 
 /** One named feature of the stack: the name is what the order test asserts on. */
@@ -169,6 +177,22 @@ export interface EditorFeature {
  */
 export function editorFeatures(services: EditorExtensionServices): EditorFeature[] {
     const store = services.assetStore
+    const plain = services.plain
+    /** The path of the file being edited, for what the plain profile resolves from it. */
+    const path = () => services.document?.concept ?? ''
+    /**
+     * A feature a Plain Folder leaves out: it reads the graph (its index, its concepts, its
+     * frontmatter identity) or writes syntax only a graph reads. The name stays in the list, so
+     * the order the test pins is one list for both profiles.
+     */
+    const graphOnly = (extension: Extension): Extension => (plain ? [] : extension)
+    /**
+     * A text file that is not markdown keeps only what any text needs: the selection, find, the
+     * caret kept in view, and the hooks the View hangs on. Everything that reads markdown is left out.
+     */
+    const profile = profileOptions(plain, path)
+    /** A picture or recording line's file: an [[Asset]] in a graph, a path from the file in a Plain Folder. */
+    const resolveAsset = (ref: string) => (plain ? plain.resolveMedia(path(), ref) : (store()?.resolve(ref) ?? Promise.resolve(null)))
 
     /**
      * The concept keys something actually resolves to, for the date calendar's bold days.
@@ -189,7 +213,7 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         return resolved
     }
 
-    return [
+    const features: EditorFeature[] = [
         // An editor showing part of its document (the Task Editor, ADR 0170) first of all: its filter
         // and its hidden lines are `Prec.highest`, and first in that bucket its filter runs after every
         // other (the Extension Fence's caret among them) and its hidden lines draw over any widget.
@@ -209,7 +233,7 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // The Frontmatter block's edges: body text never joins onto its closer, neither delimiter joins
         // the line beside it inside the block, the closing line is never taken out whole, and the block
         // never grows past what was typed into it (ADR 0061).
-        { name: 'frontmatter-boundary', extension: frontmatterBoundaryGuard() },
+        { name: 'frontmatter-boundary', extension: graphOnly(frontmatterBoundaryGuard()) },
         // A wrap key over a selection encloses it (ADR 0077): an input handler, so it sees typed text
         // before it becomes a change. It places no ordering constraint on anything and is kept here
         // with the other non-decorating features.
@@ -225,7 +249,7 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         { name: 'markdown-format', extension: markdownFormatAugmentation() },
         // A Template's variables, marked as they are written (ADR 0144). A mark inside a code line,
         // so before the code line's scroll container, which must stay one box around it.
-        { name: 'template-variables', extension: templateVariablesAugmentation() },
+        { name: 'template-variables', extension: graphOnly(templateVariablesAugmentation()) },
         { name: 'bullet-marker', extension: bulletMarkerAugmentation() },
         { name: 'task-checkbox', extension: taskCheckboxAugmentation() },
         { name: 'outline-guides', extension: outlineGuidesAugmentation() },
@@ -246,24 +270,28 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         { name: 'markdown-table', extension: markdownTableAugmentation({ isMissing: services.conceptIsMissing }) },
         // Frontmatter wears the fenced-code panel over its own parse node — kept beside the
         // fence so the two block-panel constructs stay together.
+        // In a Plain Folder a frontmatter block is the file's own text: no panel, no identity, and
+        // no tidy into EtherPK's style, which would rewrite another tool's YAML.
         {
             name: 'frontmatter',
-            extension: frontmatterAugmentation(
-                services.frontmatter ?? {
-                    proposal: () => [],
-                    documentName: () => null,
-                    onEpisodeEnd: () => {},
-                    onRestore: () => {},
-                },
+            extension: graphOnly(
+                frontmatterAugmentation(
+                    services.frontmatter ?? {
+                        proposal: () => [],
+                        documentName: () => null,
+                        onEpisodeEnd: () => {},
+                        onRestore: () => {},
+                    },
+                ),
             ),
         },
         // Help while editing the block: the tidy and the problem marks when an episode ends.
-        { name: 'frontmatter-assist', extension: frontmatterAssist({ documentName: () => services.frontmatter?.documentName() ?? null }) },
+        { name: 'frontmatter-assist', extension: graphOnly(frontmatterAssist({ documentName: () => services.frontmatter?.documentName() ?? null })) },
         // Protected fences come BEFORE fence-render: an `etherpk-cipher` fence dispatches to no
         // renderer, and its widget must be the only thing that ever draws over that range.
         {
             name: 'protected-fence',
-            extension: protectedFenceAugmentation({ isProtected: services.isProtectedDocument, backend: services.backend }),
+            extension: graphOnly(protectedFenceAugmentation({ isProtected: services.isProtectedDocument, backend: services.backend })),
         },
         // Rendered fences and inline maths dispatch to the registered renderers (ADR 0022).
         { name: 'fence-render', extension: fenceRenderAugmentation() },
@@ -272,7 +300,7 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         { name: 'interactive-fence', extension: interactiveFenceAugmentation() },
         // Inline panels: a block an extension draws beneath a line that is not the document's text,
         // an Agent Chat opened with /Agent among them (ADR 0147).
-        { name: 'inline-panels', extension: inlinePanelsAugmentation() },
+        { name: 'inline-panels', extension: graphOnly(inlinePanelsAugmentation()) },
         // The line the end-of-document buttons start (ADR 0149), taken back out if the caret leaves it
         // untouched, unless an inline panel has come to hold it.
         { name: 'end-of-document', extension: endOfDocument() },
@@ -281,19 +309,20 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // markdown-link, which skips any target the asset augmentation owns.
         {
             name: 'image-embed',
-            extension: imageEmbedAugmentation({
-                resolveAsset: (ref) => store()?.resolve(ref) ?? Promise.resolve(null),
-            }),
+            extension: imageEmbedAugmentation({ resolveAsset, remote: profile.remote }),
         },
-        { name: 'asset-link', extension: assetLinkAugmentation({ store }) },
+        // A Plain Folder has no Assets: a link into an `assets` folder is a link to a file.
+        { name: 'asset-link', extension: graphOnly(assetLinkAugmentation({ store })) },
         // A player under an audio or video line. The line itself stays the asset link above.
         {
             name: 'media-embed',
-            extension: mediaEmbedAugmentation({
-                resolveAsset: (ref) => store()?.resolve(ref) ?? Promise.resolve(null),
-            }),
+            extension: mediaEmbedAugmentation({ resolveAsset }),
         },
-        { name: 'markdown-link', extension: markdownLinkAugmentation() },
+        // A link between two files of a Plain Folder opens the file in a tab.
+        {
+            name: 'markdown-link',
+            extension: markdownLinkAugmentation(profile.link),
+        },
         { name: 'asset-drop', extension: assetDropAugmentation({ store }) },
         // A Plain Paste (the browser's paste-as-plain-text shortcut) is the text as it is: before every
         // other paste route, so no extension's fence or file upload reshapes it.
@@ -304,9 +333,10 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         { name: 'paste-to-fence', extension: pasteToFenceAugmentation() },
         // After asset-paste: clipboard files with no plain text are that route's; HTML is this one's.
         { name: 'rich-paste', extension: richPasteAugmentation({ store }) },
+        // `[[x]]` is plain text in a Plain Folder: its links are standard markdown links.
         {
             name: 'wikilink',
-            extension: wikilinkAugmentation({
+            extension: graphOnly(wikilinkAugmentation({
                 isMissing: services.conceptIsMissing,
                 onOpen: services.openConcept,
                 onOpenToTheRight: services.openConceptToTheRight,
@@ -316,37 +346,41 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
                 // Restyle when the index catches up: an editor opened during the initial build
                 // otherwise shows every link as missing until edited.
                 onIndexUpdated: (listener) => services.graphIndex()?.onUpdated(listener) ?? (() => {}),
-            }),
+            })),
         },
         // The pointer cursor over every link kind above (and the caret cursor while the mod key is held).
         { name: 'link-cursor', extension: linkCursorAugmentation() },
         // Completions and the popovers they open, after the decorations they anchor to.
         {
             name: 'wikilink-completion',
-            extension: wikilinkCompletion({
+            extension: graphOnly(wikilinkCompletion({
                 concepts: () => services.graphIndex()?.allConcepts() ?? [],
                 loading: () => services.graphIndex()?.isBuilding() ?? false,
-            }),
+            })),
         },
-        { name: 'task-tag-completion', extension: taskTagCompletion({ freeTags: () => services.graphIndex() }) },
+        // A Plain Folder's stand-in for it: the folder's files, offered while a link's destination is typed.
+        { name: 'path-completion', extension: profile.pathCompletion },
+        // Task tags are a graph's: `#P1` is text in a plain file.
+        { name: 'task-tag-completion', extension: graphOnly(taskTagCompletion({ freeTags: () => services.graphIndex() })) },
         { name: 'slash-completion', extension: slashCompletion() },
         // Keys and values in the frontmatter, from EtherPK's list and the graph's index.
-        { name: 'frontmatter-completion', extension: frontmatterCompletion({ properties: () => services.graphIndex() }) },
+        { name: 'frontmatter-completion', extension: graphOnly(frontmatterCompletion({ properties: () => services.graphIndex() })) },
         {
             name: 'date-calendar',
-            extension: dateCalendar({
+            extension: graphOnly(dateCalendar({
                 // The candidate snapshot already carries every concept the graph resolves,
                 // so marking written days costs a filter over data the editor holds (ADR 0056).
                 hasEntry: (iso) => resolvedConcepts().has(iso),
-            }),
+            })),
         },
         // The Table Size Picker: the insert-table Command's popover, a sibling of the calendar.
         { name: 'table-size-picker', extension: tableSizePicker() },
         // The concept picker: a Command's choice of concept at the caret (`/kanban`'s, ADR 0113).
-        { name: 'concept-picker', extension: conceptPicker() },
+        { name: 'concept-picker', extension: graphOnly(conceptPicker()) },
         // The YAML typing keys. After every popover that binds Enter or Tab while open (the
         // completions, the calendar, the size picker, the concept picker): all of them sit at the highest precedence,
         // where the earlier-registered keymap wins, so an open popover's keys come first.
+        // A markdown file from elsewhere has frontmatter as often as a graph's (a site's posts). Its keys are YAML's, not a graph's.
         { name: 'frontmatter-keys', extension: frontmatterKeys() },
         // A line of guidance over an empty journal day or Draft, until the first keystroke.
         { name: 'placeholder', extension: placeholderAugmentation(services.placeholder) },
@@ -361,7 +395,9 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // The folds kept on the device for this document, put back when it opens (ADR 0191).
         // Not in an editor that shows part of a document (the Task Editor): a fold kept from the whole
         // document can start on a line the part hides, where it could not be opened.
-        { name: 'fold-persistence', extension: keepsFolds(services) ? foldPersistence() : [] },
+        // Kept folds are keyed by a concept, which folds case. A Plain Folder's are keyed by the
+        // file's path as it is spelled.
+        { name: 'fold-persistence', extension: keepsFolds(services) ? foldPersistence(profile.foldKey) : [] },
         // After `wikilink`, `asset-link` and `spell-check`: their right-click menus claim the event on
         // their own targets, and the line menu takes the rest of the line.
         {
@@ -392,7 +428,44 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
             ],
         },
     ]
+    return profile.kept(features)
 }
+
+/**
+ * What a Plain Folder's profile gives the features that take an option from it, worked out once.
+ * In a graph each is the feature's own default.
+ */
+function profileOptions(plain: PlainProfile | undefined, path: () => string) {
+    const all = (features: EditorFeature[]) => features
+    if (!plain) return { kept: all, remote: undefined, link: {}, pathCompletion: [] as Extension, foldKey: undefined }
+    return {
+        /** A text file that is not markdown keeps only {@link TEXT_FILE_FEATURES}, the rest contributing nothing under their names. */
+        kept: plain.textOnly(path()) ? (features: EditorFeature[]) => features.map((feature) => (TEXT_FILE_FEATURES.has(feature.name) ? feature : { name: feature.name, extension: [] })) : all,
+        remote: plain.remoteImages,
+        link: { openRelative: (href: string, placement: LinkPlacement) => plain.openLink(path(), href, placement) },
+        pathCompletion: pathCompletion({ suggest: (query) => plain.suggestPaths(path(), query) }),
+        /** Kept folds are keyed by a concept, which folds case. A Plain Folder's are keyed by the file's path as it is spelled. */
+        foldKey: (name: string) => `path:${name}`,
+    }
+}
+
+/**
+ * What a text file that is not markdown keeps (text-file.ts): the features that are about text in
+ * an editor, not about markdown. The rest contribute nothing there, under the same names.
+ */
+const TEXT_FILE_FEATURES = new Set([
+    'find-matches',
+    'selection-layer',
+    'placeholder',
+    'edit-refusal',
+    'editor-document',
+    'on-screen',
+    'line-anchor',
+    'keep-caret-visible',
+    'column-shift',
+    'selection-order',
+    'view-hooks',
+])
 
 /** Whether an editor keeps its folds on the device: one showing a whole document, not a part of one. */
 function keepsFolds(services: EditorExtensionServices): boolean {

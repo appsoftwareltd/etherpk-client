@@ -52,7 +52,7 @@
     <div class={["etherpk-ebook-menu gk-menu flex flex-col", above && "etherpk-ebook-menu--above"]} role="group" aria-label="Text settings" data-testid="ebook-settings">
         <div class="flex items-center justify-between pr-1 pl-3">
             <span class="text-sm font-medium text-(--gk-text-muted)">Text</span>
-            <button type="button" class="gk-icon-button" aria-label="Close text settings" title="Close text settings" onclick={onclose} data-testid="ebook-settings-close">
+            <button type="button" class="gk-icon-button" aria-label="Close text settings" data-tooltip="Close text settings" onclick={onclose} data-testid="ebook-settings-close">
                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                 {@html iconSvg("close")}
             </button>

@@ -21,7 +21,8 @@
         linkedFrom: { concept: string; references: number }[] | null;
         onclose: () => void;
         onopendocument: (concept: string) => void;
-        oncopytojournal: (annotation: PdfAnnotation) => void;
+        /** Absent where there is no journal (a Plain Folder): the button is left out. */
+        oncopytojournal?: (annotation: PdfAnnotation) => void;
     } = $props();
 
     type Tab = "annotations" | "marks" | "links";
@@ -44,7 +45,7 @@
             <button type="button" class="gk-button gk-button--quiet gk-button--small" aria-pressed={tab === "marks"} onclick={() => (tab = "marks")} data-testid="pdf-panel-marks">PDF Bookmarks</button>
             <button type="button" class="gk-button gk-button--quiet gk-button--small" aria-pressed={tab === "links"} onclick={() => (tab = "links")} data-testid="pdf-panel-links">Linked from</button>
         </div>
-        <button type="button" class="gk-icon-button" aria-label="Close panel" title="Close panel" onclick={onclose}>
+        <button type="button" class="gk-icon-button" aria-label="Close panel" data-tooltip="Close panel" onclick={onclose}>
             <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
             {@html iconSvg("close")}
         </button>
@@ -62,11 +63,13 @@
                                 <span class="text-(--gk-text-muted)">p.{annotation.page}</span>
                                 <span class="line-clamp-3 break-words">{describe(annotation)}</span>
                             </button>
-                            <button type="button" class="gk-icon-button" aria-label="Copy to journal" title="Copy to journal" onclick={() => oncopytojournal(annotation)} data-testid="pdf-annotation-copy">
-                                <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
-                                {@html iconSvg("todays-journal")}
-                            </button>
-                            <button type="button" class="gk-icon-button" aria-label="Delete this annotation" title="Delete" onclick={() => reader.removeAnnotation(annotation.id)} data-testid="pdf-annotation-delete">
+                            {#if oncopytojournal}
+                                <button type="button" class="gk-icon-button" aria-label="Copy to journal" data-tooltip="Copy to journal" onclick={() => oncopytojournal(annotation)} data-testid="pdf-annotation-copy">
+                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
+                                    {@html iconSvg("todays-journal")}
+                                </button>
+                            {/if}
+                            <button type="button" class="gk-icon-button" aria-label="Delete this annotation" data-tooltip="Delete" aria-description="Delete" onclick={() => reader.removeAnnotation(annotation.id)} data-testid="pdf-annotation-delete">
                                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                                 {@html iconSvg("trash")}
                             </button>
@@ -82,7 +85,7 @@
                     {#each reader.bookmarks as mark (mark.id)}
                         <li class="flex items-center gap-1 rounded-lg hover:bg-(--gk-surface-2)" data-testid="pdf-panel-bookmark-row">
                             <button type="button" class="flex-1 p-1.5 text-left text-sm text-(--gk-text-default)" onclick={() => reader.goToPage(mark.page)}>Page {mark.page}</button>
-                            <button type="button" class="gk-icon-button" aria-label={`Remove the PDF Bookmark on page ${mark.page}`} title="Remove" onclick={() => reader.removeBookmark(mark.id)}>
+                            <button type="button" class="gk-icon-button" aria-label={`Remove the PDF Bookmark on page ${mark.page}`} data-tooltip="Remove" aria-description="Remove" onclick={() => reader.removeBookmark(mark.id)}>
                                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                                 {@html iconSvg("trash")}
                             </button>

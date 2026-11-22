@@ -85,6 +85,7 @@
     import JournalPanels from './JournalPanels.svelte'
     import { JOURNAL_ROLL_ATTRIBUTE } from './journal-roll-dom'
     import { followReadingPoint } from './reading-point'
+    import { readOnlyFile } from './read-only-file'
     import { handleEventsBelowText } from './below-text-events'
     import { DOCUMENT_BACKLINKS_ATTRIBUTE } from './document-backlinks'
     import type * as Y from 'yjs'
@@ -185,6 +186,21 @@
      * mobile presenter re-keys on `panelId` precisely because a View reads its target once.
      */
     const view = untrack(() => viewProp)
+    /**
+     * The editor's plain profile, when this View is in a [[Plain Folder]]'s workspace (ADR 0194).
+     * `view.target` is then a file's path. Read once: a workspace serves one folder or one graph for
+     * its whole life.
+     */
+    const plainProfile = currentWorkspaceServices()?.plain
+    /**
+     * Where this View's pasted and dropped files go: the graph's Asset Store, or in a Plain Folder
+     * a store of this file's own, which keeps them near it.
+     */
+    /** A text file that is not markdown: no outliner, no markdown, and no button that would start a bullet. */
+    const textFile = plainProfile?.textOnly(view.target) ?? false
+    /** That file's name, which says which language's colours it gets (text-file.ts). */
+    const textFileName = textFile ? view.target.slice(view.target.lastIndexOf('/') + 1) : undefined
+    const assetStoreHere = () => (plainProfile ? plainProfile.assets(view.target) : tryGetActiveAssetStore())
 
     let host = $state<HTMLDivElement>()
     /**
@@ -233,7 +249,7 @@
      * editor, where a [[Task Detail]] shows one task, and not on a Journal Roll's older days, whose
      * presses come through the tab's pair.
      */
-    const endShown = $derived(ownsTab && endWritable && contentReady)
+    const endShown = $derived(ownsTab && endWritable && contentReady && !textFile)
     /** The row's measured height, which the Lock button and a refused edit's reason sit above. */
     let endButtonsHeight = $state(0)
     /** Something is drawn beneath the text, so the text gives up its full pane height. */
@@ -247,7 +263,12 @@
      * caret moved into view stays a few lines clear of the pane's foot (ADR 0168), in a tab's own
      * editor and an older day's alike, which the tab's scroller scrolls.
      */
-    const modeExtensions = [...(rolled ? [followReadingPoint] : []), ...(embedded ? [] : [roomBelowCaret])]
+    const modeExtensions = [
+        ...(rolled ? [followReadingPoint] : []),
+        ...(embedded ? [] : [roomBelowCaret]),
+        // A file that cannot be edited safely is shown, and takes no edit (ADR 0196).
+        ...(plainProfile?.readOnly(view.target) ? [readOnlyFile()] : []),
+    ]
 
     /**
      * A new line button was pressed. With the caret in an editor of this tab (its own document or an
@@ -270,7 +291,7 @@
 
     /** Put the panels after `scroller`'s content, mounting them the first time. */
     function placeJournalPanels(scroller: HTMLElement): void {
-        if (!ownsTab || !isJournalConcept(view.target)) return
+        if (!ownsTab || plainProfile || !isJournalConcept(view.target)) return
         if (!panelsHolder) {
             panelsHolder = document.createElement('div')
             panelsHolder.style.display = 'contents'
@@ -297,7 +318,7 @@
 
     /** Put the section after `scroller`'s content, mounting it the first time. */
     function placeBacklinks(scroller: HTMLElement): void {
-        if (embedded) return
+        if (embedded || plainProfile) return
         if (!backlinksHolder) {
             backlinksHolder = document.createElement('div')
             backlinksHolder.style.display = 'contents'
@@ -324,7 +345,7 @@
 
     /** Put the roll after the backlinks in `scroller`, mounting it the first time, and hand it the scroller. */
     function placeRoll(scroller: HTMLElement): void {
-        if (!ownsTab || !isJournalConcept(view.target)) return
+        if (!ownsTab || plainProfile || !isJournalConcept(view.target)) return
         if (!rollHolder) {
             rollHolder = document.createElement('div')
             rollHolder.style.display = 'contents'
@@ -1350,11 +1371,13 @@
                   },
             currentText: () => doc!.getText(),
             ...(collabYText ? { collab: { ytext: collabYText, awareness } } : {}),
+            plain: plainProfile !== undefined,
+            textFile: textFileName,
             // The feature stack lives in editor-extensions.ts (order-tested); the View supplies
             // only the services the features need, its own focus / update hooks, and what its mode
             // adds (`modeExtensions`).
             extensions: [...modeExtensions, ...editorExtensions({
-                assetStore: () => tryGetActiveAssetStore(),
+                assetStore: assetStoreHere,
                 graphIndex: () => getActiveGraphIndex(),
                 // [[Frontmatter]] is a proposal against the registry (ADR 0061); the workspace
                 // owns the registry, the dialogs and the write-back, so everything goes there.
@@ -1442,6 +1465,7 @@
                     }
                 },
                 ...targetServices(),
+                plain: plainProfile,
                 // A tab restored behind another starts out of sight, so a map in it never draws.
                 onScreen: () => visibility?.onScreen ?? true,
                 shownRange: shownRangeOf,
@@ -1485,7 +1509,7 @@
         placeRoll(editor.view.scrollDOM)
         if (ownsTab) {
             detachBelowText = handleEventsBelowText(editor.view, {
-                store: () => tryGetActiveAssetStore(),
+                store: assetStoreHere,
                 // A press on the tab's blank space gives the keys back as coming back to the tab
                 // does. A phone's tap gives none: the keyboard would rise over what is being read.
                 focusText: () => {
@@ -1683,7 +1707,7 @@
             class="document-view__lock gk-icon-button gk-button--raised"
             data-testid="document-lock"
             aria-label="Lock protected documents"
-            title="Lock protected documents"
+            data-tooltip="Lock protected documents"
             onclick={() => protection?.lockNow()}
         >
             <!-- In-repo constant markup from the icon table, never document content - the same

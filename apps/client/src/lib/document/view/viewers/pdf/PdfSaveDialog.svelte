@@ -33,6 +33,7 @@
         hasPassword,
         startWithPasswordRemoved,
         folderGraph,
+        canAddToGraph = true,
         hasDigitalSignature,
         linkPlaces,
         defaultLink,
@@ -46,6 +47,8 @@
         hasPassword: boolean;
         startWithPasswordRemoved: boolean;
         folderGraph: boolean;
+        /** False where there is no graph to add the copy to (a Plain Folder). */
+        canAddToGraph?: boolean;
         hasDigitalSignature: boolean;
         linkPlaces: LinkPlace[];
         /** Where the link goes unless the person chooses, when not today's journal. It can arrive while the dialog is open. */
@@ -188,10 +191,12 @@
                     <input class="gk-checkbox" type="checkbox" bind:checked={toFile} data-testid="pdf-save-to-file" />
                     A file on this device
                 </label>
-                <label class="flex items-center gap-2 text-sm text-(--gk-text-default)">
-                    <input class="gk-checkbox" type="checkbox" bind:checked={toGraph} data-testid="pdf-save-to-graph" />
-                    Add to the graph, with a link to it
-                </label>
+                {#if canAddToGraph}
+                    <label class="flex items-center gap-2 text-sm text-(--gk-text-default)">
+                        <input class="gk-checkbox" type="checkbox" bind:checked={toGraph} data-testid="pdf-save-to-graph" />
+                        Add to the graph, with a link to it
+                    </label>
+                {/if}
                 {#if toGraph}
                     <label class="ml-6 flex flex-col gap-1 text-sm text-(--gk-text-default)">
                         Put the link

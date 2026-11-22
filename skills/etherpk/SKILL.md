@@ -153,7 +153,7 @@ wants.
 Tell the user how to open and publish the folder:
 
 - **Open it in EtherPK.** In Chrome or Edge on the same computer, go to
-  <https://app.etherpk.com> (or their own EtherPK), select **Open folder (Folder Graph)** on the
+  <https://app.etherpk.com> (or their own EtherPK), select **Open folder** on the
   Graphs page and pick the folder. Their edits and yours show up in each other.
   <https://docs.etherpk.com/folder-graphs>
 - **Publish it.** In EtherPK: **Settings → Publish**, **Choose folder…**, then **Publish to

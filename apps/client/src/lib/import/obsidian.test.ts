@@ -185,6 +185,22 @@ describe('convertObsidian', () => {
         expect(text).toContain('- [ ] sort the #a/b and #my_tag')
     })
 
+    it('reads a markdown link as a relative path from the note that holds it, as a plain folder of markdown writes them', async () => {
+        const graph = await convertObsidian([
+            src('soil.md', 'The top one.'),
+            src('guide/soil.md', 'The guide one.'),
+            src('guide/clay beds.md', 'Clay.'),
+            src('guide/watering.md', '[soil](soil.md) [up](../soil.md) [Clay Beds](clay%20beds.md) [Clay Beds](clay%20beds.md#digging) [gone](missing.md#x)'),
+        ])
+        const text = doc(graph, 'watering').text
+        // `soil.md` beside the note is the guide's, not the one at the top with the same name.
+        expect(text).toContain('soil ([[[[guide]] soil]])')
+        expect(text).toContain('up ([[soil]])')
+        // A heading has no place in a wikilink: the link still reaches its page.
+        expect(text).toContain('[[Clay Beds]] [[Clay Beds]]')
+        expect(text).toContain('[gone](missing.md#x)')
+    })
+
     it('leaves external links, tags and fences as they are', async () => {
         const graph = await convertObsidian([
             src('note.md', '[site](https://example.com/page.md)\n#hashtag stays\n```\n![[not-an-embed]]\n```'),

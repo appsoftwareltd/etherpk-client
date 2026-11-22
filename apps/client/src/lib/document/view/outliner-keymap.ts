@@ -61,6 +61,7 @@ import { analysisFor } from './analysis/editor-analysis'
 import { anchoredMove } from './anchored-move'
 import { frontmatterEnter } from './frontmatter-keys'
 import { caretContext, type FencedBlock, fencedBlockAt, lineInFrontmatter, outermostFencedBlockAt, unterminatedFenceOpenerAt } from './outliner-context'
+import { plainLists } from './list-items-keymap'
 import { blockSelectionTaskLines, bulletToggleable, taskToggleable, toggledBullet } from './task-toggleable'
 
 /**
@@ -272,6 +273,9 @@ export const indentBranch: StateCommand = (view) => {
         // the editor. This is also the Command Bar's indent button on mobile, where there is no other
         // way into block mode than positioning the caret by touch.
         if (!taskToggleable(view.state)) return true
+        // In a Plain Folder a line that is no list item stays as it is (ADR 0195 §5): the file was
+        // written elsewhere, and a bullet is the person's to type.
+        if (view.state.facet(plainLists)) return true
         enterList(view, '- ')
         return true
     }

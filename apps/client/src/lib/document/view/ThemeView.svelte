@@ -532,7 +532,7 @@
                             <span class="text-amber-700 dark:text-amber-300" data-testid="theme-view-preview-stale">Edited since</span>
                         {/if}
                         <button type="button" class={primaryClass} onclick={() => void updatePreview()} disabled={previewBusy} data-testid="theme-view-preview-update">{previewBusy ? "Rendering…" : "Update preview"}</button>
-                        <button type="button" class={buttonClass} onclick={() => void updatePreview(true)} disabled={previewBusy} title="Read the graph again" data-testid="theme-view-preview-refresh">Refresh content</button>
+                        <button type="button" class={buttonClass} onclick={() => void updatePreview(true)} disabled={previewBusy} data-tooltip="Read the graph again" aria-description="Read the graph again" data-testid="theme-view-preview-refresh">Refresh content</button>
                         {#if previewUrl !== null}
                             <!-- A plain link: the preview route serves a top-level tab exactly as it serves the frame
                                  (same sandboxing response), so the site can be tested at full size, on a phone

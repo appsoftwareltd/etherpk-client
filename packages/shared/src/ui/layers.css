@@ -22,4 +22,7 @@
     --z-menu: 70;
     /* Search, with its own backdrop, over everything else. */
     --z-search: 80;
+    /* A tooltip (Client, TooltipHost.svelte): over everything, since it names the control under the
+       pointer wherever that is, and it takes no clicks, so it never stands in the way of one. */
+    --z-tooltip: 90;
 }

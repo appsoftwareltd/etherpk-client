@@ -1293,7 +1293,7 @@
                     <ul class="max-h-48 overflow-y-auto rounded-md border border-amber-200 dark:border-amber-900 bg-white dark:bg-neutral-900 divide-y divide-neutral-100 dark:divide-neutral-800" aria-label="Public documents in no publication">
                         {#each orphanList as concept (concept)}
                             <li>
-                                <button type="button" class="block w-full truncate px-3 py-1.5 text-left text-sm font-medium text-(--gk-accent) hover:bg-neutral-50 dark:hover:bg-white/5 hover:underline" title={concept} onclick={() => onopenpage(concept)}>{concept}</button>
+                                <button type="button" class="block w-full truncate px-3 py-1.5 text-left text-sm font-medium text-(--gk-accent) hover:bg-neutral-50 dark:hover:bg-white/5 hover:underline" data-tooltip={concept} aria-description={concept} onclick={() => onopenpage(concept)}>{concept}</button>
                             </li>
                         {/each}
                     </ul>

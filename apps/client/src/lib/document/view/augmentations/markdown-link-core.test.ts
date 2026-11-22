@@ -329,3 +329,15 @@ describe('caretBesideLink', () => {
         expect(click('see https://example.com§')).toBe('see https://example.com|')
     })
 })
+
+describe('links in a Plain Folder', () => {
+    it('a reference into an assets folder is a link like any other, where nothing else owns it', () => {
+        const text = 'See [the manual](../assets/pump.pdf) and [soil](soil.md).'
+        const scan = (assetRefsAreLinks: boolean) =>
+            linkPieces({ tree: markdown.parse(text), sliceDoc: (a, b) => text.slice(a, b), from: 0, to: text.length, isActiveLine: () => false, assetRefsAreLinks })
+                .filter((piece) => piece.kind === 'link')
+                .map((piece) => (piece.kind === 'link' ? piece.href : ''))
+        expect(scan(false)).toEqual(['soil.md'])
+        expect(scan(true)).toEqual(['../assets/pump.pdf', 'soil.md'])
+    })
+})

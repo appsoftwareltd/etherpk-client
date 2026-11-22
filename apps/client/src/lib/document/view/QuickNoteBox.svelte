@@ -251,7 +251,7 @@
                             type="button"
                             onclick={() => onremovefile(file.id)}
                             aria-label="Remove {file.name}"
-                            title="Remove {file.name}"
+                            data-tooltip="Remove {file.name}"
                             data-testid="{testid}-file-remove"
                             class="gk-icon-button"
                         >
@@ -343,7 +343,7 @@
                 onpointerdown={(event) => event.preventDefault()}
                 data-testid="{testid}-link"
                 aria-label="Link to a page"
-                title="Link to a page"
+                data-tooltip="Link to a page"
                 class="gk-button gk-button--small"
             >
                 <span class="font-mono font-semibold" aria-hidden="true">[[ ]]</span>
@@ -354,7 +354,7 @@
                     onclick={() => picker?.click()}
                     data-testid="{testid}-attach"
                     aria-label="Attach a file"
-                    title="Attach a file"
+                    data-tooltip="Attach a file"
                     class="gk-button gk-button--small"
                 >
                     <svg class="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">

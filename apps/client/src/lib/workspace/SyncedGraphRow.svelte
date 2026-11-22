@@ -319,7 +319,7 @@
             </button>
             <button
                 data-testid="graphs-rename"
-                title="Rename (changes the graph name for all members)"
+                data-tooltip="Rename (changes the graph name for all members)" aria-description="Rename (changes the graph name for all members)"
                 aria-label="Rename graph"
                 onclick={onrename}
                 class={accent ? ICON_ON_COLOUR : ICON_BUTTON}
@@ -330,7 +330,7 @@
             </button>
             <button
                 data-testid="graphs-synced-settings"
-                title="Graph settings (shared by all members)"
+                data-tooltip="Graph settings (shared by all members)" aria-description="Graph settings (shared by all members)"
                 aria-label="Graph settings"
                 onclick={onsettings}
                 class={accent ? ICON_ON_COLOUR : ICON_BUTTON}
@@ -525,7 +525,7 @@
                 <!-- A new key for everyone in the graph; nothing to confirm, since nobody loses anything. -->
                 <button
                     data-testid="graphs-rotate-key"
-                    title="Make a new key for this graph. Its members receive it automatically."
+                    data-tooltip="Make a new key for this graph. Its members receive it automatically." aria-description="Make a new key for this graph. Its members receive it automatically."
                     disabled={rotating}
                     aria-busy={rotating}
                     onclick={onrotate}
@@ -535,7 +535,7 @@
             {#if onDevice}
                 <button
                     data-testid="graphs-remove"
-                    title="Deletes this browser's copy - the graph stays on the sync server"
+                    data-tooltip="Deletes this browser's copy - the graph stays on the sync server" aria-description="Deletes this browser's copy - the graph stays on the sync server"
                     onclick={onforget}
                     class={TEXT_BUTTON}>Remove from this device</button
                 >

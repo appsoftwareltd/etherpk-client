@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { AddressedGraph } from '#lib/navigation/graph-address.js'
 
-import { choiceDetail, entryIsAnotherGraphs, gateFor, graphAskedFor, graphIdsNamed, wrongFolderMessage } from './graph-address-gate'
+import { choiceDetail, entryIsAnotherGraphs, foldersNamedHeading, gateFor, graphAskedFor, graphIdsNamed, wrongFolderMessage } from './graph-address-gate'
 
 const folder = (id: string, name: string): AddressedGraph => ({ id, backend: 'filesystem', handle: { kind: 'directory', name } })
 const browser = (id: string): AddressedGraph => ({ id, backend: 'filesystem', where: 'browser', handle: { kind: 'directory', name: `graph-${id}` } })
@@ -114,6 +114,15 @@ describe('wrongFolderMessage', () => {
 
     it('treats a difference in case as another folder, as the address does', () => {
         expect(wrongFolderMessage('Reports', 'reports')).not.toBeNull()
+    })
+})
+
+describe('foldersNamedHeading', () => {
+    it('says how many folders share the name, as many as the choices under it', () => {
+        expect(foldersNamedHeading(2, 'notes')).toBe('Two folders are named “notes”')
+        expect(foldersNamedHeading(3, 'docs')).toBe('Three folders are named “docs”')
+        expect(foldersNamedHeading(9, 'docs')).toBe('Nine folders are named “docs”')
+        expect(foldersNamedHeading(12, 'docs')).toBe('12 folders are named “docs”')
     })
 })
 

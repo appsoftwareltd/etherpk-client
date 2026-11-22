@@ -127,7 +127,7 @@
                     class="toggle"
                     aria-expanded={!collapsed}
                     aria-controls={collapsed ? undefined : listId}
-                    title={collapsed ? "Show the backlinks below every document" : "Hide the backlinks below every document"}
+                    data-tooltip={collapsed ? "Show the backlinks below every document" : "Hide the backlinks below every document"} aria-description={collapsed ? "Show the backlinks below every document" : "Hide the backlinks below every document"}
                     data-testid="document-backlinks-toggle"
                     data-document-backlinks-toggle
                     onclick={() => setPreferences({ collapsedBelowDocuments: !collapsed })}

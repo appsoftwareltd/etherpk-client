@@ -138,7 +138,7 @@
             aria-expanded={find.replaceShown}
             aria-controls={replaceId}
             aria-label={find.replaceShown ? "Hide replace" : "Show replace"}
-            title={find.replaceShown ? "Hide replace" : `Show replace (${replaceChord})`}
+            data-tooltip={find.replaceShown ? "Hide replace" : `Show replace (${replaceChord})`} aria-description={find.replaceShown ? "Hide replace" : `Show replace (${replaceChord})`}
             data-testid="find-toggle-replace"
             onclick={() => controller.showReplace(!find.replaceShown)}
         >
@@ -189,7 +189,7 @@
                         class="find__button"
                         disabled={nothingFound}
                         aria-disabled={find.busy || undefined}
-                        title="Replace (Enter)"
+                        data-tooltip="Replace (Enter)" aria-description="Replace (Enter)"
                         data-testid="replace-one"
                         onclick={() => void controller.replaceOne()}
                     >Replace</button>
@@ -198,7 +198,7 @@
                         class="find__button"
                         disabled={nothingFound}
                         aria-disabled={find.busy || undefined}
-                        title="Replace all ({replaceAllChord})"
+                        data-tooltip="Replace all ({replaceAllChord})" aria-description="Replace all ({replaceAllChord})"
                         data-testid="replace-all"
                         onclick={() => void controller.replaceAll()}
                     >Replace all</button>
@@ -215,17 +215,17 @@
                     class="find__option"
                     aria-pressed={find.options[option.key]}
                     aria-label={option.label}
-                    title={option.label}
+                    data-tooltip={option.label}
                     data-testid="find-option-{option.key}"
                     onclick={() => controller.toggleOption(option.key)}
                 ><span aria-hidden="true" class={[option.key === "wholeWord" && "find__option-word"]}>{option.text}</span></button>
             {/each}
         </div>
         <span id={countId} class={["find__count", count === "No matches" && "find__count--none"]} data-testid="find-count">{count}</span>
-        <button type="button" class="find__icon find__nav find__previous" aria-label="Previous match (Shift+Enter)" title="Previous match (Shift+Enter)" disabled={nothingFound} data-testid="find-previous" onclick={() => controller.previous()}>
+        <button type="button" class="find__icon find__nav find__previous" aria-label="Previous match (Shift+Enter)" data-tooltip="Previous match (Shift+Enter)" disabled={nothingFound} data-testid="find-previous" onclick={() => controller.previous()}>
             <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16"><path d="M8 12.5v-9M4 7.5l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </button>
-        <button type="button" class="find__icon find__nav find__next" aria-label="Next match (Enter)" title="Next match (Enter)" disabled={nothingFound} data-testid="find-next" onclick={() => controller.next()}>
+        <button type="button" class="find__icon find__nav find__next" aria-label="Next match (Enter)" data-tooltip="Next match (Enter)" disabled={nothingFound} data-testid="find-next" onclick={() => controller.next()}>
             <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16"><path d="M8 3.5v9M4 8.5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </button>
         <button
@@ -234,13 +234,13 @@
             aria-pressed={find.listShown}
             aria-controls={listId}
             aria-label="List the matches"
-            title="List the matches"
+            data-tooltip="List the matches"
             data-testid="find-toggle-list"
             onclick={() => controller.setListShown(!find.listShown)}
         >
             <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16"><path d="M3 4.5h10M3 8h10M3 11.5h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
         </button>
-        <button type="button" class="find__icon find__close" aria-label="Close find (Esc)" title="Close (Esc)" data-testid="find-close" onclick={() => controller.close({ focusEditor: true })}>
+        <button type="button" class="find__icon find__close" aria-label="Close find (Esc)" data-tooltip="Close (Esc)" aria-description="Close (Esc)" data-testid="find-close" onclick={() => controller.close({ focusEditor: true })}>
             <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
         </button>
     </div>

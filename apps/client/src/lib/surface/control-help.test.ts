@@ -20,9 +20,9 @@ describe('help text', () => {
         expect(controlHelpText('Open a map of every place and route in this graph', [], false)).toBe('Open a map of every place and route in this graph')
     })
 
-    it('is carried as a title, an aria-description and, when there are chords, aria-keyshortcuts', () => {
+    it('is carried as a tooltip, an aria-description and, when there are chords, aria-keyshortcuts', () => {
         expect(controlHelp("Open today's journal", ['Alt+J'], false)).toEqual({
-            title: "Open today's journal (Alt + J)",
+            'data-tooltip': "Open today's journal (Alt + J)",
             'aria-description': "Open today's journal (Alt + J)",
             'aria-keyshortcuts': 'Alt+J',
         })
@@ -34,12 +34,12 @@ describe('help text over the live keybinding table', () => {
     it("reads the Command's chords from the table each time, so a chord bound later shows", () => {
         const table = createKeybindingTable([{ key: 'Mod+K', command: 'search.open' }])
         const helpFor = createControlHelp(table, false)
-        expect(helpFor('Open graph search modal', 'search.open').title).toBe('Open graph search modal (Ctrl + K)')
+        expect(helpFor('Open graph search modal', 'search.open')['data-tooltip']).toBe('Open graph search modal (Ctrl + K)')
         table.add({ key: 'Alt+F', command: 'search.open' })
         expect(helpFor('Open graph search modal', 'search.open')['aria-keyshortcuts']).toBe('Control+K Alt+F')
     })
 
     it('names no chord without a table', () => {
-        expect(createControlHelp(undefined, false)('Open graph search modal', 'search.open').title).toBe('Open graph search modal')
+        expect(createControlHelp(undefined, false)('Open graph search modal', 'search.open')['data-tooltip']).toBe('Open graph search modal')
     })
 })

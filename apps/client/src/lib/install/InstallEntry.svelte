@@ -27,7 +27,7 @@
             type="button"
             onclick={startInstall}
             data-testid="install-entry-header"
-            title="Install EtherPK to open it from your home screen, Dock or taskbar and work with no network."
+            data-tooltip="Install EtherPK to open it from your home screen, Dock or taskbar and work with no network." aria-description="Install EtherPK to open it from your home screen, Dock or taskbar and work with no network."
             class="gk-button hidden lg:inline-flex"
         >
             <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">

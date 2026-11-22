@@ -41,6 +41,25 @@ export const CODE_FONT_SCALE = 0.875
  */
 export const CODE_FONT_SIZE = `${CODE_FONT_SCALE}em`
 
+/**
+ * The line height of a line of code. Tighter than the prose's 1.7: code reads better compact, and
+ * the loose leading is what made the panel's top and bottom padding dwarf its sides (`0.7em`). At
+ * 1.4 the first and last rows' padding lands the fences `0.7em` from the panel edge, as the sides are.
+ */
+export const CODE_LINE_HEIGHT = '1.4'
+
+/**
+ * The same line height on the pixel grid, for a browser that has `round()`. The browser rounds a
+ * font's ascent and descent to whole pixels and gives the leading's odd fraction to the bottom, so
+ * in a fractional row the text sits up to a pixel above centre: at 14px code, 1px of leading above
+ * it and 2.6px below. A whole-pixel row leaves at most a pixel between the two.
+ */
+export const CODE_LINE_HEIGHT_SNAPPED = `round(${CODE_LINE_HEIGHT}em, 1px)`
+export const SUPPORTS_ROUNDED_LINE_HEIGHT = '@supports (line-height: round(1px, 1px))'
+
+/** The room above and below the text of each row of code, which with the line height is the rows' pitch. */
+export const CODE_ROW_PAD = '0.2em'
+
 /** The code-block panel's paddings (in the code font). The left one is the content clamp's: a block
  *  owned by prose has its code column that far in from the panel's edge (`codeLineIndent`). The right
  *  one is the scroll container's (code-scroll.ts), which reaches across it to the panel's right edge. */
@@ -130,23 +149,16 @@ const codeLineTheme = EditorView.baseTheme({
         isolation: 'isolate',
         fontFamily: 'var(--gk-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
         fontSize: CODE_FONT_SIZE,
-        // Tighter than the prose `line-height: 1.7` — code reads better compact, and the loose leading
-        // is what made the top/bottom panel padding dwarf the side padding (`0.7em`). At 1.4 the leading
-        // is small enough that the first/last rows' padding lands the fences `0.7em` from the panel edge,
-        // matching the sides.
-        lineHeight: '1.4',
-        paddingTop: '0.2em',
-        paddingBottom: '0.2em',
+        lineHeight: CODE_LINE_HEIGHT,
+        paddingTop: CODE_ROW_PAD,
+        paddingBottom: CODE_ROW_PAD,
         paddingLeft: `calc(var(--code-inset, 0px) + ${CODE_PANEL_PAD_LEFT})`,
         paddingRight: CODE_PANEL_PAD_RIGHT,
     },
-    // A whole-pixel row, as the prose rows are (cm-document.ts). The browser rounds a font's ascent
-    // and descent to whole pixels and gives the leading's odd fraction to the bottom, so in a
-    // fractional row the text sits up to a pixel above centre: at 14px code, 1px of leading above
-    // it and 2.6px below, which put the frontmatter's opening `---` nearer its panel edge than the
-    // closing one is to its own. A whole-pixel row leaves at most a pixel between the two.
-    '@supports (line-height: round(1px, 1px))': {
-        '.cm-line.gk-code-block': { lineHeight: 'round(1.4em, 1px)' },
+    // A whole-pixel row, as the prose rows are (cm-document.ts). A fractional one put the
+    // frontmatter's opening `---` nearer its panel edge than the closing one is to its own.
+    [SUPPORTS_ROUNDED_LINE_HEIGHT]: {
+        '.cm-line.gk-code-block': { lineHeight: CODE_LINE_HEIGHT_SNAPPED },
     },
     '.cm-line.gk-code-block::after': {
         content: '""',

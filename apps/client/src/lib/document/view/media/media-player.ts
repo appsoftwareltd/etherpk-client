@@ -91,6 +91,8 @@ function button(className: string, label: string, glyph: SVGSVGElement | string)
     const node = el('button', `gk-media__button ${className}`)
     node.type = 'button'
     node.setAttribute('aria-label', label)
+    // The browser's own `title` box, not the Client's tooltip (`data-tooltip`): the player goes full
+    // screen, and the Client's one tooltip lives outside it, where nothing full screen shows.
     node.title = label
     if (typeof glyph === 'string') node.textContent = glyph
     else node.appendChild(glyph)

@@ -5,6 +5,62 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.42.0 - 2026-11-22
+
+### Client
+
+- **Plain Folders.** EtherPK now opens an ordinary folder of markdown files and edits them where
+  they are. **Open folder** on the Graphs page looks inside the folder first. A graph's folder opens
+  as before. Any other folder is asked about: open it as a Plain Folder, create a graph in it, or
+  import it into a new graph. A folder dropped onto the Graphs page is opened the same way. A Plain
+  Folder is not a graph, so it has no wikilinks, backlinks or journal. It is listed in a section
+  of its own on the Graphs page and in a **Plain Folders** group of the Graphs menu. EtherPK does
+  not sync a Plain Folder or a Folder graph, and the Graphs page now says **(not synced)** beside
+  both headings.
+  - A file tree with new, rename, move and delete, **Go to file** (Ctrl+P), **Search** across the
+    folder's files (Ctrl+Shift+F), an outline of the file's headings, and Favourites.
+  - Standard markdown links between files, with the folder's files suggested after `](`. A link to
+    a heading opens the file there. After a rename or a move, EtherPK offers to update the links
+    it changed.
+  - A save changes only the lines you edited and keeps the file's line endings. The outliner's
+    keys work on `*`, `+` and numbered lists as well as `-`, and Tab leaves a paragraph alone.
+  - PDFs, EPUB books, pictures and recordings open in the readers a graph has. Text files that are
+    not markdown open in a plain editor, with their language's colours, in the font and size of a
+    code block in a document.
+  - EtherPK adds nothing to the folder until you keep a highlight, a bookmark, a favourite, a
+    dictionary word or a folder setting. Those go in a hidden `.etherpk` folder, one small file
+    each, and a notice says so the first time.
+  - Pictures from other websites are not loaded until you allow them for the folder.
+  - A folder inside it that holds an EtherPK graph is marked, shown read-only, and opens as the
+    graph.
+- **Open a markdown file from your file manager.** With EtherPK installed as an app, the file
+  manager offers it for `.md` files. The file opens on its own and saves in place, and **Open the
+  folder** adds its folder as a Plain Folder.
+- **A save no longer replaces another program's edit.** In a folder graph, when another program
+  changes a file you have open and you keep typing, the next save stops and shows the
+  **External change** dialog. Before, the file was checked only when the window gained focus and
+  every few seconds, so a save in between wrote over the other program's text. **Keep mine** checks
+  again, and shows the newer text if the file changed while the dialog was open.
+- **Icon buttons name themselves on a phone.** Tap a button that shows only an icon, on the
+  command bar, the top bar or a PDF's or an EBook's tools, and its name shows above it for 1.5
+  seconds. With a mouse the name shows on hover, and with the keyboard on focus, in the app's own
+  colours in place of the browser's tooltip.
+- **Outdent and Indent come earlier on the command bar.** They now follow the `[[` and `]]`
+  buttons, ahead of Toggle task, Undo and Redo.
+- **Ways to run EtherPK, as two tables.** The home page now lists where to get EtherPK (the
+  hosted app, the Docker image, the Node.js bundle, and the planned Android, Linux and Windows
+  apps) with what each runs, then which browsers run synced graphs and folder graphs and which
+  can install the app. The Docker row links the image and the new user docs page
+  "Running EtherPK With Docker", which has an example Docker Compose file.
+- **Fixes.**
+  - The Graphs menu opens with its rows in place. It drew **All Graphs** alone first, then the
+    rows pushed it down from under the pointer.
+  - The question asked when a link names a folder that several of your folders share now says how
+    many there are. It said "Two folders" over a list of three.
+  - Importing a folder of markdown reads a link such as `[soil](soil.md)` as a path from the note
+    that holds it, so it reaches the note beside it when another note has the same name. A link
+    with a heading, `[soil](soil.md#clay)`, now becomes a wikilink to the page too.
+
 ## 0.41.0 - 2026-11-22
 
 ### Client

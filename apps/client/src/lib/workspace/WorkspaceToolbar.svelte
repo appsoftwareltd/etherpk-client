@@ -23,6 +23,8 @@
      * the spacer, so its coming and going moves no button.
      */
 
+    import type { Snippet } from 'svelte'
+
     import SidebarToggleIcon from '#lib/layout/renderers/SidebarToggleIcon.svelte'
 
     import type { GraphStatus, StatusCallout as Callout } from './graph-status'
@@ -39,12 +41,18 @@
         onstatus,
         ondismisscallout,
         indexing = false,
+        leftLabel = 'Toggle document tree',
+        settingsLabel = 'Graph name and settings',
+        rightLabel = 'Toggle backlinks',
+        lead,
     }: {
         ontoggleleft: () => void
         ontoggleright: () => void
         onshortcuts: () => void
-        onsettings: () => void
-        ontasks: () => void
+        /** Open the settings. Without it the cog is not drawn. */
+        onsettings?: () => void
+        /** Open Tasks. Without it the button is not drawn: a [[Plain Folder]] has no Tasks View. */
+        ontasks?: () => void
         /** Sync and the Local Mirror together; not shown on a graph that has neither. */
         status?: GraphStatus
         /** The notice under the dot, already less whatever the person closed. */
@@ -54,6 +62,14 @@
         ondismisscallout?: () => void
         /** The search index is busy with work worth showing (workspace/indexing-indicator.ts). */
         indexing?: boolean
+        /** What the left toggle shows and hides, where it is not the graph's document tree. */
+        leftLabel?: string
+        /** What the cog opens, where it is not a graph's settings. */
+        settingsLabel?: string
+        /** What the right toggle shows and hides, where it is not Backlinks. */
+        rightLabel?: string
+        /** What is open, after the left toggle: a [[Plain Folder]]'s name and what it is. A graph draws none. */
+        lead?: Snippet
     } = $props()
 </script>
 
@@ -61,13 +77,14 @@
     <button
         type="button"
         class="gk-icon-button gk-button--raised"
-        title="Toggle document tree"
+        data-tooltip={leftLabel}
         data-testid="ws-toggle-left"
         onclick={ontoggleleft}
-        aria-label="Toggle document tree"
+        aria-label={leftLabel}
     >
         <SidebarToggleIcon side="left" />
     </button>
+    {#if lead}{@render lead()}{/if}
     <span class="spacer"></span>
     {#if indexing}
         <!-- Not a live region: indexing comes and goes with every rename, and announcing each
@@ -76,7 +93,7 @@
             class="indexing"
             role="img"
             aria-label="Updating the search index"
-            title="Updating the search index. Search, links and backlinks catch up when it finishes."
+            data-tooltip="Updating the search index. Search, links and backlinks catch up when it finishes."
             data-testid="ws-indexing"
         >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -90,7 +107,7 @@
         <span class="status-wrap">
             <button
                 class="gk-icon-button gk-button--raised status"
-                title={status.title}
+                data-tooltip={status.title} aria-description={status.title}
                 aria-label={`Sync status. ${status.title}`}
                 aria-haspopup="dialog"
                 data-testid="graph-status"
@@ -112,7 +129,7 @@
     <button
         type="button"
         class="gk-icon-button gk-button--raised"
-        title="Keyboard shortcuts"
+        data-tooltip="Keyboard shortcuts"
         aria-label="Keyboard shortcuts"
         data-testid="ws-keyboard-shortcuts"
         onclick={onshortcuts}
@@ -122,11 +139,12 @@
             <path stroke-linecap="round" d="M6 9h.01M9.5 9h.01M13 9h.01M16.5 9h.01M6 12h.01M9.5 12h.01M13 12h.01M16.5 12h.01M18 9h.01M18 12h.01M8 15h8" />
         </svg>
     </button>
+    {#if onsettings}
     <button
         type="button"
         class="gk-icon-button gk-button--raised"
-        title="Graph name and settings"
-        aria-label="Graph name and settings"
+        data-tooltip={settingsLabel}
+        aria-label={settingsLabel}
         data-testid="ws-graph-settings"
         onclick={onsettings}
     >
@@ -135,12 +153,14 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
         </svg>
     </button>
+    {/if}
     <!-- heroicons/outline clipboard-document-check. Sits immediately before the Sidebar
          toggle: it opens a View INTO that Sidebar, so the two read as a pair. -->
+    {#if ontasks}
     <button
         type="button"
         class="gk-icon-button gk-button--raised"
-        title="Tasks"
+        data-tooltip="Tasks"
         aria-label="Tasks"
         data-testid="ws-tasks"
         onclick={ontasks}
@@ -149,13 +169,14 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m8.9-4.414c.376.023.75.05 1.124.08 1.131.094 1.976 1.057 1.976 2.192V16.5A2.25 2.25 0 0 1 18 18.75h-2.25m-7.5-10.5H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V18.75m-7.5-10.5h6.375c.621 0 1.125.504 1.125 1.125v9.375m-8.25-3 1.5 1.5 3-3.75" />
         </svg>
     </button>
+    {/if}
     <button
         type="button"
         class="gk-icon-button gk-button--raised"
-        title="Toggle backlinks"
+        data-tooltip={rightLabel}
         data-testid="ws-toggle-right"
         onclick={ontoggleright}
-        aria-label="Toggle backlinks"
+        aria-label={rightLabel}
     >
         <SidebarToggleIcon side="right" />
     </button>

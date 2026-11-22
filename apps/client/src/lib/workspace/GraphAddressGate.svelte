@@ -32,7 +32,7 @@
 
     import { chosenGraphState } from './chosen-graph'
     import { graphAccentFor } from './graph-accent.svelte.js'
-    import { choiceDetail, gateFor, graphAskedFor, graphIdsNamed, wrongFolderMessage, type GraphGate } from './graph-address-gate'
+    import { choiceDetail, foldersNamedHeading, gateFor, graphAskedFor, type GraphGate, graphIdsNamed, wrongFolderMessage } from './graph-address-gate'
     import { FOLDER_GRAPHS_NEED } from './graph-choice-panels'
     import GraphWorkspace from './GraphWorkspace.svelte'
     import { openChosenFolder } from './open-chosen-folder'
@@ -231,7 +231,7 @@
     </div>
 {:else if gate.kind === 'choose-graph'}
     <div class="notice" data-testid="graph-choose-graph">
-        <h2 tabindex="-1" {@attach focusOnShow}>Two folders are named “{address.name}”</h2>
+        <h2 tabindex="-1" {@attach focusOnShow}>{foldersNamedHeading(gate.graphs.length, address.name)}</h2>
         <p>This browser has opened more than one folder with that name. Choose the one this link is for.</p>
         <ul class="notice__choices">
             {#each gate.graphs as graph (graph.id)}

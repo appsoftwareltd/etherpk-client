@@ -32,20 +32,21 @@ export function appCacheName(version: string): string {
 }
 
 /**
- * The pages a person opens to work: the root resolver, the Graphs page, the Share Target and
- * every workspace address. Each is served by the shell when it cannot be fetched. The public
+ * The pages a person opens to work: the root resolver, the Graphs page, the Share Target, the
+ * page a file opened from the file manager lands on, and every workspace address. Each is served by the shell when it cannot be fetched. The public
  * pages, sign-in, the server routes, the demo (whose graph is fetched from the server) and the
  * dev harnesses are left to the network.
  */
 export function isAppPagePath(pathname: string): boolean {
-    return pathname === '/' || pathname === '/graphs' || pathname === '/share' || WORKSPACE_ADDRESS.test(pathname)
+    return pathname === '/' || pathname === '/graphs' || pathname === '/share' || pathname === '/open-file' || WORKSPACE_ADDRESS.test(pathname)
 }
 
 /**
  * A workspace address (ADR 0192), `/graph/<where>/<name>/…`, and the shape before it,
- * `/g/<id>/…`, which a page sends on to the new one for one release (MAINTENANCE.md).
+ * `/g/<id>/…`, which a page sends on to the new one for one release (MAINTENANCE.md). A Plain
+ * Folder's workspace is `/folder/<name>/…` (ADR 0194).
  */
-const WORKSPACE_ADDRESS = /^\/(?:graph\/(?:folder|sync|browser)|g)\/[^/]+(\/.*)?$/
+const WORKSPACE_ADDRESS = /^\/(?:graph\/(?:folder|sync|browser)|g|folder)\/[^/]+(\/.*)?$/
 
 /** The static files the app needs to look like itself; the rest (the demo graph, marketing images) stay on the server. */
 const SHELL_FILES = new Set(['/favicon.ico', '/favicon.svg', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/site.webmanifest'])

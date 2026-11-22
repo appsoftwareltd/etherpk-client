@@ -86,6 +86,7 @@ describe('editor feature stack', () => {
             'wikilink',
             'link-cursor',
             'wikilink-completion',
+            'path-completion',
             'task-tag-completion',
             'slash-completion',
             'frontmatter-completion',
@@ -245,7 +246,7 @@ describe('editor feature stack', () => {
     })
 
     it('gives every open popover Enter and Tab before the YAML typing keys', () => {
-        for (const popover of ['wikilink-completion', 'task-tag-completion', 'slash-completion', 'frontmatter-completion', 'date-calendar', 'table-size-picker', 'concept-picker']) {
+        for (const popover of ['wikilink-completion', 'path-completion', 'task-tag-completion', 'slash-completion', 'frontmatter-completion', 'date-calendar', 'table-size-picker', 'concept-picker']) {
             before(popover, 'frontmatter-keys')
         }
     })
@@ -341,5 +342,77 @@ describe('editor feature stack', () => {
             extensions: [editorAnalysis(), ...editorExtensions(services)],
         })
         expect(state.doc.lines).toBe(3)
+    })
+})
+
+describe('the plain profile, for a file of a Plain Folder', () => {
+    const plainServices: EditorExtensionServices = {
+        ...services,
+        document: { concept: 'guide/watering.md' },
+        plain: {
+            openLink: () => {},
+            resolveMedia: async () => null,
+            readOnly: () => false,
+            suggestPaths: () => [],
+            textOnly: (path) => path.endsWith('.txt'),
+            assets: () => ({ save: async () => ({ ref: '', name: '', stem: '', isImage: false }), resolve: async () => null, readBytes: async () => null, dispose: () => {} }),
+            remoteImages: { allowed: () => false, allow: () => {}, onChange: () => () => {} },
+        },
+    }
+    const contributes = (feature: { extension: unknown }) => !(Array.isArray(feature.extension) && feature.extension.length === 0)
+    const offIn = (list: ReturnType<typeof editorFeatures>) => list.filter((feature) => !contributes(feature)).map((feature) => feature.name)
+
+    it('is the same list of features in the same order, so one order test covers both profiles', () => {
+        expect(editorFeatures(plainServices).map((feature) => feature.name)).toEqual(names())
+    })
+
+    it('leaves out exactly the features that read the graph or write its syntax', () => {
+        const graph = offIn(editorFeatures({ ...services, document: { concept: 'Garden' } }))
+        const plain = offIn(editorFeatures(plainServices))
+        expect(plain.filter((name) => !graph.includes(name))).toEqual([
+            'frontmatter-boundary',
+            'template-variables',
+            'frontmatter',
+            'frontmatter-assist',
+            'protected-fence',
+            'inline-panels',
+            'asset-link',
+            'wikilink',
+            'wikilink-completion',
+            'task-tag-completion',
+            'frontmatter-completion',
+            'date-calendar',
+            'concept-picker',
+        ])
+    })
+
+    it('keeps folds and bookmarks in a Plain Folder, by the file’s path', () => {
+        const lineMenu = () => {}
+        const withBookmarks = { ...plainServices, bookmarks: { lineMenu, draft: false, reveal: () => {} } }
+        const on = editorFeatures(withBookmarks).filter(contributes).map((feature) => feature.name)
+        expect(on).toContain('fold-persistence')
+        expect(on).toContain('bookmarks')
+    })
+
+    it('adds only path completion, in the place wikilink completion has in a graph', () => {
+        const graph = offIn(editorFeatures({ ...services, document: { concept: 'Garden' } }))
+        const plain = offIn(editorFeatures(plainServices))
+        expect(graph.filter((name) => !plain.includes(name))).toEqual(['path-completion'])
+    })
+
+    it('for a text file that is not markdown, keeps only what any text needs, under the same names', () => {
+        const text = editorFeatures({ ...plainServices, document: { concept: 'notes/list.txt' } })
+        expect(text.map((feature) => feature.name)).toEqual(names())
+        const kept = text.filter(contributes).map((feature) => feature.name)
+        const allowed = ['find-matches', 'selection-layer', 'placeholder', 'edit-refusal', 'editor-document', 'on-screen', 'line-anchor', 'keep-caret-visible', 'column-shift', 'selection-order', 'view-hooks']
+        expect(kept.filter((name) => !allowed.includes(name))).toEqual([])
+        // What reads markdown is gone, and what any text needs is there.
+        for (const name of ['markdown-format', 'bullet-marker', 'task-checkbox', 'outline-guides', 'wrap-selection', 'markdown-link', 'image-embed', 'caret-clamp']) expect(kept).not.toContain(name)
+        for (const name of ['find-matches', 'selection-layer', 'editor-document', 'view-hooks']) expect(kept).toContain(name)
+    })
+
+    it('builds an editor state with no graph, no store and no DOM', () => {
+        const state = EditorState.create({ doc: '- water the [[beans]]\n', extensions: [editorAnalysis(), ...editorFeatures(plainServices).map((f) => f.extension)] })
+        expect(state.doc.toString()).toBe('- water the [[beans]]\n')
     })
 })

@@ -22,13 +22,14 @@ import * as Y from 'yjs'
 import { getEditorFontSize, onEditorFontSizeChange } from '../editor-font'
 import type { TextChange } from '../types'
 import { codeHighlighting, markdownWithCodeHighlight } from './augmentations/code-highlight'
+import { textFileExtensions } from './text-file'
 import { deleteHeal } from './delete-heal'
 import { editorDefaultKeymap } from './editor-default-keymap'
 import { leaveTidy } from './leave-tidy'
 import { collabEditorHistory, editorHistory, joinableUndoStepField, localHistoryExtension } from './editor-history'
 import { fenceGuard } from './fence-guard'
 import { pasteClamp } from './paste-clamp'
-import { outlinerKeymap } from './outliner-keymap'
+import { outlinerLayer } from './outliner-layer'
 import { NEW_GROUP_DELAY, undoGrouping } from './undo-grouping'
 import { editorAnalysis } from './analysis/editor-analysis'
 import { minimalReplacement } from './minimal-replacement'
@@ -128,6 +129,18 @@ export interface DocumentEditorOptions {
      * When `awareness` is provided, y-codemirror renders remote cursors/selections.
      */
     collab?: { ytext: Y.Text; awareness?: Awareness }
+    /**
+     * A file of a [[Plain Folder]] (ADR 0196): the tidy on leave is left out. It trims the line the
+     * caret walked away from, which in a file written elsewhere changes a line the person only
+     * visited, and two trailing spaces there are markdown's line break.
+     */
+    plain?: boolean
+    /**
+     * The file is text that is not markdown (a `.txt`, a script), named by this: no outliner keys,
+     * no markdown parser and none of the guards that keep an outline in shape. The language's own
+     * colours come from the file's name (text-file.ts).
+     */
+    textFile?: string
 }
 
 export interface DocumentEditor {
@@ -167,8 +180,26 @@ function collabHistory(collab: NonNullable<DocumentEditorOptions['collab']>): Ex
     ]
 }
 
+/**
+ * What differs by the kind of file the editor is over, each part for its own place in the list:
+ * a graph's document, a markdown file of a Plain Folder, or a text file that is not markdown.
+ */
+function fileKindExtensions(plain: boolean, textFile: string | undefined): Record<'keys' | 'language' | 'guards' | 'heal', Extension> {
+    // No outliner, no markdown and none of the guards that keep an outline in shape (text-file.ts).
+    if (textFile !== undefined) return { keys: [], language: textFileExtensions(textFile), guards: [], heal: [] }
+    return {
+        // In a Plain Folder the other list kinds' keys come first, and Tab leaves prose alone (ADR 0195).
+        keys: Prec.high(outlinerLayer({ plain })),
+        language: [markdownWithCodeHighlight(), codeHighlighting()],
+        // A Plain Folder leaves the tidy out: it would change a line the person only visited (ADR 0196).
+        guards: [plain ? [] : leaveTidy(), fenceGuard(), pasteClamp()],
+        heal: deleteHeal(),
+    }
+}
+
 export function createDocumentEditor(options: DocumentEditorOptions): DocumentEditor {
-    const { parent, doc, onChange, currentText, extensions = [], collab } = options
+    const { parent, doc, onChange, currentText, extensions = [], collab, plain = false, textFile } = options
+    const kind = fileKindExtensions(plain, textFile)
     const historyCompartment = new Compartment()
     // Declared by the time a listener or the store calls either; `view` and `applyExternalText`
     // are defined below.
@@ -209,26 +240,23 @@ export function createDocumentEditor(options: DocumentEditorOptions): DocumentEd
                 dropCursor(),
                 // Outliner block-ops (Tab/Enter/move/fold/…) intercept before the
                 // defaults — Dual Mode Editor.md → Keyboard scheme.
-                Prec.high(outlinerKeymap()),
+                kind.keys,
                 // CodeMirror's defaults without its comment chords: Mod+/ is the Keyboard Shortcuts
                 // card's key and must not write to the document (editor-default-keymap.ts).
                 keymap.of([...editorDefaultKeymap, ...(collab ? yUndoManagerKeymap : historyKeymap)]),
-                markdownWithCodeHighlight(),
-                codeHighlighting(),
+                kind.language,
                 // Transaction filters run LAST-registered first, so the paste clamp sits after the fence
                 // guard: a paste is clamped before the guard sees it, and the guard then only re-pads what
                 // is left. The other way round the guard's corrections make the paste a multi-change
                 // transaction the clamp leaves alone (paste-clamp.test.ts pins this).
                 // The tidy on leave is registered first of all, so it judges the transaction after every
                 // other filter has clamped, healed and guarded it (leave-tidy.ts).
-                leaveTidy(),
-                fenceGuard(),
-                pasteClamp(),
+                kind.guards,
                 // A cut, a within-line delete that takes a bullet's marker, or Enter or typing over a
                 // selection from prose that takes one, heals the survivors. The caret clamp (in
                 // `extensions`, registered later) runs BEFORE it, so the heal places its own caret
                 // when its change would swallow it (delete-heal.ts).
-                deleteHeal(),
+                kind.heal,
                 editorAnalysis(),
                 EditorView.lineWrapping,
                 fontSizeTheme.of(themeForFontSize(getEditorFontSize())),

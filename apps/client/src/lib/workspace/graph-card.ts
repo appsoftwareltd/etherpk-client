@@ -11,6 +11,13 @@
 
 export const GRAPH_CARD = 'overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-white/10 dark:bg-white/5'
 
+/**
+ * "(not synced)" after the heading of a group EtherPK does not sync: Folder graphs and Plain
+ * Folders. Part of the heading, so a screen reader hears it with the name, at the weight and
+ * colour of a note beside it.
+ */
+export const NOT_SYNCED_NOTE = 'text-base font-normal text-neutral-500 dark:text-neutral-400'
+
 /** A card with no band to clip to its corners, so a menu opened from it can hang below its edge. */
 export const GRAPH_CARD_UNCLIPPED = 'rounded-xl border border-neutral-200 bg-white dark:border-white/10 dark:bg-white/5'
 

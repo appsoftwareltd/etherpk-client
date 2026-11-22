@@ -92,6 +92,17 @@ export function wrongFolderMessage(chosen: string, wanted: string): string | nul
     return `That folder is named “${chosen}”. This link is for “${wanted}”. Choose the folder named “${wanted}”.`
 }
 
+const COUNT_WORDS = ['Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine']
+
+/**
+ * The heading over the question "which folder?": how many folders this browser holds under the
+ * name, which is how many choices are listed under it. A count written into the sentence ("Two
+ * folders…") was wrong for a third folder of the same name.
+ */
+export function foldersNamedHeading(count: number, name: string): string {
+    return `${COUNT_WORDS[count - 2] ?? count} folders are named “${name}”`
+}
+
 /**
  * What tells apart two folders with one name, under the Graph Name: when each was added to this
  * browser, to the minute (two opened on the same day are the usual case), after its path where the

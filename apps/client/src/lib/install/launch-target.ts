@@ -8,6 +8,7 @@
  *   to its address as the launch would have.
  * - A link into a graph (a workspace address, ADR 0192) is opened in this window: a person who
  *   pressed a link to a page expects that page, not the app as they left it.
+ * - A file opened from the device's file manager lands on `/open-file`, which shows it.
  * - The launch that opened this page arrives too, and is ignored: the page already carried it out.
  */
 
@@ -24,12 +25,12 @@ export function launchTarget(targetUrl: string | undefined, origin: string, open
         return null
     }
     if (url.origin !== origin) return null
-    if (url.searchParams.has(SHORTCUT_PARAM) || url.pathname === '/share') return `${url.pathname}${url.search}`
+    if (url.searchParams.has(SHORTCUT_PARAM) || url.pathname === '/share' || url.pathname === '/open-file') return `${url.pathname}${url.search}`
     // The fragment goes too: a link to a task carries the task there.
     return isWorkspacePath(url.pathname) ? `${url.pathname}${url.search}${url.hash}` : null
 }
 
 /** A workspace address: an app page that is not the root resolver, the Graphs page or the Share Target. */
 function isWorkspacePath(pathname: string): boolean {
-    return isAppPagePath(pathname) && !['/', '/graphs', '/share'].includes(pathname)
+    return isAppPagePath(pathname) && !['/', '/graphs', '/share', '/open-file'].includes(pathname)
 }

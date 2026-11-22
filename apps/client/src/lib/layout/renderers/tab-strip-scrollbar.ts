@@ -386,7 +386,7 @@ export function installTabStripScrollbar(api: DockviewApi, container: HTMLElemen
             const close = item.appendChild(document.createElement('button'))
             close.type = 'button'
             close.className = 'dv-compass-overflow-close'
-            close.title = `Close ${name}`
+            close.dataset.tooltip = `Close ${name}`
             close.setAttribute('aria-label', `Close ${name}`)
             setTrustedMarkup(close, iconSvg('close', { size: 14 }))
             close.addEventListener('click', (event) => {

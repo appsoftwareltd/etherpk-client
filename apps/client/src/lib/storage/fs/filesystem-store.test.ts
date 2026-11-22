@@ -1211,6 +1211,10 @@ describe('FilesystemDocumentStore - the registry rescan reads only what moved', 
 
         doc.applyChange({ from: 3, to: 4, insert: 'x' })
         await vi.advanceTimersByTimeAsync(20) // the write is in flight
+        // The save read the file once itself, before its write began, to see that no other
+        // program had changed it. That read is over; the pass must add none while the write lands.
+        expect(reads).toEqual(['pages/Kanban.md'])
+        reads.length = 0
         const reconciling = store.reconcile()
         await flushMicrotasks()
         expect(reads).toEqual([]) // the scan reused the entry rather than opening the file
@@ -1625,5 +1629,167 @@ describe('FilesystemDocumentStore — names, aliases and the index feed', () => 
         await store.renamePage('Garden', 'Kitchen', { strategy: 'alias' })
         await store.deleteDocument('Kitchen')
         expect(heard).toEqual([])
+    })
+})
+
+describe('FilesystemDocumentStore - a save reads the file first', () => {
+    beforeEach(() => vi.useFakeTimers())
+    afterEach(() => vi.useRealTimers())
+
+    /** One open page over `seedText`, with the store's conflicts, failed saves and writes recorded. */
+    async function openOne(seedText: string, wrap: (fs: DirectoryAdapter) => DirectoryAdapter = (fs) => fs) {
+        const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { pages: { 'A.md': seedText } } })
+        const conflicts: DocumentConflict[] = []
+        const errors: unknown[] = []
+        const writes: string[] = []
+        const counted: DirectoryAdapter = {
+            ...fs,
+            write: async (subdir, name, text) => {
+                writes.push(text)
+                return fs.write(subdir, name, text)
+            },
+        }
+        const store = createFilesystemDocumentStore(wrap(counted), {
+            autosaveMs: 400,
+            onConflict: (c) => conflicts.push(c),
+            onSaveError: (_concept, error) => errors.push(error),
+        })
+        await store.scan()
+        const doc = store.open('A')
+        await flushMicrotasks()
+        return { fs, store, doc, conflicts, errors, writes }
+    }
+
+    it('raises a conflict when another program changed the file while the tab had focus, and leaves the file', async () => {
+        const { fs, doc, conflicts, writes } = await openOne('base')
+
+        doc.applyChange({ from: 4, to: 4, insert: ' mine' })
+        await fs.write('pages', 'A.md', 'base theirs') // an agent or another editor, with no focus change to rescan on
+        await vi.advanceTimersByTimeAsync(400) // the autosave
+
+        expect(conflicts).toHaveLength(1)
+        expect(conflicts[0]).toMatchObject({ target: 'A', diskText: 'base theirs', bufferText: 'base mine' })
+        expect((await fs.read('pages', 'A.md')).text).toBe('base theirs')
+        expect(doc.getText()).toBe('base mine')
+        expect(writes).toEqual([])
+    })
+
+    it('keeps an outside write made at the same moment as a save', async () => {
+        const { fs, store, doc, conflicts } = await openOne('base')
+
+        doc.applyChange({ from: 4, to: 4, insert: ' mine' })
+        // The two start together: the outside write lands first, and the save must see it.
+        await Promise.all([fs.write('pages', 'A.md', 'base theirs'), store.flushDocument('A')])
+
+        expect(conflicts).toHaveLength(1)
+        expect((await fs.read('pages', 'A.md')).text).toBe('base theirs')
+    })
+
+    it('saves after the conflict is settled, either way', async () => {
+        const { fs, store, doc } = await openOne('base')
+
+        doc.applyChange({ from: 4, to: 4, insert: ' mine' })
+        await fs.write('pages', 'A.md', 'base theirs')
+        await store.flushDocument('A')
+        await store.resolveConflict('A', 'keep-mine')
+        expect((await fs.read('pages', 'A.md')).text).toBe('base mine')
+
+        doc.applyChange({ from: 0, to: 0, insert: 'more ' })
+        await store.flushDocument('A')
+        expect((await fs.read('pages', 'A.md')).text).toBe('more base mine')
+    })
+
+    it('asks again when the file changes a second time before the person keeps their version', async () => {
+        const { fs, store, doc, conflicts } = await openOne('base')
+
+        doc.applyChange({ from: 4, to: 4, insert: ' mine' })
+        await fs.write('pages', 'A.md', 'base theirs')
+        await store.flushDocument('A') // the conflict shows 'base theirs'
+        await fs.write('pages', 'A.md', 'base theirs again') // while the dialog is open
+
+        await expect(store.resolveConflict('A', 'keep-mine')).rejects.toThrow(/changed the file again/)
+        expect(conflicts.map((c) => c.diskText)).toEqual(['base theirs', 'base theirs again'])
+        expect((await fs.read('pages', 'A.md')).text).toBe('base theirs again')
+
+        // They have now been shown the newer version, so keeping theirs goes through.
+        await store.resolveConflict('A', 'keep-mine')
+        expect((await fs.read('pages', 'A.md')).text).toBe('base mine')
+    })
+
+    it('counts a file that already holds the buffer as saved, and writes nothing', async () => {
+        const { fs, store, doc, conflicts, writes } = await openOne('base')
+
+        doc.applyChange({ from: 4, to: 4, insert: ' same' })
+        await fs.write('pages', 'A.md', 'base same') // another program made the same edit
+        await store.flushDocument('A')
+        await store.reconcile()
+
+        expect(conflicts).toEqual([])
+        expect(writes).toEqual([])
+
+        // The buffer and the file agree, so the next edit saves as any other.
+        doc.applyChange({ from: 0, to: 0, insert: 'then ' })
+        await store.flushDocument('A')
+        expect((await fs.read('pages', 'A.md')).text).toBe('then base same')
+        expect(conflicts).toEqual([])
+    })
+
+    it('still brings back a file removed outside the app (ADR 0039)', async () => {
+        const { fs, store, doc, conflicts, errors } = await openOne('base')
+
+        await fs.remove('pages', 'A.md') // a git checkout, with no rescan since
+        doc.applyChange({ from: 4, to: 4, insert: ' kept' })
+        await store.flushDocument('A')
+
+        expect((await fs.read('pages', 'A.md')).text).toBe('base kept')
+        expect(conflicts).toEqual([])
+        expect(errors).toEqual([])
+    })
+
+    it('reports a file it cannot read as a failed save, and writes nothing over it', async () => {
+        const denied = { now: false }
+        const refuse = (): never => {
+            throw new DOMException('Permission to the folder has lapsed.', 'NotAllowedError')
+        }
+        const { fs, store, doc, errors, writes } = await openOne('base', (inner) => ({
+            ...inner,
+            read: async (subdir, name) => (denied.now ? refuse() : inner.read(subdir, name)),
+            exists: async (subdir, name) => (denied.now ? refuse() : inner.exists(subdir, name)),
+        }))
+
+        doc.applyChange({ from: 4, to: 4, insert: ' mine' })
+        denied.now = true
+        await store.flushDocument('A')
+
+        expect(errors).toHaveLength(1)
+        expect((errors[0] as Error).name).toBe('NotAllowedError')
+        expect(writes).toEqual([])
+        expect((await fs.read('pages', 'A.md')).text).toBe('base')
+
+        // Once the folder answers again, the same buffer is saved.
+        denied.now = false
+        await store.flushDocument('A')
+        expect((await fs.read('pages', 'A.md')).text).toBe('base mine')
+    })
+
+    // The File System Access API has no compare-and-set, so a write that lands after the save has
+    // read the file and before it writes cannot be seen (spec/folder-save, bugs/Window.cfg). The
+    // save opens its write straight after the read to keep that moment short.
+    it.fails('known limit: keeps an outside write that lands between the check and the write', async () => {
+        const arm = { now: false }
+        const { fs, store, doc } = await openOne('base', (inner) => ({
+            ...inner,
+            read: async (subdir, name) => {
+                const content = await inner.read(subdir, name)
+                if (arm.now) await inner.write(subdir, name, 'base theirs')
+                return content
+            },
+        }))
+
+        doc.applyChange({ from: 4, to: 4, insert: ' mine' })
+        arm.now = true
+        await store.flushDocument('A')
+
+        expect((await fs.read('pages', 'A.md')).text).toBe('base theirs')
     })
 })

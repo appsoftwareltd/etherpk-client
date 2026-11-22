@@ -32,7 +32,7 @@
     data-testid="graph-grip"
     data-grip-id={grip.id}
     aria-label={`Reorder ${grip.name}`}
-    title="Drag to reorder, or press the up and down arrow keys"
+    data-tooltip="Drag to reorder, or press the up and down arrow keys" aria-description="Drag to reorder, or press the up and down arrow keys"
     onpointerdown={grip.onpointerdown}
     onpointermove={grip.onpointermove}
     onpointerup={grip.onpointerup}

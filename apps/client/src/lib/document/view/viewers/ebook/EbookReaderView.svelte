@@ -48,12 +48,14 @@
 
     const files = workspaceService("pdf");
     const ebookService = workspaceService("ebook");
+    /** In a graph: there is a journal, pages and Favourites. False in a Plain Folder. */
+    const inGraph = !files?.plain;
 
     const reader = new EbookReader({
         graphId: currentWorkspaceServices()?.graphId ?? "unknown",
         target: () => target,
         name: () => displayName,
-        openState: (hash) => ebookService?.state.open(hash) ?? Promise.resolve(refusingEbookState("Changes to this EBook cannot be saved here.")),
+        openState: (hash) => ebookService?.state.open(hash, target) ?? Promise.resolve(refusingEbookState("Changes to this EBook cannot be saved here.")),
     });
 
     let root = $state<HTMLDivElement>();
@@ -556,7 +558,7 @@
 {#snippet turnPage(direction: "previous" | "next", className: string, testId: string)}
     {@const previous = direction === "previous"}
     {@const label = previous ? "Previous page" : "Next page"}
-    <button type="button" class={className} aria-label={label} title={label} onclick={() => (previous ? reader.previous() : reader.next())} data-testid={testId}>
+    <button type="button" class={className} aria-label={label} data-tooltip={label} onclick={() => (previous ? reader.previous() : reader.next())} data-testid={testId}>
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
         {@html iconSvg(previous ? "pdf-page-previous" : "pdf-page-next")}
     </button>
@@ -594,23 +596,23 @@
 
 <!-- The buttons of the toolbar, in `button`'s style: the toolbar's own on a desktop, the Command Bar's where there is one. -->
 {#snippet tools(button: string)}
-    <button type="button" class={button} aria-label="Find in this EBook" title="Find in this EBook" onclick={() => reader.openFind()} data-testid="ebook-find-open">{@render icon("search")}</button>
+    <button type="button" class={button} aria-label="Find in this EBook" data-tooltip="Find in this EBook" onclick={() => reader.openFind()} data-testid="ebook-find-open">{@render icon("search")}</button>
     {@render turnPage("previous", `${button} max-sm:hidden`, "ebook-previous")}
     {#if !inBar}{@render percentBox()}{/if}
     {@render turnPage("next", `${button} max-sm:hidden`, "ebook-next")}
     {#if !inBar}<span class="etherpk-ebook-divider"></span>{/if}
-    <button type="button" class={button} aria-label="Text settings" title="Text settings" aria-expanded={settingsOpen} onclick={() => (settingsOpen = !settingsOpen)} data-testid="ebook-settings-open">{@render icon("ebook-text-size")}</button>
-    <button type="button" class={button} aria-label="Contents, highlights and bookmarks" title="Contents, highlights and bookmarks" aria-pressed={panelOpen} onclick={togglePanel} data-testid="ebook-panel-toggle">{@render icon("list")}</button>
-    <button type="button" class={[button, bookmarked && "etherpk-ebook-bookmarked"]} aria-label={bookmarkLabel} title={bookmarkLabel} aria-pressed={bookmarked} onclick={toggleBookmark} data-testid="ebook-bookmark">{@render icon("bookmark")}</button>
-    <button type="button" class={button} aria-label="Read aloud" title="Read aloud" aria-pressed={reader.readAloud.state !== "off"} onclick={toggleReadAloud} data-testid="ebook-read-aloud">{@render icon("ebook-read-aloud")}</button>
-    <button type="button" class={button} aria-label="Highlight text" title="Highlight text as you select it" aria-pressed={reader.highlightToolOn} onclick={() => reader.toggleHighlightTool()} data-testid="ebook-tool-highlight">{@render icon("highlight")}</button>
+    <button type="button" class={button} aria-label="Text settings" data-tooltip="Text settings" aria-expanded={settingsOpen} onclick={() => (settingsOpen = !settingsOpen)} data-testid="ebook-settings-open">{@render icon("ebook-text-size")}</button>
+    <button type="button" class={button} aria-label="Contents, highlights and bookmarks" data-tooltip="Contents, highlights and bookmarks" aria-pressed={panelOpen} onclick={togglePanel} data-testid="ebook-panel-toggle">{@render icon("list")}</button>
+    <button type="button" class={[button, bookmarked && "etherpk-ebook-bookmarked"]} aria-label={bookmarkLabel} data-tooltip={bookmarkLabel} aria-pressed={bookmarked} onclick={toggleBookmark} data-testid="ebook-bookmark">{@render icon("bookmark")}</button>
+    <button type="button" class={button} aria-label="Read aloud" data-tooltip="Read aloud" aria-pressed={reader.readAloud.state !== "off"} onclick={toggleReadAloud} data-testid="ebook-read-aloud">{@render icon("ebook-read-aloud")}</button>
+    <button type="button" class={button} aria-label="Highlight text" data-tooltip="Highlight text as you select it" aria-description="Highlight text as you select it" aria-pressed={reader.highlightToolOn} onclick={() => reader.toggleHighlightTool()} data-testid="ebook-tool-highlight">{@render icon("highlight")}</button>
     {#if !inBar}<span class="etherpk-ebook-divider"></span>{/if}
-    <button type="button" class={button} aria-label="Undo" title="Undo" disabled={!reader.canUndo} onclick={() => reader.undo()} data-testid="ebook-undo">{@render icon("undo")}</button>
-    <button type="button" class={button} aria-label="Redo" title="Redo" disabled={!reader.canRedo} onclick={() => reader.redo()} data-testid="ebook-redo">{@render icon("redo")}</button>
+    <button type="button" class={button} aria-label="Undo" data-tooltip="Undo" disabled={!reader.canUndo} onclick={() => reader.undo()} data-testid="ebook-undo">{@render icon("undo")}</button>
+    <button type="button" class={button} aria-label="Redo" data-tooltip="Redo" disabled={!reader.canRedo} onclick={() => reader.redo()} data-testid="ebook-redo">{@render icon("redo")}</button>
 {/snippet}
 
 {#snippet moreToggle(button: string)}
-    <button type="button" class={button} bind:this={moreButton} aria-label="More" title="More" aria-expanded={moreOpen} onclick={() => (moreOpen = !moreOpen)} data-testid="ebook-more">{@render icon("more")}</button>
+    <button type="button" class={button} bind:this={moreButton} aria-label="More" data-tooltip="More" aria-expanded={moreOpen} onclick={() => (moreOpen = !moreOpen)} data-testid="ebook-more">{@render icon("more")}</button>
 {/snippet}
 
 {#snippet barStrip()}
@@ -631,7 +633,7 @@
             <div bind:this={moreMenu} class={["etherpk-ebook-more gk-menu flex flex-col", inBar && "etherpk-ebook-more--above"]} role="group" aria-label="More for this EBook" data-testid="ebook-more-menu">
                 <div class="flex items-center justify-between pr-1 pl-3">
                     <span class="text-sm font-medium text-(--gk-text-muted)">More</span>
-                    <button type="button" class="gk-icon-button" aria-label="Close this menu" title="Close this menu" onclick={() => (moreOpen = false)} data-testid="ebook-more-close">{@render icon("close")}</button>
+                    <button type="button" class="gk-icon-button" aria-label="Close this menu" data-tooltip="Close this menu" onclick={() => (moreOpen = false)} data-testid="ebook-more-close">{@render icon("close")}</button>
                 </div>
                 {#if inBar}
                     <div class="flex items-center gap-2 px-3 py-1.5 text-sm text-(--gk-text-default)" data-testid="ebook-more-percent">
@@ -651,7 +653,9 @@
                     {#if keepError}<p class="px-3 text-sm text-red-700 dark:text-red-400" role="alert" data-testid="ebook-keep-error">{keepError}</p>{/if}
                 {/if}
                 <hr class="gk-menu-separator" />
-                <button type="button" class="gk-menu-item" onclick={toggleFavourite} data-testid="ebook-favourite">{favourite ? "Remove from favourites" : "Add to favourites"}</button>
+                {#if inGraph}
+                    <button type="button" class="gk-menu-item" onclick={toggleFavourite} data-testid="ebook-favourite">{favourite ? "Remove from favourites" : "Add to favourites"}</button>
+                {/if}
                 {#if dictionaries}
                     <button type="button" class="gk-menu-item" onclick={() => { moreOpen = false; dictionariesOpen = true; }} data-testid="ebook-dictionaries-open">Dictionaries</button>
                 {/if}
@@ -739,7 +743,7 @@
             <div class="flex max-h-60 shrink-0 flex-col gap-1 overflow-y-auto border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2 text-sm text-(--gk-text-default)" role="status" data-testid="ebook-definition">
                 <div class="flex items-center gap-2">
                     <span class="min-w-0 flex-1 truncate font-medium">{definitions.word}</span>
-                    <button type="button" class="gk-icon-button" aria-label="Close this definition" title="Close this definition" onclick={() => (definitions = null)} data-testid="ebook-definition-close">{@render icon("close")}</button>
+                    <button type="button" class="gk-icon-button" aria-label="Close this definition" data-tooltip="Close this definition" onclick={() => (definitions = null)} data-testid="ebook-definition-close">{@render icon("close")}</button>
                 </div>
                 {#each definitions.found as found, index (index)}
                     <p class="whitespace-pre-wrap" data-testid="ebook-definition-text">{found.text}</p>
@@ -834,7 +838,7 @@
                         <!-- Level with the page controls. Where the layout has a Command Bar, these buttons are on it. -->
                         <div class="etherpk-ebook-file-actions">
                             {#each fileActions as action (action.id)}
-                                <button type="button" class="gk-icon-button gk-button--raised size-10 pointer-coarse:size-11" aria-label={action.label} title={action.label} onclick={() => runFileAction(action)} data-testid="ebook-file-action" data-command={action.command}>
+                                <button type="button" class="gk-icon-button gk-button--raised size-10 pointer-coarse:size-11" aria-label={action.label} data-tooltip={action.label} onclick={() => runFileAction(action)} data-testid="ebook-file-action" data-command={action.command}>
                                     <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
                                     {@html iconSvg(action.icon, { size: 18 })}
                                 </button>
@@ -847,7 +851,7 @@
                             <div class="flex flex-wrap items-center justify-center gap-1" role="group" aria-label="Colour" data-testid="ebook-colours">
                                 {#each ANNOTATION_COLOURS as { label, colour } (colour)}
                                     {@const on = inHand === colour}
-                                    <button type="button" class={["size-6 rounded-full border pointer-coarse:size-8", on ? "border-(--gk-text-strong) ring-2 ring-(--gk-text-strong)" : "border-neutral-400"]} style:background-color={colour} aria-label={label} title={label} aria-pressed={on} onclick={() => reader.setHighlightColour(colour)}></button>
+                                    <button type="button" class={["size-6 rounded-full border pointer-coarse:size-8", on ? "border-(--gk-text-strong) ring-2 ring-(--gk-text-strong)" : "border-neutral-400"]} style:background-color={colour} aria-label={label} data-tooltip={label} aria-pressed={on} onclick={() => reader.setHighlightColour(colour)}></button>
                                 {/each}
                             </div>
                         </ToolOptions>
@@ -866,14 +870,16 @@
                         {@const pressed = reader.pressedHighlight}
                         <div class="etherpk-ebook-actions" role="group" aria-label="This highlight" data-testid="ebook-highlight-actions">
                             <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onclick={() => reader.startNote(pressed)} data-testid="ebook-pressed-note">{@render icon("pdf-note")}{pressed.note ? "Note" : "Add note"}</button>
-                            <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onclick={() => copyToJournal(pressed)} data-testid="ebook-pressed-copy">{@render icon("todays-journal")}To journal</button>
+                            {#if inGraph}
+                                <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onclick={() => copyToJournal(pressed)} data-testid="ebook-pressed-copy">{@render icon("todays-journal")}To journal</button>
+                            {/if}
                             <button type="button" class="gk-button gk-button--quiet gk-button--small pointer-coarse:min-h-11" onclick={() => reader.removeHighlight(pressed.id)} data-testid="ebook-pressed-delete">{@render icon("trash")}Delete</button>
                         </div>
                     {/if}
                 {/if}
             </div>
             {#if panelOpen}
-                <EbookSidePanel {reader} {linkedFrom} onclose={togglePanel} onopendocument={(concept) => openConcept(concept)} oncopytojournal={copyToJournal} onexport={exportToPage} />
+                <EbookSidePanel {reader} {linkedFrom} onclose={togglePanel} onopendocument={(concept) => openConcept(concept)} oncopytojournal={inGraph ? copyToJournal : undefined} onexport={inGraph ? exportToPage : undefined} />
             {/if}
         </div>
         {#if inBar}{@render moreMenuBlock()}{/if}

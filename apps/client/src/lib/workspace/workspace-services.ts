@@ -6,6 +6,7 @@
  * narrow accessors delegate to this object so they remain compatible without creating
  * another mutable source of truth.
  */
+import type { PlainProfile } from '#lib/plain/plain-profile.js'
 import type { ReplaceOutcome, ReplaceRequest } from '#lib/document/find/replace-question.js'
 import type { PublishEnvironment } from '#lib/document/publish/publish.js'
 import type { PublishSource } from '#lib/document/publish/types.js'
@@ -183,6 +184,11 @@ export interface WorkspaceServices {
     findReplace?: FindReplaceService
     /** Which backend this graph stores documents on. */
     backend?: Backend
+    /**
+     * Set by a [[Plain Folder]]'s workspace, never a graph's: the editor then runs its plain
+     * profile, and asks this for where a link leads and what a picture line shows.
+     */
+    plain?: PlainProfile
     /** Publishing over the open graph, for the Theme editor's preview. */
     publishing?: PublishingService
     /**

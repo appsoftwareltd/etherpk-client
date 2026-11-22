@@ -280,7 +280,7 @@
                         onclick={() => toggleGroup(group.key)}
                         aria-expanded={groupOpen}
                         class="flex w-full items-center gap-1 rounded-md py-1 pr-8 pl-4 text-left text-sm font-medium text-(--gk-text-muted) hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
-                        title={group.concept}
+                        data-tooltip={group.concept} aria-description={group.concept}
                     >
                         <span
                             class="inline-block motion-safe:transition-transform {groupOpen
@@ -340,7 +340,7 @@
                                         {@attach menuOn({ kind: "bookmark", id: bookmark.id })}
                                         onclick={() => execute(BOOKMARK_OPEN, { kind: "bookmark", id: bookmark.id })}
                                         class="flex w-full touch-manipulation items-center rounded-md py-1.5 pr-8 pl-8 text-left text-sm hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
-                                        title={bookmark.label ? `${bookmark.label}: ${bookmark.text}` : bookmark.text}
+                                        data-tooltip={bookmark.label ? `${bookmark.label}: ${bookmark.text}` : bookmark.text} aria-description={bookmark.label ? `${bookmark.label}: ${bookmark.text}` : bookmark.text}
                                     >
                                         <!-- The row centres this block whole, whatever its height under a
                                              coarse pointer. Inside it the icon is one line tall, so it stays

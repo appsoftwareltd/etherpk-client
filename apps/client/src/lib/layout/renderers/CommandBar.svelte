@@ -135,7 +135,7 @@
         tabindex={-1}
         disabled={disabled(item)}
         aria-pressed={pressed(item)}
-        title={item.label}
+        data-tooltip={item.label}
         aria-label={item.label}
         onpointerdown={(e) => e.preventDefault()}
         onmousedown={(e) => e.preventDefault()}

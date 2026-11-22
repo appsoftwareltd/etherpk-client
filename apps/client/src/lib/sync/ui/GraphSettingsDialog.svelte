@@ -1196,7 +1196,7 @@
                         {#each PRESENCE_PALETTE as swatch (swatch.color)}
                             <button
                                 type="button"
-                                title={swatch.label}
+                                data-tooltip={swatch.label}
                                 aria-label={swatch.label}
                                 aria-pressed={toolbarColor === swatch.color}
                                 data-testid="graph-toolbar-color-swatch"

@@ -59,15 +59,15 @@
         data-testid="pdf-find-input"
     />
     <span class="min-w-16 text-sm text-(--gk-text-muted)" role="status" data-testid="pdf-find-status">{status}</span>
-    <button type="button" class="gk-icon-button" aria-label="Previous match" title="Previous match" onclick={() => step(true)} data-testid="pdf-find-previous">
+    <button type="button" class="gk-icon-button" aria-label="Previous match" data-tooltip="Previous match" onclick={() => step(true)} data-testid="pdf-find-previous">
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
         {@html iconSvg("move-up")}
     </button>
-    <button type="button" class="gk-icon-button" aria-label="Next match" title="Next match" onclick={() => step(false)} data-testid="pdf-find-next">
+    <button type="button" class="gk-icon-button" aria-label="Next match" data-tooltip="Next match" onclick={() => step(false)} data-testid="pdf-find-next">
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
         {@html iconSvg("move-down")}
     </button>
-    <button type="button" class="gk-icon-button" aria-label="Close find" title="Close find" onclick={() => reader.closeFind()} data-testid="pdf-find-close">
+    <button type="button" class="gk-icon-button" aria-label="Close find" data-tooltip="Close find" onclick={() => reader.closeFind()} data-testid="pdf-find-close">
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
         {@html iconSvg("close")}
     </button>

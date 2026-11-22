@@ -163,54 +163,133 @@
         `End-to-end encryption protects your data and privacy. An unlocked device or your Recovery Code is needed to decrypt your synced notes. ${managed ? "We cannot" : "Your Sync Server cannot"} decrypt or recover your notes for you. Keep a copy of your code safe and backed up.`,
     ]);
 
+    /** A cell of the two tables: its words, and whether they read as a yes, a no or a condition. */
+    type WayCell = {
+        text: string;
+        tone: "yes" | "no" | "note";
+        /** The number of the note beneath the table that explains the cell. */
+        note?: 1 | 2;
+    };
+    type WayLink = { label: string; href: string };
+    type Way = {
+        id: string;
+        name: string;
+        /** Where the name leads, for a way that has an address of its own. */
+        href?: string;
+        /** A line of plain words under the name. */
+        detail?: string;
+        /** Where to get it and where its setup is described, under the name. */
+        links: WayLink[];
+        runsIn: string;
+        synced: WayCell;
+        folder: WayCell;
+        quickShare: WayCell;
+        status: "Available" | "Planned";
+    };
+
+    const yes: WayCell = { text: "Yes", tone: "yes" };
+    const no: WayCell = { text: "No", tone: "no" };
+
+    /** The hosted Client's host name, which a managed page names where it sends people. */
+    const appHost = $derived(new URL(appHref, page.url.origin).host);
+
     /**
-     * "Ways to run EtherPK": the app in a browser, the Node bundle and the Docker image, then
-     * which browsers run which graphs. Facts only, in the docs' own words, each with its docs
-     * page. A managed page names the hosted Client's address; a self-hosted one has no address
-     * to name but its own.
+     * "Ways to run EtherPK", as two tables: where to get it, with what each way runs, then which
+     * browsers run the web app. Facts only, in the docs' own words, each way with its source and
+     * its docs page. A managed page names the hosted Client's address; a self-hosted one has no
+     * address to name but its own.
+     *
+     * The three web rows are one app served from three places, so they differ only in synced
+     * graphs: a copy a person runs opens folder graphs, and synced graphs through a Sync Server
+     * where its team runs one. The apps are planned. They will read files directly, so a folder
+     * graph there does not depend on a browser.
      */
-    const waysToRun = $derived([
-        {
-            id: "browser",
-            lead: "Browser",
-            source: managed ? { label: new URL(appHref, page.url.origin).host, href: appHref } : null,
-            text: managed
-                ? "Install it from the browser for its own window and a start with no network."
-                : "This Client, in a browser. Install it from the browser for its own window and a start with no network.",
-            docs: { label: "Install steps", slug: "installing-etherpk-as-an-app" },
-        },
-        {
-            id: "node",
-            lead: "Node.js 24+",
-            source: { label: "GitHub releases", href: `${CLIENT_REPOSITORY_URL}/releases` },
-            text: "Download `etherpk-client-<version>.tar.gz`, unpack it and run `node build`.",
-            docs: { label: "Setup", slug: "running-etherpk-on-your-own-computer" },
-        },
-        {
-            id: "docker",
-            lead: "Docker",
-            source: { label: "ghcr.io/appsoftwareltd/etherpk-client", href: `${CLIENT_REPOSITORY_URL}/pkgs/container/etherpk-client` },
-            text: "Listens on port 3000.",
-            docs: { label: "Setup", slug: "running-etherpk-on-your-own-computer" },
-        },
+    const webWays = $derived.by<Way[]>(() => {
+        const web = {
+            runsIn: "A browser, or installed from it",
+            folder: { text: "In some browsers", tone: "note", note: 1 },
+            quickShare: { text: "When installed on Android or ChromeOS", tone: "note" },
+            status: "Available",
+        } satisfies Partial<Way>;
+        // A copy a person runs: no synced graphs beside EtherPK's hosted app, and the team's own
+        // server beside a self-hosted one.
+        const ownCopySynced: WayCell = managed
+            ? { ...no, note: 2 }
+            : { text: "With your Sync Server", tone: "note" };
+        return [
+            {
+                id: "browser",
+                ...(managed
+                    ? { name: appHost, href: appHref, detail: "Hosted by EtherPK" }
+                    : { name: "This Client", detail: "Hosted by your team" }),
+                links: [{ label: "Install steps", href: `${docsHref}/installing-etherpk-as-an-app` }],
+                ...web,
+                synced: managed ? yes : ownCopySynced,
+            },
+            {
+                id: "docker",
+                name: "Docker image",
+                links: [
+                    {
+                        label: "ghcr.io/appsoftwareltd/etherpk-client",
+                        href: `${CLIENT_REPOSITORY_URL}/pkgs/container/etherpk-client`,
+                    },
+                    { label: "Docker setup", href: `${docsHref}/running-etherpk-with-docker` },
+                ],
+                ...web,
+                synced: ownCopySynced,
+            },
+            {
+                id: "node",
+                name: "Node.js bundle",
+                detail: "Node.js 24 or later",
+                links: [
+                    { label: "GitHub releases", href: `${CLIENT_REPOSITORY_URL}/releases` },
+                    { label: "Node.js setup", href: `${docsHref}/running-etherpk-on-your-own-computer` },
+                ],
+                ...web,
+                synced: ownCopySynced,
+            },
+        ];
+    });
+    const plannedApps: Way[] = [
+        { id: "android", name: "Android app", detail: ".apk", runsIn: "Android" },
+        { id: "linux", name: "Linux app", detail: ".AppImage", runsIn: "Linux" },
+        { id: "windows", name: "Windows app", detail: "Installer", runsIn: "Windows" },
+    ].map((app) => ({
+        ...app,
+        links: [],
+        synced: yes,
+        folder: yes,
+        quickShare: { text: "Not decided", tone: "note" },
+        status: "Planned",
+    }));
+    const wayGroups = $derived([
+        { label: "Web browser / installed web app", ways: webWays },
+        { label: "Apps", ways: plannedApps },
     ]);
-    const browserSupport = [
-        {
-            lead: "Synced graphs",
-            text: "All platforms. Current Chrome, Edge, Firefox, Safari and Samsung Internet, phones and tablets included.",
-        },
-        {
-            lead: "Folder graphs",
-            text: "Chrome and Edge on a computer, and Chrome on Android. (Note: Firefox, all iOS browsers not supported. Brave requires folder access to be enabled)",
-        },
+
+    /** Which browsers run the web app: the target of the first table's note on folder graphs. */
+    const browserSupport: { name: string; detail?: string; synced: WayCell; folder: WayCell; install: WayCell }[] = [
+        { name: "Chrome, Edge", detail: "Windows, macOS, Linux, ChromeOS", synced: yes, folder: yes, install: yes },
+        { name: "Chrome", detail: "Android", synced: yes, folder: yes, install: yes },
+        { name: "Edge, Samsung Internet", detail: "Android", synced: yes, folder: no, install: yes },
+        { name: "Safari", detail: "Mac", synced: yes, folder: no, install: yes },
+        { name: "Any browser", detail: "iPhone, iPad", synced: yes, folder: no, install: yes },
+        { name: "Firefox", synced: yes, folder: no, install: { text: "On Windows and Android", tone: "note" } },
     ];
 
-    /** Splits text on backticks; the odd-numbered pieces were inside them. */
-    function segments(text: string): { code: boolean; text: string }[] {
-        return text
-            .split("`")
-            .map((piece, index) => ({ code: index % 2 === 1, text: piece }));
-    }
+    // A yes is the heaviest thing in its row and a no recedes, by weight and grey alone, so the
+    // tables read without colour.
+    const cellTone: Record<WayCell["tone"], string> = {
+        yes: "font-semibold text-neutral-950 dark:text-white",
+        no: "text-neutral-500 dark:text-neutral-400",
+        note: "",
+    };
+    const statusClasses: Record<Way["status"], string> = {
+        Available: "border-neutral-950 bg-neutral-950 text-white dark:border-white dark:bg-white dark:text-neutral-950",
+        Planned: "border-neutral-400 dark:border-neutral-500",
+    };
 
     // The two buttons are the standard controls at one width, and differ only in their fill; the
     // link beside them is padded to their height, so it is as easy to hit, and takes a line of its
@@ -259,16 +338,6 @@
     />
     <meta name="twitter:card" content="summary_large_image" />
 </svelte:head>
-
-<!-- Backticks in copy become code; keeps the data plain strings and the template free of @html. -->
-{#snippet inline(text: string)}
-    {#each segments(text) as segment, index (index)}
-        {#if segment.code}<code
-                class="rounded bg-neutral-950/6 px-1 py-0.5 font-mono text-neutral-800 dark:bg-white/10 dark:text-neutral-100"
-                >{segment.text}</code
-            >{:else}{segment.text}{/if}
-    {/each}
-{/snippet}
 
 {#snippet actionIcon(kind: Action["icon"])}
     {#if kind === "app"}
@@ -527,8 +596,17 @@
 </section>
 
 <!-- ── Ways to run EtherPK ────────────────────────────────────────── -->
+{#snippet wayCell(cell: WayCell)}
+    <td class={["px-3 py-2.5 align-top", cellTone[cell.tone]]}>
+        <!-- The space sits outside the {#if}: whitespace at the start of a block is dropped. -->
+        {cell.text} {#if cell.note}<sup><a href="#ways-note-{cell.note}" class="gk-link" aria-label="Note {cell.note}">{cell.note}</a></sup>{/if}
+    </td>
+{/snippet}
+
+<!-- Wider than the notes around it, for six columns. Each table scrolls inside its own frame on a
+     narrow screen, which the keyboard reaches, so the page never scrolls sideways. -->
 <section
-    class="mx-auto max-w-3xl px-4 pt-24 sm:px-6 sm:pt-32"
+    class="mx-auto max-w-5xl px-4 pt-24 sm:px-6 sm:pt-32"
     aria-labelledby="ways-heading"
     data-testid="marketing-ways-to-run"
 >
@@ -538,27 +616,107 @@
     >
         Ways to run EtherPK
     </h2>
-    <dl class="mt-5 space-y-3 text-sm leading-6 text-neutral-600 dark:text-neutral-300">
-        {#each waysToRun as way (way.id)}
-            <div class="sm:flex sm:gap-4" data-testid="marketing-way-{way.id}">
-                <dt class="shrink-0 font-semibold text-neutral-950 sm:w-32 dark:text-white">{way.lead}</dt>
-                <dd>
-                    <!-- The space sits between the blocks on one line: whitespace at the end of an
-                         {#if} block is dropped. -->
-                    {#if way.source}<a href={way.source.href} class="gk-link">{way.source.label}</a>.{/if} {@render inline(way.text)}
-                    <a href="{docsHref}/{way.docs.slug}" class="gk-link">{way.docs.label}</a>
-                </dd>
-            </div>
-        {/each}
-    </dl>
-    <dl class="mt-5 space-y-2 border-t border-neutral-950/5 pt-5 text-sm leading-6 text-neutral-600 dark:border-white/10 dark:text-neutral-300">
-        {#each browserSupport as support (support.lead)}
-            <div class="sm:flex sm:gap-4">
-                <dt class="shrink-0 font-semibold text-neutral-950 sm:w-32 dark:text-white">{support.lead}</dt>
-                <dd>{support.text}</dd>
-            </div>
-        {/each}
-    </dl>
+    <!-- A scrolling frame takes focus so the keyboard can scroll it. -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div
+        class="mt-5 overflow-x-auto rounded-lg border border-neutral-950/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 dark:border-white/10 dark:focus-visible:outline-white"
+        role="region"
+        aria-label="Ways to get EtherPK, scrollable"
+        tabindex="0"
+    >
+        <table class="w-full min-w-232 border-collapse text-left text-sm leading-6 text-neutral-600 dark:text-neutral-300">
+            <caption class="sr-only">Ways to get EtherPK</caption>
+            <thead>
+                <tr class="bg-neutral-950/3 text-neutral-950 dark:bg-white/5 dark:text-white">
+                    {#each ["Get it from", "You run it in", "Synced graphs", "Folder graphs / plain folders", "Quick share", "Status"] as column (column)}
+                        <th scope="col" class="px-3 py-2.5 font-semibold whitespace-nowrap">{column}</th>
+                    {/each}
+                </tr>
+            </thead>
+            {#each wayGroups as group (group.label)}
+                <tbody>
+                    <tr class="border-t border-neutral-950/10 bg-neutral-950/3 dark:border-white/10 dark:bg-white/5">
+                        <th scope="colgroup" colspan="6" class="px-3 py-1.5 font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400">{group.label}</th>
+                    </tr>
+                    {#each group.ways as way (way.id)}
+                        <tr class="border-t border-neutral-950/10 dark:border-white/10" data-testid="marketing-way-{way.id}">
+                            <th scope="row" class="px-3 py-2.5 align-top font-normal">
+                                <span class="block font-semibold text-neutral-950 dark:text-white">
+                                    {#if way.href}<a href={way.href} class="gk-link">{way.name}</a>{:else}{way.name}{/if}
+                                </span>
+                                {#if way.detail}
+                                    <span class="block text-neutral-500 dark:text-neutral-400">{way.detail}</span>
+                                {/if}
+                                {#each way.links as link (link.href)}
+                                    <a href={link.href} class="gk-link block w-fit whitespace-nowrap">{link.label}</a>
+                                {/each}
+                            </th>
+                            <td class="px-3 py-2.5 align-top">{way.runsIn}</td>
+                            {@render wayCell(way.synced)}
+                            {@render wayCell(way.folder)}
+                            {@render wayCell(way.quickShare)}
+                            <td class="px-3 py-2.5 align-top">
+                                <span class={["inline-block rounded-full border px-2.5 whitespace-nowrap", statusClasses[way.status]]}>{way.status}</span>
+                            </td>
+                        </tr>
+                    {/each}
+                </tbody>
+            {/each}
+        </table>
+    </div>
+    <div class="mt-3 space-y-1 text-sm leading-6 text-neutral-600 dark:text-neutral-300">
+        <p id="ways-note-1">
+            <sup>1</sup> A folder graph needs a browser that can open a folder on your device (uses
+            File System Access API e.g. Chrome, Edge, Brave). Apps read files directly so are not
+            limited in the same way.
+        </p>
+        {#if managed}
+            <p id="ways-note-2" data-testid="marketing-ways-note-synced">
+                <sup>2</sup> Self run client packages only open folder graphs and plain folders.
+            </p>
+        {/if}
+    </div>
+
+    <h3 class="mt-10 text-base font-semibold text-neutral-950 dark:text-white">
+        Browser capabilities (when running web app)
+    </h3>
+    <!-- A scrolling frame takes focus so the keyboard can scroll it. -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div
+        class="mt-4 overflow-x-auto rounded-lg border border-neutral-950/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 dark:border-white/10 dark:focus-visible:outline-white"
+        role="region"
+        aria-label="Browser capabilities, scrollable"
+        tabindex="0"
+    >
+        <table class="w-full min-w-136 border-collapse text-left text-sm leading-6 text-neutral-600 dark:text-neutral-300">
+            <caption class="sr-only">Browser capabilities (when running web app)</caption>
+            <thead>
+                <tr class="bg-neutral-950/3 text-neutral-950 dark:bg-white/5 dark:text-white">
+                    {#each ["Browser", "Synced graphs", "Folder graphs / plain folders", "Can install"] as column (column)}
+                        <th scope="col" class="px-3 py-2.5 font-semibold whitespace-nowrap">{column}</th>
+                    {/each}
+                </tr>
+            </thead>
+            <tbody>
+                {#each browserSupport as browser (browser.name + (browser.detail ?? ""))}
+                    <tr class="border-t border-neutral-950/10 dark:border-white/10">
+                        <th scope="row" class="px-3 py-2.5 align-top font-normal">
+                            <span class="block font-semibold text-neutral-950 dark:text-white">{browser.name}</span>
+                            {#if browser.detail}
+                                <span class="block text-neutral-500 dark:text-neutral-400">{browser.detail}</span>
+                            {/if}
+                        </th>
+                        {@render wayCell(browser.synced)}
+                        {@render wayCell(browser.folder)}
+                        {@render wayCell(browser.install)}
+                    </tr>
+                {/each}
+            </tbody>
+        </table>
+    </div>
+    <p class="mt-3 text-sm leading-6 text-neutral-600 dark:text-neutral-300">
+        Brave requires folder access to be enabled.
+    </p>
 </section>
 
 <!-- ── Using EtherPK ──────────────────────────────────────────────── -->
