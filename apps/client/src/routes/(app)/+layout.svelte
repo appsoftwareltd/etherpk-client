@@ -9,7 +9,7 @@
     import ThemeToggle from "@appsoftwareltd/etherpk-shared/theme-toggle";
     import DeviceApprovalPrompt from "#lib/sync/ui/DeviceApprovalPrompt.svelte";
     import RecoveryCodeHost from "#lib/sync/ui/RecoveryCodeHost.svelte";
-    import { buildApplicationNavigation } from "@appsoftwareltd/etherpk-shared";
+    import { buildApplicationNavigation, type AccountPlacement } from "@appsoftwareltd/etherpk-shared";
     import ApplicationHeader from "@appsoftwareltd/etherpk-shared/application-header";
     import { suppressBrowserChords } from "#lib/surface/index.js";
     import { startPersonSettingsSync } from "#lib/person-settings/person-settings-sync.js";
@@ -59,7 +59,11 @@
         <div class="hidden items-center lg:flex">
             <ThemeToggle themePreference={data.themePreference} resolvedTheme={data.resolvedTheme} />
         </div>
+    {/snippet}
+
+    {#snippet account(placement: AccountPlacement)}
         <ClientAccountNavigationMenu
+            {placement}
             managedSessionAvailable={data.managedSessionAvailable}
             managedAccountUrl={data.corporateAccountUrl}
             managedBillingUrl={data.corporateBillingUrl}
@@ -88,6 +92,7 @@
         <ApplicationHeader
             items={navItems}
             actions={headerActions}
+            {account}
             itemMenu={{ label: "Graphs", panel: graphsMenu }}
             {mobileUtilities}
             brandHref={data.deploymentHomeUrl}

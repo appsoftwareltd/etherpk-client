@@ -44,7 +44,7 @@
 {#if menu.admin.length > 0}
     <hr class="gk-menu-separator" />
     <nav data-testid="account-menu-admin" aria-labelledby={adminHeadingId}>
-        <p id={adminHeadingId} class="px-3 py-1 text-sm font-semibold uppercase tracking-wider text-(--gk-text-muted)">Admin</p>
+        <p id={adminHeadingId} class="px-3 py-1.5 text-sm font-semibold uppercase tracking-wider text-(--gk-text-muted)">Admin</p>
         {#each menu.admin as item (item.href)}
             {@render link(item)}
         {/each}

@@ -1,7 +1,9 @@
 <script lang="ts">
     import { afterNavigate } from "$app/navigation";
     import { onMount, type Snippet } from "svelte";
+    import { MediaQuery } from "svelte/reactivity";
     import { dialogFocus } from "../ui/index.svelte";
+    import { ACCOUNT_IN_DRAWER_QUERY, type AccountPlacement } from "./account-menu";
     import { announceMenuOpened, onOtherMenuOpened } from "./dismissible-menu";
     import { releaseStageBadge } from "./release-stage";
 
@@ -33,6 +35,13 @@
          */
         sections?: Snippet<[() => void]>;
         mobileUtilities?: Snippet;
+        /**
+         * The app's account control: the signed-in account's menu, or the way to sign in. Drawn
+         * in the bar from `sm` up, and at the top of the drawer below it, where an email address
+         * beside the menu button pushed into it. Given its placement, so the control can draw a
+         * dropdown in one and an expanding row in the other (`AccountDrawerSection`).
+         */
+        account?: Snippet<[AccountPlacement]>;
         brandHref?: string;
         /**
          * Something small to the right of the logo, at every width: the Client puts an open
@@ -50,6 +59,7 @@
         itemMenu,
         sections,
         mobileUtilities,
+        account,
         brandHref = "/home",
         brandAside,
         testId = "application-header",
@@ -61,6 +71,9 @@
     let itemMenuOpen = $state(false);
     const mobilePanelId = $derived(`${testId}-mobile-panel`);
     const itemMenuId = $derived(`${testId}-item-menu`);
+    // Read only once the drawer is open, which needs a press, so the server's answer (false) is
+    // never what a phone draws. The bar hides its copy below `sm` with CSS, the same width.
+    const accountInDrawer = new MediaQuery(ACCOUNT_IN_DRAWER_QUERY, false);
 
     function closeMobile() {
         mobileOpen = false;
@@ -185,6 +198,11 @@
         {#if actions}
             {@render actions()}
         {/if}
+        {#if account}
+            <div data-testid="{testId}-account" class="hidden min-w-0 items-center sm:flex">
+                {@render account("header")}
+            </div>
+        {/if}
         <button
             type="button"
             data-testid={mobileToggleTestId}
@@ -250,9 +268,14 @@
             </button>
         </div>
 
-        <!-- Both tiers scroll together: the cross-application destinations, then this
-             application's own sections where it has any. -->
+        <!-- Everything scrolls together: the account on a phone, the cross-application
+             destinations, then this application's own sections where it has any. -->
         <div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            {#if account && accountInDrawer.current}
+                <div data-testid="{testId}-drawer-account" class="flex shrink-0 flex-col border-b border-neutral-950/8 p-3 dark:border-white/10">
+                    {@render account("drawer")}
+                </div>
+            {/if}
             <nav aria-label="Mobile primary" class="flex shrink-0 flex-col gap-1 p-3">
                 {#each items as item (item.href + item.label)}
                     <a
@@ -265,8 +288,10 @@
                     </a>
                     {#if itemMenu && item.label === itemMenu.label}
                         <!-- No nested disclosure at this size: the menu is simply part of the
-                             list, indented under the item it belongs to. -->
-                        <div class="mb-1 ml-3 border-l border-neutral-950/8 pl-2 dark:border-white/10">
+                             list, indented under the item it belongs to. Its guide line stands
+                             1rem clear of the item above and the item below (0.75rem here and the
+                             list's 0.25rem gap), as far as the menu's rows stand from the line. -->
+                        <div data-drawer-submenu class="my-3 ml-3 border-l border-neutral-950/8 pl-2 dark:border-white/10">
                             {@render itemMenu.panel()}
                         </div>
                     {/if}

@@ -9,6 +9,16 @@
  * session.
  */
 
+/**
+ * Where an app's account control is drawn (`ApplicationHeader`'s `account`): in the header bar
+ * from the `sm` breakpoint up, and at the top of the navigation drawer below it, where the bar
+ * has no room beside the menu button for an email address.
+ */
+export type AccountPlacement = 'header' | 'drawer'
+
+/** Below `sm` (Tailwind's 40rem): a phone, where the account control moves into the drawer. */
+export const ACCOUNT_IN_DRAWER_QUERY = '(width < 40rem)'
+
 export interface AccountMenuItem {
     label: string
     href: string

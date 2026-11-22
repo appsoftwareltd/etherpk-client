@@ -24,7 +24,7 @@
             aria-haspopup="dialog"
             onclick={host.open}
         >
-            <span class="dot" class:pulse={host.status.tone === 'busy'}></span>
+            <span class="dot"></span>
         </button>
         {#if host.callout}
             <StatusCallout callout={host.callout} align="start" ondismiss={host.dismissCallout} />
@@ -47,23 +47,12 @@
     .status[data-state='ok'] .dot {
         background: var(--gk-sync-ok, #16a34a);
     }
+    /* Amber, and still: the colour says "not settled yet", and a light that pulses only distracts
+       (Style Guide, Motion). */
     .status[data-state='busy'] .dot {
         background: var(--gk-sync-busy, #d97706);
     }
     .status[data-state='stopped'] .dot {
         background: var(--gk-sync-stopped, #dc2626);
-    }
-    .dot.pulse {
-        animation: status-pulse 1.4s ease-in-out infinite;
-    }
-    @keyframes status-pulse {
-        50% {
-            opacity: 0.4;
-        }
-    }
-    @media (prefers-reduced-motion: reduce) {
-        .dot.pulse {
-            animation: none;
-        }
     }
 </style>

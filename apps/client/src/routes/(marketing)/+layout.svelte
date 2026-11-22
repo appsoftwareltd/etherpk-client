@@ -2,7 +2,7 @@
     import ClientAccountNavigationMenu from "#lib/components/ClientAccountNavigationMenu.svelte";
     import GraphNavigationMenu from "#lib/components/GraphNavigationMenu.svelte";
     import ThemeToggle from "@appsoftwareltd/etherpk-shared/theme-toggle";
-    import { PUBLIC_DOCS_URL, buildApplicationNavigation } from "@appsoftwareltd/etherpk-shared";
+    import { PUBLIC_DOCS_URL, buildApplicationNavigation, type AccountPlacement } from "@appsoftwareltd/etherpk-shared";
     import ApplicationHeader from "@appsoftwareltd/etherpk-shared/application-header";
     import MarketingFooter from "@appsoftwareltd/etherpk-shared/marketing-footer";
     import { MANAGED_SERVICE_OPERATOR, MANAGED_SERVICE_OPERATOR_NOTICE } from "@appsoftwareltd/etherpk-shared/legal";
@@ -23,8 +23,12 @@
         <div class="hidden items-center lg:flex">
             <ThemeToggle themePreference={data.themePreference} resolvedTheme={data.resolvedTheme} />
         </div>
-        <!-- Client authentication is visible on the home page as well as inside the app. -->
+    {/snippet}
+
+    <!-- Client authentication is visible on the home page as well as inside the app. -->
+    {#snippet account(placement: AccountPlacement)}
         <ClientAccountNavigationMenu
+            {placement}
             managedSessionAvailable={data.managedSessionAvailable}
             managedAccountUrl={data.corporateAccountUrl}
             managedBillingUrl={data.corporateBillingUrl}
@@ -45,6 +49,7 @@
     <ApplicationHeader
         items={navItems}
         actions={headerActions}
+        {account}
         itemMenu={{ label: "Graphs", panel: graphsMenu }}
         {mobileUtilities}
         brandHref={data.deploymentHomeUrl}

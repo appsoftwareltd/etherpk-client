@@ -5,6 +5,17 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.41.0 - 2026-11-22
+
+### Client
+
+- **The account is in the menu on a phone.** Below 640px wide, the signed-in account (or Sign in)
+  is the first row of the navigation menu instead of a button in the header, where a long email
+  address pushed into the menu button. Press the row to show Account, Billing, Access tokens and
+  Sign out. Tablets and wider screens keep it in the header.
+- **Fixes.**
+  - The sync status dot no longer pulses while it is amber. The colour shows the state.
+
 ## 0.40.0 - 2026-11-21
 
 ### Client

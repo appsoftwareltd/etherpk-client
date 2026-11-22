@@ -100,7 +100,7 @@
                 data-unsent={status.sync?.unsent ?? 0}
                 onclick={onstatus}
             >
-                <span class="dot" class:spin={status.tone === 'busy'}></span>
+                <span class="dot"></span>
             </button>
             {#if callout && ondismisscallout}
                 <StatusCallout {callout} align="end" ondismiss={ondismisscallout} />
@@ -176,7 +176,8 @@
     .status[data-state='ok'] {
         color: var(--gk-mirror-ok, #16a34a);
     }
-    /* Amber, not blue: busy is a transient "not settled yet", and blue read as an informational badge. */
+    /* Amber, not blue: busy is a transient "not settled yet", and blue read as an informational badge.
+       It does not pulse: the colour is enough, and a light that moves only distracts (Style Guide, Motion). */
     .status[data-state='busy'] {
         color: var(--gk-mirror-busy, #d97706);
     }
@@ -189,23 +190,6 @@
     .status-wrap {
         position: relative;
         display: inline-flex;
-    }
-    .status .dot.spin {
-        animation: status-pulse 1.4s ease-in-out infinite;
-    }
-    @keyframes status-pulse {
-        0%,
-        100% {
-            opacity: 1;
-        }
-        50% {
-            opacity: 0.35;
-        }
-    }
-    @media (prefers-reduced-motion: reduce) {
-        .status .dot.spin {
-            animation: none;
-        }
     }
 
     /* The same box as a button beside it, without the border and fill that invite a click. It has no

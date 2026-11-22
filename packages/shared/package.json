@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-shared",
-    "version": "0.40.0",
+    "version": "0.41.0",
     "license": "Elastic-2.0",
     "private": true,
     "type": "module",
@@ -156,6 +156,11 @@
             "svelte": "./src/navigation/AccountMenuLinks.svelte",
             "types": "./src/navigation/AccountMenuLinks.svelte",
             "default": "./src/navigation/AccountMenuLinks.svelte"
+        },
+        "./account-drawer-section": {
+            "svelte": "./src/navigation/AccountDrawerSection.svelte",
+            "types": "./src/navigation/AccountDrawerSection.svelte",
+            "default": "./src/navigation/AccountDrawerSection.svelte"
         },
         "./marketing-headline": {
             "svelte": "./src/pages/MarketingHeadline.svelte",

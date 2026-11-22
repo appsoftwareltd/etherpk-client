@@ -116,7 +116,7 @@
         {#each groups as group, groupIndex (group.origin)}
             {@const rows = rowsOf(group)}
             {@const label = labelOf(group)}
-            {#if groupIndex > 0}<hr class="gk-menu-separator" />{/if}
+            {#if groupIndex > 0}<hr class="gk-menu-separator separator" />{/if}
             <!-- Inset, so the group's rows read as one block with rounded ends (graph-menu-band.ts). -->
             <div role="group" aria-labelledby="{labelId}-{groupIndex}" class="px-2 pb-1">
                 <p
@@ -167,5 +167,20 @@
         {/each}
     {/if}
 </div>
-<hr class="gk-menu-separator" />
+<hr class="gk-menu-separator separator separator--above-row" />
 <a href="/graphs" class="gk-menu-item">All Graphs</a>
+
+<style>
+    /* In the phone's navigation drawer (`data-drawer-submenu`, ApplicationHeader) this menu hangs
+       off a guide line, its rows 1rem to the right of it. A divider there spans the rows rather
+       than the indent beside them (the group's 0.5rem), with the same 1rem between it and the rows
+       above and below: 0.75rem here, as the group's own 0.25rem foot and the label's 0.25rem top
+       make up the rest. The dropdown on a wider screen keeps the menu's full-width dividers. */
+    :global([data-drawer-submenu]) .separator {
+        margin: 0.75rem 0.5rem;
+    }
+    /* All Graphs is a row of words, whose own 0.375rem padding makes up the rest of its 1rem. */
+    :global([data-drawer-submenu]) .separator--above-row {
+        margin-bottom: 0.625rem;
+    }
+</style>
