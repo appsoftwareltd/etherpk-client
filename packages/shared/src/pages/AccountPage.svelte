@@ -1231,19 +1231,20 @@
             {#if passkeys.length > 0}
                 <div class="space-y-2">
                     {#each passkeys as pk (pk.id)}
-                        <div class="flex items-center justify-between gap-3 rounded-lg border border-neutral-950/8 px-4 py-3">
+                        <div data-testid="passkey" class="flex items-center justify-between gap-3 rounded-lg border border-neutral-950/8 px-4 py-3">
                             <div class="flex items-center gap-3 min-w-0">
                                 <svg class="h-5 w-5 text-neutral-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M7.864 4.243A7.5 7.5 0 0 1 19.5 10.5c0 2.92-.556 5.709-1.568 8.268M5.742 6.364A7.465 7.465 0 0 0 4.5 10.5a7.464 7.464 0 0 1-1.15 3.993m1.989 3.559A11.209 11.209 0 0 0 8.25 10.5a3.75 3.75 0 1 1 7.5 0c0 .527-.021 1.049-.064 1.565M12 10.5a14.94 14.94 0 0 1-3.6 9.75m6.633-4.596a18.666 18.666 0 0 1-2.485 5.33" />
                                 </svg>
                                 <div class="min-w-0">
                                     <p class="text-sm font-medium text-neutral-950 truncate">{pk.name || "Unnamed passkey"}</p>
-                                    <div class="flex items-center gap-2 text-sm text-neutral-500">
+                                    <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-500">
                                         <span>Added {formatDate(pk.createdAt)}</span>
                                         {#if pk.backedUp}
                                             <span class="inline-flex items-center gap-0.5 rounded-full bg-neutral-100 px-1.5 py-0.5 text-sm text-neutral-700 ring-1 ring-neutral-500/20">
-                                                <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 0 1-3-3m3 3a3 3 0 1 0 0 6h13.5a3 3 0 1 0 0-6m-16.5-3a3 3 0 0 1 3-3h13.5a3 3 0 0 1 3 3m-19.5 0a4.5 4.5 0 0 1 .9-2.7L5.737 5.1a3.375 3.375 0 0 1 2.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 0 1 .9 2.7m0 0a3 3 0 0 1-3 3m0 3h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Zm-3 6h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Z" />
+                                                <!-- heroicons/outline arrow-path: the passkey's provider copies it to the person's other devices. No Sync Server is involved, so it is not the sync icon. -->
+                                                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
                                                 </svg>
                                                 Synced
                                             </span>

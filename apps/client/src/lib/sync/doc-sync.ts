@@ -320,6 +320,8 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
     let durableQueue: DurableOutboxOperation[] = []
     let debounceTimer: ReturnType<typeof setTimeout> | undefined
     let drainPromise: Promise<void> | undefined
+    /** Flushes that have taken the debounce over and not yet drained: their edit is still to be sent. */
+    let flushing = 0
     const futureUpdates = new Map<number, { envelope: string; generation: number }>()
     let persistenceTail = Promise.resolve()
     let lastPersistenceError: Error | undefined
@@ -622,6 +624,11 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
         await transmit(durable)
     }
 
+    /** Whether a local edit is in any stage before the relay has acknowledged it: queued, draining, debounced or being flushed. */
+    function hasLocalWork(): boolean {
+        return durableQueue.length > 0 || debounceTimer !== undefined || drainPromise !== undefined || flushing > 0
+    }
+
     function requestDrain(): Promise<void> {
         if (!drainPromise) {
             drainPromise = drainCurrentDiff().finally(() => {
@@ -782,11 +789,9 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
                 lastSyncedStateVector,
                 Y.encodeStateVectorFromUpdate(plaintext),
             )
-            // With no local work in any stage (queued, draining, or debounced), the doc is
-            // exactly baseline-plus-relay-updates: all relay-known, delete sets included.
-            if (durableQueue.length === 0 && !debounceTimer && !drainPromise) {
-                lastSyncedSnapshot = Y.snapshot(doc)
-            }
+            // With no local work in any stage, the doc is exactly baseline-plus-relay-updates: all
+            // relay-known, delete sets included.
+            if (!hasLocalWork()) lastSyncedSnapshot = Y.snapshot(doc)
         } catch (error) {
             syncHealth = 'ciphertext-corrupt'
             skippedUpdates += 1
@@ -1212,12 +1217,23 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
             else detached(requestDrain())
         },
         async flush() {
-            if (debounceTimer) {
-                clearTimeout(debounceTimer)
-                debounceTimer = undefined
+            // Counted before the debounce is cleared: waiting for the cache below, nothing else says
+            // there is an edit to send, and a peer's update arriving then read as "everything here is
+            // on the relay". The edit then went unsent until the next one or a reload.
+            flushing += 1
+            try {
+                if (debounceTimer) {
+                    clearTimeout(debounceTimer)
+                    debounceTimer = undefined
+                }
+                await persistenceTail
+                // A drain already running may have taken its difference before this edit.
+                if (drainPromise) await drainPromise
+                await requestDrain()
+            } finally {
+                flushing -= 1
+                deps.onIdle?.()
             }
-            await persistenceTail
-            await requestDrain()
             if (lastPersistenceError) throw lastPersistenceError
         },
         async delete() {
@@ -1314,7 +1330,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
             }
             await sendAwareness([doc.clientID])
         },
-        isIdle: () => durableQueue.length === 0 && !debounceTimer && !drainPromise,
+        isIdle: () => !hasLocalWork(),
         unsentOperations: () => durableQueue.length,
         retryUnsent() {
             if (destroyed) return

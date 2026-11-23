@@ -5,7 +5,7 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.46.0 - 2026-11-23
 
 ### Client
 
@@ -49,6 +49,8 @@ starts at 0.9.3.
   - In a code file, a selection covers the indent of each line.
   - On a phone, the Command Bar's buttons that do nothing in a code file are off there, and **Move
     up**, **Move down** and **Outdent** act on its lines.
+  - On a synced graph, an edit made at the moment another tab's or device's edit arrives is sent at
+    once. Before, it could wait until your next edit or until you reloaded the page.
 
 ## 0.45.0 - 2026-11-23
 

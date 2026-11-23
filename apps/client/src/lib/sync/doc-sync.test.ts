@@ -2486,6 +2486,37 @@ describe('sync engine contracts', () => {
             first.sync.destroy()
         })
 
+        // A flush has taken the edit's debounce and is waiting for the cache, so neither says there
+        // is an edit to send. A peer's update arriving then must not be read as "everything here is
+        // on the relay": the edit was never sent, until the next one or a reload.
+        it('sends an edit being flushed when a peer’s update arrives while the cache is written', async () => {
+            const keyring = createGraphKeyring('g1')
+            const cache = memoryCache()
+            const h = engine({ keyring, persist: cache, debounceMs: 60_000 })
+            await h.sync.ready()
+            const peers = await peerEnvelope(keyring, 'Garden ')
+            let release!: () => void
+            const held = new Promise<void>((resolve) => (release = resolve))
+            const save = cache.save.bind(cache)
+            cache.save = async (state, options) => {
+                await held
+                return save(state, options)
+            }
+
+            h.sync.doc.getText('content').insert(0, 'Kitchen ')
+            const flushed = h.sync.flush()
+            const received = h.sync.receive(update(1, peers))
+            await vi.waitFor(() => expect(h.sync.doc.getText('content').toString()).toContain('Garden'))
+            expect(h.sync.isIdle()).toBe(false)
+            release()
+            await Promise.all([flushed, received])
+
+            expect(h.ofType('append')).toHaveLength(1)
+            await h.sync.receive(ack(h.ofType('append')[0].outboxId, 2))
+            expect(h.sync.isIdle()).toBe(true)
+            h.sync.destroy()
+        })
+
         it('treats a repeated update as applied, without a catch-up or an index change', async () => {
             const keyring = createGraphKeyring('g1')
             const cache = memoryCache()
