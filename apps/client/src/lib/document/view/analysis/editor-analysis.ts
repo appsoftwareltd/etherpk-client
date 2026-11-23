@@ -16,6 +16,7 @@ import { codeRanges, type CodeRange } from '../../wikilink/code-ranges'
 import { frontmatterSpan, isFrontmatterDelimiter } from '#lib/storage/fs/frontmatter-span.js'
 
 import { wikilinkSegmentsInSource } from '../../wikilink/source'
+import { isTextFile } from '../text-file-facet'
 import { renderableFences, type RenderableFence } from '../augmentations/fence-render-core'
 import { branchEnds } from '../augmentations/outline-guides-core'
 
@@ -225,6 +226,33 @@ function analyse(doc: Text, previous?: EditorAnalysis, tr?: Transaction): Editor
     }
 }
 
+/** A line of a file that has no outline: at the top level, in no block. */
+const TEXT_LINE: OutlineLine = { depth: 0, owner: -1 }
+
+/**
+ * The analysis of a file in the Text Editor (text-file.ts): its lines, and no structure in them. A
+ * `- ` in a YAML file is no bullet and three backticks in a script are no fence, so nothing that
+ * reads the analysis (the selection highlight, a block selection, the Command Bar) sees one.
+ */
+function analyseText(doc: Text): EditorAnalysis {
+    const lines = doc.toJSON()
+    return {
+        lines,
+        fencedBlocks: [],
+        renderableFences: [],
+        tables: [],
+        codeRanges: [],
+        frontmatterEnd: -1,
+        wikilinks: [],
+        branchEnds: lines.map((_, line) => line),
+        outline: lines.map(() => TEXT_LINE),
+        imageLines: [],
+        mediaLines: [],
+        pendingFence: null,
+        incremental: undefined,
+    }
+}
+
 interface SingleLineChange {
     oldLineNumber: number
     oldLineFrom: number
@@ -414,9 +442,10 @@ function analyseIncrementally(
 }
 
 export const editorAnalysisField = StateField.define<EditorAnalysis>({
-    create: (state) => analyse(state.doc),
+    create: (state) => (state.facet(isTextFile) ? analyseText(state.doc) : analyse(state.doc)),
     update(value, transaction) {
         if (!transaction.docChanged) return value
+        if (transaction.startState.facet(isTextFile)) return analyseText(transaction.newDoc)
         const change = ordinarySingleLineChange(transaction)
         // Editing an opener or closer can change the fence language or pairing even when
         // the inserted character is not itself a backtick. Interior source edits are safe

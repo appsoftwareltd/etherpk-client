@@ -38,6 +38,17 @@ function imageWidgets(state: EditorState): ImageWidgetShape[] {
 
 const extensions = [imageEmbedAugmentation({ resolveAsset: () => Promise.resolve(null) })]
 
+describe('the image augmentation on its own', () => {
+    // A Plain Folder's editor has no asset links, whose augmentation is the other one that asks for
+    // these rules, and its pictures still draw Edit as text with the cluster's button.
+    it('carries the look of the buttons its overlay draws', () => {
+        const editor = editorFixture('![pic](own-theme.png)\n\nafter|', { extensions })
+        const rules = editor.state.facet(EditorView.styleModule).flatMap((module) => module.getRules())
+        // The button's own rule, not one of the overlay's that only names it.
+        expect(rules.some((rule) => /\.cm-asset-action\s*\{/.test(rule) && /cursor:\s*pointer/.test(rule))).toBe(true)
+    })
+})
+
 describe('the image widget after its picture decodes', () => {
     it('is rebuilt as a widget that is not eq to the one on screen', () => {
         const editor = editorFixture('![pic](decode-a.png)\n\nafter|', { extensions })
@@ -96,6 +107,9 @@ describe('the image widget while its asset cannot be fetched', () => {
                 this.className = [...this.className.split(' ').filter(Boolean), name].join(' ')
             },
             contains: (name: string) => this.className.split(' ').includes(name),
+            toggle: (name: string, on: boolean) => {
+                this.className = [...this.className.split(' ').filter((part) => part && part !== name), ...(on ? [name] : [])].join(' ')
+            },
         }
         constructor(readonly tag: string) {}
         setAttribute(name: string, value: string) {

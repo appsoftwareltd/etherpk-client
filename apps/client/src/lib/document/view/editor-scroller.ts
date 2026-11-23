@@ -10,12 +10,19 @@
 
 import type { EditorView } from '@codemirror/view'
 
+import { documentViewOf } from './table-cell'
+
 const SCROLLING = new Set(['auto', 'scroll', 'overlay'])
 
-/** The nearest element, from `view.scrollDOM` up, that scrolls vertically; `scrollDOM` when none does. */
+/**
+ * The nearest element, from `view.scrollDOM` up, that scrolls vertically; `scrollDOM` when none does.
+ * The editor of a table's cell is scrolled by the document editor it sits in, so the search starts
+ * there: the grid round the cell scrolls sideways, and is not what moves the text up and down.
+ */
 export function editorScroller(view: EditorView): HTMLElement {
-    for (let element: HTMLElement | null = view.scrollDOM; element; element = element.parentElement) {
+    const document = documentViewOf(view)
+    for (let element: HTMLElement | null = document.scrollDOM; element; element = element.parentElement) {
         if (SCROLLING.has(getComputedStyle(element).overflowY)) return element
     }
-    return view.scrollDOM
+    return document.scrollDOM
 }

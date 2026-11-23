@@ -1,7 +1,7 @@
 /**
  * The pointer rules of a Map Block's resize handle: one drag at a time, from a primary press to its
  * release or cancel. Escape, or the pointer being cancelled, cancels. They are an image's handle's
- * rules (`image-resize.ts` in the Client), kept here because an extension takes no new import from
+ * rules (`resize-handle.ts` in the Client), kept here because an extension takes no new import from
  * the Client (ADR 0121). What a drag shows and what it writes are the owner's.
  *
  * A drag redraws its map through the editor. On a bullet's line that rebuilds the line, which takes

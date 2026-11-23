@@ -20,6 +20,7 @@ import { setTrustedMarkup, type TrustedMarkup } from '#lib/security/trusted-type
 
 import { editorScroller } from '../editor-scroller'
 import { isFindReplace, isFindSelect } from '../../find/find-edit'
+import { activeCell } from '../table-cell'
 
 /** The minimum a caller's menu state must carry: where to anchor, and the highlighted row. */
 export interface PopoverBase {
@@ -193,11 +194,18 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
 
     const showing = (menu: S | null | undefined): boolean => menu != null && opts.rows(menu).length > 0
 
+    /**
+     * What the menu shows for `state`. Nothing while the caret is in a cell of a Table Grid: the
+     * caret is drawn in the cell's own editor, which has this menu too, and opens it there
+     * (table-cell-editor.ts). The document editor's would open as well, at the grid's edge.
+     */
+    const compute = (state: EditorState): S | null => (activeCell(state) ? null : opts.compute(state))
+
     /** The menu after an edit or a caret move. */
     function recompute(value: S | null, tr: Transaction): S | null {
-        if (!opts.opensOn || opts.opensOn(tr)) return opts.compute(tr.state)
+        if (!opts.opensOn || opts.opensOn(tr)) return compute(tr.state)
         if (!value) return null
-        const next = opts.compute(tr.state)
+        const next = compute(tr.state)
         // A caret that reaches another marker has not asked for a menu there.
         return next?.anchor === tr.changes.mapPos(value.anchor, 1) ? next : null
     }
@@ -209,7 +217,7 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
     }
 
     const menuField = StateField.define<S | null>({
-        create: (state) => (opts.opensOn ? null : opts.compute(state)),
+        create: (state) => (opts.opensOn ? null : compute(state)),
         update(value, tr) {
             if (tr.effects.some((e) => e.is(closeMenu) || e.is(closePopovers))) return null
             for (const e of tr.effects) {

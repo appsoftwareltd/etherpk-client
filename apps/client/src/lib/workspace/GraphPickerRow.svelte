@@ -8,7 +8,7 @@
     import { isDemoGraph } from '#lib/demo/demo-graph.js'
     import type { GraphRecord } from '#lib/storage/index.js'
     import GraphGrip, { type GraphGripProps } from './GraphGrip.svelte'
-    import { BADGE_ON_COLOUR, GRAPH_CARD, ICON_ON_COLOUR, OPEN_ON_COLOUR } from './graph-card'
+    import { BADGE_ON_COLOUR, CARD_ICONS, CARD_WORDS, GRAPH_CARD, ICON_ON_COLOUR, OPEN_ON_COLOUR } from './graph-card'
     import { OPEN_ICON, RESET_ICON } from './graphs-page-icons'
 
     let {
@@ -66,9 +66,7 @@
         style:--graph-ink={ink}
     >
     {#if grip}<GraphGrip {grip} coloured={accent !== null} />{/if}
-    <!-- The basis keeps room for the name: on a narrow screen the controls drop to a line of their
-         own rather than squeezing it away. -->
-    <div class="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
+    <div class={CARD_WORDS}>
         <span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
             <span data-testid="graph-card-name" class="truncate text-sm font-medium {accent ? '' : 'text-neutral-950 dark:text-white'}">{graph.name}</span>
             <span class={accent ? BADGE_ON_COLOUR : 'rounded-full bg-neutral-100 px-2 py-0.5 text-sm text-neutral-600 dark:bg-white/10 dark:text-neutral-400'} data-testid="graphs-backend-tag">
@@ -108,13 +106,13 @@
             >Local browser cache</span>
         {/if}
     </div>
-    <div class="ml-auto flex items-center gap-2">
     <button data-testid="graphs-open" aria-label={`Open ${graph.name}`} onclick={onopen} class={accent ? OPEN_ON_COLOUR : 'gk-button gk-button--primary shrink-0'}>
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d={OPEN_ICON} />
         </svg>
         Open
     </button>
+    <div class={CARD_ICONS}>
     <button
         data-testid="graphs-rename"
         data-tooltip={graph.backend === 'server'

@@ -6,6 +6,7 @@
  * workspace publishes the session when the folder opens and clears it when it closes. One folder is
  * open at a time: the route mounts a new workspace for another.
  */
+import type { FileEditors } from './file-editors'
 import type { FolderTreeAdapter } from './folder-tree-adapter'
 import type { PlainFolderStore } from './plain-folder-store'
 import type { PlainMedia } from './plain-media'
@@ -29,6 +30,14 @@ export interface PlainSession {
     openAsGraph(path: string): Promise<void>
     /** Open the file at `path`, in a tab or beside the one in front. */
     openFile(path: string, placement?: LinkPlacement): Promise<void>
+    /** Which editor each text file opens in (file-editors.ts). */
+    readonly editors: FileEditors
+    /** The key that switches a file's editor, as a tooltip names it, or null where there are no keys. Reactive. */
+    readonly switchEditorChord: string | null
+    /** Show the directory at `path` in the file tree, open and in focus. */
+    showInTree(path: string): void
+    /** What the tree was last asked to show. A new object for each ask. Reactive. */
+    readonly treeTarget: { readonly path: string } | null
     /** Say the folder's listing may have changed: something here created, moved or removed an entry. */
     listingChanged(): void
     /** The tree moved `from` to `to`: the tabs showing files there follow. */

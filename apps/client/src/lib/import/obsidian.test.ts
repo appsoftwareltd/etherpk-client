@@ -156,6 +156,17 @@ describe('convertObsidian', () => {
         expect(text).toMatch(/^\[doc\]\(\.\.\/assets\/doc\.[0-9a-f]{8}\.pdf\)$/m)
     })
 
+    it('keeps the display size of an embedded recording, as of a picture', async () => {
+        const graph = await convertObsidian([
+            src('attachments/Garden walk.mp4', new Uint8Array([1, 2])),
+            src('user.md', '![[Garden walk.mp4|480]]\n![[Garden walk.mp4|640x360]]\n![[Garden walk.mp4|480 wide]]'),
+        ])
+        const text = doc(graph, 'user').text
+        expect(text).toMatch(/^!\[garden-walk\|480\]\(\.\.\/assets\/garden-walk\.[0-9a-f]{8}\.mp4\)$/m)
+        expect(text).toMatch(/^!\[garden-walk\|640x360\]\(/m)
+        expect(text).toMatch(/^!\[480 wide\]\(/m)
+    })
+
     it('reads a size hint only from a pipe that is all width, or width and height, and any other pipe as the alt text', async () => {
         const graph = await convertObsidian([
             src('attachments/Shot.png', new Uint8Array([1])),

@@ -11,13 +11,22 @@
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import { boundOnPlatform, formatChord, isApplePlatform } from "#lib/surface/index.js";
 
-    import { APP_KEYBINDINGS, APP_SHORTCUT_GROUPS, EDITOR_SHORTCUTS, type AppShortcutGroup, type ShortcutBinding } from "./keyboard-shortcuts";
+    import { APP_KEYBINDINGS, APP_SHORTCUT_GROUPS, EDITOR_SHORTCUTS, type AppShortcutGroup, type ShortcutBinding, type ShortcutGroup } from "./keyboard-shortcuts";
 
     /**
      * `bindings` is the live table the window listens with, which holds the chords extensions add
      * as they start (ADR 0121) beside the app's own.
      */
-    let { onclose, bindings = APP_KEYBINDINGS }: { onclose: () => void; bindings?: readonly ShortcutBinding[] } = $props();
+    let {
+        onclose,
+        bindings = APP_KEYBINDINGS,
+        editorShortcuts = EDITOR_SHORTCUTS,
+    }: {
+        onclose: () => void;
+        bindings?: readonly ShortcutBinding[];
+        /** The editor's sections. A Plain Folder adds the Text Editor's, which a graph does not have. */
+        editorShortcuts?: readonly ShortcutGroup[];
+    } = $props();
 
     const apple = isApplePlatform();
 
@@ -63,12 +72,14 @@
             .filter((group) => group.rows.length > 0);
     });
 
-    const editorGroups = EDITOR_SHORTCUTS.map((group) => ({
-        ...group,
-        rows: group.shortcuts.map(
-            (shortcut): Row => ({ label: shortcut.label, chords: [formatChord(shortcut.key, apple)] }),
-        ),
-    }));
+    const editorGroups = $derived(
+        editorShortcuts.map((group) => ({
+            ...group,
+            rows: group.shortcuts.map(
+                (shortcut): Row => ({ label: shortcut.label, chords: [formatChord(shortcut.key, apple)] }),
+            ),
+        })),
+    );
 </script>
 
 {#snippet rows(list: Row[])}

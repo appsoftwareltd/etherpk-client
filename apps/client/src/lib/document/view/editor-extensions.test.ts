@@ -16,7 +16,7 @@ import { revealFocus, revealedLines } from './augmentations/reveal-policy'
 import { editorDocument } from './editor-document'
 import { editorIsOnScreen, setEditorOnScreen } from './editor-on-screen'
 import { localHistoryExtension } from './editor-history'
-import { editorExtensions, editorFeatures, type EditorExtensionServices } from './editor-extensions'
+import { CELL_FEATURES, cellEditorExtensions, editorExtensions, editorFeatures, type EditorExtensionServices } from './editor-extensions'
 import { startAtEnd } from './end-of-document'
 import { anchorLine } from './line-anchor'
 import { shownRangeIn } from './shown-range'
@@ -101,6 +101,7 @@ describe('editor feature stack', () => {
             'line-anchor',
             'fold-persistence',
             'bookmarks',
+            'line-numbers',
             'keep-caret-visible',
             'column-shift',
             'selection-order',
@@ -345,6 +346,30 @@ describe('editor feature stack', () => {
     })
 })
 
+describe("the editor of a table's cell (ADR 0205)", () => {
+    const names = editorFeatures(services).map((feature) => feature.name)
+
+    it('keeps only features the document editor has, so a renamed one is not left behind', () => {
+        for (const name of CELL_FEATURES) expect(names, name).toContain(name)
+    })
+
+    it('draws no grid of its own, and leaves blocks, the outline and the document as a whole to the document editor', () => {
+        for (const name of ['markdown-table', 'bullet-marker', 'content-clamp', 'fence-render', 'image-embed', 'frontmatter', 'bookmarks', 'view-hooks', 'placeholder', 'rich-paste']) {
+            expect(CELL_FEATURES.has(name), name).toBe(false)
+        }
+    })
+
+    it('has what a line has at the caret: links, their completion, the Command Menu, the Date Picker and spelling', () => {
+        for (const name of ['wikilink', 'wikilink-completion', 'markdown-link', 'markdown-format', 'slash-completion', 'date-calendar', 'spell-check']) {
+            expect(CELL_FEATURES.has(name), name).toBe(true)
+        }
+    })
+
+    it('is built from the document editor\'s services, one extension for each feature it keeps', () => {
+        expect(cellEditorExtensions(services)).toHaveLength(CELL_FEATURES.size)
+    })
+})
+
 describe('the plain profile, for a file of a Plain Folder', () => {
     const plainServices: EditorExtensionServices = {
         ...services,
@@ -404,11 +429,31 @@ describe('the plain profile, for a file of a Plain Folder', () => {
         const text = editorFeatures({ ...plainServices, document: { concept: 'notes/list.txt' } })
         expect(text.map((feature) => feature.name)).toEqual(names())
         const kept = text.filter(contributes).map((feature) => feature.name)
-        const allowed = ['find-matches', 'selection-layer', 'placeholder', 'edit-refusal', 'editor-document', 'on-screen', 'line-anchor', 'keep-caret-visible', 'column-shift', 'selection-order', 'view-hooks']
+        const allowed = ['find-matches', 'selection-layer', 'placeholder', 'edit-refusal', 'editor-document', 'on-screen', 'line-anchor', 'line-numbers', 'keep-caret-visible', 'column-shift', 'selection-order', 'view-hooks']
         expect(kept.filter((name) => !allowed.includes(name))).toEqual([])
         // What reads markdown is gone, and what any text needs is there.
         for (const name of ['markdown-format', 'bullet-marker', 'task-checkbox', 'outline-guides', 'wrap-selection', 'markdown-link', 'image-embed', 'caret-clamp']) expect(kept).not.toContain(name)
-        for (const name of ['find-matches', 'selection-layer', 'editor-document', 'view-hooks']) expect(kept).toContain(name)
+        for (const name of ['find-matches', 'selection-layer', 'editor-document', 'line-numbers', 'view-hooks']) expect(kept).toContain(name)
+    })
+
+    it('opens a markdown file as text when the profile says so: the same features as any other text', () => {
+        const asText = { ...plainServices, plain: { ...plainServices.plain!, textOnly: () => true } }
+        const markdown = editorFeatures({ ...asText, document: { concept: 'guide/watering.md' } }).filter(contributes)
+        const script = editorFeatures({ ...asText, document: { concept: 'water.sh' } }).filter(contributes)
+        expect(markdown.map((feature) => feature.name)).toEqual(script.map((feature) => feature.name))
+    })
+
+    it('bookmarks the lines of a text file, in a column before its line numbers', () => {
+        const withBookmarks = { ...plainServices, document: { concept: 'notes/list.txt' }, bookmarks: { lineMenu: () => {}, draft: false, reveal: () => {} } }
+        const on = editorFeatures(withBookmarks).filter(contributes).map((feature) => feature.name)
+        // CodeMirror puts an earlier extension's gutter before a later one's.
+        expect(on.indexOf('bookmarks')).toBeGreaterThanOrEqual(0)
+        expect(on.indexOf('line-numbers')).toBeGreaterThan(on.indexOf('bookmarks'))
+    })
+
+    it('numbers no lines in the Markdown Editor, in a Plain Folder or a graph', () => {
+        expect(offIn(editorFeatures(plainServices))).toContain('line-numbers')
+        expect(offIn(editorFeatures({ ...services, document: { concept: 'Garden' } }))).toContain('line-numbers')
     })
 
     it('builds an editor state with no graph, no store and no DOM', () => {

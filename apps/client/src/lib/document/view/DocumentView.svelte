@@ -52,7 +52,10 @@
     import { frontmatterLineOffset, type RevealRequest, subscribeReveal, takeReveal } from '../reveal'
     import { DocumentNotFoundError, type DocumentStore, type EditorDocument } from '../types'
     import { currentWorkspaceServices, type ProtectionControls } from '#lib/workspace/workspace-services.js'
-    import { createDocumentEditor, type DocumentEditor } from './cm-document'
+    import { createDocumentEditor, type DocumentEditor, type DocumentEditorOptions } from './cm-document'
+    import { carryFrom, carryInto, type EditorCarry } from './editor-carry'
+    import { cellEditorOf } from './augmentations/table-cell-editor'
+    import { documentTextOf, documentViewOf, editorHasKeyboard } from './table-cell'
     import type { ShownRangeOf } from './shown-range'
     import { caretBesideFence } from './augmentations/interactive-fence'
     import { commandBeingTyped, commandMenuOpen, resumeCommand } from './augmentations/slash-complete'
@@ -102,6 +105,7 @@
         visibility: visibilityProp,
         shownRange: shownRangeProp,
         onopenintab,
+        oncaret,
         source: sourceProp,
     }: {
         view: ViewRef
@@ -136,6 +140,8 @@
          * does the opening, since it may have to close first (the Task Editor is a dialog).
          */
         onopenintab?: () => void
+        /** Called with the caret's line, 0-based from the top of the file, as it moves and as the text changes. */
+        oncaret?: (line: number) => void
         /**
          * Embedded only: the document to edit, in place of the one the store opens for the View's
          * target. The Task Editor writes a new task's description in one held in memory until the
@@ -196,10 +202,15 @@
      * Where this View's pasted and dropped files go: the graph's Asset Store, or in a Plain Folder
      * a store of this file's own, which keeps them near it.
      */
-    /** A text file that is not markdown: no outliner, no markdown, and no button that would start a bullet. */
-    const textFile = plainProfile?.textOnly(view.target) ?? false
-    /** That file's name, which says which language's colours it gets (text-file.ts). */
-    const textFileName = textFile ? view.target.slice(view.target.lastIndexOf('/') + 1) : undefined
+    /**
+     * The file is in the Text Editor: no outliner, no markdown, and no button that would start a
+     * bullet. Read again when the person switches the file's editor (`reopen`).
+     */
+    let textFile = $state(plainProfile?.textOnly(view.target) ?? false)
+    /** The file's name, which says which language's colours it gets there (text-file.ts). */
+    const fileName = view.target.slice(view.target.lastIndexOf('/') + 1)
+    /** What the editor being replaced hands to the next one, while a switch of editors mounts it. */
+    let carried: EditorCarry | undefined
     const assetStoreHere = () => (plainProfile ? plainProfile.assets(view.target) : tryGetActiveAssetStore())
 
     let host = $state<HTMLDivElement>()
@@ -278,7 +289,7 @@
      */
     function startNewLine(kind: EndKind): void {
         const focused = editorAt(document.activeElement)
-        if (focused?.hasFocus && host?.contains(focused.dom) && bodyWritable(focused.state)) {
+        if (focused && editorHasKeyboard(focused) && host?.contains(focused.dom) && bodyWritable(focused.state)) {
             startAfterCaret(focused, kind)
             focused.focus()
             return
@@ -467,10 +478,11 @@
     let matchListHeight = $state(0)
     const matchListShown = $derived(!!find?.open && find.listShown)
 
-    /** The editor an element is in, or null. */
+    /** The document editor an element is in, or null. In a table's cell that is the editor whose table holds the cell. */
     function editorAt(element: EventTarget | null): EditorView | null {
         const dom = element instanceof Element ? element.closest('.cm-editor') : null
-        return dom instanceof HTMLElement ? EditorView.findFromDOM(dom) : null
+        const found = dom instanceof HTMLElement ? EditorView.findFromDOM(dom) : null
+        return found ? documentViewOf(found) : null
     }
 
     /**
@@ -961,7 +973,7 @@
 
     /** Whether the focus is in the text of an editor other than `view`. */
     function anotherEditorFocused(view: EditorView): boolean {
-        const text = document.activeElement?.closest('.cm-content')
+        const text = documentTextOf(document.activeElement)
         return text != null && text !== view.contentDOM
     }
 
@@ -982,7 +994,10 @@
      */
     function inEditorText(element: Element): boolean {
         const own = editor?.view
-        if (!own || element.closest('.cm-editor') !== own.dom) return false
+        const nearest = editorAt(element)
+        if (!own || nearest !== own) return false
+        // A cell of one of its tables is its text: the cell's editor is drawn inside the grid.
+        if (element.closest('.cm-editor') !== own.dom) return true
         const region = element.closest(`.cm-content, [${DOCUMENT_BACKLINKS_ATTRIBUTE}], [${JOURNAL_ROLL_ATTRIBUTE}]`)
         return !region || !own.dom.contains(region) || region === own.contentDOM
     }
@@ -1006,7 +1021,8 @@
             const now = document.activeElement
             if (now && now !== from && now !== document.body && !inEditorText(now)) return
             view.focus()
-            if (!view.hasFocus && --attempts > 0) requestAnimationFrame(tryFocus)
+            // With a table's cell being edited the keyboard goes on to the cell's editor (table-cell-editor.ts).
+            if (!view.hasFocus && !cellEditorOf(view)?.hasFocus && --attempts > 0) requestAnimationFrame(tryFocus)
         }
         tryFocus()
     }
@@ -1019,7 +1035,7 @@
     let rollFocus: HTMLElement | null = null
 
     function noteFocus(event: FocusEvent): void {
-        const text = event.target instanceof Element ? event.target.closest('.cm-content') : null
+        const text = event.target instanceof Element ? documentTextOf(event.target) : null
         if (!text || !editor) return
         if (text === editor.view.contentDOM) rollFocus = null
         else if (text instanceof HTMLElement && text.closest(`[${JOURNAL_ROLL_ATTRIBUTE}]`)) rollFocus = text
@@ -1157,6 +1173,38 @@
         })
     }
 
+    /**
+     * The person switched the file's editor (ADR 0204): build the other one over the same text, with
+     * the same undo history, selection and place. False when it is in that editor already.
+     */
+    export function reopen(): boolean {
+        const now = plainProfile?.textOnly(view.target) ?? false
+        if (!editor || now === textFile) return false
+        textFile = now
+        carried = carryFrom(editor.view, getActiveEditorView() === editor.view)
+        remount()
+        if (editor) carryInto(editor.view, carried)
+        carried = undefined
+        noteCaret()
+        return true
+    }
+
+    /**
+     * Whether a tab's editor, as it is made, becomes the active one: not while the focus is in
+     * another, and one replacing another over a file whose editor was switched only where that one
+     * was active. A change of the default switches every open file at once, the hidden ones too.
+     */
+    function takesActive(cm: EditorView): boolean {
+        if (!ownsTab || anotherEditorFocused(cm)) return false
+        return carried?.active ?? true
+    }
+
+    /** Tell the View around this one which line the caret is on, counted from the top of the file. */
+    function noteCaret(): void {
+        const cm = editor?.view
+        if (cm) oncaret?.(cm.state.doc.lineAt(cm.state.selection.main.head).number - 1)
+    }
+
     function onGraphDocumentsChanged(): void {
         // The registry moved - a rename arrived, aliases changed - so the frontmatter's mismatch
         // mark is recomputed against it (ADR 0061). Nothing in the text changed to trigger that.
@@ -1249,6 +1297,7 @@
                 lineMenu: (line, x, y, rows, above) =>
                     openContextMenu({ kind: 'line', concept: view.target, panelId, line: line.number, text: line.text, ...(rows ? { rows } : {}) }, x, y, { above }),
                 draft: draft !== undefined,
+                kept: carried?.bookmarks,
                 // A bookmark's line is held as a Search result's is, so the tab's activation or
                 // the text arriving does not put back the line the open first asked for.
                 reveal: (to) =>
@@ -1258,6 +1307,14 @@
             },
         }
     }
+
+    /** What says the editor is the Text Editor, and the history it carries on from when it replaces another. */
+    function textEditorOptions(): Pick<DocumentEditorOptions, 'textFile' | 'history'> {
+        return { textFile: textFile ? fileName : undefined, history: carried?.history }
+    }
+
+    /** Where a file dropped beside the text goes. Into a text file nothing does: it would be inserted as markdown. */
+    const dropStore = () => (textFile ? null : assetStoreHere())
 
     function mountDocument(): void {
         const activeStore = storeForView()
@@ -1372,7 +1429,7 @@
             currentText: () => doc!.getText(),
             ...(collabYText ? { collab: { ytext: collabYText, awareness } } : {}),
             plain: plainProfile !== undefined,
-            textFile: textFileName,
+            ...textEditorOptions(),
             // The feature stack lives in editor-extensions.ts (order-tested); the View supplies
             // only the services the features need, its own focus / update hooks, and what its mode
             // adds (`modeExtensions`).
@@ -1423,6 +1480,9 @@
                 // [[Bookmark]] rows (ADR 0159).
                 wikilinkContextMenu: (concept, x, y) =>
                     openContextMenu({ kind: 'wikilink', concept, panelId, line: editorLineAt(x, y) }, x, y),
+                // A handle on a Table Grid's border raises the menu of its row or its column (ADR 0205).
+                tableMenu: (kind, about, x, y) =>
+                    openContextMenu({ kind: kind === 'row' ? 'table-row' : 'table-column', concept: view.target, panelId, ...about }, x, y),
                 onFocus(cmView) {
                     // Focusing this editor makes its document and view the active ones.
                     setActiveDocument(view.target)
@@ -1443,6 +1503,7 @@
                     if (update.docChanged) endWritable = bodyWritable(update.state)
                     // Keep the Command Bar's outliner-block context in step with the caret.
                     if (update.selectionSet || update.docChanged) {
+                        noteCaret()
                         // The Command Bar describes the editor in use: the focused one, or the active
                         // one when none is. An unfocused editor's update - a remote edit, an older day
                         // in a Journal Roll - is not its business.
@@ -1477,7 +1538,7 @@
         // editor opens beside the one being worked in, and takes over only when focused (onFocus).
         // Nor does a tab rebuilding behind the one being written in (a Draft replaced by sync, a
         // protection change) take it from the editor that has the focus.
-        if (ownsTab && !anotherEditorFocused(editor.view)) {
+        if (takesActive(editor.view)) {
             setActiveEditorView(editor.view)
             refreshEditorContext(editor.view)
         }
@@ -1509,7 +1570,7 @@
         placeRoll(editor.view.scrollDOM)
         if (ownsTab) {
             detachBelowText = handleEventsBelowText(editor.view, {
-                store: assetStoreHere,
+                store: dropStore,
                 // A press on the tab's blank space gives the keys back as coming back to the tab
                 // does. A phone's tap gives none: the keyboard would rise over what is being read.
                 focusText: () => {

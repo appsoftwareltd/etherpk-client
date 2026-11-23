@@ -14,6 +14,19 @@ describe('context-menu contribution point', () => {
         expect(listContextMenuItems(registry, tab('Physics')).map((r) => r.label)).toEqual(['A', 'B'])
     })
 
+    it('a row that is one choice of several says which is in force, and carries its tick', () => {
+        const registry = createContributionRegistry()
+        const inForce = 'text'
+        for (const editor of ['markdown', 'text']) registerContextMenuItem(registry, { id: editor, label: editor, command: editor, icon: 'copy', checked: () => editor === inForce })
+        registerContextMenuItem(registry, { id: 'act', label: 'act', command: 'act', icon: 'copy' })
+        const rows = listContextMenuItems(registry, { kind: 'plain-editor', path: 'README.md' })
+        expect(rows.map((row) => [row.checked, row.icon])).toEqual([
+            [false, undefined],
+            [true, 'check'],
+            [undefined, 'copy'],
+        ])
+    })
+
     it('filters by target, so add/remove are exact complements', () => {
         // One favourited document must never show both "Add to favourites" and "Remove".
         const registry = createContributionRegistry()

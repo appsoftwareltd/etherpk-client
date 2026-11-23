@@ -17,7 +17,7 @@
     import { inkFor } from '#lib/contrast-ink.js'
     import GraphGrip, { type GraphGripProps } from './GraphGrip.svelte'
     import { tick } from 'svelte'
-    import { BADGE_ON_COLOUR, GRAPH_CARD, GRAPH_CARD_UNCLIPPED, ICON_ON_COLOUR, OPEN_ON_COLOUR } from './graph-card'
+    import { BADGE_ON_COLOUR, CARD_ICONS, CARD_WORDS, GRAPH_CARD, GRAPH_CARD_UNCLIPPED, ICON_ON_COLOUR, OPEN_ON_COLOUR } from './graph-card'
     import type { SyncedMember } from './graph-picker-helpers'
     import { OPEN_ICON } from './graphs-page-icons'
 
@@ -197,11 +197,12 @@
     const ICON_BUTTON = 'gk-icon-button'
 </script>
 
-<!-- The name and the role. `coloured`: on the band in the graph's toolbar colour, which a locked
-     row does not draw. -->
+<!-- The name, and the role where nothing below says it: an owner's card names its owner in the
+     member list, which a locked row does not have. `coloured`: on the band in the graph's toolbar
+     colour, which a locked row does not draw. -->
 {#snippet badges(coloured: boolean)}
     <span data-testid="graph-card-name" class="truncate text-sm font-medium {coloured ? '' : 'text-neutral-950 dark:text-white'}">{name}</span>
-    {#if role}
+    {#if role && (locked || !owner)}
         <span
             data-testid="synced-role"
             class={coloured
@@ -300,9 +301,7 @@
     >
         {#if grip}<GraphGrip {grip} coloured={accent !== null} />{/if}
         {#if onDevice}
-            <!-- The basis keeps room for the name: on a narrow screen the controls drop to a line of
-                 their own rather than squeezing it away. -->
-            <div class="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
+            <div class={CARD_WORDS}>
                 <span class="flex min-w-0 flex-wrap items-center gap-2">{@render badges(accent !== null)}</span>
                 <span
                     class="truncate text-sm {accent ? '' : 'text-neutral-500 dark:text-neutral-400'}"
@@ -310,13 +309,13 @@
                     title="A synced graph's copy is stored in the browser, not in a folder">On this device</span
                 >
             </div>
-            <div class="ml-auto flex items-center gap-2">
             <button data-testid="graphs-open" aria-label={`Open ${name}`} onclick={onopen} class={accent ? OPEN_ON_COLOUR : OPEN_BUTTON}>
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d={OPEN_ICON} />
                 </svg>
                 Open
             </button>
+            <div class={CARD_ICONS}>
             <button
                 data-testid="graphs-rename"
                 data-tooltip="Rename (changes the graph name for all members)" aria-description="Rename (changes the graph name for all members)"
@@ -342,11 +341,11 @@
             </button>
             </div>
         {:else}
-            <div class="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
+            <div class={CARD_WORDS}>
                 <span class="flex min-w-0 flex-wrap items-center gap-2">{@render badges(accent !== null)}</span>
                 <span class="text-sm text-neutral-500 dark:text-neutral-400" data-testid="synced-not-local">Not on this device</span>
             </div>
-            <button data-testid="graphs-add-device" onclick={onadd} class="ml-auto {TEXT_BUTTON}">Add to this device</button>
+            <button data-testid="graphs-add-device" onclick={onadd} class={TEXT_BUTTON}>Add to this device</button>
         {/if}
     </div>
 
@@ -413,7 +412,7 @@
                         class="flex flex-wrap items-center gap-2 text-sm"
                     >
                         <span class="truncate text-neutral-700 dark:text-neutral-300">{m.email}</span>
-                        <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-sm text-neutral-600 dark:bg-white/10 dark:text-neutral-400">
+                        <span data-testid="member-role" class="rounded-full bg-neutral-100 px-2 py-0.5 text-sm text-neutral-600 dark:bg-white/10 dark:text-neutral-400">
                             {m.role === 'owner' ? 'Owner' : m.status === 'invited' ? 'Invited' : 'Player'}
                         </span>
                         <!-- What the owner's pins say about the member's key (ADR 0126); shown only

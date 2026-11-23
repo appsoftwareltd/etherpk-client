@@ -46,8 +46,31 @@ export type ContextMenuTarget =
     | ViewFavouriteContextMenuTarget
     | ExtensionContextMenuTarget
     | PlainEntryContextMenuTarget
+    | PlainEditorContextMenuTarget
     | SidebarViewContextMenuTarget
     | ActivityBarContextMenuTarget
+    | TableContextMenuTarget
+
+/**
+ * A row or a column of a Table Grid, from its handle on the grid (ADR 0205). The rows act on the
+ * table at the caret, which the handle's press has put in that row and column, so the target says
+ * only what the rows are offered and labelled by.
+ */
+export interface TableContextMenuTarget {
+    kind: 'table-row' | 'table-column'
+    /** The document's concept, and the editor's panel. */
+    concept: string
+    panelId?: string
+    /** The row is the header, which a table always has: it is not removed, and nothing goes above it. */
+    header: boolean
+    /** How many columns the table has: its last one is not removed. */
+    columns: number
+    /** The column's alignment, which its menu ticks. */
+    align: 'left' | 'center' | 'right' | null
+    /** How many body rows and columns its removal takes: those of the block of cells selected, or one. */
+    selectedRows: number
+    selectedColumns: number
+}
 
 /**
  * An icon of the [[Activity Bar]]: a View of the Primary Sidebar that the person arranges
@@ -78,6 +101,15 @@ export interface PlainEntryContextMenuTarget {
      * are that graph's to change, so the tree offers to open the graph and nothing that writes.
      */
     inGraph?: boolean
+}
+
+/**
+ * The editor a file of a [[Plain Folder]] is open in, from the button that names it above the file:
+ * the editors it can open in, and the default for its kind (ADR 0204).
+ */
+export interface PlainEditorContextMenuTarget {
+    kind: 'plain-editor'
+    path: string
 }
 
 /**
@@ -316,6 +348,10 @@ export function isBlockTarget(target: ContextMenuTarget): target is BlockContext
     return target.kind === 'block'
 }
 
+export function isTableTarget(target: ContextMenuTarget): target is TableContextMenuTarget {
+    return target.kind === 'table-row' || target.kind === 'table-column'
+}
+
 export function isLineTarget(target: ContextMenuTarget): target is LineContextMenuTarget {
     return target.kind === 'line'
 }
@@ -381,6 +417,11 @@ export interface ContextMenuItem {
     separatorBefore?: boolean | ((target: ContextMenuTarget) => boolean)
     /** The row deletes or removes something for good: drawn in the danger colour (`gk-menu-item--danger`). */
     danger?: boolean
+    /**
+     * The row is one choice of several, and this says whether it is the one in force: drawn with a
+     * tick, and a `menuitemradio` to a screen reader. Absent, the row is an action. Its `icon` is the tick's.
+     */
+    checked?: (target: ContextMenuTarget) => boolean
     /** Applicability; absent ⇒ shown for every target. */
     when?: (target: ContextMenuTarget) => boolean
 }
@@ -390,11 +431,18 @@ export function registerContextMenuItem(registry: ContributionRegistry, item: Co
     return registry.register(CONTEXT_MENU_KIND, item.id, item)
 }
 
+/** A row's icon, and for a row that is a choice, whether it is the one in force, which its tick shows. */
+function rowIcon(item: ContextMenuItem, target: ContextMenuTarget): { icon?: string; checked?: boolean } {
+    if (!item.checked) return item.icon === undefined ? {} : { icon: item.icon }
+    const checked = item.checked(target)
+    return checked ? { icon: 'check', checked } : { checked }
+}
+
 /** The applicable rows for `target`, ordered by `order` then registration order. */
 export function listContextMenuItems(
     registry: ContributionRegistry,
     target: ContextMenuTarget,
-): { id: string; label: string; command: string; icon?: string; separatorBefore: boolean; danger: boolean }[] {
+): { id: string; label: string; command: string; icon?: string; checked?: boolean; separatorBefore: boolean; danger: boolean }[] {
     return registry
         .list(CONTEXT_MENU_KIND)
         .map((e) => e.value as ContextMenuItem)
@@ -405,7 +453,7 @@ export function listContextMenuItems(
             id: item.id,
             label: typeof item.label === 'function' ? item.label(target) : item.label,
             command: item.command,
-            ...(item.icon === undefined ? {} : { icon: item.icon }),
+            ...rowIcon(item, target),
             separatorBefore: typeof item.separatorBefore === 'function' ? item.separatorBefore(target) : (item.separatorBefore ?? false),
             danger: item.danger === true,
         }))

@@ -66,7 +66,7 @@
     import { openChosenFolder } from '#lib/workspace/open-chosen-folder.js'
     import { graphUrl } from '#lib/navigation/document-url.js'
     import { graphAddressOf } from '#lib/navigation/graph-address.js'
-    import { APP_KEYBINDINGS, type ShortcutBinding } from '#lib/workspace/keyboard-shortcuts.js'
+    import { APP_KEYBINDINGS, EDITOR_SHORTCUTS, TEXT_EDITOR_SHORTCUTS, type ShortcutBinding } from '#lib/workspace/keyboard-shortcuts.js'
     import ActivityBar from '#lib/layout/renderers/ActivityBar.svelte'
     import { registerSidebarCommands, WORKSPACE_RESET } from '#lib/layout/sidebar-commands.js'
     import { personSettings } from '#lib/person-settings/person-settings.js'
@@ -82,6 +82,8 @@
         updateWorkspaceServices,
     } from '#lib/workspace/workspace-services.js'
 
+    import { SWITCH_EDITOR, registerFileEditorCommands } from '../file-editor-commands'
+    import { createFileEditors } from '../file-editors'
     import { fileKindOf, isEditableKind } from '../file-kind'
     import type { FolderTreeAdapter } from '../folder-tree-adapter'
     import { parsePlainUrl, plainFileUrl, plainFolderUrl } from '../plain-address'
@@ -179,6 +181,8 @@
         // A letter for each Sidebar View, as a graph's have. G is the Explorer's there.
         { key: 'Alt+G', command: SHOW_FILES, label: 'Files', group: 'Sidebars' },
         { key: 'Alt+O', command: SHOW_OUTLINE, label: 'Outline', group: 'Sidebars' },
+        // M for markdown. In a graph it is the Graph Map extension's, which a Plain Folder does not run.
+        { key: 'Alt+M', command: SWITCH_EDITOR, label: 'Switch between the Markdown Editor and the Text Editor', group: 'Editor' },
     ]
     const keybindings = createKeybindingTable([...PLAIN_KEYBINDINGS, ...APP_KEYBINDINGS.filter((binding) => binding.command !== 'search.open')])
     const shownBindings = $derived(keybindings.bindings.filter((binding) => commands.has(binding.command)))
@@ -361,6 +365,7 @@
         // A bookmarked line follows its file: the person marked the line, not the name.
         const moved = new Set(getBookmarks().map((bookmark) => bookmark.concept).filter((path) => path === from || path.startsWith(`${from}/`)))
         for (const path of moved) void renameBookmarkConcept(path, to + path.slice(from.length)).catch(() => {})
+        fileEditors.moved(from, to)
         if (!controller) return
         for (const tab of tabsUnder(from)) {
             controller.openView({ kind: tab.view.kind, target: to + tab.view.target.slice(from.length) }, { activate: tab.front, paneId: tab.paneId })
@@ -375,6 +380,8 @@
         const remaining = controller.serialize().model.regions.main.panes.flatMap((pane) => pane.views).length - tabs.length
         if (remaining <= 0) controller.openView(START_VIEW, { region: 'main' })
         for (const tab of tabs) controller.closeView(tab.view)
+        // Once no tab shows the file, which would otherwise change editors as it closes.
+        fileEditors.removed(path)
     }
 
     /**
@@ -457,12 +464,16 @@
         }
     }
 
+    /** Which editor each text file opens in (ADR 0204): the person's, and this device's, never the folder's. */
+    const fileEditors = createFileEditors({ folderId, settings: personSettings(), storage: localStorage })
+    let treeTarget = $state.raw<{ path: string } | null>(null)
+
     const profile: PlainProfile = {
         openLink,
         resolveMedia: (from, ref) => media?.resolve(from, ref) ?? Promise.resolve(null),
         // A file of a graph kept inside the folder is that graph's to change, so it is shown, not edited.
         readOnly: (path) => store?.stateOf(path)?.readOnly != null || directoryHolding(graphFolders, path) !== null,
-        textOnly: (path) => fileKindOf(path) === 'text',
+        textOnly: (path) => fileEditors.editorOf(path) === 'text',
         suggestPaths: (from, query) => suggestPaths(from, files, query),
         assets: (from) => createPlainAssetStore(tree!, media!, () => from, () => settings.pastedFiles),
         remoteImages: createRemoteImageTrust(folderId, localStorage),
@@ -488,6 +499,17 @@
         },
         get graphFolders() {
             return graphFolders
+        },
+        editors: fileEditors,
+        get switchEditorChord() {
+            return chord(SWITCH_EDITOR)
+        },
+        showInTree(path) {
+            sidebars.reveal(TREE_VIEW.kind)
+            treeTarget = { path }
+        },
+        get treeTarget() {
+            return treeTarget
         },
         openAsGraph,
         openFile,
@@ -866,6 +888,7 @@
                     registerTabCommands(commands, contributions, { controller: () => controller, confirmClose: sidebars.confirmClose }),
                     registerSidebarCommands(commands, contributions, { binding: sidebars.binding, controller: () => controller, name: (view) => registry.name(view), confirmHide: sidebars.confirmHide }),
                     registerSpellingCommands(commands, contributions),
+                    registerFileEditorCommands(commands, contributions, { editors: fileEditors, activePath: () => activePath }),
                     registerBookmarkCommands(commands, contributions, {
                         openDocumentAtLine: (path, line) =>
                             void openFile(path).then(() => {
@@ -920,6 +943,7 @@
             clearInterval(poll)
             saveLayout()
             for (const off of detach) off()
+            fileEditors.dispose()
             sidebars.dispose()
             renderer?.destroy?.()
             if (plainSession.current === session) plainSession.set(null)
@@ -1043,7 +1067,7 @@
 {/if}
 
 {#if shortcutsOpen}
-    <KeyboardShortcutsDialog bindings={shownBindings} onclose={() => (shortcutsOpen = false)} />
+    <KeyboardShortcutsDialog bindings={shownBindings} editorShortcuts={[...EDITOR_SHORTCUTS, TEXT_EDITOR_SHORTCUTS]} onclose={() => (shortcutsOpen = false)} />
 {/if}
 
 <!-- Only a choice settles which version is kept, so the prompt cannot be dismissed. -->

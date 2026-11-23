@@ -36,6 +36,7 @@ import { analysisFor } from '../analysis/editor-analysis'
 import { isBlockSelection } from '../block-select'
 import { SELECTION_PAD } from '../cm-document'
 import { visibleFencedBlockAt } from '../outliner-context'
+import { isTextFile } from '../text-file-facet'
 
 const CLASS = 'gk-selection'
 
@@ -45,6 +46,8 @@ const CLASS = 'gk-selection'
  * (the caret clamp's reading, `continuationColumn`).
  */
 function contentColumn(state: EditorState, line: { from: number; text: string; number: number }): number {
+    // In the Text Editor a dash is text: the indent before it can be selected, and shows it.
+    if (state.facet(isTextFile)) return 0
     const block = visibleFencedBlockAt(state, line.from)
     if (block && block.from !== line.from) return Math.min(block.fenceColumn, line.text.length)
     if (isBulletLine(line.text)) return lineIndent(line.text)

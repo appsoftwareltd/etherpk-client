@@ -25,4 +25,13 @@
     }
 </script>
 
-<div class="flex flex-1 items-start justify-center overflow-auto p-4" data-testid="media-asset-viewer" data-media-kind={kind} {@attach player}></div>
+<!-- A video takes the tab's width, less where that would put its controls below the tab's bottom edge:
+     the picture is 16:9, and 8rem is the room the rows under it and their spacing take. -->
+<div class="player-host flex flex-1 items-start justify-center overflow-auto p-4" data-testid="media-asset-viewer" data-media-kind={kind} {@attach player}></div>
+
+<style>
+    .player-host {
+        container-type: size;
+        --gk-media-max-width: min(100%, max(15rem, (100cqh - 8rem) * 16 / 9));
+    }
+</style>

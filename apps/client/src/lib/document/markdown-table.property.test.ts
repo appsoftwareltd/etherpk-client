@@ -14,6 +14,7 @@ import {
     removeRow,
     removeRowsAbove,
     removeRowsBelow,
+    setColumnAlign,
 } from './markdown-table-edit'
 
 /**
@@ -70,6 +71,11 @@ const EDITS: Edit[] = [
     (t, c) => removeRowsBelow(t, Math.max(c.bodyRow, 0)),
     (t, c) => removeColumnsRight(t, c.column),
     (t, c) => removeColumnsLeft(t, c.column),
+    // The grid's menus: a row above or below the caret's own, a column to its left, and an alignment.
+    (t, c) => (c.bodyRow >= 0 ? addRows(t, 1, c.bodyRow - 1) : null),
+    (t, c) => addRows(t, 1, Math.max(c.bodyRow, -1)),
+    (t, c) => addColumns(t, c.column - 1, 1),
+    (t, c) => setColumnAlign(t, c.column, (['left', 'center', 'right', null] as const)[(c.column + c.bodyRow + 2) % 4]),
 ]
 
 /** An edit, and where the caret is when it is made, picked against the table as it is then. */
@@ -104,6 +110,31 @@ describe('a table written by buildTable reads back as the table', () => {
                 expect(read).toMatchObject({ startLine: 1, endLine: t.rows.length + 2, headerStart: pad.length + 2 })
             }),
             fuzz(500),
+        )
+    })
+})
+
+describe('a table whose rows are not all as wide as its header', () => {
+    /** A table as a person may leave one: each row with as many cells as they typed. */
+    const ragged: fc.Arbitrary<MarkdownTable> = fc.record({
+        startLine: fc.constant(0),
+        endLine: fc.constant(0),
+        headerStart: fc.constant(0),
+        header: fc.array(cell, { minLength: 1, maxLength: 4 }),
+        align: fc.constant<Align[]>([]),
+        rows: fc.array(fc.array(cell, { minLength: 1, maxLength: 6 }), { maxLength: 5 }),
+    })
+
+    it('loses no cell when it is written or edited: each stays in its row and column, and the rest are empty', () => {
+        fc.assert(
+            fc.property(ragged, fc.boolean(), (source, edited) => {
+                // An edit is written back as every edit is, with `buildTable`: here a row added under the last.
+                const written = findTables(buildTable(edited ? addRows(source, 1, source.rows.length - 1) : source))[0]
+                const width = Math.max(source.header.length, ...source.rows.map((row) => row.length))
+                expect(written.header).toEqual(Array.from({ length: width }, (_, i) => source.header[i] ?? ''))
+                source.rows.forEach((row, index) => expect(written.rows[index]).toEqual(Array.from({ length: width }, (_, i) => row[i] ?? '')))
+            }),
+            fuzz(300),
         )
     })
 })
@@ -152,6 +183,33 @@ describe('editing a table', () => {
                 expect(cursorColumn(lines[row], offset - lineStart)).toBe(col)
             }),
             fuzz(500),
+        )
+    })
+})
+
+describe('a column\'s alignment', () => {
+    it('changes that column\'s alignment alone, and reads back from the text', () => {
+        fc.assert(
+            fc.property(table, fc.nat(), fc.constantFrom<Align>(null, 'left', 'center', 'right'), (t, seed, align) => {
+                const column = seed % t.header.length
+                const aligned = setColumnAlign(t, column, align)!
+                expect(aligned.align[column]).toBe(align)
+                expect(aligned.align.filter((_, i) => i !== column)).toEqual(t.align.filter((_, i) => i !== column))
+                expect({ header: aligned.header, rows: aligned.rows }).toEqual({ header: t.header, rows: t.rows })
+                const [read] = findTables(buildTable(aligned))
+                expect(cells(read)).toEqual(cells(aligned))
+            }),
+            fuzz(200),
+        )
+    })
+
+    it('refuses a column the table does not have', () => {
+        fc.assert(
+            fc.property(table, (t) => {
+                expect(setColumnAlign(t, t.header.length, 'left')).toBeNull()
+                expect(setColumnAlign(t, -1, 'left')).toBeNull()
+            }),
+            fuzz(50),
         )
     })
 })

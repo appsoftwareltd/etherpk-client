@@ -31,7 +31,7 @@ import { frontmatterCompletion } from './augmentations/frontmatter-complete'
 import { frontmatterKeys } from './frontmatter-keys'
 import { frontmatterBoundaryGuard } from './frontmatter-boundary'
 import { assetPasteAugmentation } from './augmentations/asset-paste'
-import { type BookmarkOptions, bookmarksAugmentation } from './augmentations/bookmarks'
+import { type BookmarkOptions, bookmarksAugmentation, openLineMenuFromGutter, toggleBookmarkAtLine } from './augmentations/bookmarks'
 import { pasteToFenceAugmentation } from './augmentations/paste-to-fence'
 import { plainPasteAugmentation } from './augmentations/plain-paste'
 import { richPasteAugmentation } from './augmentations/rich-paste'
@@ -50,10 +50,11 @@ import { inlinePanelsAugmentation } from './augmentations/inline-panels'
 import { protectedFenceAugmentation } from './augmentations/protected-fence'
 import { imageEmbedAugmentation } from './augmentations/image-embed'
 import { mediaEmbedAugmentation } from './augmentations/media-embed'
+import { lineNumberGutter } from './augmentations/line-numbers'
 import { linkCursorAugmentation } from './augmentations/link-cursor'
 import { markdownFormatAugmentation } from './augmentations/markdown-format'
 import { markdownLinkAugmentation } from './augmentations/markdown-link'
-import { markdownTableAugmentation } from './augmentations/markdown-table'
+import { type GridMenuAbout, markdownTableAugmentation, type MarkdownTableOptions } from './augmentations/markdown-table'
 import { mathInlineAugmentation } from './augmentations/math-inline'
 import { outlineGuidesAugmentation } from './augmentations/outline-guides'
 import { type PlaceholderSource, placeholderAugmentation } from './augmentations/placeholder'
@@ -163,6 +164,16 @@ export interface EditorExtensionServices {
      * is then the file's path.
      */
     plain?: PlainProfile
+    /**
+     * Raise the menu of a row or a column of a Table Grid, from its handle on the grid's border
+     * (markdown-table.ts, ADR 0205). Absent, the handles raise nothing.
+     */
+    tableMenu?: (kind: 'row' | 'column', about: GridMenuAbout, x: number, y: number) => void
+    /**
+     * The editor is the one of a table's cell (`augmentations/table-cell-editor.ts`): it keeps the
+     * features of {@link CELL_FEATURES} and draws no grid of its own. Set by {@link cellEditorExtensions} alone.
+     */
+    tableCell?: boolean
 }
 
 /** One named feature of the stack: the name is what the order test asserts on. */
@@ -190,7 +201,7 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
      * A text file that is not markdown keeps only what any text needs: the selection, find, the
      * caret kept in view, and the hooks the View hangs on. Everything that reads markdown is left out.
      */
-    const profile = profileOptions(plain, path)
+    const profile = profileOptions(services, path)
     /** A picture or recording line's file: an [[Asset]] in a graph, a path from the file in a Plain Folder. */
     const resolveAsset = (ref: string) => (plain ? plain.resolveMedia(path(), ref) : (store()?.resolve(ref) ?? Promise.resolve(null)))
 
@@ -267,7 +278,7 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // everything that marks inside a code line: the container stays one box.
         { name: 'code-scroll', extension: codeScrollAugmentation() },
         { name: 'selection-layer', extension: selectionLayerAugmentation() },
-        { name: 'markdown-table', extension: markdownTableAugmentation({ isMissing: services.conceptIsMissing }) },
+        { name: 'markdown-table', extension: markdownTableAugmentation(tableGridOptions(services)) },
         // Frontmatter wears the fenced-code panel over its own parse node — kept beside the
         // fence so the two block-panel constructs stay together.
         // In a Plain Folder a frontmatter block is the file's own text: no panel, no identity, and
@@ -402,8 +413,10 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // their own targets, and the line menu takes the rest of the line.
         {
             name: 'bookmarks',
-            extension: services.bookmarks && services.document ? bookmarksAugmentation(services.bookmarks) : [],
+            extension: services.bookmarks && services.document ? bookmarksAugmentation({ ...services.bookmarks, gutter: profile.textOnly }) : [],
         },
+        // The Text Editor's line numbers, after the bookmarks, whose column stands before them.
+        { name: 'line-numbers', extension: profile.lineNumbers },
         // A shown caret stays shown when the editor shrinks: a phone's soft keyboard opening. It
         // decorates nothing and filters nothing, so its place in the list is free.
         { name: 'keep-caret-visible', extension: keepCaretVisible() },
@@ -435,12 +448,17 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
  * What a Plain Folder's profile gives the features that take an option from it, worked out once.
  * In a graph each is the feature's own default.
  */
-function profileOptions(plain: PlainProfile | undefined, path: () => string) {
+function profileOptions({ plain, bookmarks, document }: EditorExtensionServices, path: () => string) {
     const all = (features: EditorFeature[]) => features
-    if (!plain) return { kept: all, remote: undefined, link: {}, pathCompletion: [] as Extension, foldKey: undefined }
+    if (!plain) return { kept: all, textOnly: false, lineNumbers: [] as Extension, remote: undefined, link: {}, pathCompletion: [] as Extension, foldKey: undefined }
+    const textOnly = plain.textOnly(path())
     return {
-        /** A text file that is not markdown keeps only {@link TEXT_FILE_FEATURES}, the rest contributing nothing under their names. */
-        kept: plain.textOnly(path()) ? (features: EditorFeature[]) => features.map((feature) => (TEXT_FILE_FEATURES.has(feature.name) ? feature : { name: feature.name, extension: [] })) : all,
+        /** The file opens in the Text Editor (text-file.ts). */
+        textOnly,
+        /** Its line numbers, whose presses are a bookmark's where the editor has bookmarks. */
+        lineNumbers: textOnly ? lineNumberGutter(bookmarks && document ? linePresses : {}) : [],
+        /** A file in the Text Editor keeps only {@link TEXT_FILE_FEATURES}, the rest contributing nothing under their names. */
+        kept: textOnly ? (features: EditorFeature[]) => features.map((feature) => (TEXT_FILE_FEATURES.has(feature.name) ? feature : { name: feature.name, extension: [] })) : all,
         remote: plain.remoteImages,
         link: { openRelative: (href: string, placement: LinkPlacement) => plain.openLink(path(), href, placement) },
         pathCompletion: pathCompletion({ suggest: (query) => plain.suggestPaths(path(), query) }),
@@ -449,8 +467,11 @@ function profileOptions(plain: PlainProfile | undefined, path: () => string) {
     }
 }
 
+/** What a press on a line number does in an editor with bookmarks: a finger's tap bookmarks the line, a right-click opens its menu. */
+const linePresses = { press: { line: (view: EditorView, line: number) => void toggleBookmarkAtLine(view, line) }, menu: openLineMenuFromGutter }
+
 /**
- * What a text file that is not markdown keeps (text-file.ts): the features that are about text in
+ * What a file in the Text Editor keeps (text-file.ts): the features that are about text in
  * an editor, not about markdown. The rest contribute nothing there, under the same names.
  */
 const TEXT_FILE_FEATURES = new Set([
@@ -461,11 +482,72 @@ const TEXT_FILE_FEATURES = new Set([
     'editor-document',
     'on-screen',
     'line-anchor',
+    'bookmarks',
+    'line-numbers',
     'keep-caret-visible',
     'column-shift',
     'selection-order',
     'view-hooks',
 ])
+
+/**
+ * What the editor of a table's cell keeps (ADR 0205): the features of a line that make sense in
+ * one cell. Links, marks and maths are drawn, a wikilink completes and opens, the Command Menu and
+ * the Date Picker open at the caret, and spelling is checked. Everything about blocks, the outline,
+ * the frontmatter, pictures, pasted files and the document as a whole is the document editor's.
+ */
+export const CELL_FEATURES: ReadonlySet<string> = new Set([
+    'shown-range',
+    'wrap-selection',
+    'spell-check',
+    'markdown-format',
+    'math-inline',
+    'asset-link',
+    'markdown-link',
+    'wikilink',
+    'link-cursor',
+    'wikilink-completion',
+    'path-completion',
+    'slash-completion',
+    'date-calendar',
+    'concept-picker',
+    'editor-document',
+    // A cell tapped low on a phone stays above the soft keyboard as it opens, as a line does.
+    'keep-caret-visible',
+])
+
+/**
+ * The features of the editor of a table's cell, from the same list and the same services as the
+ * document editor's, so a link in a cell is drawn, completed and opened by the code that does it
+ * on a line. It shows part of a document, so the Command Menu offers the rows that act on the text.
+ */
+export function cellEditorExtensions(services: EditorExtensionServices): Extension[] {
+    const cell: EditorExtensionServices = {
+        ...services,
+        tableCell: true,
+        partOfDocument: true,
+        shownRange: undefined,
+        placeholder: undefined,
+        bookmarks: undefined,
+        // An edited link is the document's: its editor sees the change and proposes the rename (wikilink.ts).
+        wikilinksEdited: undefined,
+        onFocus: () => {},
+        onUpdate: () => {},
+    }
+    return editorFeatures(cell)
+        .filter((feature) => CELL_FEATURES.has(feature.name))
+        .map((feature) => feature.extension)
+}
+
+/**
+ * What the Table Grid is given: how a cell's link is drawn, the editor of the cell being edited (a
+ * line's features, and the View's focus hook on the document's editor), and the menus its handles raise.
+ */
+function tableGridOptions(services: EditorExtensionServices): MarkdownTableOptions {
+    const options: MarkdownTableOptions = { isMissing: services.conceptIsMissing, menu: services.tableMenu }
+    if (!services.tableCell) options.cell = { extensions: () => cellEditorExtensions(services), onFocus: services.onFocus }
+    return options
+}
 
 /** Whether an editor keeps its folds on the device: one showing a whole document, not a part of one. */
 function keepsFolds(services: EditorExtensionServices): boolean {

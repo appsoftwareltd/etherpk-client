@@ -34,6 +34,7 @@ import { bodyWritable } from '../body-writable'
 import { caretTask } from '../caret-task'
 import { editorDocument } from '../editor-document'
 import { showsPartOfDocument } from '../shown-range'
+import { documentStateOf } from '../table-cell'
 import { isProtectedDocumentFacet } from './protected-document'
 import { tableAtCaret, tableInsertable } from '../table-context'
 import { type PopoverBase, type PopoverRow, popoverMenu, refreshPopovers } from './popover-menu'
@@ -134,17 +135,21 @@ export function slashCompletion(): Extension {
         // The concepts at the caret walk the document's outline, so they are read only when a row's
         // help text asks for them (`/kanban`'s "For Garden"), once per opening.
         let concepts: readonly string[] | undefined
+        // In a table's cell the menu is drawn by the cell's editor, and what it offers is read from
+        // the document, where the caret is on the table's row (table-cell.ts).
+        const document = documentStateOf(state)
         const context: CommandMenuContext = {
-            inTable: tableAtCaret(state) !== null,
-            tableInsertable: tableInsertable(state),
-            bodyWritable: bodyWritable(state),
-            fileLinkOnLine: fileLinkForCaret(state) !== null,
-            taskOnLine: caretTask(state) !== null,
-            protectedDocument: state.facet(isProtectedDocumentFacet)(),
-            // The Task Editor's description and comments: only rows that act on the text (ADR 0170).
-            partOfDocument: showsPartOfDocument(state),
+            inTable: tableAtCaret(document) !== null,
+            tableInsertable: tableInsertable(document),
+            bodyWritable: bodyWritable(document),
+            fileLinkOnLine: fileLinkForCaret(document) !== null,
+            taskOnLine: caretTask(document) !== null,
+            protectedDocument: document.facet(isProtectedDocumentFacet)(),
+            // The Task Editor's description and comments, and a table's cell: only rows that act on the text (ADR 0170).
+            partOfDocument: showsPartOfDocument(state) || showsPartOfDocument(document),
             get conceptsAtCaret() {
-                concepts ??= caretConcepts(state.doc.toString(), line.number - 1, state.facet(editorDocument)?.concept ?? null).map((found) => found.concept)
+                const caretLine = document.doc.lineAt(document.selection.main.head).number
+                concepts ??= caretConcepts(document.doc.toString(), caretLine - 1, document.facet(editorDocument)?.concept ?? null).map((found) => found.concept)
                 return concepts
             },
         }

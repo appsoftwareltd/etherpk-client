@@ -1,6 +1,7 @@
 <script lang="ts">
     /**
-     * A text file of a [[Plain Folder]] in a tab: the editor, under a notice when the file is not
+     * A text file of a [[Plain Folder]] in a tab: the editor, under a bar that says where the file is
+     * and which editor it is open in (FileBar.svelte, ADR 0204), and under a notice when the file is not
      * simply open and editable (ADR 0196).
      *
      * The editor is the graph's own `DocumentView`, running its plain profile. What it cannot say
@@ -10,12 +11,14 @@
      */
     import { untrack } from 'svelte'
 
+    import { prefersMobileLayout } from '#lib/layout/index.js'
     import DocumentView from '#lib/document/view/DocumentView.svelte'
     import type { ViewProps } from '#lib/layout/index.js'
 
     import { type PlainFileState } from '../plain-folder-store'
     import { plainSession } from '../plain-session.svelte'
     import { baseName, directoryHolding } from '../plain-path'
+    import FileBar from './FileBar.svelte'
 
     let { view, panelId, visibility }: ViewProps = $props()
 
@@ -53,6 +56,24 @@
     /** What the editor is mounted for: it reads whether it is read-only once, as it mounts. */
     const editorKey = $derived(`${fileState?.readOnly ?? 'editable'}:${graphDirectory ?? ''}`)
 
+    let root = $state<HTMLElement>()
+    let documentView = $state<DocumentView>()
+    /** The caret's line, which says which headings the file bar shows. */
+    let caretLine = $state(0)
+
+    // The file's editor was switched, here or by a change of the default: the editor is built again
+    // as the other one. It gets the keys back when they were on this file, the bar above it included,
+    // and not when the change was made elsewhere (Settings, another file's menu). A phone gives
+    // none: the keyboard would rise over what is being read.
+    $effect(() => session?.editors.subscribe(followEditor))
+
+    function followEditor(): void {
+        // Moved: this tab is about to close, and the file's new one asks for itself.
+        if (path !== view.target || !documentView) return
+        const hadKeys = root?.contains(document.activeElement) === true
+        if (documentView.reopen() && hadKeys && !prefersMobileLayout()) documentView.editorView()?.focus()
+    }
+
     function megabytes(bytes: number): string {
         return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
     }
@@ -71,7 +92,8 @@
     }
 </script>
 
-<div class="plain-document" data-testid="plain-document" data-path={path}>
+<div class="plain-document" data-testid="plain-document" data-path={path} bind:this={root}>
+    <FileBar {path} line={caretLine} switchChord={session?.switchEditorChord} />
     {#if fileState?.missing}
         <div class="notice" role="status" data-testid="plain-file-missing">
             <p>No file is at <span class="path">{path}</span>.</p>
@@ -112,7 +134,7 @@
     <div class="editor">
         {#if fileState?.readOnly !== 'too-large'}
             {#key editorKey}
-                <DocumentView {view} {panelId} {visibility} />
+                <DocumentView bind:this={documentView} {view} {panelId} {visibility} oncaret={(line) => (caretLine = line)} />
             {/key}
         {/if}
     </div>

@@ -74,6 +74,7 @@
     import OpenFolderDialog from "#lib/plain/ui/OpenFolderDialog.svelte";
     import PlainFoldersSection from "#lib/plain/ui/PlainFoldersSection.svelte";
     import { createWebTreeAdapter } from "#lib/plain/web-tree-adapter.js";
+    import { forgetFileEditors } from "#lib/plain/file-editors.js";
     import { forgetRemoteImageTrust } from "#lib/plain/remote-images.js";
     import { LOCAL_LAYOUT_KEY_PREFIX } from "#lib/layout/store.js";
     import { readKnownGraphFolders } from "#lib/storage/folder-ownership.js";
@@ -214,6 +215,7 @@
     import { clearManagedAccessToken, freshManagedBearerToken } from "#lib/auth/managed-token.js";
     import { showNotice } from "#lib/activity/notices.js";
     import type { GraphGripProps } from "#lib/workspace/GraphGrip.svelte";
+    import { iconSvg } from "#lib/surface/icons.js";
     import GraphOrderList from "#lib/workspace/GraphOrderList.svelte";
     import GraphPickerRow from "#lib/workspace/GraphPickerRow.svelte";
     import { graphOrderOf, saveGraphOrder } from "#lib/workspace/graph-order-state.js";
@@ -230,10 +232,11 @@
         refusedCredential,
     } from "#lib/workspace/sync-server-view.svelte.js";
     import {
-        CUSTOM_SERVER_ICON,
+        AGENTS_ICON,
+        DEMO_ICON,
         FOLDER_GRAPHS_ICON,
-        MANAGED_SERVER_ICON,
         NOT_SET_ICON,
+        SYNC_ICON,
     } from "#lib/workspace/graphs-page-icons.js";
     import { NOT_SYNCED_NOTE } from "#lib/workspace/graph-card.js";
     import { forgetGraphOnDevice } from "#lib/workspace/graph-device-memory.js";
@@ -937,6 +940,20 @@
             ),
     );
     const SECONDARY_BUTTON = "gk-button";
+    /** The page's actions beside its title. */
+    const HEADER_BUTTON = "gk-button gk-button--primary";
+    /**
+     * The page's tabs. On a phone the icon is over the label, so all four fit the width; from `sm`
+     * up it is before it.
+     */
+    const PAGE_TAB =
+        "-mb-px flex flex-col items-center justify-end gap-1 border-b-2 px-2 py-2 text-sm font-medium sm:flex-row sm:justify-center sm:gap-1.5 sm:px-3 pointer-coarse:min-h-11";
+    const pageTab = (selected: boolean) =>
+        `${PAGE_TAB} ${
+            selected
+                ? "border-neutral-900 text-neutral-950 dark:border-white dark:text-white"
+                : "border-transparent text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white"
+        }`;
     /** The rule between the Sync tab's top-level sections. */
     const SECTION_RULE = "border-neutral-200 dark:border-white/10";
 
@@ -2370,6 +2387,7 @@
             await plainRegistry.remove(folder.id);
             localStorage.removeItem(`${LOCAL_LAYOUT_KEY_PREFIX}plain-folder:${folder.id}`);
             forgetRemoteImageTrust(folder.id, localStorage);
+            forgetFileEditors(folder.id, localStorage);
             await listPlainFolders();
         } catch (err) {
             plainFolderMessage = { id: folder.id, text: `Could not forget this folder: ${err instanceof Error ? err.message : String(err)}`, tone: "error" };
@@ -4590,7 +4608,21 @@
     {/if}
 {/snippet}
 
-{#snippet serverIcon(server: SyncServerView, size: string)}
+<!-- An icon of the page's own actions and tabs: 16px, at the line weight `iconSvg` draws its own. -->
+{#snippet pageIcon(path: string)}
+    <svg
+        class="h-4 w-4 shrink-0"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.1"
+        aria-hidden="true"
+    >
+        <path stroke-linecap="round" stroke-linejoin="round" d={path} />
+    </svg>
+{/snippet}
+
+{#snippet serverIcon(size: string)}
     <svg
         class="{size} shrink-0"
         viewBox="0 0 24 24"
@@ -4602,9 +4634,7 @@
         <path
             stroke-linecap="round"
             stroke-linejoin="round"
-            d={server.connection.kind === "managed"
-                ? MANAGED_SERVER_ICON
-                : CUSTOM_SERVER_ICON}
+            d={SYNC_ICON}
         />
     </svg>
 {/snippet}
@@ -4616,8 +4646,8 @@
         </h1>
         <!-- Offered once the page knows this browser has a graph: before then, which actions apply
              (the demo, a folder) is not known, and a browser with none gets the choice panels below,
-             which carry the same four actions with what each one means. All four share one style:
-             none of them is the right first step for everyone. The ones that create a graph of your
+             which carry the same four actions with what each one means. All four are filled (Style
+             Guide, Layout): none of them is the right first step for everyone. The ones that create a graph of your
              own come first, the demo last. -->
         {#if firstRunKnown && !firstRun}
             <div data-testid="graphs-actions" class="flex flex-wrap gap-2">
@@ -4625,9 +4655,12 @@
                     <button
                         data-testid="graphs-open-folder"
                         onclick={() => void openFolder()}
-                        class={SECONDARY_BUTTON}
-                        >Open folder</button
+                        class={HEADER_BUTTON}
                     >
+                        <!-- eslint-disable-next-line svelte/no-at-html-tags -- the Client's own icon markup (icons.ts) -->
+                        {@html iconSvg("folder-open")}
+                        Open folder
+                    </button>
                 {/if}
                 <button
                     data-testid="graphs-create-server"
@@ -4638,20 +4671,29 @@
                               .join(" ")
                         : undefined}
                     aria-busy={createPending}
-                    class="aria-busy:cursor-progress {SECONDARY_BUTTON}"
-                    >New synced graph</button
+                    class="aria-busy:cursor-progress {HEADER_BUTTON}"
                 >
+                    {@render pageIcon(SYNC_ICON)}
+                    New synced graph
+                </button>
                 <button
                     data-testid="graphs-import"
                     onclick={() => (importDialog = true)}
-                    class={SECONDARY_BUTTON}>Import</button
+                    class={HEADER_BUTTON}
                 >
+                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- the Client's own icon markup (icons.ts) -->
+                    {@html iconSvg("import")}
+                    Import
+                </button>
                 {#if demoAvailable}
                     <a
                         data-testid="graphs-try-demo"
                         href="/demo"
-                        class={SECONDARY_BUTTON}>Try the demo</a
+                        class={HEADER_BUTTON}
                     >
+                        {@render pageIcon(DEMO_ICON)}
+                        Try the demo
+                    </a>
                 {/if}
             </div>
         {/if}
@@ -4674,12 +4716,12 @@
             aria-controls="graphs-panel"
             tabindex={activeTab === "graphs" ? 0 : -1}
             onclick={() => showTab("graphs")}
-            class="-mb-px border-b-2 px-3 py-2 text-sm font-medium pointer-coarse:min-h-11 {activeTab ===
-            'graphs'
-                ? 'border-neutral-900 text-neutral-950 dark:border-white dark:text-white'
-                : 'border-transparent text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white'}"
-            >Graphs</button
+            class={pageTab(activeTab === "graphs")}
         >
+            <!-- eslint-disable-next-line svelte/no-at-html-tags -- the Client's own icon markup (icons.ts) -->
+            {@html iconSvg("graph")}
+            Graphs
+        </button>
         <button
             type="button"
             role="tab"
@@ -4689,12 +4731,11 @@
             aria-controls="graphs-sync-settings"
             tabindex={activeTab === "sync" ? 0 : -1}
             onclick={() => showTab("sync")}
-            class="-mb-px border-b-2 px-3 py-2 text-sm font-medium pointer-coarse:min-h-11 {activeTab ===
-            'sync'
-                ? 'border-neutral-900 text-neutral-950 dark:border-white dark:text-white'
-                : 'border-transparent text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white'}"
-            >Sync</button
+            class={pageTab(activeTab === "sync")}
         >
+            {@render pageIcon(SYNC_ICON)}
+            Sync
+        </button>
         <button
             type="button"
             role="tab"
@@ -4704,12 +4745,11 @@
             aria-controls="graphs-agents-settings"
             tabindex={activeTab === "agents" ? 0 : -1}
             onclick={() => showTab("agents")}
-            class="-mb-px border-b-2 px-3 py-2 text-sm font-medium pointer-coarse:min-h-11 {activeTab ===
-            'agents'
-                ? 'border-neutral-900 text-neutral-950 dark:border-white dark:text-white'
-                : 'border-transparent text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white'}"
-            >Agents</button
+            class={pageTab(activeTab === "agents")}
         >
+            {@render pageIcon(AGENTS_ICON)}
+            Agents
+        </button>
         <button
             type="button"
             role="tab"
@@ -4719,11 +4759,10 @@
             aria-controls="graphs-device-settings"
             tabindex={activeTab === "device" ? 0 : -1}
             onclick={() => showTab("device")}
-            class="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium pointer-coarse:min-h-11 {activeTab ===
-            'device'
-                ? 'border-neutral-900 text-neutral-950 dark:border-white dark:text-white'
-                : 'border-transparent text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white'}"
+            class={pageTab(activeTab === "device")}
         >
+            {@render pageIcon(FOLDER_GRAPHS_ICON)}
+            <span class="flex flex-wrap items-center justify-center gap-x-1.5">
             This Device
             {#if passcodeNotSet}
                 <!-- In the tab's own colour: a hint that something is not set, not an alarm. -->
@@ -4742,6 +4781,7 @@
                 </svg>
                 <span class="sr-only">(passcode not set)</span>
             {/if}
+            </span>
         </button>
     </div>
 
@@ -5009,6 +5049,66 @@
                     {/if}
                 {/each}
 
+                {#if !firstRun && servers.length === 0}
+                    <!-- A returning browser with no Sync Server: the way to one, where its graphs would be. The
+                         page lists synced graphs, then Folder Graphs, then Plain Folders, on every visit. -->
+                    <section
+                        data-testid="synced-graphs"
+                        aria-labelledby="synced-graphs-heading"
+                        class="space-y-3"
+                    >
+                        <div>
+                            <h2
+                                id="synced-graphs-heading"
+                                class="flex items-center gap-2 text-lg font-semibold text-neutral-950 dark:text-white"
+                            >
+                                Synced graphs
+                                <svg
+                                    class="h-5 w-5 shrink-0 text-neutral-500 dark:text-neutral-400"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.5"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d={SYNC_ICON}
+                                    />
+                                </svg>
+                            </h2>
+                            <p
+                                class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
+                            >
+                                End-to-end encrypted: the server only ever sees
+                                ciphertext.
+                            </p>
+                        </div>
+                        <div
+                            data-testid="synced-graphs-connect"
+                            class="rounded-xl border border-neutral-200 bg-white p-4 dark:border-white/10 dark:bg-white/5"
+                        >
+                            <p class="text-sm text-neutral-700 dark:text-neutral-300">
+                                {signsInToManagedSync()
+                                    ? "Sign in with your EtherPK account to see and create synced graphs. Graphs of your own need Sync+. Graphs others share with you work on any plan."
+                                    : "Connect this device to a Sync Server to see and create synced graphs."}
+                            </p>
+                            <button
+                                type="button"
+                                onclick={() =>
+                                    signsInToManagedSync()
+                                        ? connectManagedSync()
+                                        : void openSyncPanel("add")}
+                                class="mt-3 {SECONDARY_BUTTON}"
+                                >{signsInToManagedSync()
+                                    ? "Sign in"
+                                    : "Connect to a Sync Server"}</button
+                            >
+                        </div>
+                    </section>
+                {/if}
+
                 <!-- Folders on this computer, and the demo: they belong to no Sync Server, and the
                      demo shows beside the first-run card too. Below the servers' groups, which can
                      hold something waiting on the person: an invite, or a sign-in. -->
@@ -5082,64 +5182,7 @@
                 <!-- Not graphs, so below them and in a section that says so (ADR 0194). -->
                 <PlainFoldersSection folders={plainFolders} listing={plainFoldersListing} canOpen={supported} message={plainFolderMessage} onopenfolder={() => void openFolder("plain")} onopen={(folder) => void openPlainFolderCard(folder)} onforget={(folder) => void forgetPlainFolder(folder)} />
 
-                {#if !firstRun && servers.length === 0}
-                    <!-- A returning browser with no Sync Server: the way to one, where its graphs would be. -->
-                    <section
-                        data-testid="synced-graphs"
-                        aria-labelledby="synced-graphs-heading"
-                        class="space-y-3"
-                    >
-                        <div>
-                            <h2
-                                id="synced-graphs-heading"
-                                class="flex items-center gap-2 text-lg font-semibold text-neutral-950 dark:text-white"
-                            >
-                                Synced graphs
-                                <svg
-                                    class="h-5 w-5 shrink-0 text-neutral-500 dark:text-neutral-400"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="1.5"
-                                    aria-hidden="true"
-                                >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d={MANAGED_SERVER_ICON}
-                                    />
-                                </svg>
-                            </h2>
-                            <p
-                                class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
-                            >
-                                End-to-end encrypted: the server only ever sees
-                                ciphertext.
-                            </p>
-                        </div>
-                        <div
-                            data-testid="synced-graphs-connect"
-                            class="rounded-xl border border-neutral-200 bg-white p-4 dark:border-white/10 dark:bg-white/5"
-                        >
-                            <p class="text-sm text-neutral-700 dark:text-neutral-300">
-                                {signsInToManagedSync()
-                                    ? "Sign in with your EtherPK account to see and create synced graphs. Graphs of your own need Sync+. Graphs others share with you work on any plan."
-                                    : "Connect this device to a Sync Server to see and create synced graphs."}
-                            </p>
-                            <button
-                                type="button"
-                                onclick={() =>
-                                    signsInToManagedSync()
-                                        ? connectManagedSync()
-                                        : void openSyncPanel("add")}
-                                class="mt-3 {SECONDARY_BUTTON}"
-                                >{signsInToManagedSync()
-                                    ? "Sign in"
-                                    : "Connect to a Sync Server"}</button
-                            >
-                        </div>
-                    </section>
-                {:else if !firstRun}
+                {#if !firstRun && servers.length > 0}
                     <p
                         class="text-sm text-neutral-500 dark:text-neutral-400"
                         data-testid="synced-graphs-import-hint"
@@ -5317,7 +5360,7 @@
                                         ? 'bg-(--gk-primary-bg) text-(--gk-primary-text)'
                                         : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white'}"
                                 >
-                                    {@render serverIcon(server, "h-4 w-4")}
+                                    {@render serverIcon("h-4 w-4")}
                                     {server.host}
                                     {#if server.authState === "signed-out" || server.authState === "unavailable"}
                                         <!-- A cue that this server needs attention, named for screen readers. -->
@@ -5576,10 +5619,7 @@
                                         <p
                                             class="flex items-center gap-2 text-sm font-medium text-neutral-950 dark:text-white"
                                         >
-                                            {@render serverIcon(
-                                                server,
-                                                "h-4 w-4 shrink-0",
-                                            )}
+                                            {@render serverIcon("h-4 w-4 shrink-0")}
                                             <span class="truncate"
                                                 >{server.host}</span
                                             >
@@ -6081,7 +6121,7 @@
                                             ? 'text-neutral-500 dark:text-neutral-400'
                                             : ''}"
                                     >
-                                        {@render serverIcon(server, "h-4 w-4")}
+                                        {@render serverIcon("h-4 w-4")}
                                         {server.host}
                                     </span>
                                     {#if reason}

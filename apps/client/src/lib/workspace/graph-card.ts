@@ -9,7 +9,8 @@
  * there either, so what uses them sits below the band.
  */
 
-export const GRAPH_CARD = 'overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-white/10 dark:bg-white/5'
+/** A container, so its band is laid out by its own width (CARD_WORDS). */
+export const GRAPH_CARD = '@container overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-white/10 dark:bg-white/5'
 
 /**
  * "(not synced)" after the heading of a group EtherPK does not sync: Folder graphs and Plain
@@ -20,6 +21,23 @@ export const NOT_SYNCED_NOTE = 'text-base font-normal text-neutral-500 dark:text
 
 /** A card with no band to clip to its corners, so a menu opened from it can hang below its edge. */
 export const GRAPH_CARD_UNCLIPPED = 'rounded-xl border border-neutral-200 bg-white dark:border-white/10 dark:bg-white/5'
+
+/**
+ * The words of a card's band, between its grip and its controls, which are Open and then the icons
+ * (CARD_ICONS), all in one flex row that wraps where the bases no longer fit.
+ *
+ * - At 10rem the words give way to the icons, which go to a line below while Open stays beside the
+ *   name.
+ * - In a narrower card their basis is what Open leaves (9rem is the grip, the gaps and Open under a
+ *   finger), so Open still stays.
+ * - Under 17.5rem that is too little for a name. The words take the line (3.5rem is the grip and a
+ *   gap), and Open and the icons start the next one from the left.
+ */
+export const CARD_WORDS =
+    'flex min-w-0 flex-1 basis-[calc(100%-3.5rem)] flex-col gap-0.5 @min-[17.5rem]:basis-[min(10rem,100%-9rem)]'
+
+/** A card's icon buttons: at the band's right edge, or after Open on the line it starts in a narrow card. */
+export const CARD_ICONS = 'flex items-center gap-1 @min-[17.5rem]:ml-auto'
 
 /** The theme's blue ring cannot be seen on a blue band, so a coloured band's ring is its ink. */
 const FOCUS_ON_COLOUR = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--graph-ink)'

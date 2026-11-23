@@ -42,8 +42,7 @@
     import SyncPlusOffer from "@appsoftwareltd/etherpk-shared/sync-plus-offer";
     import { tick } from "svelte";
     import {
-        CUSTOM_SERVER_ICON,
-        MANAGED_SERVER_ICON,
+        SYNC_ICON,
     } from "./graphs-page-icons";
     import SyncServerForget from "./SyncServerForget.svelte";
     import type { SyncServerView } from "./sync-server-view.svelte";
@@ -196,7 +195,7 @@
                     <path
                         stroke-linecap="round"
                         stroke-linejoin="round"
-                        d={managed ? MANAGED_SERVER_ICON : CUSTOM_SERVER_ICON}
+                        d={SYNC_ICON}
                     />
                 </svg>
             </h3>

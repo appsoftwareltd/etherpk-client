@@ -11,7 +11,7 @@
 import type { EditorState } from '@codemirror/state'
 
 import type { MarkdownTable } from '../markdown-table'
-import { cursorColumn } from '../markdown-table-edit'
+import { cursorColumn, tableWidth } from '../markdown-table-edit'
 import { contentColumn, lineIndent } from '../outliner'
 import { tableInsertNeighbours } from '../table-insert'
 import { analysisFor } from './analysis/editor-analysis'
@@ -48,7 +48,7 @@ export function tableAtCaret(state: EditorState): TableCaret | null {
     const from = first.from + marker
     const to = state.doc.line(table.endLine + 1).to
     const indent = ' '.repeat(marker > 0 ? contentColumn(first.text) : lineIndent(line.text))
-    const columns = table.header.length
+    const columns = tableWidth(table)
     return {
         table,
         from,

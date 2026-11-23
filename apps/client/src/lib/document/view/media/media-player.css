@@ -7,6 +7,8 @@
     --gk-media-control: 2.25rem;
     box-sizing: border-box;
     display: grid;
+    /* One column that may be narrower than the bar's own width would make it. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.5rem;
     width: 100%;
     max-width: 40rem;
@@ -21,6 +23,20 @@
     /* The document's own text cursor and selection stop at the player. */
     cursor: default;
     user-select: none;
+}
+/* A video is as wide as its host makes it: the document's text column, or its size hint's width
+   (media-embed.ts), or an asset's tab (MediaAssetViewer.svelte). Its picture meets the border on three sides, and the rows under it keep the
+   room the border had. Its controls need the least width. */
+.gk-media--video {
+    max-width: var(--gk-media-max-width, 100%);
+    min-width: min(15rem, 100%);
+    padding: 0;
+}
+.gk-media--video > :not(.gk-media__stage) {
+    margin-inline: 0.625rem;
+}
+.gk-media--video > .gk-media__bar {
+    margin-bottom: 0.375rem;
 }
 .gk-media:focus-visible {
     outline: 2px solid var(--gk-accent);
@@ -40,7 +56,8 @@
     /* One shape whatever the recording's, so the player's height never changes under the text
        below it: the picture is fitted inside, with bars where its shape differs. */
     aspect-ratio: 16 / 9;
-    border-radius: 6px;
+    /* Inside the player's border, its corners follow the border's own. */
+    border-radius: 7px 7px 0 0;
     overflow: hidden;
     background: #000;
 }
@@ -217,6 +234,18 @@
 /* A narrow player keeps play, the track and the times; the volume slider goes, and mute stays. */
 @container (max-width: 26rem) {
     .gk-media__volume {
+        display: none;
+    }
+}
+@container (max-width: 22rem) {
+    .gk-media__bar {
+        gap: 0.125rem;
+    }
+}
+/* The narrowest keep play, the track, mute and full screen. */
+@container (max-width: 20rem) {
+    .gk-media__speed,
+    .gk-media__time--total {
         display: none;
     }
 }

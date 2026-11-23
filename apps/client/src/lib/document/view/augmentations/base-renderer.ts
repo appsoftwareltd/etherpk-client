@@ -19,7 +19,7 @@
 
 import { syntaxTree } from '@codemirror/language'
 import { type EditorState, type Extension, type Line, type Range, StateField, type Transaction } from '@codemirror/state'
-import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, type WidgetType } from '@codemirror/view'
+import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 
 import { contentStart } from '../../outliner'
 import { visibleFencedBlocks } from '../outliner-context'
@@ -61,6 +61,35 @@ export interface HiddenSyntaxSpec {
 
 /** The empty replace decoration that hides syntax characters. */
 export const hiddenSyntax = Decoration.replace({})
+
+/** An element that takes no room and holds a zero-width space, for {@link hiddenText}. */
+class HiddenTextWidget extends WidgetType {
+    eq(): boolean {
+        return true
+    }
+    toDOM(): HTMLElement {
+        const span = document.createElement('span')
+        span.setAttribute('aria-hidden', 'true')
+        // A character for the browser's caret to sit beside: without one Firefox puts a caret that is
+        // in front of the widget into the widget's own first text.
+        span.textContent = '\u200b'
+        return span
+    }
+}
+
+/**
+ * Text hidden behind an element that takes no room, where a widget stands in for the text beside
+ * it (`besideHiddenText`). With nothing drawn for the hidden text, Firefox moves a caret that is in
+ * front of the widget into the widget's first text, and CodeMirror reads a place inside a widget as
+ * the place the widget is at, the end of the hidden text: a caret on a bullet in front of its table
+ * became a caret in the table's last cell as the editor took the keyboard.
+ */
+const hiddenText = Decoration.replace({ widget: new HiddenTextWidget() })
+
+/** Whether `decoration` is text hidden beside the widget that stands in for it ({@link hiddenText}), and not that widget. */
+export function isHiddenText(decoration: Decoration): boolean {
+    return decoration.spec.widget instanceof HiddenTextWidget
+}
 
 /**
  * Where the text of `line` starts: past the quote markers the parser reads on it
@@ -193,6 +222,23 @@ export interface BlockWidgetSpec<T> {
      */
     markerLength?(block: T, state: EditorState, firstLine: Line): number
     /**
+     * Whether the block is collapsed to its widget now, for a block that does not follow the caret:
+     * a table an author edits in its grid shows its source only on request (markdown-table.ts).
+     * Absent, or answering undefined, the block follows the caret: collapsed while no selection
+     * range touches any of its lines.
+     */
+    collapsed?(block: T, state: EditorState, from: number, to: number): boolean | undefined
+    /**
+     * Draw a bullet's block as a widget after its hidden text, not as the text's replacement. For a
+     * widget that holds something with the keyboard in it (the editor of a table's cell): CodeMirror
+     * puts a buffer on each side of a replacing widget in a line and reuses the two the other way
+     * round each time it draws the line again, which takes the widget's element out of the page and
+     * puts it back, and an element taken out loses the keyboard and ends a phone keyboard's
+     * composition. A widget beside hidden text has one buffer and stays where it is. The range it
+     * stands for, and where a caret may go, are the same either way.
+     */
+    besideHiddenText?: boolean
+    /**
      * Any extra reason to rebuild beyond an edit, a selection change or a pin (a theme tick, a
      * render completing). The reveal inputs are always included.
      */
@@ -201,7 +247,8 @@ export interface BlockWidgetSpec<T> {
 
 /**
  * A StateField of replace-widgets, one per block. A block collapses to its widget while no selection
- * range touches any of its lines (line-kind reveal over the whole block) and no pin holds it open;
+ * range touches any of its lines (line-kind reveal over the whole block) and no pin holds it open,
+ * or while its own `collapsed` says so;
  * the widget covers the block's lines whole, or from past a bullet marker (`markerLength`).
  */
 export function blockWidgetField<T>(spec: BlockWidgetSpec<T>): StateField<DecorationSet> {
@@ -210,12 +257,14 @@ export function blockWidgetField<T>(spec: BlockWidgetSpec<T>): StateField<Decora
         const decos: Range<Decoration>[] = []
         for (const block of spec.blocks(state)) {
             const { first, last } = spec.lines(block)
-            if (!linesAllHidden(state, first, last, active)) continue
             const firstLine = state.doc.line(first)
             const marker = spec.markerLength?.(block, state, firstLine) ?? 0
             const from = firstLine.from + marker
             const to = state.doc.line(last).to
-            decos.push(Decoration.replace({ widget: spec.widget(block, state, from, to), block: marker === 0 }).range(from, to))
+            if (!(spec.collapsed?.(block, state, from, to) ?? linesAllHidden(state, first, last, active))) continue
+            const widget = spec.widget(block, state, from, to)
+            if (marker > 0 && spec.besideHiddenText) decos.push(hiddenText.range(from, to), Decoration.widget({ widget, side: 1 }).range(to))
+            else decos.push(Decoration.replace({ widget, block: marker === 0 }).range(from, to))
         }
         return Decoration.set(decos, true)
     }

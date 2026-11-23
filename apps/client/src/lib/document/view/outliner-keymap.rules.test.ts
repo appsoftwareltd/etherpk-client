@@ -16,7 +16,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toggleComment, undoDepth } from '@codemirror/commands'
-import { type EditorState, type Extension, type Transaction, type TransactionSpec } from '@codemirror/state'
+import { EditorSelection, EditorState, type Extension, type StateCommand, type Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, type WidgetType } from '@codemirror/view'
 
 import { createCommandRegistry, createContributionRegistry, registerCommandMenuItem, setActiveCommandRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
@@ -32,9 +32,10 @@ import { markdownFormatSpec, RULE_LINE_CLASS } from './augmentations/markdown-fo
 import { assetExtension } from '../asset-affordances'
 import { assetLinkSpec } from './augmentations/asset-link'
 import { linkClickCaret, markdownLinkSpec } from './augmentations/markdown-link'
-import { imageClickCaret, imageClickSpec, imageEmbedAugmentation } from './augmentations/image-embed'
-import { imageWidthChange } from './augmentations/image-resize'
-import { mediaEmbedAugmentation, mediaWidgetPos } from './augmentations/media-embed'
+import { imageClickCaret, imageClickSpec, imageEmbedAugmentation, imageLineGesture } from './augmentations/image-embed'
+import { imageTapSpec, selectedImageLine } from './augmentations/image-select'
+import { mediaEmbedAugmentation, mediaLineOfPlayer, mediaWidgetPos } from './augmentations/media-embed'
+import { displayWidthChange } from './augmentations/resize-handle'
 import { markdownTableAugmentation } from './augmentations/markdown-table'
 import { guideThreadsFor } from './augmentations/outline-guides'
 import { blockRange } from './block-actions'
@@ -60,7 +61,26 @@ import { taskChangeSpec } from './task-change'
 import { anchorLine, lineAnchor } from './line-anchor'
 import { type ShownRangeEdge } from './edit-refused'
 import { shownRange, shownRangeIn, showsPart } from './shown-range'
-import { requestReveal, revealFocus, revealOnlyWhileFocused } from './augmentations/reveal-policy'
+import { requestReveal, revealCellFocus, revealFocus, revealOnlyWhileFocused } from './augmentations/reveal-policy'
+import { activeCell, cellBlock, editTableAsText, fromCell } from './table-cell'
+import {
+    allCellsSelected,
+    arrowIntoTable,
+    cellAbove,
+    cellAfter,
+    cellBefore,
+    cellBelow,
+    cellBelowOrNewRow,
+    clearSelectedCells,
+    collapseCells,
+    extendCells,
+    selectCellsTo,
+    leaveTable,
+    nextCell,
+    pasteCellsAtCaret,
+    previousCell,
+    selectAllCells,
+} from './table-cell-keys'
 import { collapsedExtensionFences, fenceIdAt, interactiveFences } from './augmentations/interactive-fence-state'
 import { mapSizeEdits } from '../map-text'
 import { type TaskPart, taskPartRange } from './task-part-range'
@@ -473,6 +493,362 @@ table('prose is deliberately boring', [
 // CodeMirror's default keymap binds two chords to its comment commands, and the markdown language
 // gives them `<!--` and `-->` to write. The fixture's own default handlers are a hand-kept mirror, so
 // these rows press the keymap the live editor loads (editor-default-keymap.ts) instead.
+// ── Editor Content Rules → Tables ────────────────────────────────────────────────────────────
+
+// A table is edited in its grid (ADR 0205): the grid stays drawn with the caret in it, the caret's
+// cell is the one being edited, and the keys move the caret from cell to cell. `¦` is the caret
+// here, since a row is made of pipes. The cell's own editor, its focus and the press that puts the
+// caret in a cell need a browser (tests-client/table-grid.test.ts).
+describe('a table is edited in its grid', () => {
+    const TABLE = ['intro', '| Crop | Sow |', '| --- | --- |', '| Beans | April |', '| Kale |  |', 'after'].join('\n')
+    const grid = (doc: string, extensions: Extension[] = []) => editorFixture(doc, { caret: '¦', extensions: [markdownTableAugmentation(), ...extensions] })
+    /** Where each grid stands in for its table: nothing while a table shows its markdown. */
+    function grids(state: EditorState): { from: number; to: number }[] {
+        const found: { from: number; to: number }[] = []
+        for (const source of state.facet(EditorView.decorations)) {
+            if (typeof source === 'function') continue
+            source.between(0, state.doc.length, (from, to, deco) => {
+                if (deco.spec.widget) found.push({ from, to })
+            })
+        }
+        return found
+    }
+    /** The cell the caret is in, as `row:column` with the header as row -1, and the text it holds. */
+    const cellOf = (doc: string) => {
+        const { state } = grid(doc)
+        const cell = activeCell(state)
+        return cell ? `${cell.row}:${cell.column} ${JSON.stringify(state.sliceDoc(cell.from, cell.to))}` : null
+    }
+
+    describe('the caret in a table is in one of its cells (EtherPK)', () => {
+        for (const row of [
+            { rule: 'a caret in a cell\'s text is in that cell', doc: TABLE.replace('Beans', 'Be¦ans'), cell: '0:0 "Beans"' },
+            { rule: 'the header is row -1', doc: TABLE.replace('Sow', 'Sow¦'), cell: '-1:1 "Sow"' },
+            { rule: 'a caret in a cell\'s padding is in that cell', doc: TABLE.replace('| April |', '| April ¦|'), cell: '0:1 "April"' },
+            { rule: 'a caret before a row\'s first pipe is in its first cell', doc: TABLE.replace('| Beans', '¦| Beans'), cell: '0:0 "Beans"' },
+            { rule: 'a caret after a row\'s last pipe is in its last cell', doc: TABLE.replace('April |', 'April |¦'), cell: '0:1 "April"' },
+            { rule: 'an empty cell is a point one space past its pipe', doc: TABLE.replace('| Kale |  |', '| Kale | ¦ |'), cell: '1:1 ""' },
+            { rule: 'a caret on the delimiter row is in the header cell above it', doc: TABLE.replace('| --- | --- |', '| --- | -¦-- |'), cell: '-1:1 "Sow"' },
+            { rule: 'a caret outside the table is in no cell', doc: TABLE.replace('intro', 'in¦tro'), cell: null },
+        ]) {
+            it(row.rule, () => expect(cellOf(row.doc)).toBe(row.cell))
+        }
+
+        it('a selection inside one cell is in that cell, and one that reaches another cell is the document\'s', () => {
+            expect(cellOf(TABLE.replace('Beans', '«Bea»ns'))).toBe('0:0 "Beans"')
+            expect(cellOf(TABLE.replace('Beans | April', 'Be«ans | Ap»ril'))).toBeNull()
+            expect(cellOf(TABLE.replace('intro', 'in«tro').replace('Beans', 'Be»ans'))).toBeNull()
+        })
+
+        it('in front of a bullet\'s table the caret is on the bullet, and past its first pipe in a cell', () => {
+            const bullet = ['- | Crop | Sow |', '  | --- | --- |', '  | Beans | April |'].join('\n')
+            expect(cellOf(bullet.replace('- |', '- ¦|'))).toBeNull()
+            expect(cellOf(bullet.replace('- | Crop', '- |¦ Crop'))).toBe('-1:0 "Crop"')
+            expect(cellOf(bullet.replace('Beans', 'Beans¦'))).toBe('0:0 "Beans"')
+        })
+    })
+
+    describe('the grid stays drawn while its table is edited (Obsidian)', () => {
+        it('the caret in a cell leaves the grid in place', () => {
+            const { state } = grid(TABLE.replace('Beans', 'Be¦ans'))
+            expect(grids(state)).toEqual([{ from: 6, to: TABLE.indexOf('\nafter') }])
+        })
+
+        it('Edit as text shows the table\'s markdown until the caret leaves the table', () => {
+            const editor = grid(TABLE.replace('Beans', 'Be¦ans'))
+            const cell = activeCell(editor.state)!
+            editor.dispatch(editor.state.update({ effects: editTableAsText.of(cell.tableFrom) }))
+            expect(grids(editor.state)).toEqual([])
+            expect(activeCell(editor.state)).toBeNull()
+            // Still shown as the caret moves about inside it.
+            editor.select(editor.state.doc.toString().indexOf('Kale'))
+            expect(grids(editor.state)).toEqual([])
+            editor.select(0)
+            expect(grids(editor.state)).toHaveLength(1)
+        })
+
+        it('a table written by hand keeps showing its text until the caret leaves it (EtherPK)', () => {
+            const editor = grid('intro\n| Crop | Sow |\n¦\nafter')
+            for (const char of '| --- | --- |') editor.type(char)
+            // The delimiter row makes the lines a table, with the caret still on it.
+            expect(analysisFor(editor.state).tables).toHaveLength(1)
+            expect(grids(editor.state)).toEqual([])
+            expect(activeCell(editor.state)).toBeNull()
+            editor.key('Enter')
+            for (const char of '| Beans | April |') editor.type(char)
+            expect(grids(editor.state)).toEqual([])
+            expect(editor.state.doc.toString()).toBe('intro\n| Crop | Sow |\n| --- | --- |\n| Beans | April |\nafter')
+            // A line started under it is no part of the table: the grid is drawn as the first word is typed there.
+            editor.key('Enter')
+            expect(grids(editor.state)).toEqual([])
+            editor.type('d')
+            expect(grids(editor.state)).toHaveLength(1)
+            editor.type('one')
+            expect(grids(editor.state)).toHaveLength(1)
+        })
+
+        it('text typed into a table that is already one stays in the grid (EtherPK)', () => {
+            const editor = grid(TABLE.replace('Beans', 'Beans¦'))
+            editor.type('!')
+            expect(grids(editor.state)).toHaveLength(1)
+            expect(activeCell(editor.state)).toMatchObject({ row: 0, column: 0 })
+        })
+
+        it('a document that takes no edit keeps the caret\'s rule: the caret on the table shows its markdown', () => {
+            const readOnly = [EditorState.readOnly.of(true)]
+            expect(grids(grid(TABLE.replace('intro', 'in¦tro'), readOnly).state)).toHaveLength(1)
+            const inTable = grid(TABLE.replace('Beans', 'Be¦ans'), readOnly).state
+            expect(grids(inTable)).toEqual([])
+            expect(activeCell(inTable)).toBeNull()
+        })
+
+        it('a part editor has a cell to edit only while it or the cell has the keyboard', () => {
+            const editor = grid(TABLE.replace('Beans', 'Be¦ans'), [revealOnlyWhileFocused()])
+            expect(activeCell(editor.state)).toBeNull()
+            editor.dispatch(editor.state.update({ effects: revealFocus.of(true) }))
+            expect(activeCell(editor.state)).toMatchObject({ row: 0, column: 0 })
+            // The keyboard goes from the part's own text into the cell's editor.
+            editor.dispatch(editor.state.update({ effects: [revealCellFocus.of(true), revealFocus.of(false)] }))
+            expect(activeCell(editor.state)).toMatchObject({ row: 0, column: 0 })
+            editor.dispatch(editor.state.update({ effects: revealCellFocus.of(false) }))
+            expect(activeCell(editor.state)).toBeNull()
+            expect(grids(editor.state)).toHaveLength(1)
+        })
+    })
+
+    const KEYS: Record<string, StateCommand> = {
+        Tab: nextCell,
+        'Shift-Tab': previousCell,
+        Enter: cellBelowOrNewRow,
+        ArrowUp: cellAbove,
+        ArrowDown: cellBelow,
+        ArrowLeft: cellBefore,
+        ArrowRight: cellAfter,
+        Escape: leaveTable,
+    }
+    const SMALL = ['intro', '| Crop | Sow |', '| --- | --- |', '| Beans | April |', 'after'].join('\n')
+    /** `SMALL` after a row was added: written again whole, its columns lined up. */
+    const grown = (lastRow: string) => ['intro', '| Crop  | Sow   |', '| ----- | ----- |', '| Beans | April |', lastRow, 'after'].join('\n')
+    const rows: (Omit<Rule, 'precedent'> & { precedent: Rule['precedent'] })[] = [
+        { rule: 'the next cell, at the end of its text', precedent: 'Obsidian', key: 'Tab', before: SMALL.replace('Crop', 'Cr¦op'), after: SMALL.replace('Sow', 'Sow¦') },
+        { rule: 'from a row\'s last cell, the first cell of the row below', precedent: 'Obsidian', key: 'Tab', before: SMALL.replace('Sow', 'Sow¦'), after: SMALL.replace('Beans', 'Beans¦') },
+        { rule: 'from the table\'s last cell, a new row', precedent: 'Obsidian', key: 'Tab', before: SMALL.replace('April', 'April¦'), after: grown('| ¦      |       |') },
+        { rule: 'the cell before', precedent: 'Obsidian', key: 'Shift-Tab', before: SMALL.replace('Sow', 'S¦ow'), after: SMALL.replace('Crop', 'Crop¦') },
+        { rule: 'from a row\'s first cell, the last cell of the row above', precedent: 'Obsidian', key: 'Shift-Tab', before: SMALL.replace('Beans', 'Beans¦'), after: SMALL.replace('Sow', 'Sow¦') },
+        { rule: 'nothing from the header\'s first cell', precedent: 'Obsidian', key: 'Shift-Tab', before: SMALL.replace('Crop', 'Crop¦'), after: SMALL.replace('Crop', 'Crop¦') },
+        { rule: 'the cell below, in the same column', precedent: 'Obsidian', key: 'Enter', before: SMALL.replace('Sow', 'S¦ow'), after: SMALL.replace('April', 'April¦') },
+        { rule: 'below the last row, a new row, in the same column', precedent: 'Obsidian', key: 'Enter', before: SMALL.replace('April', 'April¦'), after: grown('|       | ¦      |') },
+        { rule: 'the cell above', precedent: 'Obsidian', key: 'ArrowUp', before: SMALL.replace('April', 'Ap¦ril'), after: SMALL.replace('Sow', 'Sow¦') },
+        { rule: 'from the header, the end of the line above the table', precedent: 'Obsidian', key: 'ArrowUp', before: SMALL.replace('Sow', 'S¦ow'), after: SMALL.replace('intro', 'intro¦') },
+        { rule: 'the cell below', precedent: 'Obsidian', key: 'ArrowDown', before: SMALL.replace('Crop', 'Cr¦op'), after: SMALL.replace('Beans', 'Beans¦') },
+        { rule: 'from the last row, the start of the line below the table', precedent: 'Obsidian', key: 'ArrowDown', before: SMALL.replace('Beans', 'Be¦ans'), after: SMALL.replace('after', '¦after') },
+        { rule: 'the end of the cell before', precedent: 'Obsidian', key: 'ArrowLeft', before: SMALL.replace('Sow', '¦Sow'), after: SMALL.replace('Crop', 'Crop¦') },
+        { rule: 'from a row\'s first cell, the end of the row above', precedent: 'Obsidian', key: 'ArrowLeft', before: SMALL.replace('Beans', '¦Beans'), after: SMALL.replace('Sow', 'Sow¦') },
+        { rule: 'the start of the cell after', precedent: 'Obsidian', key: 'ArrowRight', before: SMALL.replace('Crop', 'Crop¦'), after: SMALL.replace('Sow', '¦Sow') },
+        { rule: 'from the table\'s last cell, the start of the line below', precedent: 'Obsidian', key: 'ArrowRight', before: SMALL.replace('April', 'April¦'), after: SMALL.replace('after', '¦after') },
+        { rule: 'out of the table, onto the line after it', precedent: 'EtherPK', key: 'Escape', before: SMALL.replace('Crop', 'Cr¦op'), after: SMALL.replace('after', '¦after') },
+    ]
+    describe('the keys move from cell to cell', () => {
+        for (const row of rows) {
+            it(`${row.key}: ${row.rule} (${row.precedent})`, () => {
+                const editor = grid(row.before)
+                expect(KEYS[row.key](editor)).toBe(true)
+                expect(editor.fixture()).toBe(row.after)
+            })
+        }
+
+        it('Escape: starts a line after a table that ends the document (EtherPK)', () => {
+            const editor = grid('| Crop |\n| --- |\n| Bea¦ns |')
+            leaveTable(editor)
+            expect(editor.fixture()).toBe('| Crop |\n| --- |\n| Beans |\n¦')
+        })
+
+        it('ArrowDown: stays in the last row of a table that ends the document (EtherPK)', () => {
+            const editor = grid('| Crop |\n| --- |\n| Bea¦ns |')
+            cellBelow(editor)
+            expect(editor.fixture()).toBe('| Crop |\n| --- |\n| Bea¦ns |')
+        })
+
+        it('ArrowUp: from the header of a bullet\'s table, onto the bullet in front of the grid (EtherPK)', () => {
+            const editor = grid('- | Cr¦op |\n  | --- |\n  | Beans |')
+            cellAbove(editor)
+            expect(editor.fixture()).toBe('- ¦| Crop |\n  | --- |\n  | Beans |')
+            expect(activeCell(editor.state)).toBeNull()
+        })
+
+        it('Tab: a row written short of the header has only the cells it was given (EtherPK)', () => {
+            const ragged = '| Crop | Sow |\n| --- | --- |\n| Bea¦ns |\n| Kale | May |'
+            const editor = grid(ragged)
+            nextCell(editor)
+            expect(editor.fixture()).toBe('| Crop | Sow |\n| --- | --- |\n| Beans |\n| Kale¦ | May |')
+        })
+
+        it('ArrowDown: from the line above a table, into the header\'s first cell (Obsidian)', () => {
+            const editor = grid(SMALL.replace('intro', 'in¦tro'))
+            expect(arrowIntoTable(1)(editor)).toBe(true)
+            expect(editor.fixture()).toBe(SMALL.replace('Crop', 'Crop¦'))
+        })
+
+        it('ArrowUp: from the line below a table, into the first cell of its last row (Obsidian)', () => {
+            const editor = grid(SMALL.replace('after', 'af¦ter'))
+            expect(arrowIntoTable(-1)(editor)).toBe(true)
+            expect(editor.fixture()).toBe(SMALL.replace('Beans', 'Beans¦'))
+        })
+
+        it('ArrowDown: above a bullet\'s table, onto the bullet in front of the grid, and from there into the header (EtherPK)', () => {
+            const editor = grid('in¦tro\n- | Crop |\n  | --- |\n  | Beans |')
+            expect(arrowIntoTable(1)(editor)).toBe(true)
+            expect(editor.fixture()).toBe('intro\n- ¦| Crop |\n  | --- |\n  | Beans |')
+            expect(arrowIntoTable(1)(editor)).toBe(true)
+            expect(editor.fixture()).toBe('intro\n- | Crop¦ |\n  | --- |\n  | Beans |')
+        })
+
+        it('the arrows are the editor\'s own away from a table, and with a selection', () => {
+            const away = grid(SMALL.replace('after', 'after\nla¦st'))
+            expect(arrowIntoTable(1)(away)).toBe(false)
+            expect(arrowIntoTable(-1)(away)).toBe(false)
+            const selected = grid(SMALL.replace('intro', '«in»tro'))
+            expect(arrowIntoTable(1)(selected)).toBe(false)
+        })
+
+        it('the keys are the document\'s own outside a table', () => {
+            const editor = grid(SMALL.replace('intro', 'in¦tro'))
+            for (const command of Object.values(KEYS)) expect(command(editor)).toBe(false)
+        })
+    })
+
+    // A block of cells: from the caret's cell, the anchor, to another. The caret stays in the anchor,
+    // so typing goes there and ends the block.
+    describe('a block of cells is selected from the caret\'s cell (EtherPK, as a spreadsheet)', () => {
+        const WIDE = ['| Crop | Sow | Rows |', '| --- | --- | --- |', '| Beans | April | 2 |', '| Kale | May | 1 |', 'after'].join('\n')
+        const rect = (editor: HeadlessEditor) => cellBlock(editor.state)?.rect ?? null
+
+        it('Shift and an arrow grows the block a cell at a time, and shrinks it back to none', () => {
+            const editor = grid(WIDE.replace('Beans', 'Beans¦'))
+            extendCells(0, 1)(editor)
+            expect(rect(editor)).toEqual({ top: 0, bottom: 0, left: 0, right: 1 })
+            extendCells(1, 0)(editor)
+            expect(rect(editor)).toEqual({ top: 0, bottom: 1, left: 0, right: 1 })
+            extendCells(-1, 0)(editor)
+            extendCells(0, -1)(editor)
+            expect(rect(editor)).toBeNull()
+            // Up from a body row reaches the header, the grid's first row.
+            extendCells(-1, 0)(editor)
+            expect(rect(editor)).toEqual({ top: -1, bottom: 0, left: 0, right: 0 })
+        })
+
+        it('a block from a cell past the header\'s last column holds that cell: the table is as wide as its widest row', () => {
+            // Found by the random UI test: the block was kept inside the header's width, without the caret's cell.
+            const editor = grid(['| Crop | Sow |', '| --- | --- |', '| Beans | April | two¦ |', '| Kale | May |', 'after'].join('\n'))
+            expect(activeCell(editor.state)).toMatchObject({ row: 0, column: 2 })
+            selectCellsTo(editor, { row: 1, column: 0 })
+            expect(rect(editor)).toEqual({ top: 0, bottom: 1, left: 0, right: 2 })
+            extendCells(0, 1)(editor)
+            expect(rect(editor)).toEqual({ top: 0, bottom: 1, left: 1, right: 2 })
+        })
+
+        it('the block stops at the table\'s edges', () => {
+            const editor = grid(WIDE.replace('| 1 |', '| 1¦ |'))
+            extendCells(1, 0)(editor)
+            extendCells(0, 1)(editor)
+            expect(rect(editor)).toBeNull()
+            extendCells(0, -1)(editor)
+            extendCells(0, -1)(editor)
+            extendCells(0, -1)(editor)
+            expect(rect(editor)).toEqual({ top: 1, bottom: 1, left: 0, right: 2 })
+        })
+
+        it('the caret stays in the cell the block began in, and the grid stays drawn', () => {
+            const editor = grid(WIDE.replace('Beans', 'Be¦ans'))
+            extendCells(0, 1)(editor)
+            expect(editor.fixture()).toBe(WIDE.replace('Beans', 'Be¦ans'))
+            expect(activeCell(editor.state)).toMatchObject({ row: 0, column: 0 })
+            expect(grids(editor.state)).toHaveLength(1)
+        })
+
+        it('every cell of the table, with the caret anywhere in it', () => {
+            const editor = grid(WIDE.replace('May', 'M¦ay'))
+            selectAllCells(editor)
+            expect(rect(editor)).toEqual({ top: -1, bottom: 1, left: 0, right: 2 })
+            expect(allCellsSelected(editor.state)).toBe(true)
+        })
+
+        it('Delete empties the block\'s cells, keeps its rows and columns, and leaves it selected', () => {
+            const editor = grid(WIDE.replace('April', 'April¦'))
+            extendCells(1, 1)(editor)
+            expect(clearSelectedCells(editor)).toBe(true)
+            expect(editor.state.doc.toString()).toBe(['| Crop  | Sow | Rows |', '| ----- | --- | ---- |', '| Beans |     |      |', '| Kale  |     |      |', 'after'].join('\n'))
+            expect(rect(editor)).toEqual({ top: 0, bottom: 1, left: 1, right: 2 })
+            expect(activeCell(editor.state)).toMatchObject({ row: 0, column: 1 })
+        })
+
+        it('typing, or the caret moving, ends the block; Escape ends it and stays in the table', () => {
+            const typed = grid(WIDE.replace('Beans', 'Beans¦'))
+            extendCells(0, 1)(typed)
+            typed.type('!')
+            expect(rect(typed)).toBeNull()
+            expect(typed.state.doc.toString()).toContain('| Beans! | April |')
+
+            const moved = grid(WIDE.replace('Beans', 'Beans¦'))
+            extendCells(0, 1)(moved)
+            nextCell(moved)
+            expect(rect(moved)).toBeNull()
+
+            const escaped = grid(WIDE.replace('Beans', 'Beans¦'))
+            extendCells(0, 1)(escaped)
+            expect(collapseCells(escaped)).toBe(true)
+            expect(rect(escaped)).toBeNull()
+            expect(activeCell(escaped.state)).toMatchObject({ row: 0, column: 0 })
+            // With no block, Escape is the key that leaves the table.
+            expect(collapseCells(escaped)).toBe(false)
+        })
+
+        it('the cell\'s own pointer drag keeps the block that the same press began', () => {
+            const editor = grid(WIDE.replace('Beans', 'Beans¦'))
+            extendCells(0, 1)(editor)
+            editor.dispatch(editor.state.update({ selection: { anchor: editor.head() - 2, head: editor.head() }, annotations: fromCell.of(true), userEvent: 'select.pointer' }))
+            expect(rect(editor)).toEqual({ top: 0, bottom: 0, left: 0, right: 1 })
+            editor.dispatch(editor.state.update({ selection: { anchor: editor.head() }, annotations: fromCell.of(true), userEvent: 'select' }))
+            expect(rect(editor)).toBeNull()
+        })
+
+        it('text arriving from elsewhere leaves the block selected, on the table wherever it now starts', () => {
+            const editor = grid(WIDE.replace('Beans', 'Beans¦'))
+            extendCells(0, 1)(editor)
+            editor.dispatch(editor.state.update({ changes: { from: 0, insert: 'a line above\n' } }))
+            expect(rect(editor)).toEqual({ top: 0, bottom: 0, left: 0, right: 1 })
+            editor.dispatch(editor.state.update({ changes: { from: editor.state.doc.length, insert: '!' }, userEvent: 'input.type' }))
+            expect(rect(editor)).toBeNull()
+        })
+
+        it('rows of cells pasted go in from the caret\'s cell, the table growing to hold them, and are left selected', () => {
+            const editor = grid(WIDE.replace('May', 'May¦'))
+            pasteCellsAtCaret(editor, [['June', '3', 'late'], ['July', '5', 'early']])
+            expect(editor.state.doc.toString()).toBe(
+                ['| Crop  | Sow   | Rows |       |', '| ----- | ----- | ---- | ----- |', '| Beans | April | 2    |       |', '| Kale  | June  | 3    | late  |', '|       | July  | 5    | early |', 'after'].join('\n'),
+            )
+            expect(rect(editor)).toEqual({ top: 1, bottom: 2, left: 1, right: 3 })
+            expect(activeCell(editor.state)).toMatchObject({ row: 1, column: 1 })
+        })
+
+        it('one value pasted over a block fills every cell of it', () => {
+            const editor = grid(WIDE.replace('| 2 |', '| 2¦ |'))
+            extendCells(1, 0)(editor)
+            pasteCellsAtCaret(editor, [['6']])
+            expect(editor.state.doc.toString()).toContain('| Beans | April | 6    |\n| Kale  | May   | 6    |')
+            expect(rect(editor)).toEqual({ top: 0, bottom: 1, left: 2, right: 2 })
+        })
+
+        it('rows pasted over a block start at its top left cell', () => {
+            const editor = grid(WIDE.replace('May', 'May¦'))
+            extendCells(-1, -1)(editor)
+            pasteCellsAtCaret(editor, [['Peas', 'June']])
+            expect(editor.state.doc.toString()).toContain('| Peas | June | 2    |\n| Kale | May  | 1    |')
+            expect(activeCell(editor.state)).toMatchObject({ row: 0, column: 0 })
+        })
+    })
+})
+
 describe('the comment chords write nothing (EtherPK: Mod+/ belongs to the Keyboard Shortcuts card)', () => {
     const fixture = (before: string) => editorFixture(before, { extensions: [markdownWithCodeHighlight()] })
     /** Press `key` on the editor's default keymap: whether a binding handled it, and the text after. */
@@ -1478,6 +1854,7 @@ describe('a media line has a player under it (Obsidian)', () => {
         expect(mediaWidgetPos(40, [{ from: 40, to: 60 }]), 'its own fold').toBe(60)
         expect(mediaWidgetPos(40, [{ from: 40, to: 60 }, { from: 8, to: 60 }]), 'its own fold inside an outer one').toBeNull()
         expect(mediaWidgetPos(40, [{ from: 50, to: 60 }]), 'a fold further down').toBe(40)
+        expect(mediaWidgetPos(40, [{ from: 40, to: 60 }, { from: 50, to: 60 }]), 'its own fold, holding a fold that ends where it does').toBe(60)
     })
 
     it('a part of a document shows no player for a media line outside the part', () => {
@@ -1501,7 +1878,77 @@ describe('a media line has a player under it (Obsidian)', () => {
         const other = editorFixture('![clip](../assets/walk.mp4)\n- other¦', { caret: '¦', extensions: [mediaAugmentation] })
         expect(playersUnder(other.state, 1)[0].eq(before)).toBe(false)
     })
+
+    // `|480` at the end of the description is the video's greatest width, as it is a picture's. It
+    // says nothing about an audio player, which has no picture to size.
+    describe('a video’s size hint is its width (Obsidian)', () => {
+        /** The width the player under line 1 is drawn at: a hint's px, or null for the whole column. */
+        function widthOf(text: string): number | null | undefined {
+            const editor = editorFixture(`${text}\n- other¦`, { caret: '¦', extensions: [mediaAugmentation] })
+            return (playersUnder(editor.state, 1)[0] as unknown as { maxWidth: number | null }).maxWidth
+        }
+        for (const row of [
+            { rule: 'a video with no hint fills the column', text: '![clip](../assets/clip.mp4)', width: null },
+            { rule: 'a width', text: '![clip|480](../assets/clip.mp4)', width: 480 },
+            { rule: 'a width, in a bullet', text: '- ![clip|480](../assets/clip.mp4)', width: 480 },
+            { rule: 'a width and a height: the width', text: '![clip|640x480](../assets/clip.mp4)', width: 640 },
+            { rule: 'a pipe that is no size is words', text: '![clip|wide](../assets/clip.mp4)', width: null },
+            { rule: 'an audio player keeps its one width', text: '![note|480](../assets/note.mp3)', width: null },
+        ]) {
+            it(row.rule, () => expect(widthOf(row.text)).toBe(row.width))
+        }
+    })
+
+    it('finds the line of a player from where the player stands, folded or not', () => {
+        const url = '../assets/clip.mp4'
+        const editor = editorFixture(`- ![clip](${url})¦\n  - child\n- next\n![again](${url})`, { caret: '¦', extensions: [mediaAugmentation, outlineFolds()] })
+        const { doc } = editor.state
+        expect(mediaLineOfPlayer(editor.state, doc.line(1).to, url)).toBe(0)
+        expect(mediaLineOfPlayer(editor.state, doc.line(4).to, url)).toBe(doc.line(4).from)
+        expect(mediaLineOfPlayer(editor.state, doc.line(1).to, '../assets/other.mp4')).toBeNull()
+        expect(mediaLineOfPlayer(editor.state, doc.line(3).to, url)).toBeNull()
+        // Folded, the player stands after the fold, at the end of a line that is not its own.
+        editor.dispatch(editor.state.update(toggleBulletFoldSpec(editor.state, 1)!))
+        expect(mediaLineOfPlayer(editor.state, doc.line(2).to, url)).toBe(0)
+    })
 })
+
+// A drag of a video's resize handle writes the width into its size hint on release, as a picture's
+// does. A double click on the handle, or a drag to the column's edge, removes the hint, and the
+// video fills the column again (augmentations/media-embed.ts; the gesture: tests-client/media-player.test.ts).
+describe('the resize handle writes a video’s width into its hint (Logseq)', () => {
+    for (const row of [
+        { rule: 'a drag to 480px adds a hint', width: 480, before: '![Planting](../assets/planting.webm)\n- other§', after: '![Planting|480](../assets/planting.webm)\n- other§' },
+        { rule: 'a drag replaces the hint', width: 480, before: '- ![Planting|900](../assets/planting.webm)\n- other§', after: '- ![Planting|480](../assets/planting.webm)\n- other§' },
+        { rule: 'a width x height hint becomes the width', width: 480, before: '![Planting|640x360](../assets/planting.webm)\n- other§', after: '![Planting|480](../assets/planting.webm)\n- other§' },
+        { rule: 'a double click removes the hint', width: null, before: '- ![Planting|480](../assets/planting.webm)\n- other§', after: '- ![Planting](../assets/planting.webm)\n- other§' },
+        // The player is there while the line shows its markdown, so the caret can be in the words.
+        { rule: 'a caret in the words stays where it is', width: 480, before: '![Plan§ting|900](../assets/planting.webm)', after: '![Plan§ting|480](../assets/planting.webm)' },
+        { rule: 'a caret at the end of the words stays before a hint that is added', width: 480, before: '![Planting§](../assets/planting.webm)', after: '![Planting§|480](../assets/planting.webm)' },
+        { rule: 'a caret in the file’s name stays in it', width: null, before: '![Planting|480](../assets/plan§ting.webm)', after: '![Planting](../assets/plan§ting.webm)' },
+    ]) {
+        it(row.rule, () => {
+            const editor = editorFixture(row.before, { caret: '§' })
+            editor.dispatch(editor.state.update(displayWidthChange(editor.state, 0, '../assets/planting.webm', row.width)!))
+            const { doc, selection } = editor.state
+            const text = doc.toString()
+            expect(text.slice(0, selection.main.head) + '§' + text.slice(selection.main.head)).toBe(row.after)
+        })
+    }
+})
+
+/** Whether line `n` is drawn as its picture: a widget replaces the image's markdown. */
+function pictureShown(state: EditorState, n: number): boolean {
+    const line = state.doc.line(n)
+    let shown = false
+    for (const source of state.facet(EditorView.decorations)) {
+        if (typeof source === 'function') continue
+        source.between(line.from, line.to, (_from, _to, deco) => {
+            if (deco.spec.widget) shown = true
+        })
+    }
+    return shown
+}
 
 // A clicked image shows its markdown only while the caret is on its line: however the caret leaves
 // (a key, a new line under it, a click CodeMirror places, a jump from elsewhere), the picture is
@@ -1510,19 +1957,6 @@ describe('a media line has a player under it (Obsidian)', () => {
 describe('a clicked image shows its picture again once the caret leaves its line (EtherPK)', () => {
     const IMAGE = '- ![Garden|800](../assets/garden.png)'
     const imageAugmentation = imageEmbedAugmentation({ resolveAsset: async () => null })
-
-    /** Whether line `n` is drawn as its picture: a widget replaces the image's markdown. */
-    function pictureShown(state: EditorState, n: number): boolean {
-        const line = state.doc.line(n)
-        let shown = false
-        for (const source of state.facet(EditorView.decorations)) {
-            if (typeof source === 'function') continue
-            source.between(line.from, line.to, (_from, _to, deco) => {
-                if (deco.spec.widget) shown = true
-            })
-        }
-        return shown
-    }
 
     /** The image on line 2 clicked: its markdown revealed, the caret at the end of it. */
     function clicked(): HeadlessEditor {
@@ -1552,9 +1986,144 @@ describe('a clicked image shows its picture again once the caret leaves its line
     }
 })
 
+// A tap with a finger or a pen on a rendered image selects it: its actions and resize handle show,
+// with Edit as text among them, and its markdown stays hidden with the caret where it was
+// (augmentations/image-select.ts → imageTapSpec). Edit as text is the click of a mouse: the markdown
+// revealed, the caret at its end. The taps themselves, on an emulated phone:
+// tests-client/image-touch.test.ts.
+describe('a tap on a rendered image shows its actions and leaves its markdown hidden (EtherPK)', () => {
+    const DOC = '- Garden¦\n- ![Beds|800](../assets/beds.png)\n- Kitchen\n- ![Shed|800](../assets/shed.png)'
+    const imageAugmentation = imageEmbedAugmentation({ resolveAsset: async () => null })
+
+    const tap = (editor: HeadlessEditor, n: number) => editor.dispatch(editor.state.update(imageTapSpec(editor.state, editor.state.doc.line(n).from)))
+
+    /** The image on line 2 tapped. */
+    function tapped(): HeadlessEditor {
+        const editor = editorFixture(DOC, { caret: '¦', extensions: [imageAugmentation] })
+        tap(editor, 2)
+        return editor
+    }
+
+    it('the tapped image is selected and still drawn as its picture, with the caret where it was', () => {
+        const editor = editorFixture(DOC, { caret: '¦', extensions: [imageAugmentation] })
+        const caret = editor.head()
+        expect(selectedImageLine(editor.state)).toBeNull()
+        tap(editor, 2)
+        expect(selectedImageLine(editor.state)).toBe(2)
+        expect(pictureShown(editor.state, 2)).toBe(true)
+        expect(editor.head()).toBe(caret)
+    })
+
+    it('a second tap on it puts its actions away', () => {
+        const editor = tapped()
+        tap(editor, 2)
+        expect(selectedImageLine(editor.state)).toBeNull()
+        expect(pictureShown(editor.state, 2)).toBe(true)
+    })
+
+    it('a tap on another image moves the actions to it', () => {
+        const editor = tapped()
+        tap(editor, 4)
+        expect(selectedImageLine(editor.state)).toBe(4)
+    })
+
+    it('Edit as text reveals its markdown with the caret at the end, as a click does', () => {
+        const editor = tapped()
+        editor.dispatch(editor.state.update(imageClickSpec(editor.state, editor.state.doc.line(2).from)))
+        expect(pictureShown(editor.state, 2)).toBe(false)
+        expect(editor.head()).toBe(editor.state.doc.line(2).to)
+        expect(selectedImageLine(editor.state)).toBeNull()
+    })
+
+    it('a line written above it leaves it selected, on its new line', () => {
+        const editor = tapped()
+        editor.dispatch(editor.state.update({ changes: { from: 0, insert: '- Orchard\n' } }))
+        expect(selectedImageLine(editor.state)).toBe(3)
+    })
+
+    it('its bullet indented and outdented again, by an edit made elsewhere, leaves it selected', () => {
+        const editor = tapped()
+        const from = editor.state.doc.line(2).from
+        editor.dispatch(editor.state.update({ changes: { from, insert: '  ' } }))
+        expect(selectedImageLine(editor.state)).toBe(2)
+        expect(pictureShown(editor.state, 2)).toBe(true)
+        editor.dispatch(editor.state.update({ changes: { from, to: from + 2 } }))
+        expect(selectedImageLine(editor.state)).toBe(2)
+    })
+
+    it('the bullet above it folded over it puts its actions away', () => {
+        const editor = editorFixture('- Garden¦\n  - ![Beds|800](../assets/beds.png)\n- Kitchen', { caret: '¦', extensions: [imageAugmentation, outlineFolds()] })
+        tap(editor, 2)
+        expect(selectedImageLine(editor.state)).toBe(2)
+        editor.dispatch(editor.state.update(toggleBulletFoldSpec(editor.state, 1)!))
+        expect(selectedImageLine(editor.state)).toBeNull()
+        // Unfolded, it is a picture like any other: not selected until it is tapped again.
+        editor.dispatch(editor.state.update(toggleBulletFoldSpec(editor.state, 1)!))
+        expect(selectedImageLine(editor.state)).toBeNull()
+    })
+
+    for (const row of [
+        { rule: 'the caret moving', leave: (e: HeadlessEditor) => e.select(e.state.doc.line(3).to) },
+        { rule: 'a key typed', leave: (e: HeadlessEditor) => e.type('s') },
+        { rule: 'its line deleted', leave: (e: HeadlessEditor) => e.dispatch(e.state.update({ changes: { from: e.state.doc.line(2).from, to: e.state.doc.line(3).from } })) },
+        {
+            // The image under it moves up to its place, and is not selected in its stead.
+            rule: 'its line deleted, with another image straight under it',
+            leave: (e: HeadlessEditor) => e.dispatch(e.state.update({ changes: { from: e.state.doc.line(2).from, to: e.state.doc.line(4).from } })),
+        },
+        {
+            rule: 'its line written into something that is no image',
+            leave: (e: HeadlessEditor) => e.dispatch(e.state.update({ changes: { from: e.state.doc.line(2).to, insert: ' and more' } })),
+        },
+    ]) {
+        it(`${row.rule} puts its actions away`, () => {
+            const editor = tapped()
+            row.leave(editor)
+            expect(selectedImageLine(editor.state)).toBeNull()
+        })
+    }
+})
+
+// A press on an image line outside its picture (the revealed markdown, or beside a bullet's
+// picture) is CodeMirror's own pointer gesture, started and followed through the browser's hit test
+// (augmentations/image-embed.ts → imageLineGesture). The places themselves, with real layout, and
+// a press that stays a click while the line reflows under it: tests-client/image-caret.test.ts.
+describe('a pointer selection on an image line selects as on any line (CodeMirror)', () => {
+    // `§` and `¶` mark the selection's two ends here, the size hint's `|` being literal.
+    const LINE = '![Garden beds|300](../assets/beds.png)'
+    const DOC = `- Notes\n${LINE}\n- Kitchen`
+    const { state } = editorFixture(`${DOC}§`, { caret: '§' })
+    const at = (text: string) => DOC.indexOf(text)
+    const selected = (selection: EditorSelection) => DOC.slice(selection.main.from, selection.main.to)
+
+    for (const row of [
+        { rule: 'a click puts the caret at the place', anchor: at('beds|'), head: at('beds|'), clicks: 1, text: '', headAt: at('beds|') },
+        { rule: 'a drag selects from the press to the pointer', anchor: at('Garden'), head: at('|300'), clicks: 1, text: 'Garden beds', headAt: at('|300') },
+        { rule: 'a drag backwards keeps the press as the anchor', anchor: at('|300'), head: at('Garden'), clicks: 1, text: 'Garden beds', headAt: at('Garden') },
+        { rule: 'a double click selects the word', anchor: at('arden'), head: at('arden'), clicks: 2, text: 'Garden', headAt: at(' beds') },
+        { rule: 'a double click between words selects the punctuation there', anchor: at('](..'), head: at('](..'), clicks: 2, text: '](../', headAt: at('assets') },
+        { rule: 'a drag after a double click selects by whole words', anchor: at('arden'), head: at('eds|'), clicks: 2, text: 'Garden beds', headAt: at('|300') },
+        { rule: 'a drag backwards after a double click keeps the word pressed', anchor: at('eds|'), head: at('arden'), clicks: 2, text: 'Garden beds', headAt: at('Garden') },
+        { rule: 'a triple click selects the line with its break', anchor: at('beds|'), head: at('beds|'), clicks: 3, text: `${LINE}\n`, headAt: at('- Kitchen') },
+    ]) {
+        it(row.rule, () => {
+            const selection = imageLineGesture(state, row.anchor, row.head, row.clicks)
+            expect(selected(selection)).toBe(row.text)
+            expect(selection.main.head).toBe(row.headAt)
+        })
+    }
+
+    it('Shift+click extends the selection there was to the click', () => {
+        const before = EditorSelection.single(at('Garden'))
+        const selection = imageLineGesture(state, at('|300'), at('|300'), 1, before)
+        expect(selected(selection)).toBe('Garden beds')
+        expect(selection.main.anchor).toBe(at('Garden'))
+    })
+})
+
 // A drag of an image's resize handle writes the width into its size hint on release, and a double
-// click on the handle removes the hint (augmentations/image-resize.ts → imageWidthChange; the
-// pure rules are in image-resize.test.ts, the gesture in tests-client/image-resize.test.ts).
+// click on the handle removes the hint (augmentations/resize-handle.ts → displayWidthChange; the
+// pure rules are in resize-handle.test.ts, the gesture in tests-client/image-resize.test.ts).
 describe('the resize handle writes an image’s width into its hint (Logseq)', () => {
     // `§` is the caret here, the size hint's `|` being literal.
     for (const row of [
@@ -1565,7 +2134,7 @@ describe('the resize handle writes an image’s width into its hint (Logseq)', (
     ]) {
         it(row.rule, () => {
             const editor = editorFixture(row.before, { caret: '§' })
-            editor.dispatch(editor.state.update(imageWidthChange(editor.state, 0, '../assets/garden.png', row.width)!))
+            editor.dispatch(editor.state.update(displayWidthChange(editor.state, 0, '../assets/garden.png', row.width)!))
             const { doc, selection } = editor.state
             const text = doc.toString()
             expect(text.slice(0, selection.main.head) + '§' + text.slice(selection.main.head)).toBe(row.after)
@@ -4029,6 +4598,16 @@ describe('a part of a task shows its markdown only while it has the keyboard (Et
         const editor = partEditor('description', task(`    - ${IMAGE}¦`))
         focus(editor, true)
         expect(pictureShown(editor.state, 3)).toBe(false)
+    })
+
+    it('a picture tapped before the part has the keyboard is selected, and given the keyboard on its line it shows its markdown and is not', () => {
+        const editor = partEditor('description', task(`    - ${IMAGE}¦`))
+        editor.dispatch(editor.state.update(imageTapSpec(editor.state, editor.state.doc.line(3).from)))
+        expect(selectedImageLine(editor.state)).toBe(3)
+        expect(pictureShown(editor.state, 3)).toBe(true)
+        focus(editor, true)
+        expect(pictureShown(editor.state, 3)).toBe(false)
+        expect(selectedImageLine(editor.state)).toBeNull()
     })
 
     it('once the part loses the keyboard, the image is drawn again with the caret where it was', () => {

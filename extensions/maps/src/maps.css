@@ -361,7 +361,7 @@
     margin-left: auto;
 }
 
-/* The resize handle on the map's corner, drawn as an image's is (image-resize.ts). */
+/* The resize handle on the map's corner, drawn as an image's is (resize-handle.ts). */
 .gk-map-resize {
     position: absolute;
     right: 2px;

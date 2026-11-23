@@ -113,8 +113,9 @@ function watchPerson(view: EditorView): { acted: () => boolean; release: () => v
  * the top, for a task opened in a [[Kanban Board]]'s [[Task Detail]] with what is written under
  * it in view below (ADR 0113). `scrollTo` is the position put there when it is not the caret's:
  * the start of a line whose end the caret goes to, so a line that wraps shows from its first row.
+ * `anchor` is the selection's other end, when there is one.
  */
-export function revealEditorPosition(view: EditorView, head: number, align: RevealAlign = 'center', scrollTo = head): void {
+export function revealEditorPosition(view: EditorView, head: number, align: RevealAlign = 'center', scrollTo = head, anchor = head): void {
     const clamp = (pos: number) => Math.max(0, Math.min(pos, view.state.doc.length))
     const clamped = clamp(head)
     const target = clamp(scrollTo)
@@ -131,7 +132,7 @@ export function revealEditorPosition(view: EditorView, head: number, align: Reve
             // result", and a result flush against the bottom edge reads as an accident.
             effects: EditorView.scrollIntoView(target, { y: align }),
         })
-    view.dispatch(placeSelection(clamped))
+    view.dispatch(placeSelection(clamp(anchor), clamped))
     scroll()
 
     // Re-asserted, for the same reason {@link applyEditorPosition} re-asserts its scrollTop: a

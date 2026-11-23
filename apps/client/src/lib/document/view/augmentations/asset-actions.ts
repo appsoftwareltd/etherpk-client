@@ -100,7 +100,7 @@ export function buildAssetActions(
 
 /**
  * Raise the [[Context Menu]] on an asset: right-click anywhere, or a long press on touch, where
- * hover does not exist and the overlay never appears. Mirrors `attachContextMenu`, which cannot
+ * hover does not exist and a picture's overlay waits for a tap. Mirrors `attachContextMenu`, which cannot
  * be used directly here because the element it would bind to is rebuilt by CodeMirror on every
  * decoration change.
  */

@@ -41,6 +41,10 @@ export interface CommandBarItem {
      * counts, a bullet-shaped line in code or in the frontmatter does not (`outlinerBulletAtCaret`).
      */
     outlinerOnly?: boolean
+    /** With `outlinerOnly`: the Command acts on any line in the Text Editor, so the button is live there. */
+    actsOnTextLines?: boolean
+    /** Disabled in the Text Editor, where the Command has nothing to do: it reads or writes markdown. */
+    markdownOnly?: boolean
     /**
      * Disabled when the document's body will not take an edit - a locked [[Protected Document]].
      * Every button whose Command writes to the body carries it; the Command itself refuses on

@@ -47,14 +47,31 @@ import { EditorView } from '@codemirror/view'
 export const revealFocus = StateEffect.define<boolean>()
 
 /**
+ * The editor of a table's cell, which sits inside this one, gained (true) or lost (false) the
+ * keyboard (table-cell-editor.ts). The keyboard is then still in this editor's text as far as a
+ * reveal goes: a person typing in a cell of a part's table has not left the part.
+ */
+export const revealCellFocus = StateEffect.define<boolean>()
+
+/** Where the keyboard is, for an editor that reveals only while focused: in its own text, or in a cell of a table in it. */
+interface RevealFocus {
+    readonly editor: boolean
+    readonly cell: boolean
+}
+
+/**
  * Whether the editor has the keyboard, kept only in an editor that reveals only while focused. It
  * starts false: an editor is made without focus, and CodeMirror says when it gains it.
  */
-const revealFocusField = StateField.define<boolean>({
-    create: () => false,
-    update(focused, tr) {
-        for (const effect of tr.effects) if (effect.is(revealFocus)) focused = effect.value
-        return focused
+const revealFocusField = StateField.define<RevealFocus>({
+    create: () => ({ editor: false, cell: false }),
+    update(focus, tr) {
+        let { editor, cell } = focus
+        for (const effect of tr.effects) {
+            if (effect.is(revealFocus)) editor = effect.value
+            else if (effect.is(revealCellFocus)) cell = effect.value
+        }
+        return editor === focus.editor && cell === focus.cell ? focus : { editor, cell }
     },
 })
 
@@ -70,12 +87,36 @@ export function revealOnlyWhileFocused(): Extension {
     return onlyWhileFocused
 }
 
+/** Whether this editor reveals only while it has the keyboard: a part editor ({@link revealOnlyWhileFocused}). */
+export function revealsOnlyWhileFocused(state: EditorState): boolean {
+    return state.field(revealFocusField, false) !== undefined
+}
+
+/**
+ * Whether the editor of a table's cell in this editor has the keyboard, kept wherever tables are
+ * edited in their grid (table-cell-editor.ts). The document editor does not have the keyboard then,
+ * as CodeMirror sees it, yet the person is typing in its document.
+ */
+export const cellFocusField = StateField.define<boolean>({
+    create: () => false,
+    update(focused, tr) {
+        for (const effect of tr.effects) if (effect.is(revealCellFocus)) focused = effect.value
+        return focused
+    },
+})
+
+/** Whether the editor of a table's cell in this editor has the keyboard. False in an editor that keeps no such thing. */
+export function cellHasKeyboard(state: EditorState): boolean {
+    return state.field(cellFocusField, false) ?? false
+}
+
 /**
  * Whether the selection reveals anything at all now: always in an ordinary editor, and in one that
- * reveals only while focused, only while it has the keyboard.
+ * reveals only while focused, only while it or a cell of a table in it has the keyboard.
  */
 export function selectionReveals(state: EditorState): boolean {
-    return state.field(revealFocusField, false) ?? true
+    const focus = state.field(revealFocusField, false)
+    return focus ? focus.editor || focus.cell : true
 }
 
 // ── The kinds ─────────────────────────────────────────────────────────────────────────────────
@@ -178,7 +219,7 @@ export function requestedRevealed(state: EditorState, from: number, to: number):
  * that rebuilds on this, never on the selection alone, follows the focus rule too.
  */
 export function revealInputsChanged(tr: Transaction): boolean {
-    return tr.docChanged || tr.selection !== undefined || tr.effects.some((e) => e.is(requestReveal) || e.is(revealFocus))
+    return tr.docChanged || tr.selection !== undefined || tr.effects.some((e) => e.is(requestReveal) || e.is(revealFocus) || e.is(revealCellFocus))
 }
 
 /** {@link revealInputsChanged} for a view plugin's update: whether any of its transactions did. */

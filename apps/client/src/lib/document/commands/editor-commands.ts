@@ -8,7 +8,7 @@
  * ids below. Handlers no-op when no editor is focused or the caret is not in a table.
  */
 
-import { indentLess, indentMore } from '@codemirror/commands'
+import { indentLess, indentMore, moveLineDown, moveLineUp } from '@codemirror/commands'
 import type { EditorView } from '@codemirror/view'
 
 import { showNotice } from '#lib/activity/notices.js'
@@ -18,9 +18,12 @@ import {
     type CommandBarItem,
     type CommandMenuItem,
     type CommandRegistry,
+    type ContextMenuItem,
     type ContributionRegistry,
+    isTableTarget,
     registerCommandBarItem,
     registerCommandMenuItem,
+    registerContextMenuItem,
 } from '../../surface'
 import { getActiveEditorView } from '../active-editor'
 import { openLineMenuAtCaret } from '../view/augmentations/bookmarks'
@@ -38,13 +41,11 @@ import {
     toggleTask,
 } from '../view/outliner-keymap'
 import { indentListItem, outdentListItem } from '../view/list-items-keymap'
-import { isTextFile } from '../view/text-file'
-import type { MarkdownTable } from '../markdown-table'
+import { isTextFile } from '../view/text-file-facet'
+import type { Align, MarkdownTable } from '../markdown-table'
 import {
     addColumns,
     addRows,
-    buildTable,
-    cellPosition,
     formatTable,
     removeColumn,
     removeColumnsLeft,
@@ -52,15 +53,20 @@ import {
     removeRow,
     removeRowsAbove,
     removeRowsBelow,
+    setColumnAlign,
 } from '../markdown-table-edit'
 import { formatISODate, shiftDate } from '../calendar/month-grid-core'
 import { openDateCalendar } from '../view/augmentations/date-calendar'
 import { acceptTableSize, openTableSizePicker } from '../view/augmentations/table-size-picker'
 import { clampTableSize, type TableSize } from '../view/augmentations/table-size-picker-core'
 import { openAssetPicker } from '../view/asset-picker'
+import { cellBlock, editTableAsText } from '../view/table-cell'
+import { removeColumns, removeRows } from '../table-cells'
+import { cellInputView } from '../view/augmentations/table-cell-editor'
 import { bodyWritable } from '../view/body-writable'
 import { redoCommand, undoCommand } from '../view/editor-history'
 import { type TableCaret, tableAtCaret, tableInsertable } from '../view/table-context'
+import { type CaretCell, editTableAtCaret } from '../view/table-edit'
 import { toggleBold, toggleHighlight, toggleItalic, wikilinkButtonSpec } from '../view/wrap-selection'
 
 /** Insert `text` at the caret and place the cursor after it. */
@@ -79,41 +85,6 @@ function insertAtCursor(view: EditorView, text: string, userEvent = 'input.compl
  */
 function dayLink(offset: number): string {
     return `[[${formatISODate(shiftDate(new Date(), offset))}]]`
-}
-
-/** Where the caret goes after a table edit: a body row (0-based) or the header, and a column. */
-interface CaretCell {
-    bodyRow: number
-    column: number
-}
-
-/**
- * Apply a pure table transform at the caret and write the re-serialised table back, then put
- * the caret at the start of a cell of the new table — the one `after` names, or the same cell
- * the caret was in. Explicit, because mapping the old selection through a whole-table
- * replacement lands wherever CodeMirror's mapping rules put it (the end of the table when the
- * placeholder was still selected after an insert), and the next edit reads the caret's row.
- */
-function editTableAtCursor(
-    view: EditorView,
-    transform: (hit: TableCaret) => MarkdownTable | null,
-    after: (hit: TableCaret) => CaretCell = (hit) => ({ bodyRow: hit.bodyRow, column: hit.column }),
-): boolean {
-    const hit = tableAtCaret(view.state)
-    if (!hit) return false
-    const next = transform(hit)
-    if (!next) return false
-    const text = buildTable(next, hit.indent, hit.headerIndent)
-    const cell = after(hit)
-    // The header keeps a caret that was on the header or separator; body rows clamp to what is left.
-    const lineIndex = cell.bodyRow < 0 ? 0 : 2 + Math.min(cell.bodyRow, next.rows.length - 1)
-    const column = Math.min(cell.column, next.header.length - 1)
-    view.dispatch({
-        changes: { from: hit.from, to: hit.to, insert: text },
-        selection: { anchor: hit.from + cellPosition(text, lineIndex, column) },
-        userEvent: 'input.complete',
-    })
-    return true
 }
 
 /**
@@ -153,6 +124,9 @@ export function registerEditorCommands(
     const item = (descriptor: CommandMenuItem) => {
         if (wanted(descriptor.id)) offs.push(registerCommandMenuItem(contributions, descriptor))
     }
+    const menuRow = (descriptor: ContextMenuItem) => {
+        if (wanted(descriptor.id)) offs.push(registerContextMenuItem(contributions, descriptor))
+    }
     const barItem = (descriptor: CommandBarItem) => {
         if (wanted(descriptor.id)) offs.push(registerCommandBarItem(contributions, descriptor))
     }
@@ -174,23 +148,24 @@ export function registerEditorCommands(
             if (bodyWritable(view.state)) fn(view, arg)
         })
     const tableEdit = (transform: (hit: TableCaret) => MarkdownTable | null, after?: (hit: TableCaret) => CaretCell) =>
-        withWritableView((view) => void editTableAtCursor(view, transform, after))
+        withWritableView((view) => void editTableAtCaret(view, transform, after))
 
     // ── Editor block-op Commands (the Command Bar's invokers) ─────────────────
     // Thin wrappers over the CM-native outliner commands, reachable from the mobile
     // Command Bar (and any future keybinding/palette). The keymap still calls the CM
     // commands directly — these wrappers are additive (Dual Mode Editor.md → Command Bar).
-    // A text file that is not markdown has no outline: indent moves its text, and the rest do nothing.
+    // A file in the Text Editor has no outline: indent and move act on its lines, and the rest do nothing.
     const inOutline = (fn: (view: EditorView) => void) => withWritableView((view) => void (view.state.facet(isTextFile) || fn(view)))
     // In a Plain Folder the other list kinds answer first, as they do to the keys (list-items-keymap.ts).
     command('editor.indent', withWritableView((view) => void (view.state.facet(isTextFile) ? indentMore(view) : indentListItem(view) || indentBranch(view))))
     command('editor.outdent', withWritableView((view) => void (view.state.facet(isTextFile) ? indentLess(view) : outdentListItem(view) || outdentBranch(view))))
-    command('editor.moveUp', inOutline((view) => void moveBranchUp(view)))
-    command('editor.moveDown', inOutline((view) => void moveBranchDown(view)))
+    command('editor.moveUp', withWritableView((view) => void (view.state.facet(isTextFile) ? moveLineUp(view) : moveBranchUp(view))))
+    command('editor.moveDown', withWritableView((view) => void (view.state.facet(isTextFile) ? moveLineDown(view) : moveBranchDown(view))))
     command('editor.toggleTask', inOutline((view) => void toggleTask(view)))
     command('editor.toggleBullet', inOutline((view) => void toggleBullet(view)))
     command('editor.toggleFold', withView((view) => void toggleFoldAtCaret(view)))
-    command('editor.openCommandMenu', withView((view) => openCommandMenu(view)))
+    // In a table's cell the menu opens in the cell's own editor, where the caret is drawn (table-cell-editor.ts).
+    command('editor.openCommandMenu', withView((view) => openCommandMenu(cellInputView(view))))
     // The bracket buttons. Over a selection the wrap rule takes (one line, not only whitespace, not
     // the frontmatter) either makes the whole wikilink at once, the word left selected so the
     // completion opens on it: the wrap key's decision on a phone (wrap-selection.ts, ADR 0077).
@@ -237,7 +212,11 @@ export function registerEditorCommands(
     command('date.tomorrow', withWritableView((view) => insertAtCursor(view, dayLink(1))))
     command(
         'date.pick',
-        withWritableView((view) => view.dispatch({ effects: openDateCalendar.of({ pos: view.state.selection.main.head }) })),
+        withWritableView((view) => {
+            // The calendar opens at the caret, which in a table's cell is the cell's own editor's.
+            const at = cellInputView(view)
+            at.dispatch({ effects: openDateCalendar.of({ pos: at.state.selection.main.head }) })
+        }),
     )
     // Refused here AND in `startAssetUpload`: the dialog is one of three routes to an upload,
     // and the bytes must never move for a body that will not take the reference.
@@ -248,9 +227,47 @@ export function registerEditorCommands(
     command('table.insert', withWritableView((view, arg) => insertTable(view, arg)))
     command('table.addColumn', tableEdit((h) => addColumns(h.table, Math.max(h.column, 0), 1)))
     command('table.addRow', tableEdit((h) => addRows(h.table, 1, h.bodyRow >= 0 ? h.bodyRow : undefined)))
+    // Above and below, left and right: the grid's row and column menus (and the Command Menu's rows).
+    // Each puts the caret in the new row or column, where the next thing typed belongs. A table
+    // always has its header first, so nothing goes above it.
+    command('table.addRowAbove', tableEdit((h) => (h.bodyRow >= 0 ? addRows(h.table, 1, h.bodyRow - 1) : null)))
+    command('table.addRowBelow', tableEdit((h) => addRows(h.table, 1, Math.max(h.bodyRow, -1)), (h) => ({ bodyRow: Math.max(h.bodyRow, -1) + 1, column: h.column })))
+    command('table.addColumnLeft', tableEdit((h) => addColumns(h.table, h.column - 1, 1)))
+    command('table.addColumnRight', tableEdit((h) => addColumns(h.table, h.column, 1), (h) => ({ bodyRow: h.bodyRow, column: h.column + 1 })))
+    // A column's alignment, written in its delimiter cell. Choosing the one it has takes it off again.
+    const align = (value: Align) => tableEdit((h) => setColumnAlign(h.table, h.column, h.table.align[h.column] === value ? null : value))
+    command('table.alignLeft', align('left'))
+    command('table.alignCenter', align('center'))
+    command('table.alignRight', align('right'))
     command('table.format', tableEdit((h) => formatTable(h.table)))
-    command('table.removeRow', tableEdit((h) => removeRow(h.table, h.bodyRow)))
-    command('table.removeColumn', tableEdit((h) => removeColumn(h.table, h.column)))
+    // Show the table's markdown in place of its grid, until the caret leaves the table
+    // (`tablesAsTextField`, table-cell.ts). The caret stays where it was, now in the row's text, and the keyboard
+    // goes with it: the cell's editor hands it back to the document's as it goes (table-cell-editor.ts).
+    command(
+        'table.editAsText',
+        withWritableView((view) => {
+            const hit = tableAtCaret(view.state)
+            if (!hit) return
+            view.dispatch({ effects: editTableAsText.of(hit.from) })
+        }),
+    )
+    // With a block of cells selected in the grid, every row or column of the block goes (ADR 0205).
+    command(
+        'table.removeRow',
+        withWritableView((view) => {
+            const rect = cellBlock(view.state)?.rect
+            if (rect) editTableAtCaret(view, (h) => removeRows(h.table, rect.top, rect.bottom), (h) => ({ bodyRow: h.bodyRow < 0 ? h.bodyRow : Math.max(rect.top, 0), column: h.column }))
+            else editTableAtCaret(view, (h) => removeRow(h.table, h.bodyRow))
+        }),
+    )
+    command(
+        'table.removeColumn',
+        withWritableView((view) => {
+            const rect = cellBlock(view.state)?.rect
+            if (rect) editTableAtCaret(view, (h) => removeColumns(h.table, rect.left, rect.right), (h) => ({ bodyRow: h.bodyRow, column: rect.left }))
+            else editTableAtCaret(view, (h) => removeColumn(h.table, h.column))
+        }),
+    )
     // The caret's row becomes the first when everything above it goes; its column the first when
     // everything left of it goes. The other edits keep the caret in its own cell (clamped).
     command('table.removeRowsAbove', tableEdit((h) => removeRowsAbove(h.table, Math.max(h.bodyRow, 0)), (h) => ({ bodyRow: h.bodyRow < 0 ? h.bodyRow : 0, column: h.column })))
@@ -266,7 +283,7 @@ export function registerEditorCommands(
     // button is one of them - it types a `/` to open the menu, and on a locked document the
     // menu would offer only Search, which the sidebar already does. Zoom buttons float to the
     // right (align:'end', always enabled); the fold button stays live, a fold being view state.
-    barItem({ id: 'editor.openCommandMenu', icon: 'slash', label: 'Commands', order: 0, command: 'editor.openCommandMenu', writableOnly: true })
+    barItem({ id: 'editor.openCommandMenu', icon: 'slash', label: 'Commands', order: 0, command: 'editor.openCommandMenu', writableOnly: true, markdownOnly: true })
     // The table group is a Contextual Group (CONTEXT.md → Command Bar): present only while the
     // caret is in a table, absent otherwise, and placed right after the slash button so it is on
     // screen without scrolling. Its remove buttons grey where their Command would refuse - the
@@ -326,11 +343,11 @@ export function registerEditorCommands(
     // Outdent and Indent come straight after the `[[ ]]` pair (orders 4 and 5): with the bullet
     // toggle they are how a phone shapes an outline while typing, so they sit in the strip's first
     // screenful, ahead of the task toggle.
-    barItem({ id: 'editor.outdent', icon: 'outdent', label: 'Outdent', order: 4, command: 'editor.outdent', outlinerOnly: true, writableOnly: true })
+    barItem({ id: 'editor.outdent', icon: 'outdent', label: 'Outdent', order: 4, command: 'editor.outdent', outlinerOnly: true, actsOnTextLines: true, writableOnly: true })
     // Indent is live on prose too: there it makes the line a block (the mobile way into block mode).
     barItem({ id: 'editor.indent', icon: 'indent', label: 'Indent', order: 5, command: 'editor.indent', convertibleOnly: true, writableOnly: true })
-    barItem({ id: 'editor.moveUp', icon: 'move-up', label: 'Move up', order: 30, command: 'editor.moveUp', outlinerOnly: true, writableOnly: true })
-    barItem({ id: 'editor.moveDown', icon: 'move-down', label: 'Move down', order: 40, command: 'editor.moveDown', outlinerOnly: true, writableOnly: true })
+    barItem({ id: 'editor.moveUp', icon: 'move-up', label: 'Move up', order: 30, command: 'editor.moveUp', outlinerOnly: true, actsOnTextLines: true, writableOnly: true })
+    barItem({ id: 'editor.moveDown', icon: 'move-down', label: 'Move down', order: 40, command: 'editor.moveDown', outlinerOnly: true, actsOnTextLines: true, writableOnly: true })
     // Order 6, after Outdent and Indent, not 50 among the block ops: on a phone the strip
     // scrolls, and at 50 the one button people reach for on a task was off-screen.
     // `taskToggleOnly`, not `outlinerOnly`: on prose the toggle MAKES the line a task, so the
@@ -387,6 +404,12 @@ export function registerEditorCommands(
     item({ id: 'table.insert', title: 'Table', detail: 'Insert a table (choose its size)', icon: 'table', group: 'Insert', order: 10, keywords: ['grid'], when: insertable, command: 'table.insert', actsOnText: true })
     item({ id: 'table.addColumn', title: 'Table: Add column', detail: 'Add a column after this one', icon: 'table-add-column', group: 'Insert', order: 12, when: inTable, command: 'table.addColumn', actsOnText: true })
     item({ id: 'table.addRow', title: 'Table: Add row', detail: 'Add a row below', icon: 'table-add-row', group: 'Insert', order: 12, when: inTable, command: 'table.addRow', actsOnText: true })
+    item({ id: 'table.addRowAbove', title: 'Table: Add row above', detail: 'Above this one', icon: 'table-add-row', group: 'Insert', order: 12, when: inTable, command: 'table.addRowAbove', actsOnText: true })
+    item({ id: 'table.addColumnLeft', title: 'Table: Add column left', detail: 'Before this one', icon: 'table-add-column', group: 'Insert', order: 12, when: inTable, command: 'table.addColumnLeft', actsOnText: true })
+    item({ id: 'table.alignLeft', title: 'Table: Align left', detail: 'This column', icon: 'align-left', group: 'Insert', order: 12, when: inTable, command: 'table.alignLeft', actsOnText: true })
+    item({ id: 'table.alignCenter', title: 'Table: Align centre', detail: 'This column', icon: 'align-center', group: 'Insert', order: 12, keywords: ['center', 'middle'], when: inTable, command: 'table.alignCenter', actsOnText: true })
+    item({ id: 'table.alignRight', title: 'Table: Align right', detail: 'This column', icon: 'align-right', group: 'Insert', order: 12, when: inTable, command: 'table.alignRight', actsOnText: true })
+    item({ id: 'table.editAsText', title: 'Table: Edit as text', detail: 'Show the markdown of this table', icon: 'code', group: 'Insert', order: 12, when: inTable, command: 'table.editAsText', actsOnText: true })
     item({ id: 'table.format', title: 'Table: Format', detail: 'Normalise column widths', icon: 'table-format', group: 'Insert', order: 12, when: inTable, command: 'table.format', actsOnText: true })
     item({ id: 'table.removeRow', title: 'Table: Remove row', detail: 'Remove the current row', icon: 'table-remove-row', group: 'Insert', order: 12, when: inTable, command: 'table.removeRow', actsOnText: true })
     item({ id: 'table.removeColumn', title: 'Table: Remove column', detail: 'Remove the current column', icon: 'table-remove-column', group: 'Insert', order: 12, when: inTable, command: 'table.removeColumn', actsOnText: true })
@@ -394,6 +417,23 @@ export function registerEditorCommands(
     item({ id: 'table.removeRowsBelow', title: 'Table: Remove rows below', detail: 'Remove rows below', icon: 'table-remove-row', group: 'Insert', order: 12, when: inTable, command: 'table.removeRowsBelow', actsOnText: true })
     item({ id: 'table.removeColumnsRight', title: 'Table: Remove columns right', detail: 'Remove columns to the right', icon: 'table-remove-column', group: 'Insert', order: 12, when: inTable, command: 'table.removeColumnsRight', actsOnText: true })
     item({ id: 'table.removeColumnsLeft', title: 'Table: Remove columns left', detail: 'Remove columns to the left', icon: 'table-remove-column', group: 'Insert', order: 12, when: inTable, command: 'table.removeColumnsLeft', actsOnText: true })
+
+    // ── The Table Grid's row and column menus (ADR 0205) ──────────────────────
+    // Raised by the handles on the grid (markdown-table.ts). The press that raises one has put the
+    // caret in that row and column, so each row is the Command the Command Menu runs at the caret.
+    const onRow = (target: Parameters<NonNullable<ContextMenuItem['when']>>[0]) => target.kind === 'table-row'
+    const onColumn = (target: Parameters<NonNullable<ContextMenuItem['when']>>[0]) => target.kind === 'table-column'
+    const aligned = (value: Align) => (target: Parameters<NonNullable<ContextMenuItem['checked']>>[0]) => isTableTarget(target) && target.align === value
+    menuRow({ id: 'table.addRowAbove', label: 'Add row above', icon: 'table-add-row', order: 10, command: 'table.addRowAbove', when: (target) => isTableTarget(target) && onRow(target) && !target.header })
+    menuRow({ id: 'table.addRowBelow', label: 'Add row below', icon: 'table-add-row', order: 11, command: 'table.addRowBelow', when: onRow })
+    menuRow({ id: 'table.addColumnLeft', label: 'Add column left', icon: 'table-add-column', order: 10, command: 'table.addColumnLeft', when: onColumn })
+    menuRow({ id: 'table.addColumnRight', label: 'Add column right', icon: 'table-add-column', order: 11, command: 'table.addColumnRight', when: onColumn })
+    menuRow({ id: 'table.alignLeft', label: 'Align left', order: 20, command: 'table.alignLeft', separatorBefore: true, when: onColumn, checked: aligned('left') })
+    menuRow({ id: 'table.alignCenter', label: 'Align centre', order: 21, command: 'table.alignCenter', when: onColumn, checked: aligned('center') })
+    menuRow({ id: 'table.alignRight', label: 'Align right', order: 22, command: 'table.alignRight', when: onColumn, checked: aligned('right') })
+    menuRow({ id: 'table.editAsText', label: 'Edit table as text', icon: 'code', order: 30, command: 'table.editAsText', separatorBefore: true, when: isTableTarget })
+    menuRow({ id: 'table.removeRow', label: (target) => (isTableTarget(target) && target.selectedRows > 1 ? `Remove ${target.selectedRows} rows` : 'Remove row'), icon: 'table-remove-row', order: 40, command: 'table.removeRow', separatorBefore: true, danger: true, when: (target) => isTableTarget(target) && onRow(target) && !target.header })
+    menuRow({ id: 'table.removeColumn', label: (target) => (isTableTarget(target) && target.selectedColumns > 1 ? `Remove ${target.selectedColumns} columns` : 'Remove column'), icon: 'table-remove-column', order: 40, command: 'table.removeColumn', separatorBefore: true, danger: true, when: (target) => isTableTarget(target) && onColumn(target) && target.columns > target.selectedColumns })
 
     return () => offs.forEach((off) => off())
 }

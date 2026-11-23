@@ -96,7 +96,16 @@
         if (item.tableMultiColumnOnly && !(editorContext.table && editorContext.table.columns > 1)) return true
         if (item.undoOnly && !editorContext.canUndo) return true
         if (item.redoOnly && !editorContext.canRedo) return true
-        return !!item.outlinerOnly && !editorContext.inOutlinerBlock
+        return offForItsLine(item)
+    }
+
+    /**
+     * An outliner's button off a bullet. The Text Editor has no outline and no Command Menu, so there
+     * it is every button that does not act on a line of text.
+     */
+    function offForItsLine(item: CommandBarItem): boolean {
+        if (editorContext.textFile) return item.markdownOnly === true || (item.outlinerOnly === true && !item.actsOnTextLines)
+        return item.outlinerOnly === true && !editorContext.inOutlinerBlock
     }
 
     /** A file is in front that this button does not work on. */

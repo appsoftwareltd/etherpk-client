@@ -1,8 +1,9 @@
 /**
- * Pure parsing of an image's **display size** — the rendered width/height on screen,
- * distinct from the file's byte size. It is expressed as a hint in the alt text
+ * Pure parsing of the **display size** of a picture or a video — the rendered width/height on
+ * screen, distinct from the file's byte size. It is expressed as a hint in the alt text
  * (`![alt|300](url)`, `![alt|640x480](url)`) and is always a **maximum**: the image
- * scales down to fit, never up. Ported from the AS Notes inline editor. We use the
+ * scales down to fit, never up. A video takes the width alone, and fills its column without one
+ * (media-embed.ts). Ported from the AS Notes inline editor. We use the
  * standard-markdown alt form (not Obsidian's `![[img|300]]` embed) because CONTEXT.md →
  * Wikilink bans `|`-label syntax.
  *
@@ -69,7 +70,7 @@ export function parseImageDisplaySizeHint(alt: string): ParsedAlt {
 
 /**
  * `alt` with its display-size hint set to `width` px, or removed for `null`; the label is kept. A
- * `WxH` hint becomes the width alone: what the resize handle writes (image-resize.ts), which sizes
+ * `WxH` hint becomes the width alone: what the resize handle writes (resize-handle.ts), which sizes
  * by width and keeps the aspect ratio.
  */
 export function withDisplayWidth(alt: string, width: number | null): string {

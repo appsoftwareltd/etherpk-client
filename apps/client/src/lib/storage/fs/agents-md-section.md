@@ -319,7 +319,8 @@ table cannot sit inside a code block or the frontmatter.
   `[label](...)`. A picture or a player shows only when the line holds nothing else, or is a
   bullet's only content, so give each a line of its own. HTML such as `<video>` is shown as text.
 - An optional display-size hint after a `|` in an image's alt caps the rendered size: `|300` is a maximum width, `|640x480` a
-  maximum width and height. It never enlarges.
+  maximum width and height. It never enlarges. A video fills the text column, and a hint caps its
+  width alone. A hint does nothing on an audio file.
 - EtherPK names the files it stores `<kebab-name>.<8 hex chars of content hash>.<ext>` and
   de-duplicates by content. To add an asset yourself, copy the file into `assets/` under any
   name and reference it - the hash is optional. If this folder is served to you over MCP

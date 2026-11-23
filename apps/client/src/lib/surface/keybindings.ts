@@ -288,6 +288,8 @@ const KEY_CAPS: Record<string, string> = {
     enter: 'Enter',
     tab: 'Tab',
     escape: 'Esc',
+    drag: 'Drag',
+    click: 'Click',
     backspace: 'Backspace',
     delete: 'Delete',
     pageup: 'Page Up',

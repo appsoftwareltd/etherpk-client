@@ -23,3 +23,19 @@ export const CODE_TOKEN_STYLES: readonly TagStyle[] = [
     { tag: t.tagName, color: 'var(--gk-code-tag, #22863a)' },
     { tag: t.invalid, color: 'var(--gk-code-invalid, #d00)' },
 ]
+
+/**
+ * Markdown's own tokens, for a markdown file shown as its source in the Text Editor (text-file.ts).
+ * Added after the table above, which has none of them: a document draws its markdown instead.
+ */
+export const MARKDOWN_SOURCE_STYLES: readonly TagStyle[] = [
+    { tag: t.heading, color: 'var(--gk-code-keyword, #0a7)', fontWeight: '600' },
+    { tag: t.strong, fontWeight: '600' },
+    { tag: t.emphasis, fontStyle: 'italic' },
+    { tag: t.strikethrough, textDecoration: 'line-through' },
+    { tag: t.monospace, color: 'var(--gk-code-string, #690)' },
+    { tag: t.quote, color: 'var(--gk-code-comment, #999)' },
+    { tag: [t.url, t.link], color: 'var(--gk-code-prop, #268bd2)' },
+    // The markers: a list's dash, a heading's #, a fence's backticks.
+    { tag: t.processingInstruction, color: 'var(--gk-code-op, #555)' },
+]

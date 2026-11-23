@@ -5,6 +5,51 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Tables you edit in the grid.** Click a cell of a table and type, and the table stays drawn.
+  **Tab**, **Enter** and the arrow keys move between cells, and `/` in a cell opens the command menu.
+  Handles on the grid's borders add, remove and align rows and columns. You can select a block of
+  cells, copy it, and paste rows from a spreadsheet. **Table: Edit as text** shows a table's
+  Markdown, which putting the cursor in a table did before. A table is now as wide as its cells
+  need, where before it filled the width of the text.
+- **Larger videos you can resize.** A video in a document is as wide as the text, with no space around
+  its picture. Drag the handle in the picture's bottom right corner to make it smaller, which writes
+  the width into its line as it does for a picture (`![clip|480](../assets/clip.webm)`). A drag to the
+  edge of the text, or a double click on the handle, makes it full width again. A video in a tab of
+  its own, and on a published site, is as wide as it fits.
+- **Pictures on a touch screen.** A tap on a picture in a document now shows its actions and its
+  resize handle, and a second tap hides them. Before, they were always over the picture and a tap
+  opened its line of Markdown. **Edit as text**, the first of the actions, opens that line. With a
+  mouse nothing changes.
+- **The Graphs page.** Its sections are always in one order: synced graphs, Folder graphs, Plain
+  Folders. The buttons beside the title are filled and have icons, and so do the tabs. Sync has one
+  icon everywhere. On a narrow screen a card keeps **Open** beside the graph's name, with its other
+  buttons on the line below. A graph you own says **Owner** once, in its member list.
+- **Text Editor in Plain Folders.** A Markdown file in a Plain Folder opens in the Markdown Editor or
+  the Text Editor, which shows its source with line numbers. Change it from the editor's name above
+  the file or with **Alt+M**. **Default file editor** is under **General** in **Folder settings**.
+- **A breadcrumb above each text file of a Plain Folder,** with its folders, its name and the
+  headings the cursor is under. Select one to go there.
+- **Code and text files in Plain Folders.** Every line has a number. A line can be bookmarked, from
+  the space beside its number or with **Ctrl+Alt+K**. Hold **Alt** and drag to edit several lines at
+  once.
+- **Fixes.**
+  - On a synced graph, adding a row or a column to a table leaves another person's cursor in the
+    cell they are typing in.
+  - A table command keeps the cells of a row that has more cells than the table's header. Every
+    row is given that many columns.
+  - Importing an Obsidian vault keeps the width of an embedded video.
+  - The player of a folded bullet stays when the last bullet inside it is folded too.
+  - In a picture's line of Markdown, a drag selects text, a double click selects a word and
+    Shift+click extends the selection. On a touch screen, a double tap and a long press select as
+    on any other line.
+  - In a code file, a selection covers the indent of each line.
+  - On a phone, the Command Bar's buttons that do nothing in a code file are off there, and **Move
+    up**, **Move down** and **Outdent** act on its lines.
+
 ## 0.45.0 - 2026-11-23
 
 ### Client

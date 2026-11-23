@@ -9,6 +9,10 @@
  * the caret is on another line, however it got there. A pure decoration over unaltered markdown
  * (ADR 0001).
  *
+ * A finger or a pen has no hover to show the picture's controls first, so its tap **selects** the
+ * picture instead of revealing it (image-select.ts): the actions and the resize handle show, with
+ * **Edit as text** among them, which is the mouse's click. The keyboard stays as it was.
+ *
  * The widget keeps CodeMirror's height map true (ADR 0022's height-integrity rule): its vertical
  * spacing is **padding, never margin**, because CM measures a block widget by its border box and
  * a margin is invisible height that shifts the click mapping of every line below (about 13px per
@@ -20,9 +24,10 @@
  *
  * Caret placement on a revealed image line uses the browser's own hit-test ({@link posFromPoint})
  * against the markdown's text rows ({@link textRowY}): the revealed line reserves the image's
- * height, and a click in the empty space below the text lands on the last row by its X. A click on
- * the rendered image puts the caret at the end of the markdown ({@link imageClickCaret}). See
- * tests-client/image-caret.test.ts.
+ * height, and a click in the empty space below the text lands on the last row by its X. It is a
+ * pointer selection style ({@link imageLineSelection}), so a drag, a double click and Shift+click
+ * select as on any line, and a touch is the browser's own. A click on the rendered image puts the
+ * caret at the end of the markdown ({@link imageClickCaret}). See tests-client/image-caret.test.ts.
  *
  * The `src` comes from the injected `resolveAsset`: remote (`http(s):`/`data:`/`blob:`)
  * urls are used directly, asset references (`../assets/x.png`) are resolved to an object
@@ -40,18 +45,21 @@
  * asks again (`asset-load-retry.ts`); any other failure shows the broken state.
  */
 
-import { type EditorState, type Extension, Facet, findClusterBreak, type Range, StateEffect, StateField, type TransactionSpec } from '@codemirror/state'
-import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
+import { EditorSelection, type EditorState, type Extension, Facet, findClusterBreak, type Range, StateEffect, StateField, type TransactionSpec } from '@codemirror/state'
+import { Decoration, type DecorationSet, EditorView, type MouseSelectionStyle, WidgetType } from '@codemirror/view'
 
-import { AssetUnavailableError, type ResolvedAsset, assetNameFromRef } from '#lib/storage/fs/asset-store.js'
+import { AssetUnavailableError, type ResolvedAsset, assetNameFromRef, displayNameForRef } from '#lib/storage/fs/asset-store.js'
 
 import { assetTargetAt, attachAssetContextMenu, buildAssetActions } from './asset-actions'
 import { loadAssetWithRetry } from './asset-load-retry'
+import { withinClickSlop } from './click-slop'
 import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, blockWidgetIndent, proseTextInset } from './content-clamp'
 import { displayMaxWidth, parseImageDisplaySizeHint } from './image-display-size'
 import { type ImageFootprint, activeImageFootprints, persistableImageUrl } from './image-footprints'
 import { isDirectImageUrl } from './image-target'
-import { HANDLE_INSIDE_MIN, attachResizeHandle, imageResizeTheme, imageWidthChange } from './image-resize'
+import { imageDeselectSpec, imageTapSpec, isRenderedImageLine, selectedImageField, selectedImageLine } from './image-select'
+import { actionButtonTheme, buildActionCluster } from './inline-actions'
+import { HANDLE_INSIDE_MIN, MIN_DISPLAY_WIDTH, attachResizeHandle, displayWidthChange, resizeHandleTheme } from './resize-handle'
 import { isProtectedDocumentFacet } from './protected-document'
 import { lineRevealed, revealInputsChanged, revealedLines } from './reveal-policy'
 import { isBulletImageLine, isImageLine, parseImageLine } from '../../image-line'
@@ -124,6 +132,20 @@ function hostOf(url: string): string {
 
 /** How far the action overlay is inset from the image's top-right corner. */
 const OVERLAY_INSET = 6
+
+/**
+ * The first of a selected picture's actions: show its markdown, as a mouse's click on it does. A
+ * tap selects the picture, so this is how a finger gets to the text. The label is an Extension
+ * Fence's for the same thing.
+ */
+const EDIT_AS_TEXT = { command: 'edit-as-text', icon: 'rename', label: 'Edit as text' }
+
+/**
+ * Whether the press under way in an editor is a finger's or a pen's, which a tap on a picture
+ * selects where a mouse's click reveals. Set from `pointerdown`, which comes before the `mousedown`
+ * a tap makes.
+ */
+const fingerPress = new WeakMap<EditorView, boolean>()
 
 /**
  * The document position under a screen point, via the browser's own hit-testing (real DOM
@@ -295,6 +317,8 @@ class ImageWidget extends WidgetType {
         readonly uploading = false,
         /** See {@link decodeGenerations}: differs from the previous widget's once its picture has decoded. */
         readonly decodeGeneration = 0,
+        /** A tap selected it (image-select.ts): its controls show, Edit as text among them. */
+        readonly selected = false,
     ) {
         super()
     }
@@ -308,7 +332,8 @@ class ImageWidget extends WidgetType {
             this.indent === other.indent &&
             this.inline === other.inline &&
             this.uploading === other.uploading &&
-            this.decodeGeneration === other.decodeGeneration
+            this.decodeGeneration === other.decodeGeneration &&
+            this.selected === other.selected
         )
     }
 
@@ -343,10 +368,10 @@ class ImageWidget extends WidgetType {
     }
 
     /**
-     * A notice appearing or clearing, the decode generation moving on, or a shown picture's size hint
-     * changing (a drag of the resize handle) is the only difference between two widgets of the same
-     * identity, and updating in place keeps the picture where it is; anything else rebuilds the widget,
-     * which would otherwise reload the picture through its placeholder.
+     * A notice appearing or clearing, the decode generation moving on, a tap selecting or deselecting
+     * it, or a shown picture's size hint changing (a drag of the resize handle) is the only difference
+     * between two widgets of the same identity, and updating in place keeps the picture where it is;
+     * anything else rebuilds the widget, which would otherwise reload the picture through its placeholder.
      */
     updateDOM(dom: HTMLElement, view: EditorView): boolean {
         if (dom.dataset.imageIdentity !== this.identity()) return false
@@ -359,6 +384,7 @@ class ImageWidget extends WidgetType {
         const notice = wrap.querySelector('.cm-md-image-uploading')
         if (this.uploading && !notice) wrap.appendChild(this.buildUploadingNotice())
         else if (!this.uploading && notice) notice.remove()
+        wrap.classList.toggle('cm-md-image--selected', this.selected)
         if (resized && img) {
             this.applySize(img)
             dom.dataset.imageSize = this.sizeStamp()
@@ -375,7 +401,7 @@ class ImageWidget extends WidgetType {
         // insets stay measured from the picture's corner; the bullet variant is an inline box inside its
         // line and needs no root of its own.
         const wrap = document.createElement('div')
-        wrap.className = this.inline ? 'cm-md-image cm-md-image--inline' : 'cm-md-image'
+        wrap.className = ['cm-md-image', this.inline && 'cm-md-image--inline', this.selected && 'cm-md-image--selected'].filter(Boolean).join(' ')
         const root = this.inline ? wrap : document.createElement('div')
         if (root !== wrap) {
             root.className = 'cm-md-image-block'
@@ -644,9 +670,10 @@ class ImageWidget extends WidgetType {
     }
 
     /**
-     * What sits over a shown picture: the asset actions at its top-right corner ({@link addActions})
-     * and the resize handle at its bottom-right (image-resize.ts), both raised while the pointer is
-     * over the picture. A broken picture has no size to change, so it gets no handle.
+     * What sits over a shown picture: the actions at its top-right corner ({@link addActions}) and
+     * the resize handle at its bottom-right (resize-handle.ts), both raised while a mouse or a
+     * hovering pen is over the picture, or once a tap has selected it (image-select.ts). A broken
+     * picture has no size to change, so it gets no handle.
      *
      * The overlays are **siblings of the image inside the wrap**, positioned from the image's
      * measured box rather than by wrapping the image in a hugging element. A wrapper is the
@@ -659,17 +686,28 @@ class ImageWidget extends WidgetType {
      */
     private addOverlays(view: EditorView, root: HTMLElement, img: HTMLImageElement, canDownload: boolean, broken: boolean): void {
         const wrap = wrapOf(root)
-        const actions = this.addActions(view, wrap, canDownload)
+        const actions = this.addActions(view, root, wrap, canDownload)
         // A read-only editor (a theme preview) has nothing to write, so it offers no handle.
         const handle =
             broken || view.state.readOnly
                 ? null
                 : attachResizeHandle(view, wrap, img, {
+                      title: 'Drag to resize. Double-click for the original size.',
+                      // A picture is never enlarged, so a width past its own would write a number it cannot show.
+                      limits: () => ({ narrowest: MIN_DISPLAY_WIDTH, widest: Math.min(img.naturalWidth || img.getBoundingClientRect().width, columnWidth(wrap, img)) }),
                       commit: (width) => {
                           // Read the line live from the widget's DOM, as the click handler does: CM reuses
                           // the DOM across edits above it, so an offset kept from building it goes stale.
-                          const spec = imageWidthChange(view.state, view.posAtDOM(root), this.url, width)
+                          const spec = displayWidthChange(view.state, view.posAtDOM(root), this.url, width)
                           if (spec) view.dispatch(spec)
+                      },
+                      // A cancelled drag puts the picture's height back with no transaction: redraw, as for a decode.
+                      ended: () => {
+                          if (!root.isConnected) return
+                          const key = imageKeyOn(view.state.doc.lineAt(view.posAtDOM(root)).text)
+                          if (key === null) return
+                          markImageDecoded(key)
+                          view.dispatch({ effects: imageDecoded.of(key) })
                       },
                   })
 
@@ -678,35 +716,32 @@ class ImageWidget extends WidgetType {
             wrap.style.setProperty('--gk-image-gap-right', `${gap}px`)
             wrap.style.setProperty('--gk-image-gap-bottom', `${Math.max(0, wrap.clientHeight - (img.offsetTop + img.offsetHeight))}px`)
             wrap.classList.toggle('cm-md-image--small', Math.min(img.offsetWidth, img.offsetHeight) < HANDLE_INSIDE_MIN)
-            if (!actions) return
-            // An overlay wider than its image would cover the picture completely - a 40px-wide
-            // image against three icons - leaving nothing to hover, click or read. Put it just
-            // BESIDE such an image instead, which a negative offset does (the wrap does not clip).
-            const overhangs = actions.offsetWidth + OVERLAY_INSET * 2 > img.offsetWidth
-            const right = overhangs ? gap - actions.offsetWidth - OVERLAY_INSET * 2 : gap
-            wrap.style.setProperty('--gk-actions-right', `${right}px`)
+            wrap.style.setProperty('--gk-actions-right', `${actionsRight(wrap, img, actions, gap)}px`)
         }
         trackImageBox()
-        // Fires once on observe and again whenever either box reflows, so the overlays never
-        // drift off the picture. BOTH boxes: the gap is the difference between them, and a
+        // Fires once on observe and again whenever a box reflows, so the overlays never drift off
+        // the picture. The image AND the wrap: the gap is the difference between them, and a
         // drawer or split-pane resize widens the block wrap (it spans the editor) while an image
         // narrower than the editor keeps its size - watching the image alone misses that entirely,
-        // and the overlay slides off along with the wrap's edge.
+        // and the overlay slides off along with the wrap's edge. And the actions, which grow when a
+        // tap selects the picture: Edit as text joins them and each is sized for a finger.
         if (typeof ResizeObserver === 'function') {
             const observer = new ResizeObserver(trackImageBox)
             observer.observe(img)
             observer.observe(wrap)
+            observer.observe(actions)
         }
 
         // Hover is tracked over the image and the overlays specifically, not over the wrap: a
         // block wrap spans the editor, so keying off it would raise the overlays from anywhere on
         // the row. `pointerover`/`pointerout` rather than enter/leave because these bubble, which
         // is what lets a button - the only part of the actions overlay that takes pointer events -
-        // report for the overlay as a whole.
+        // report for the overlay as a whole. A finger is over the picture only while it presses or
+        // scrolls, which is no hover: its tap selects the picture instead (image-select.ts).
         const setHovered = (on: boolean) => wrap.classList.toggle('cm-md-image--hovered', on)
         const within = (node: Node | null) => !!node && [img, actions, handle].some((part) => part?.contains(node))
         wrap.addEventListener('pointerover', (event) => {
-            if (within(event.target as Node)) setHovered(true)
+            if (event.pointerType !== 'touch' && within(event.target as Node)) setHovered(true)
         })
         wrap.addEventListener('pointerout', (event) => {
             // Moving between the image and an overlay must not flicker the overlays away.
@@ -715,27 +750,49 @@ class ImageWidget extends WidgetType {
     }
 
     /**
-     * The actions the trailing cluster on a link shows, pinned to the image's top-right corner, or
-     * null. Only for an [[Asset Reference]] — a remote image (`https:`, `data:`, `blob:`) is not
-     * stored here, so there is nothing to delete and the browser's own "Save image as" already
-     * covers saving it; offering a trash for it would be a lie.
+     * The actions pinned to the image's top-right corner: Edit as text, which shows only on a picture
+     * a tap selected, then the ones the trailing cluster on a link shows. Those are only for an
+     * [[Asset Reference]] — a remote image (`https:`, `data:`, `blob:`) is not stored here, so there
+     * is nothing to delete and the browser's own "Save image as" already covers saving it; offering
+     * a trash for it would be a lie. Such a picture has Edit as text alone, and so no overlay until
+     * it is selected.
      *
      * The buttons stop their own `mousedown` from propagating, which is what keeps a click on one
      * from also reaching the widget handler below and revealing the raw markdown behind the
      * dialog.
      */
-    private addActions(view: EditorView, wrap: HTMLElement, canDownload: boolean): HTMLElement | null {
-        if (assetNameFromRef(this.url) === null) return null
+    private addActions(view: EditorView, root: HTMLElement, wrap: HTMLElement, canDownload: boolean): HTMLElement {
+        const isAsset = assetNameFromRef(this.url) !== null
+        // The line is read live from the widget's DOM, as every action's target is (asset-actions.ts).
+        const edit = buildActionCluster<{ lineFrom: number }>(view, {
+            className: 'cm-md-image-edit',
+            buttonClass: 'cm-asset-action',
+            actionAttr: 'data-image-action',
+            name: isAsset ? displayNameForRef(this.url) : this.alt || 'image',
+            actions: [EDIT_AS_TEXT],
+            size: 18,
+            resolveTarget: () => widgetLineFrom(view, root),
+            run: (_command, { lineFrom }) => {
+                view.dispatch(imageClickSpec(view.state, lineFrom))
+                return Promise.resolve(true)
+            },
+        })
+        if (!isAsset) {
+            const actions = wrap.appendChild(document.createElement('span'))
+            actions.className = 'cm-md-image-actions cm-md-image-actions--edit-only'
+            actions.appendChild(edit)
+            return actions
+        }
         const resolve = () => assetTargetAt(view, wrap, this.url, 'start')
         const actions = buildAssetActions(view, this.url, resolve, {
             className: 'cm-md-image-actions',
             size: 18,
             canDownload,
         })
+        actions.prepend(edit)
         wrap.appendChild(actions)
-        // Touch has no hover, so there the overlay is always shown (see the theme below); a long
-        // press on the image raises the same actions through the [[Context Menu]] as well, and
-        // right-click does on a desktop.
+        // A long press on the image raises the same actions through the [[Context Menu]] as well,
+        // and right-click does on a desktop.
         attachAssetContextMenu(view, wrap, resolve)
         return actions
     }
@@ -743,16 +800,60 @@ class ImageWidget extends WidgetType {
     ignoreEvent(event: Event): boolean {
         // The resize handle runs its own gesture; every other event reaches the editor handler
         // (a mousedown places the caret).
-        return event.target instanceof Element && event.target.closest('.cm-md-image-resize') !== null
+        return event.target instanceof Element && event.target.closest('.cm-md-resize-handle') !== null
     }
+}
+
+/** The width (px) the picture may take: from its left edge to the right of its line's text column. */
+function columnWidth(wrap: HTMLElement, img: HTMLImageElement): number {
+    const column = wrap.closest('.cm-line') ?? wrap
+    const right = column.getBoundingClientRect().right - (parseFloat(getComputedStyle(column).paddingRight) || 0)
+    return right - img.getBoundingClientRect().left
+}
+
+/**
+ * Where the line of the image widget `root` starts now, or null when the widget has left the
+ * document. Read live from the DOM, never from an offset kept when the widget was built: CodeMirror
+ * reuses a widget's DOM across edits above it (its `eq` ignores position).
+ */
+function widgetLineFrom(view: EditorView, root: Element): { lineFrom: number } | null {
+    try {
+        return { lineFrom: view.state.doc.lineAt(view.posAtDOM(root)).from }
+    } catch {
+        return null
+    }
+}
+
+/**
+ * `--gk-actions-right` for a picture's actions: how far their right edge sits from the wrap's,
+ * before the inset. Over the picture's top-right corner when they fit on it. An overlay wider than
+ * its image would cover the picture completely - a 40px-wide image against three icons - leaving
+ * nothing to hover, click or read, so it goes just BESIDE such an image instead, which a negative
+ * offset does (the wrap does not clip). Where the column has no room beside it (a small picture on
+ * a phone, whose selected actions are six finger-sized buttons), the actions start at the picture's
+ * left edge and run over it, and no further right than the column's own edge (a picture deep in an
+ * outline), so every one of them stays on the screen.
+ */
+function actionsRight(wrap: HTMLElement, img: HTMLImageElement, actions: HTMLElement, gap: number): number {
+    const width = actions.offsetWidth + OVERLAY_INSET * 2
+    if (width <= img.offsetWidth) return gap
+    // A bullet image's wrap hugs it, so the room beside it is its line's.
+    const room = columnWidth(wrap, img) - img.getBoundingClientRect().width
+    return room >= width ? gap - width : Math.max(gap + img.offsetWidth - width, gap - room)
 }
 
 /** The remembered rendered footprint for the image on `lineText`, or null if none known. */
 function reservedSizeFor(lineText: string): ImageSize | null {
+    const key = imageKeyOn(lineText)
+    return key === null ? null : (activeImageFootprints().get(key) ?? null)
+}
+
+/** The key of the image on `lineText` at the size it asks for, or null when it holds none. */
+function imageKeyOn(lineText: string): string | null {
     const image = parseImageLine(lineText)
     if (!image) return null
     const { maxWidth, maxHeight } = parseImageDisplaySizeHint(image.alt)
-    return activeImageFootprints().get(imageKey(image.url, maxWidth, maxHeight)) ?? null
+    return imageKey(image.url, maxWidth, maxHeight)
 }
 
 /** The markdown of an image line held open at the picture's height, as a mark (see its use). */
@@ -777,6 +878,7 @@ export function forgetImageFootprintsIn(text: string): void {
 function buildDecorations(state: EditorState, options: ImageEmbedOptions): DecorationSet {
     const uploading = state.field(uploadingImagesField)
     const active = revealedLines(state) // line-kind reveal (reveal-policy.ts)
+    const selected = selectedImageLine(state)
     const decos: Range<Decoration>[] = []
     for (const imageLine of analysisFor(state).imageLines) {
         const n = imageLine.line
@@ -815,7 +917,7 @@ function buildDecorations(state: EditorState, options: ImageEmbedOptions): Decor
             const indent = blockWidgetIndent(state, line.from)
             decos.push(
                 Decoration.replace({
-                    widget: new ImageWidget(image.url, cleanAlt, maxWidth, maxHeight, options.resolveAsset, indent, false, uploading.has(image.url), decoded),
+                    widget: new ImageWidget(image.url, cleanAlt, maxWidth, maxHeight, options.resolveAsset, indent, false, uploading.has(image.url), decoded, selected === n),
                     block: true,
                 }).range(line.from, line.to),
             )
@@ -825,12 +927,96 @@ function buildDecorations(state: EditorState, options: ImageEmbedOptions): Decor
         // just the image span, leaving the `- ` marker as real text so the line stays a list item.
         decos.push(
             Decoration.replace({
-                widget: new ImageWidget(image.url, cleanAlt, maxWidth, maxHeight, options.resolveAsset, null, true, uploading.has(image.url), decoded),
+                widget: new ImageWidget(image.url, cleanAlt, maxWidth, maxHeight, options.resolveAsset, null, true, uploading.has(image.url), decoded, selected === n),
                 block: false,
             }).range(line.from + image.imageStart, line.to),
         )
     }
     return Decoration.set(decos, true)
+}
+
+/**
+ * The place in the document under a press or a drag, when the pointer is on an image line outside
+ * its picture: the line's revealed markdown, the space the line holds open below it, or beside a
+ * rendered bullet image. Null anywhere else, which is CodeMirror's to place.
+ *
+ * Found by the browser's hit test at the markdown's *text rows* ({@link textRowY}), not CodeMirror's
+ * coordinate model over the pointer's own Y. The revealed line reserves the image's height (so the
+ * page doesn't jump), leaving an empty gap below the text: a press in that gap still lands in the
+ * markdown by its X, not at the line's end, and a bullet image's line box is as tall as its image,
+ * with no text row under a press beside it. When the row is out of sight, {@link posFromPoint}
+ * measures the row's characters against the X instead.
+ */
+function imageLinePos(view: EditorView, event: MouseEvent): number | null {
+    const target = event.target instanceof Element ? event.target : null
+    if (!target || target.closest('[data-augmentation="image"]')) return null
+    const lineEl = target.closest('.cm-line')
+    if (!lineEl || !view.contentDOM.contains(lineEl)) return null
+    const line = view.state.doc.lineAt(view.posAtDOM(lineEl, 0))
+    // The lines the embed renders, by the analysis: a line of code that reads as an image is CodeMirror's.
+    if (!isRenderedImageLine(view.state, line.number)) return null
+    const hitY = textRowY(view, line.from, imageClickCaret(view.state, line.from), event.clientY)
+    return posFromPoint(view, lineEl, event.clientX, hitY, line.from, line.to)
+}
+
+/**
+ * What a click selects at `pos`, as CodeMirror's own gesture does: the place itself, for a double
+ * click the run of like characters there (a word, or the punctuation between two), and for a
+ * triple click the line with its break.
+ */
+function clickRange(state: EditorState, pos: number, clicks: number): { from: number; to: number } {
+    if (clicks < 2) return { from: pos, to: pos }
+    const line = state.doc.lineAt(pos)
+    if (clicks > 2) return { from: line.from, to: Math.min(state.doc.length, line.to + 1) }
+    if (line.length === 0) return { from: pos, to: pos }
+    // The character after the place, or the one before it at the line's end, and its neighbours of the same kind.
+    const categorize = state.charCategorizer(pos)
+    const text = line.text
+    let from = pos - line.from
+    let to = from
+    if (from === line.length) from = findClusterBreak(text, from, false)
+    else to = findClusterBreak(text, to)
+    const kind = categorize(text.slice(from, to))
+    for (let prev: number; from > 0 && categorize(text.slice((prev = findClusterBreak(text, from, false)), from)) === kind; ) from = prev
+    for (let next: number; to < line.length && categorize(text.slice(to, (next = findClusterBreak(text, to)))) === kind; ) to = next
+    return { from: line.from + from, to: line.from + to }
+}
+
+/**
+ * The selection of a pointer gesture that was pressed at `anchor` with `clicks` clicks and is now at
+ * `head`. The press's end stays put and the pointer's follows it, by whole words after a double
+ * click and whole lines after a triple one. With `extend` (Shift held) the selection the gesture
+ * started from, `before`, reaches to the pointer instead.
+ */
+export function imageLineGesture(state: EditorState, anchor: number, head: number, clicks: number, extend?: EditorSelection): EditorSelection {
+    const to = clickRange(state, head, clicks)
+    if (extend) return extend.replaceRange(extend.main.extend(to.from, to.to))
+    const from = clickRange(state, anchor, clicks)
+    return head < anchor ? EditorSelection.single(from.to, to.from) : EditorSelection.single(from.from, to.to)
+}
+
+/**
+ * The pointer gesture that starts on an image line at `anchor`: CodeMirror's own (a drag selects, a
+ * double click takes a word and a triple one the line, Shift extends), with each place on an image
+ * line found by {@link imageLinePos}. The press may reveal the line, which moves the text under the
+ * pointer (beside a bullet's picture, the markdown takes the picture's place), so it stays a click
+ * until the pointer has moved a click's reach away (click-slop.ts). CodeMirror takes no pointer
+ * selection style for a press within two seconds of a touch, so a finger's tap, long press and
+ * selection handles on the markdown are the browser's own.
+ */
+function imageLineSelection(view: EditorView, start: MouseEvent, anchor: number): MouseSelectionStyle {
+    let before = view.state.selection
+    return {
+        update(update) {
+            if (!update.docChanged) return
+            anchor = update.changes.mapPos(anchor)
+            before = before.map(update.changes)
+        },
+        get(event, extend) {
+            const head = withinClickSlop(start, event) ? anchor : (imageLinePos(view, event) ?? view.posAtCoords({ x: event.clientX, y: event.clientY }, false))
+            return imageLineGesture(view.state, anchor, head, start.detail, extend ? before : undefined)
+        },
+    }
 }
 
 const theme = EditorView.baseTheme({
@@ -879,9 +1065,10 @@ const theme = EditorView.baseTheme({
         color: '#fff',
         pointerEvents: 'none',
     },
-    // The overlay: pinned top-right, invisible until the pointer is over the image (or a button
-    // has keyboard focus, so it is reachable by tab). It sits ON the image, so it carries its own
-    // surface rather than borrowing the page's - an icon over a photograph is otherwise unreadable.
+    // The overlay: pinned top-right, invisible until the pointer is over the image, a tap has
+    // selected it, or a button has keyboard focus, so it is reachable by tab. It sits ON the image,
+    // so it carries its own surface rather than borrowing the page's - an icon over a photograph is
+    // otherwise unreadable.
     '.cm-md-image-actions': {
         position: 'absolute',
         top: `${OVERLAY_INSET}px`,
@@ -904,18 +1091,32 @@ const theme = EditorView.baseTheme({
         // it would disappear under its own controls.
         pointerEvents: 'none',
     },
-    '.cm-md-image--hovered .cm-md-image-actions, .cm-md-image-actions:focus-within': { opacity: '1' },
-    '.cm-md-image--hovered .cm-asset-action, .cm-md-image-actions:focus-within .cm-asset-action': {
+    '.cm-md-image--hovered .cm-md-image-actions, .cm-md-image--selected .cm-md-image-actions, .cm-md-image-actions:focus-within': { opacity: '1' },
+    '.cm-md-image--hovered .cm-md-resize-handle, .cm-md-image--selected .cm-md-resize-handle': { opacity: '1', pointerEvents: 'auto' },
+    // The shared handle always shows where there is no hover, as a video's must. A picture's waits
+    // with its actions for the tap that selects it.
+    '@media (hover: none)': {
+        '.cm-md-image:not(.cm-md-image--selected) .cm-md-resize-handle': { opacity: '0', pointerEvents: 'none' },
+    },
+    // Outside a small picture's corner, overlapping it by 4px so the pointer passes straight onto it.
+    '.cm-md-image--small .cm-md-resize-handle': {
+        right: 'calc(var(--gk-image-gap-right, 0px) - 20px)',
+        bottom: 'calc(var(--gk-image-gap-bottom, 0px) - 20px)',
+    },
+    '.cm-md-image--hovered .cm-asset-action, .cm-md-image--selected .cm-asset-action, .cm-md-image-actions:focus-within .cm-asset-action': {
         pointerEvents: 'auto',
     },
-    // Touch: no hover to reveal the overlay, so it is always shown, as the resize handle is, each
-    // button big enough for a finger (36px). Only the buttons take touches - they stop their own
-    // mousedown, so a tap on one never reveals the markdown - and a tap anywhere else on the image
-    // still belongs to the editor. Long press still raises the same actions as a Context Menu.
-    '@media (hover: none)': {
-        '.cm-md-image-actions': { opacity: '1' },
-        '.cm-md-image-actions .cm-asset-action': { pointerEvents: 'auto', minWidth: '36px', minHeight: '36px' },
-    },
+    // A picture a tap selected: no hover showed its actions first, so the tap does, each button big
+    // enough for a finger (36px), with Edit as text ahead of them, which is how a finger gets to the
+    // markdown. Only the buttons take touches - they stop their own mousedown, so a tap on one never
+    // selects or reveals - and a tap anywhere else on the image still belongs to the editor. Long
+    // press still raises the asset's actions as a Context Menu.
+    '.cm-md-image--selected .cm-md-image-actions .cm-asset-action': { minWidth: '36px', minHeight: '36px' },
+    // Edit as text is the selected picture's alone: a mouse's click on the picture already does it.
+    '.cm-md-image-edit': { display: 'none' },
+    '.cm-md-image--selected .cm-md-image-edit': { display: 'contents' },
+    // A picture that is no asset has no other action, so nothing to show until it is selected.
+    '.cm-md-image:not(.cm-md-image--selected) .cm-md-image-actions--edit-only': { display: 'none' },
     // A broken image has no intrinsic size, so these minimums are what keep the overlay's corner
     // on screen - leaving the trash clickable on exactly the reference a user most wants to
     // clear. Wide enough that the actions and the alt text can both be seen.
@@ -1002,6 +1203,8 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
             if (tr.startState.field(uploadingImagesField) !== tr.state.field(uploadingImagesField)) return buildDecorations(tr.state, options)
             // A picture decoded: the widget for it must change so CM measures its new height (decodeGenerations).
             if (tr.effects.some((e) => e.is(imageDecoded))) return buildDecorations(tr.state, options)
+            // A tap selected a picture or put its controls away: that widget changes in place.
+            if (tr.startState.field(selectedImageField) !== tr.state.field(selectedImageField)) return buildDecorations(tr.state, options)
             return deco
         },
         provide: (f) => EditorView.decorations.from(f),
@@ -1013,62 +1216,72 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
             // the raw markdown would destroy the very widget the menu is being raised on -
             // the image would vanish and no menu would appear (caught by asset-actions.test.ts).
             if (event.button !== 0) return false
-            const target = event.target as HTMLElement | null
-            // Clicking the rendered image: reveal it, with the caret at the end of the markdown
-            // ({@link imageClickCaret}). There is no character under the pointer to map the click onto:
-            // the picture stands in for the whole line. Clicking the revealed markdown positions precisely.
+            // A press on the rendered image. One on its line outside it (the revealed markdown, or
+            // beside a bullet's image) is a pointer selection (`imageLinePointer` below).
             //
             // Resolve the line LIVE from the widget's DOM position — never a stored offset. CM reuses a
             // widget's DOM across edits (its `eq` ignores position), so any offset baked into the element
             // when it was created goes stale the moment text above it changes; reading it back then reveals
             // the wrong line and the image appears unclickable. `posAtDOM` always reflects the current doc.
-            const widget = target?.closest('[data-augmentation="image"]')
-            if (widget) {
-                event.preventDefault()
-                const lineFrom = view.state.doc.lineAt(view.posAtDOM(widget)).from
-                view.dispatch(imageClickSpec(view.state, lineFrom))
-                view.focus()
+            const widget = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-augmentation="image"]')
+            const line = widget && widgetLineFrom(view, widget)
+            if (!widget || !line) return false
+            event.preventDefault()
+            // A finger's or a pen's tap on a shown picture selects it, or deselects the selected one:
+            // its controls come and go, the caret stays, and so does the keyboard. A picture still
+            // loading has no controls to show, so the tap is a click.
+            if (fingerPress.get(view) && pictures.has(widget)) {
+                view.dispatch(imageTapSpec(view.state, line.lineFrom))
                 return true
             }
-            // Clicking the revealed markdown, or beside a rendered bullet image: place the caret on the
-            // line clicked, so repositioning within it can't collapse it. Every other click (another
-            // line, a gap with no line element, below the document) is CodeMirror's to place, and the
-            // reveal follows wherever the caret lands.
-            const lineEl = target?.closest('.cm-line')
-            if (!lineEl) return false
-            const line = view.state.doc.lineAt(view.posAtDOM(lineEl, 0))
-            // A line that renders an image — standalone OR a bullet's inline image (`- ![…]`). For a
-            // bullet-image the line box is as tall as the image, so a click *beside* the image must NOT
-            // fall through to CodeMirror's coordinate mapping, which has no text row under the pointer to
-            // land on — we hit-test the text row instead.
-            if (isImageLine(line.text)) {
-                // Place the caret via the browser's hit-test at the markdown's text row, not CodeMirror's
-                // coord model over the click's own Y, which may lie in the reserved space below the text.
-                // Clicking anywhere on the revealed markdown lands the caret under the pointer. When the
-                // row is out of sight, `posFromPoint` measures the row's characters against the X instead.
-                //
-                // KNOWN LIMITATION — no mouse drag-select / double-click word-select on an image's
-                // markdown line. Preventing the default mousedown is what lets us override CM's wrong
-                // caret placement, but it also suppresses CM's native pointer selection, so you can't
-                // drag to select (or double-click a word) within `![alt|w](…)`. Workaround: click to
-                // position, then Shift+Arrow to extend. If this is reported as a bug, the fix is to
-                // place the caret here without killing native selection — e.g. only intervene when
-                // CM's hit-test actually disagrees with the browser's, or implement drag handling
-                // ourselves. See tests-client/image-caret.test.ts for the positioning regression.
-                event.preventDefault()
-                // Hit-test the markdown's *text rows*, not the raw click Y. The revealed line reserves the
-                // image's height (so the page doesn't jump), leaving an empty gap below the text; a click
-                // in that gap should still place the caret in the markdown by its X, not fall to line-end.
-                const hitY = textRowY(view, line.from, imageClickCaret(view.state, line.from), event.clientY)
-                const pos = posFromPoint(view, lineEl, event.clientX, hitY, line.from, line.to)
-                view.dispatch({ selection: { anchor: pos } })
-                view.focus()
-                return true
-            }
-            return false // let CodeMirror place the caret normally
+            // A click reveals it, with the caret at the end of the markdown ({@link imageClickCaret}).
+            // There is no character under the pointer to map the click onto: the picture stands in
+            // for the whole line. Clicking the revealed markdown positions precisely.
+            view.dispatch(imageClickSpec(view.state, line.lineFrom))
+            view.focus()
+            return true
         },
     })
 
-    // Field order matters: frozen-height → uploading → imageField (reads both).
-    return [frozenHeightField, uploadingImagesField, imageField, pointer, theme, imageResizeTheme, options.remote ? remoteImagePolicy.of(options.remote) : []]
+    // Observers, so they hear a press whichever augmentation's handler takes it.
+    const presses = EditorView.domEventObservers({
+        pointerdown(event, view) {
+            fingerPress.set(view, event.pointerType !== 'mouse')
+        },
+        mousedown(event, view) {
+            // A press anywhere but on the selected picture puts its controls away. On it, the handler
+            // above does (a second tap), and a press on one of its controls never gets this far.
+            const selected = selectedImageLine(view.state)
+            if (selected === null) return
+            const widget = (event.target as Element | null)?.closest?.('[data-augmentation="image"]')
+            const line = widget && widgetLineFrom(view, widget)
+            if (line && view.state.doc.lineAt(line.lineFrom).number === selected) return
+            view.dispatch(imageDeselectSpec())
+        },
+    })
+
+    // A press on an image line outside its picture: the revealed markdown, or beside a rendered
+    // bullet image. CodeMirror's own gesture, started and followed through the browser's hit test.
+    const imageLinePointer = EditorView.mouseSelectionStyle.of((view, event) => {
+        if (event.button !== 0) return null
+        const anchor = imageLinePos(view, event)
+        return anchor === null ? null : imageLineSelection(view, event, anchor)
+    })
+
+    // Field order matters: frozen-height → uploading → selected → imageField (reads all three).
+    return [
+        frozenHeightField,
+        uploadingImagesField,
+        selectedImageField,
+        imageField,
+        pointer,
+        presses,
+        imageLinePointer,
+        theme,
+        // The overlay's buttons are the asset cluster's. Asked for here too, as an editor with no
+        // asset links (a Plain Folder's) still draws Edit as text on its pictures.
+        actionButtonTheme('cm-asset-action'),
+        resizeHandleTheme,
+        options.remote ? remoteImagePolicy.of(options.remote) : [],
+    ]
 }

@@ -28,6 +28,13 @@ function parse(md: string): MarkdownTable {
 const SAMPLE = ['| A | B | C |', '| - | - | - |', '| 1 | 2 | 3 |', '| 4 | 5 | 6 |'].join('\n')
 
 describe('buildTable', () => {
+    it('keeps every cell of a row wider than the header, under a header widened to hold it', () => {
+        const ragged = parse(['| Crop | Sow |', '| --- | --- |', '| Beans | April | 2 |', '| Kale |'].join('\n'))
+        expect(buildTable(ragged).split('\n')).toEqual(['| Crop  | Sow   |     |', '| ----- | ----- | --- |', '| Beans | April | 2   |', '| Kale  |       |     |'])
+        // An edit of such a table drops nothing either.
+        expect(addRows(ragged, 1).rows[0]).toEqual(['Beans', 'April', '2'])
+    })
+
     it('round-trips a simple table through parse and re-serialise', () => {
         const t = parse(SAMPLE)
         const out = buildTable(t)

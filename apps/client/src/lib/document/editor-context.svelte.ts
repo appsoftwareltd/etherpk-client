@@ -16,6 +16,7 @@ import { bodyWritable } from './view/body-writable'
 import { canRedo, canUndo } from './view/editor-history'
 import { misspellingAt } from './view/augmentations/spell-check'
 import { bodyTaskOnLine } from './view/caret-task'
+import { isTextFile } from './view/text-file-facet'
 import { tableAtCaret, tableInsertable } from './view/table-context'
 import { bulletToggleable, bulletToggleOn, indentable, outlinerBulletAtCaret, taskToggleable } from './view/task-toggleable'
 
@@ -29,6 +30,7 @@ export interface EditorTableContext {
 
 export const editorContext = $state<{
     inOutlinerBlock: boolean
+    textFile: boolean
     taskToggleable: boolean
     bulletToggleable: boolean
     bulletToggleOn: boolean
@@ -44,6 +46,8 @@ export const editorContext = $state<{
     task: boolean
 }>({
     inOutlinerBlock: false,
+    /** The active editor is the Text Editor (text-file.ts): only the buttons that act on lines as text work in it. */
+    textFile: false,
     /** The task button's own, wider gate: prose counts, headings / code / frontmatter do not. */
     taskToggleable: false,
     /**
@@ -116,23 +120,37 @@ export function registerCommandBar(): () => void {
     }
 }
 
+/** Nothing the caret is on, and nothing to do: no editor, or where another caller starts from. */
+function clearEditorContext(): void {
+    editorContext.inOutlinerBlock = false
+    editorContext.textFile = false
+    editorContext.taskToggleable = false
+    editorContext.bulletToggleable = false
+    editorContext.bulletToggleOn = false
+    editorContext.indentable = false
+    editorContext.bodyWritable = false
+    editorContext.tableInsertable = false
+    editorContext.table = null
+    editorContext.canUndo = false
+    editorContext.canRedo = false
+    editorContext.misspelling = false
+    editorContext.task = false
+}
+
 /** Recompute the context from `view`'s caret line, or reset it when there is no editor. */
 export function refreshEditorContext(view: EditorView | null): void {
-    if (!view) {
-        editorContext.inOutlinerBlock = false
-        editorContext.taskToggleable = false
-        editorContext.bulletToggleable = false
-        editorContext.bulletToggleOn = false
-        editorContext.indentable = false
-        editorContext.bodyWritable = false
-        editorContext.tableInsertable = false
-        editorContext.table = null
-        editorContext.canUndo = false
-        editorContext.canRedo = false
-        editorContext.misspelling = false
-        editorContext.task = false
+    if (!view) return clearEditorContext()
+    if (view.state.facet(isTextFile)) {
+        // A dash there is text: nothing that writes markdown has anything to act on. Indent does.
+        clearEditorContext()
+        editorContext.textFile = true
+        editorContext.bodyWritable = bodyWritable(view.state)
+        editorContext.indentable = true
+        editorContext.canUndo = canUndo(view.state)
+        editorContext.canRedo = canRedo(view.state)
         return
     }
+    editorContext.textFile = false
     // A bullet of the outline, a form-1 opener included; a bullet-shaped code or YAML line is not one.
     editorContext.inOutlinerBlock = outlinerBulletAtCaret(view.state)
     editorContext.taskToggleable = taskToggleable(view.state)

@@ -3,6 +3,7 @@ import type { Extension, Transaction, TransactionSpec } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { isTextFile } from '../view/text-file-facet'
 import { setActiveEditorView } from '../active-editor'
 import { setActiveGraphSettings } from '../active-graph-settings'
 import { DEFAULT_FONT_SIZE, getEditorFontSize, setEditorFontSize } from '../editor-font'
@@ -13,6 +14,9 @@ import { commandMenuOpen, slashCompletion } from '../view/augmentations/slash-co
 import { setActiveProtectionStatus } from '../protection/active-protection'
 import { isProtectedDocumentFacet } from '../view/augmentations/protected-fence'
 import { tableSizePicker, tableSizePickerState } from '../view/augmentations/table-size-picker'
+import { markdownTableAugmentation } from '../view/augmentations/markdown-table'
+import { analysisFor } from '../view/analysis/editor-analysis'
+import { tableDrawnAsGrid } from '../view/table-cell'
 import { type HeadlessEditor, editorFixture } from '../view/testing/editor-state-fixture'
 
 import {
@@ -21,6 +25,7 @@ import {
     createContributionRegistry,
     listCommandBarItems,
     listCommandMenuItems,
+    listContextMenuItems,
     registerCommandMenuItem,
     setActiveContributionRegistry,
 } from '../../surface'
@@ -523,6 +528,17 @@ describe('registerEditorCommands — the block, format and history Commands', ()
         expect((await runCommand('- Garden\n  - water the beans|', 'editor.outdent')).ed.fixture()).toBe('- Garden\n- water the beans|')
     })
 
+    it('in the Text Editor, indent, outdent and move act on the lines as text, and the outliner’s own do nothing', async () => {
+        const text = [isTextFile.of(true)]
+        const run = async (fixture: string, id: string) => (await runCommand(fixture, id, undefined, text)).ed.text()
+        expect(await run('beds:\n- beans|', 'editor.indent')).toBe('beds:\n  - beans')
+        expect(await run('beds:\n    beans|', 'editor.outdent')).toBe('beds:\n  beans')
+        // One line moves, not the branch a bullet would take with it.
+        expect(await run('- beans|\n  - peas\n- leeks', 'editor.moveDown')).toBe('  - peas\n- beans\n- leeks')
+        expect(await run('beds:\n- beans|', 'editor.moveUp')).toBe('- beans\nbeds:')
+        for (const id of ['editor.toggleTask', 'editor.toggleBullet']) expect(await run('beans|', id)).toBe('beans')
+    })
+
     it('move up and move down swap a bullet with its neighbour', async () => {
         expect((await runCommand('- Garden\n- Kitchen|', 'editor.moveUp')).ed.text()).toBe('- Kitchen\n- Garden')
         expect((await runCommand('- Garden|\n- Kitchen', 'editor.moveDown')).ed.text()).toBe('- Kitchen\n- Garden')
@@ -708,6 +724,81 @@ describe('registerEditorCommands — code block', () => {
     })
 })
 
+describe('registerEditorCommands \u2014 the Table Grid', () => {
+    const column = { kind: 'table-column' as const, concept: 'Garden', header: false, columns: 2, align: 'right' as const, selectedRows: 1, selectedColumns: 1 }
+    const row = { kind: 'table-row' as const, concept: 'Garden', header: false, columns: 2, align: null, selectedRows: 1, selectedColumns: 1 }
+
+    function menus() {
+        const contributions = createContributionRegistry()
+        const teardown = registerEditorCommands(createCommandRegistry(), contributions)
+        return { rows: (target: Parameters<typeof listContextMenuItems>[1]) => listContextMenuItems(contributions, target), teardown }
+    }
+
+    it('a column\u2019s menu adds beside it, aligns it with the one it has ticked, shows the text and removes it', () => {
+        const { rows, teardown } = menus()
+        const found = rows(column)
+        expect(found.map((item) => item.label)).toEqual(['Add column left', 'Add column right', 'Align left', 'Align centre', 'Align right', 'Edit table as text', 'Remove column'])
+        expect(found.filter((item) => item.checked).map((item) => item.label)).toEqual(['Align right'])
+        expect(found.filter((item) => item.separatorBefore).map((item) => item.label)).toEqual(['Align left', 'Edit table as text', 'Remove column'])
+        expect(found.at(-1)).toMatchObject({ command: 'table.removeColumn', danger: true })
+        // The last column a table has is not removed.
+        expect(rows({ ...column, columns: 1 }).map((item) => item.label)).not.toContain('Remove column')
+        teardown()
+    })
+
+    it('a row\u2019s menu adds above and below, shows the text and removes it, and the header\u2019s only adds below', () => {
+        const { rows, teardown } = menus()
+        expect(rows(row).map((item) => item.label)).toEqual(['Add row above', 'Add row below', 'Edit table as text', 'Remove row'])
+        expect(rows({ ...row, header: true }).map((item) => item.label)).toEqual(['Add row below', 'Edit table as text'])
+        // With a block of cells selected the removal names how many rows or columns it takes.
+        expect(rows({ ...row, selectedRows: 3 }).at(-1)?.label).toBe('Remove 3 rows')
+        expect(rows({ ...column, columns: 4, selectedColumns: 2 }).at(-1)?.label).toBe('Remove 2 columns')
+        expect(rows({ ...column, columns: 2, selectedColumns: 2 }).map((item) => item.command)).not.toContain('table.removeColumn')
+        teardown()
+    })
+
+    it('every row of both menus runs a registered Command and draws an icon the table has, a choice its tick or none', () => {
+        const commands = createCommandRegistry()
+        const contributions = createContributionRegistry()
+        const teardown = registerEditorCommands(commands, contributions)
+        for (const item of [...listContextMenuItems(contributions, column), ...listContextMenuItems(contributions, row)]) {
+            expect(commands.has(item.command), item.command).toBe(true)
+            // A row that is a choice has the tick in the icon's column when it is the one in force, and nothing there otherwise.
+            if (item.checked === undefined || item.icon !== undefined) expect(clientIconNames()).toContain(item.icon)
+        }
+        teardown()
+    })
+
+    it('Edit as text shows the markdown of the table at the caret until the caret leaves it', async () => {
+        const commands = createCommandRegistry()
+        const teardown = registerEditorCommands(commands, createContributionRegistry())
+        const ed = editorFixture('intro\n| a | b |\n| - | - |\n| 1^ | 2 |\nafter', { caret: '^', extensions: [markdownTableAugmentation()] })
+        const deactivate = activate(ed)
+        const table = () => analysisFor(ed.state).tables[0]
+        expect(tableDrawnAsGrid(ed.state, table())).toBe(true)
+
+        await commands.execute('table.editAsText')
+        expect(tableDrawnAsGrid(ed.state, table())).toBe(false)
+        expect(ed.fixture()).toBe('intro\n| a | b |\n| - | - |\n| 1^ | 2 |\nafter')
+
+        ed.select(0)
+        expect(tableDrawnAsGrid(ed.state, table())).toBe(true)
+        deactivate()
+        teardown()
+    })
+
+    it('the Command Menu offers the grid\u2019s rows only with the caret in a table', () => {
+        const contributions = createContributionRegistry()
+        const teardown = registerEditorCommands(createCommandRegistry(), contributions)
+        const ids = (inTable: boolean) => listCommandMenuItems(contributions, { inTable, tableInsertable: !inTable, bodyWritable: true }).map((item) => item.id)
+        for (const id of ['table.addRowAbove', 'table.addColumnLeft', 'table.alignLeft', 'table.alignCenter', 'table.alignRight', 'table.editAsText']) {
+            expect(ids(true)).toContain(id)
+            expect(ids(false)).not.toContain(id)
+        }
+        teardown()
+    })
+})
+
 describe('registerEditorCommands — table edits and the caret', () => {
     async function table(fixture: string, id: string): Promise<string> {
         const commands = createCommandRegistry()
@@ -759,6 +850,41 @@ describe('registerEditorCommands — table edits and the caret', () => {
         expect(await table('| a | b |\n| - | - |\n| 1 | 2 |\n| 3^ | 4 |\n| 5 | 6 |', 'table.addRow')).toBe(
             rows('| a   | b   |', '| --- | --- |', '| 1   | 2   |', '| ^3   | 4   |', '|     |     |', '| 5   | 6   |'),
         )
+    })
+
+    it('add row above puts the new row over the caret\u2019s own and the caret in it', async () => {
+        expect(await table('| a | b |\n| - | - |\n| 1 | 2^ |\n| 3 | 4 |', 'table.addRowAbove')).toBe(
+            rows('| a   | b   |', '| --- | --- |', '|     | ^    |', '| 1   | 2   |', '| 3   | 4   |'),
+        )
+    })
+
+    it('add row above does nothing on the header, which a table always has first', async () => {
+        expect(await table('| a^ | b |\n| - | - |\n| 1 | 2 |', 'table.addRowAbove')).toBe('| a^ | b |\n| - | - |\n| 1 | 2 |')
+    })
+
+    it('add row below puts the new row under the caret\u2019s own and the caret in it, under the header too', async () => {
+        expect(await table('| a | b |\n| - | - |\n| 1^ | 2 |\n| 3 | 4 |', 'table.addRowBelow')).toBe(
+            rows('| a   | b   |', '| --- | --- |', '| 1   | 2   |', '| ^    |     |', '| 3   | 4   |'),
+        )
+        expect(await table('| a | b^ |\n| - | - |\n| 1 | 2 |', 'table.addRowBelow')).toBe(
+            rows('| a   | b   |', '| --- | --- |', '|     | ^    |', '| 1   | 2   |'),
+        )
+    })
+
+    it('add column left and right put the new column beside the caret\u2019s own and the caret in it', async () => {
+        expect(await table('| a | b |\n| - | - |\n| 1 | 2^ |', 'table.addColumnLeft')).toBe(
+            rows('| a   |     | b   |', '| --- | --- | --- |', '| 1   | ^    | 2   |'),
+        )
+        expect(await table('| a^ | b |\n| - | - |\n| 1 | 2 |', 'table.addColumnRight')).toBe(
+            rows('| a   | ^    | b   |', '| --- | --- | --- |', '| 1   |     | 2   |'),
+        )
+    })
+
+    it('align writes the column\u2019s alignment in its delimiter cell, and the one it has takes it off', async () => {
+        expect(await table('| a | b |\n| - | - |\n| 1 | 2^ |', 'table.alignRight')).toBe(rows('| a   | b   |', '| --- | --: |', '| 1   | ^2   |'))
+        expect(await table('| a | b |\n| - | - |\n| 1^ | 2 |', 'table.alignCenter')).toBe(rows('| a   | b   |', '| :-: | --- |', '| ^1   | 2   |'))
+        expect(await table('| a | b |\n| :- | - |\n| 1^ | 2 |', 'table.alignRight')).toBe(rows('| a   | b   |', '| --: | --- |', '| ^1   | 2   |'))
+        expect(await table('| a | b |\n| :- | - |\n| 1^ | 2 |', 'table.alignLeft')).toBe(rows('| a   | b   |', '| --- | --- |', '| ^1   | 2   |'))
     })
 
     it('remove rows above puts the caret on what is now the first row', async () => {
@@ -885,6 +1011,12 @@ describe('registerEditorCommands — what the Command Bar and Command Menu offer
         expect(tableRows(true)).toEqual([
             'table.addColumn',
             'table.addRow',
+            'table.addRowAbove',
+            'table.addColumnLeft',
+            'table.alignLeft',
+            'table.alignCenter',
+            'table.alignRight',
+            'table.editAsText',
             'table.format',
             'table.removeRow',
             'table.removeColumn',

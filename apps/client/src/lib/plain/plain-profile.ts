@@ -37,8 +37,10 @@ export interface PlainProfile {
     /** The files to offer while a link's destination is typed in the file at `from`. */
     suggestPaths(from: string, query: string): PathSuggestion[]
     /**
-     * Whether the file at `path` is text that is not markdown (a `.txt`, a script): the editor then
-     * leaves out its outliner and everything that reads markdown.
+     * Whether the file at `path` is in the Text Editor: it is text that is not markdown (a `.txt`, a
+     * script), or a markdown file the person opens as text (file-editors.ts). The editor then leaves
+     * out its outliner and everything that reads markdown. Asked as the editor mounts, and again
+     * when the person switches the file's editor (`DocumentView.reopen`).
      */
     textOnly(path: string): boolean
     /** Whether pictures from the network load in this folder: they wait for the person's word (ADR 0197). */

@@ -56,8 +56,7 @@
     import { serverKeysLocked, syncedGroupRows } from "./sync-server-rows";
     import { keyCopyNotice, syncedRowName } from "./graph-picker-helpers";
     import {
-        CUSTOM_SERVER_ICON,
-        MANAGED_SERVER_ICON,
+        SYNC_ICON,
     } from "./graphs-page-icons";
     import type { SyncServerView } from "./sync-server-view.svelte";
 
@@ -184,7 +183,7 @@
                 <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    d={managed ? MANAGED_SERVER_ICON : CUSTOM_SERVER_ICON}
+                    d={SYNC_ICON}
                 />
             </svg>
         </h2>

@@ -89,7 +89,7 @@
     /** Light a row from the keyboard, scrolling it into sight in a menu too tall for the screen. */
     function moveActive(index: number) {
         active = index;
-        el?.querySelectorAll('[role="menuitem"]')[index]?.scrollIntoView({ block: "nearest" });
+        el?.querySelectorAll('[data-testid="context-menu-item"]')[index]?.scrollIntoView({ block: "nearest" });
     }
 
     function onKeydown(event: KeyboardEvent) {
@@ -152,7 +152,8 @@
             {/if}
             <button
                 type="button"
-                role="menuitem"
+                role={row.checked === undefined ? "menuitem" : "menuitemradio"}
+                aria-checked={row.checked}
                 data-testid="context-menu-item"
                 data-command={row.command}
                 class={["gk-menu-item", row.danger && "gk-menu-item--danger", index === active && "bg-(--gk-menu-hover)"]}

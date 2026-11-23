@@ -14,9 +14,19 @@ export const DEFAULT_CELL_WIDTH = 3
 
 // ── Serialisation ──────────────────────────────────────────────────────────
 
-/** Column count of a table, taken from its header. */
+/**
+ * How many columns a table has: as many as its widest row, the header among them. GFM reads a row
+ * with more cells than the header and ignores the rest, but the grid draws every cell a row has, so
+ * an edit that fitted the rows to the header would remove cells a person can see. A table written
+ * back is as wide as this in every row.
+ */
+export function tableWidth(table: MarkdownTable): number {
+    return Math.max(table.header.length, ...table.rows.map((row) => row.length))
+}
+
+/** Column count of a table: {@link tableWidth}. */
 function colCount(table: MarkdownTable): number {
-    return table.header.length
+    return tableWidth(table)
 }
 
 /** Pad/truncate a cell array to exactly `n` columns. */
@@ -153,6 +163,20 @@ export function addRows(table: MarkdownTable, count = 1, bodyRowIndex?: number):
             : Math.min(Math.max(bodyRowIndex, -1) + 1, rows.length)
     rows.splice(at, 0, ...blanks)
     return { ...table, rows }
+}
+
+// ── Alignment ──────────────────────────────────────────────────────────────
+
+/**
+ * Set the alignment of the column at `atColumn`: left, centre, right, or none (`null`), which is
+ * written as plain dashes and leaves the column to the renderer. Returns `null` for a column the
+ * table does not have.
+ */
+export function setColumnAlign(table: MarkdownTable, atColumn: number, align: Align): MarkdownTable | null {
+    if (atColumn < 0 || atColumn >= colCount(table)) return null
+    const next = fitRow(table.align as string[], colCount(table)) as Align[]
+    next[atColumn] = align
+    return { ...table, align: next }
 }
 
 // ── Format ─────────────────────────────────────────────────────────────────

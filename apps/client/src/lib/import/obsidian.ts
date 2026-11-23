@@ -343,7 +343,8 @@ function convertEmbeds(text: string, note: ObsidianNote, links: NoteLinks, asset
         const asset = links.resolveAssetByName(target)
         if (asset) {
             assetPlan.markReferenced(asset)
-            if (asset.isImage) {
+            // A recording keeps the embed's form, which draws a player (media-line.ts).
+            if (asset.isImage || mediaKindOfTarget(asset.ref)) {
                 // A numeric pipe is an Obsidian display size (EtherPK has the
                 // same alt-text hint); any other pipe text is a caption/alt.
                 const alt =
@@ -352,8 +353,6 @@ function convertEmbeds(text: string, note: ObsidianNote, links: NoteLinks, asset
                         : pipe || asset.stem
                 return `![${alt}](${asset.ref})`
             }
-            // A recording keeps the embed's form, which draws a player (media-line.ts).
-            if (mediaKindOfTarget(asset.ref)) return `![${pipe || asset.stem}](${asset.ref})`
             return `[${pipe || asset.stem}](${asset.ref})`
         }
         const target2 = target.split('#')[0]

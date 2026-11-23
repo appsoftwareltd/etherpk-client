@@ -25,6 +25,7 @@ import { Decoration, EditorView, type MouseSelectionStyle, WidgetType } from '@c
 import { fileLinkActions, LINK_COPY_PATH, runLinkCommand } from '../../link-affordances'
 import { hiddenSyntax, hiddenSyntaxPieces, hiddenSyntaxPlugin, type HiddenSyntaxSpec } from './base-renderer'
 import { assetLinkSpec } from './asset-link'
+import { withinClickSlop } from './click-slop'
 import { actionClusterTheme, buildActionCluster, confirmClusterAction } from './inline-actions'
 import { caretBesideLink, isOpenableUrl, type LinkPiece, linkPieces } from './markdown-link-core'
 
@@ -139,9 +140,6 @@ export function linkClickCaret(state: EditorState, pos: number): number {
     return caretBesideLink(pieces, pos)
 }
 
-/** How far (px) the pointer may wander during a click before it counts as a drag. */
-const CLICK_SLOP = 4
-
 /**
  * The pointer gesture for a plain click beside a rendered link: CodeMirror's own, except that it
  * starts from {@link linkClickCaret}. The press reveals the line, so the text under the pointer
@@ -155,8 +153,7 @@ function besideLinkSelection(view: EditorView, start: MouseEvent, anchor: number
             if (update.docChanged) from = update.changes.mapPos(from)
         },
         get(event) {
-            const moved = Math.max(Math.abs(event.clientX - start.clientX), Math.abs(event.clientY - start.clientY))
-            if (moved < CLICK_SLOP) return EditorSelection.single(from)
+            if (withinClickSlop(start, event)) return EditorSelection.single(from)
             return EditorSelection.single(from, view.posAtCoords({ x: event.clientX, y: event.clientY }, false))
         },
     }

@@ -114,7 +114,8 @@ section to match the version the user runs, so where it and this skill differ, f
   (`AGENTS.md`, Subtasks).
 - Put images in `assets/` and embed them as `![Alt text](../assets/<file>)`. A video (`.webm`, `.mp4`) or audio
   file (`.mp3`, `.m4a`, `.wav`, `.ogg`, `.opus`, `.flac`) is embedded the same way, on a line of its
-  own, and gets a player.
+  own, and gets a player. A video fills the text column. `![Alt text|480](…)` caps its width, as it does
+  a picture's.
 - When you finish a page the user will want to read, end your message with its link:
   `<EtherPK address>/graph/folder/<folder name>/d/<page title>` (`AGENTS.md`, Giving the user a
   link to a page).

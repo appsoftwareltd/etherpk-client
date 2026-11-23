@@ -191,10 +191,17 @@ describe('createDocumentRenderer', () => {
 
     it("draws a recording in the graph's files with the browser's own player, and lists it as an asset", () => {
         const r = renderer().render('![Adding a clip](../assets/add-a-clip.a1b2c3d4.webm)\n\n![A voice note](../assets/voice%20note.5e6f.mp3)\n')
-        expect(r.html).toContain('<video controls preload="metadata" src="assets/add-a-clip.a1b2c3d4.webm" aria-label="Adding a clip"></video>')
+        expect(r.html).toContain('<video controls preload="metadata" src="assets/add-a-clip.a1b2c3d4.webm" aria-label="Adding a clip" style="width:100%;aspect-ratio:16/9"></video>')
         expect(r.html).toContain('<audio controls preload="metadata" src="assets/voice%20note.5e6f.mp3" aria-label="A voice note"></audio>')
         expect(r.html).not.toContain('<img')
         expect(r.assets).toEqual(['add-a-clip.a1b2c3d4.webm', 'voice note.5e6f.mp3'])
+    })
+
+    it("a video's display-size hint is its width, never past its column, and says nothing about an audio file", () => {
+        const r = renderer().render('![Adding a clip|480](../assets/add-a-clip.a1b2c3d4.webm)\n\n![Tall|640x480](../assets/tall.a1b2c3d4.mp4)\n\n![A voice note|480](../assets/voice%20note.5e6f.mp3)\n')
+        expect(r.html).toContain('aria-label="Adding a clip" style="width:min(480px, 100%);aspect-ratio:16/9"></video>')
+        expect(r.html).toContain('aria-label="Tall" style="width:min(640px, 100%);aspect-ratio:16/9"></video>')
+        expect(r.html).toContain('aria-label="A voice note"></audio>')
     })
 
     it('leaves a recording on another site as the image syntax it was written as', () => {

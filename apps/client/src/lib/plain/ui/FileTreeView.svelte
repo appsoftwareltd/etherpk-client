@@ -153,6 +153,13 @@
         })
     })
 
+    // A directory asked for from the bar above a file: opened, and its row given the focus.
+    $effect(() => {
+        const target = session?.treeTarget
+        if (!target) return
+        untrack(() => void reveal(target.path).then(() => focusRow(target.path)))
+    })
+
     async function focusRow(path: string): Promise<void> {
         focused = path
         await tick()

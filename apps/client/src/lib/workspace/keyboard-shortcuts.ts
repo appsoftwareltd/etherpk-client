@@ -182,3 +182,20 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
         ],
     },
 ]
+
+/** The Text Editor's section, on the card of a [[Plain Folder]], the one workspace that has it. */
+export const TEXT_EDITOR_SHORTCUTS: ShortcutGroup = {
+    title: 'Text Editor',
+    note: 'In a Plain Folder, in code and text files, and in a markdown file open in the Text Editor.',
+    shortcuts: [
+        { key: 'Alt+Drag', label: 'Select a rectangle, with a caret on each line' },
+        { key: 'Mod+Click', label: 'Add a caret' },
+        { key: 'Mod+Alt+ArrowUp', label: 'Add a caret on the line above' },
+        { key: 'Mod+Alt+ArrowDown', label: 'Add a caret on the line below' },
+        { key: 'Escape', label: 'Back to one caret' },
+        { key: 'Tab', label: 'Indent the lines' },
+        { key: 'Shift+Tab', label: 'Outdent the lines' },
+        { key: 'Alt+ArrowUp', label: 'Move the line up' },
+        { key: 'Alt+ArrowDown', label: 'Move the line down' },
+    ],
+}

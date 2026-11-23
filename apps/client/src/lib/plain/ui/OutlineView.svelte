@@ -10,7 +10,7 @@
     import { revealDocumentLine } from '#lib/document/reveal.js'
 
     import { fileKindOf } from '../file-kind'
-    import { type OutlineHeading, headingsOf } from '../outline'
+    import { type OutlineHeading, watchHeadings } from '../outline'
     import { baseName } from '../plain-path'
     import { plainSession } from '../plain-session.svelte'
 
@@ -23,10 +23,7 @@
 
     let headings = $state.raw<OutlineHeading[]>([])
 
-    // The file's text lives in the store, outside Svelte: read it when the file in front changes,
-    // when it is reloaded from the folder, and each time it is edited. An editor's own edits are not
-    // echoed to the document's other listeners, so the store's state change (every edit marks the
-    // file unsaved) is what says the text moved under the keys.
+    // The file's text lives in the store, outside Svelte: followed for the file in front.
     $effect(() => {
         const store = session?.store
         const at = path
@@ -34,17 +31,7 @@
             headings = []
             return
         }
-        const document = store.open(at)
-        const read = () => (headings = headingsOf(document.getText()))
-        read()
-        const offText = document.subscribe(read)
-        const offState = store.onStateChanged((changed) => {
-            if (changed === at) read()
-        })
-        return () => {
-            offText()
-            offState()
-        }
+        return watchHeadings(store, at, (read) => (headings = read))
     })
 
     const shallowest = $derived(Math.min(...headings.map((heading) => heading.level)))

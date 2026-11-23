@@ -10,7 +10,8 @@
  *   column is added and no text moves. With a mouse, hovering the padding shows a faint one and a
  *   click toggles it (EtherPK, decided 2026-10-29: the padding is where the mark is drawn, as an IDE
  *   toggles a breakpoint in its gutter). On a touch screen the padding is too narrow a target, so it
- *   only displays.
+ *   only displays. In the Text Editor, whose line numbers stand there, they have a column of their
+ *   own before the numbers (bookmark-gutter.ts).
  * - Opens the line Context Menu on a right-click with nothing selected under the pointer, and on
  *   Shift+F10 or the Menu key at the caret, after a link's and a misspelt word's own menus have had
  *   the chance (ADR 0161). Inside a selection, with Shift held on a right-click, and on a widget
@@ -56,9 +57,11 @@ import {
 import { isApplePlatform, type MenuAnchor } from '../../../surface'
 import { editorDocument } from '../editor-document'
 import { placeSelection } from '../view-position'
+import { bookmarkGutter } from './bookmark-gutter'
 import {
     bookmarkMarks,
     bookmarkMarkState,
+    type BookmarkMarkState,
     bookmarkOnLine,
     bookmarkedLines,
     hasUnplaced,
@@ -88,6 +91,10 @@ export interface BookmarkOptions {
      * Without one the bookmark code places the caret itself.
      */
     reveal?: (to: { line: number } | 'top') => void
+    /** The editor has line numbers, so its bookmarks are drawn in a column before them (bookmark-gutter.ts). */
+    gutter?: boolean
+    /** What the editor this one replaces over the same text knew of its bookmarks (editor-carry.ts). */
+    kept?: BookmarkMarkState
 }
 
 /** Every editor that carries this feature, so a Command acting on a menu target can find its editor. */
@@ -587,6 +594,35 @@ const handlers = EditorView.domEventHandlers({
         touchPointer.set(view, event.pointerType === 'touch')
         return false
     },
+    contextmenu(event, view) {
+        const options = view.state.field(optionsField, false)
+        if (!options?.lineMenu || event.shiftKey) return false
+        // A touch hold is native text selection on a phone.
+        if (touchPointer.get(view)) return false
+        // A widget drawn in the text (an image, maths, a card) keeps the browser's menu, with its own
+        // rows such as Copy Image. A bullet's dot and a task's checkbox are marks on the line's text.
+        const widget = event.target instanceof Element ? event.target.closest('[contenteditable="false"]') : null
+        if (widget && widget !== view.contentDOM && view.contentDOM.contains(widget)) return false
+        const pos = view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? paddingPos(view, event)
+        if (pos === null) return false
+        // Inside any range of the selection: the Text Editor's rectangles are one range to a line.
+        if (view.state.selection.ranges.some((range) => !range.empty && range.from <= pos && pos <= range.to)) return false
+        event.preventDefault()
+        // As a browser does on a right-click in text: the caret goes where the pointer is, so Paste
+        // lands there.
+        view.dispatch({ selection: { anchor: pos }, userEvent: 'select.pointer' })
+        options.lineMenu(view.state.doc.lineAt(pos), event.clientX, event.clientY)
+        return true
+    },
+})
+
+function paddingPos(view: EditorView, event: MouseEvent): number | null {
+    const line = paddingLineAt(view, event)
+    return line === null ? null : view.state.doc.line(line).from
+}
+
+/** The padding's own pointer handlers: the faint bookmark under the mouse, and the click that toggles. */
+const paddingHandlers = EditorView.domEventHandlers({
     mousemove(event, view) {
         const line = touchPointer.get(view) ? null : offeredLine(view.state, paddingLineAt(view, event))
         if (line !== view.state.field(hoverField)) view.dispatch({ effects: hoverLine.of(line) })
@@ -608,32 +644,29 @@ const handlers = EditorView.domEventHandlers({
         void toggleBookmarkAtLine(view, line)
         return true
     },
-    contextmenu(event, view) {
-        const options = view.state.field(optionsField, false)
-        if (!options?.lineMenu || event.shiftKey) return false
-        // A touch hold is native text selection on a phone.
-        if (touchPointer.get(view)) return false
-        // A widget drawn in the text (an image, maths, a card) keeps the browser's menu, with its own
-        // rows such as Copy Image. A bullet's dot and a task's checkbox are marks on the line's text.
-        const widget = event.target instanceof Element ? event.target.closest('[contenteditable="false"]') : null
-        if (widget && widget !== view.contentDOM && view.contentDOM.contains(widget)) return false
-        const pos = view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? paddingPos(view, event)
-        if (pos === null) return false
-        const selection = view.state.selection.main
-        if (!selection.empty && selection.from <= pos && pos <= selection.to) return false
-        event.preventDefault()
-        // As a browser does on a right-click in text: the caret goes where the pointer is, so Paste
-        // lands there.
-        view.dispatch({ selection: { anchor: pos }, userEvent: 'select.pointer' })
-        options.lineMenu(view.state.doc.lineAt(pos), event.clientX, event.clientY)
-        return true
-    },
 })
 
-function paddingPos(view: EditorView, event: MouseEvent): number | null {
-    const line = paddingLineAt(view, event)
-    return line === null ? null : view.state.doc.line(line).from
+/** How a document draws its bookmarks: over its left padding, with no column of their own. */
+const inPadding: Extension = [hoverField, paddingCursor, bookmarkLayer, paddingHandlers]
+
+/** Open the line menu for `line` from the gutter beside it. False when the editor has no line menu. */
+export function openLineMenuFromGutter(view: EditorView, line: number, x: number, y: number): boolean {
+    const options = view.state.field(optionsField, false)
+    if (!options?.lineMenu) return false
+    const at = view.state.doc.line(line)
+    // The caret goes to the line, as it goes under the pointer on a right-click in the text.
+    view.dispatch({ selection: { anchor: at.from }, userEvent: 'select.pointer' })
+    options.lineMenu(at, x, y)
+    return true
 }
+
+/** How the Text Editor draws them: in a column before the line numbers. */
+const inGutter = (): Extension =>
+    bookmarkGutter({
+        toggle: (view, line) => void toggleBookmarkAtLine(view, line),
+        offers: (state, line) => normaliseLine(state.doc.line(line).text) !== '',
+        menu: openLineMenuFromGutter,
+    })
 
 const theme = EditorView.baseTheme({
     '.gk-bookmark-layer': { pointerEvents: 'none' },
@@ -654,13 +687,11 @@ const theme = EditorView.baseTheme({
 /** The bookmarks feature. `options` come from the editor that mounts it. */
 export function bookmarksAugmentation(options: BookmarkOptions = {}): Extension {
     return [
-        bookmarkMarks(),
+        bookmarkMarks(options.kept),
         optionsField.init(() => options),
-        hoverField,
-        paddingCursor,
+        options.gutter ? inGutter() : inPadding,
         flashField,
         ViewPlugin.fromClass(BookmarkSync),
-        bookmarkLayer,
         handlers,
         // After the link's and the spelling menu's own bindings for the same keys, which claim them
         // on their targets.

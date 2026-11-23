@@ -34,6 +34,7 @@ import {
 } from '../analysis/editor-analysis'
 import { EXTERNAL } from '../cm-document'
 import { isOwnEditing } from '../own-editing'
+import { editorHasKeyboard } from '../table-cell'
 import { isFindReplace } from '../../find/find-edit'
 import { type LinkAt, type WikilinkEdit, WikilinkEpisode } from './wikilink-episode'
 
@@ -138,7 +139,8 @@ function episodePlugin(options: WikilinkAugmentationOptions): Extension {
                     linksAfter: (from, to) => linksOnLineAt(update.state, from, to),
                     mapPos: (pos, assoc) => update.changes.mapPos(pos, assoc),
                     caret: update.state.selection.main.head,
-                    focused: update.view.hasFocus,
+                    // In a table's cell the keyboard is in the cell's editor, and the links are still this document's.
+                    focused: editorHasKeyboard(update.view),
                 })
                 // After the update cycle, so the View's own listener has already forwarded the
                 // text to the store the workspace will read.

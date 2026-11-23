@@ -40,6 +40,8 @@ export interface MediaPlayerOptions {
 
 export interface MediaPlayer {
     readonly element: HTMLElement
+    /** A video's picture, edge to edge in the player, for what a host puts over its corner. Null for audio. */
+    readonly stage: HTMLElement | null
     /** Stop playback and let go of the media element. The object URL belongs to whoever made it. */
     destroy(): void
 }
@@ -159,7 +161,7 @@ export function createMediaPlayer(options: MediaPlayerOptions): MediaPlayer {
     elapsed.dataset.testid = 'media-elapsed'
     const scrub = range('gk-media__scrub', 'Seek', 0, 0.1)
     scrub.dataset.testid = 'media-scrub'
-    const total = el('span', 'gk-media__time', '-:--')
+    const total = el('span', 'gk-media__time gk-media__time--total', '-:--')
     total.dataset.testid = 'media-duration'
     const mute = button('gk-media__mute', 'Mute', ICONS.volume())
     mute.dataset.testid = 'media-mute'
@@ -430,6 +432,7 @@ export function createMediaPlayer(options: MediaPlayerOptions): MediaPlayer {
 
     return {
         element: root,
+        stage: kind === 'video' ? stage : null,
         destroy() {
             destroyed = true
             document.removeEventListener('fullscreenchange', onFullscreenChange)

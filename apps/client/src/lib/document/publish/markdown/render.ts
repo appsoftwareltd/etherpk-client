@@ -14,7 +14,7 @@ import MarkdownIt, { type Token } from 'markdown-it'
 import { isSafeAssetName } from '../../../storage/fs/asset-names'
 import { isExtensionFenceInfo } from '../../extension-fence'
 import { MAP_FENCE_INFO, readMapBody } from '../../map-text'
-import { displayMaxWidth, parseImageDisplaySizeHint } from '../../view/augmentations/image-display-size'
+import { type ParsedAlt, displayMaxWidth, parseImageDisplaySizeHint } from '../../view/augmentations/image-display-size'
 import { mediaKindOfTarget } from '../../media-line'
 import { publishSlug } from '../../wikilink/derive'
 import { listItemEndRule } from './list-item-end-rule'
@@ -170,11 +170,17 @@ function plainText(tokens: readonly Token[]): string {
     return lines.join('\n')
 }
 
-/** The browser's own player for a recording in the graph's files written as `target`, or null when it is none. */
-function mediaElement(asset: string | null, target: string, src: string, label: string): string | null {
+/**
+ * The browser's own player for a recording in the graph's files written as `target`, or null when it
+ * is none. A video is as wide as the editor draws it: its column, or its display-size hint's width
+ * where that is less. It has the editor's one shape too, so the page does not move as it loads.
+ */
+function mediaElement(asset: string | null, target: string, src: string, alt: ParsedAlt): string | null {
     const media = asset === null ? null : mediaKindOfTarget(target)
     if (media === null) return null
-    return `<${media} controls preload="metadata" src="${escapeHtml(src)}" aria-label="${escapeHtml(label)}"></${media}>`
+    const width = alt.maxWidth === undefined ? '100%' : displayMaxWidth(alt.maxWidth)
+    const style = media === 'video' ? ` style="width:${width};aspect-ratio:16/9"` : ''
+    return `<${media} controls preload="metadata" src="${escapeHtml(src)}" aria-label="${escapeHtml(alt.cleanAlt)}"${style}></${media}>`
 }
 
 export function createDocumentRenderer(options: RendererOptions): DocumentRenderer {
@@ -214,7 +220,7 @@ export function createDocumentRenderer(options: RendererOptions): DocumentRender
         // Image syntax over a recording in the graph's files: the browser's own player, since the
         // editor's is not shipped to a published site. The original target decides, not the
         // rewritten one, so a recording on another site stays the image syntax it was written as.
-        const player = mediaElement(name, src, href ?? src, parsed.cleanAlt)
+        const player = mediaElement(name, src, href ?? src, parsed)
         if (player !== null) return player
         token.attrSet('alt', parsed.cleanAlt)
         if (parsed.maxWidth !== undefined) {

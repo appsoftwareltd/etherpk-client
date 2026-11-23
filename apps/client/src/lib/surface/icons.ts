@@ -115,6 +115,12 @@ export const ICON_PATHS: Record<string, string> = {
     'table-add-column': '<rect x="2.5" y="3" width="6" height="10" rx="1"/><path d="M2.5 6.5h6M2.5 9.5h6"/><path d="M11 8h3M12.5 6.5v3"/>',
     'table-remove-column': '<rect x="2.5" y="3" width="6" height="10" rx="1"/><path d="M2.5 6.5h6M2.5 9.5h6"/><path d="M11 8h3"/>',
     'table-format': '<rect x="2.5" y="3" width="11" height="10" rx="1"/><path d="M2.5 6.5h11M2.5 9.5h11"/>',
+    /** A plain plus: add one more of what the control sits on (a row or a column of a table's grid). */
+    plus: '<path d="M8 3.5v9M3.5 8h9"/>',
+    // A column's alignment: three lines of text, flush left, centred or flush right.
+    'align-left': '<path d="M3 4h10M3 8h6M3 12h8"/>',
+    'align-center': '<path d="M3 4h10M5 8h6M4 12h8"/>',
+    'align-right': '<path d="M3 4h10M7 8h6M5 12h8"/>',
     code: '<path d="M6 5.5 3 8l3 2.5M10 5.5 13 8l-3 2.5"/>',
     // A page with its header band: the block of keys at the top of a document.
     frontmatter: '<rect x="3" y="2.5" width="10" height="11" rx="1.5"/><path d="M3 6.5h10M5.2 4.5h3.3M5.2 9h5.6M5.2 11.3h3.6"/>',

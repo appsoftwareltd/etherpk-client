@@ -385,8 +385,8 @@ function placeUnplaced(value: BookmarkMarkState, state: EditorState): BookmarkMa
     return { ...value, marks, notFound }
 }
 
-export function bookmarkMarks(): Extension {
-    return bookmarkMarkState
+export function bookmarkMarks(kept?: BookmarkMarkState): Extension {
+    return kept ? bookmarkMarkState.init(() => kept) : bookmarkMarkState
 }
 
 /** Whether the field has bookmarks it could not place yet, which a full look may still find. */

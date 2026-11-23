@@ -26,7 +26,7 @@ import { textFileExtensions } from './text-file'
 import { deleteHeal } from './delete-heal'
 import { editorDefaultKeymap } from './editor-default-keymap'
 import { leaveTidy } from './leave-tidy'
-import { collabEditorHistory, editorHistory, joinableUndoStepField, localHistoryExtension } from './editor-history'
+import { carriedHistory, collabEditorHistory, editorHistory, joinableUndoStepField, localHistoryExtension } from './editor-history'
 import { fenceGuard } from './fence-guard'
 import { pasteClamp } from './paste-clamp'
 import { outlinerLayer } from './outliner-layer'
@@ -138,9 +138,15 @@ export interface DocumentEditorOptions {
     /**
      * The file is text that is not markdown (a `.txt`, a script), named by this: no outliner keys,
      * no markdown parser and none of the guards that keep an outline in shape. The language's own
-     * colours come from the file's name (text-file.ts).
+     * colours come from the file's name (text-file.ts). A markdown file opened as text is one too.
      */
     textFile?: string
+    /**
+     * The undo history of the editor this one replaces over the same text (`historyOf`), so a file
+     * whose editor is switched can still undo what was typed before the switch (ADR 0204). Not for a
+     * collaborative editor, whose undo is the shared manager's.
+     */
+    history?: unknown
 }
 
 export interface DocumentEditor {
@@ -198,7 +204,7 @@ function fileKindExtensions(plain: boolean, textFile: string | undefined): Recor
 }
 
 export function createDocumentEditor(options: DocumentEditorOptions): DocumentEditor {
-    const { parent, doc, onChange, currentText, extensions = [], collab, plain = false, textFile } = options
+    const { parent, doc, onChange, currentText, extensions = [], collab, plain = false, textFile, history } = options
     const kind = fileKindExtensions(plain, textFile)
     const historyCompartment = new Compartment()
     // Declared by the time a listener or the store calls either; `view` and `applyExternalText`
@@ -232,7 +238,7 @@ export function createDocumentEditor(options: DocumentEditorOptions): DocumentEd
                 // edits (a co-editor's keystrokes are never undone by your Mod-z). The grouping
                 // plugin goes FIRST: it must see each edit before yCollab's sync plugin pushes it
                 // into the Y.Text, so an edit that should open a new undo step does (undo-grouping.ts).
-                collab ? collabHistory(collab) : historyCompartment.of(localHistoryExtension()),
+                collab ? collabHistory(collab) : historyCompartment.of([localHistoryExtension(), carriedHistory(history)]),
                 collaborative.of(Boolean(collab)),
                 // A visible caret and selection. Without drawSelection() a custom
                 // CM6 setup shows no cursor; this renders `.cm-cursor`, themed below.

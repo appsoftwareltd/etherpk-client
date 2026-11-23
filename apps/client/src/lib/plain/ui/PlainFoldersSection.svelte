@@ -9,7 +9,7 @@
      */
     import ConfirmDialog from '@appsoftwareltd/etherpk-shared/confirm-dialog'
 
-    import { GRAPH_CARD, NOT_SYNCED_NOTE } from '#lib/workspace/graph-card.js'
+    import { CARD_ICONS, CARD_WORDS, GRAPH_CARD, NOT_SYNCED_NOTE } from '#lib/workspace/graph-card.js'
 
     import type { PlainFolderRecord } from '../plain-folder-registry'
     import { type PlainFoldersListing, plainFoldersSection } from '../plain-folders-section'
@@ -62,16 +62,16 @@
                 {#each folders as folder (folder.id)}
                     <li data-testid="plain-folder-card" data-folder-id={folder.id} class={GRAPH_CARD}>
                         <div class="flex flex-wrap items-center gap-2 px-4 py-3">
-                            <div class="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
+                            <div class={CARD_WORDS}>
                                 <span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
                                     <span data-testid="plain-folder-name" class="truncate text-sm font-medium text-neutral-950 dark:text-white">{folder.name}</span>
                                     <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-sm text-neutral-600 dark:bg-white/10 dark:text-neutral-400">Plain Folder</span>
                                 </span>
                             </div>
-                            <div class="ml-auto flex items-center gap-2">
-                                <button type="button" data-testid="plain-folder-open" aria-label={`Open ${folder.name}`} class="gk-button gk-button--primary shrink-0" onclick={() => onopen(folder)}>
-                                    Open
-                                </button>
+                            <button type="button" data-testid="plain-folder-open" aria-label={`Open ${folder.name}`} class="gk-button gk-button--primary shrink-0" onclick={() => onopen(folder)}>
+                                Open
+                            </button>
+                            <div class={CARD_ICONS}>
                                 <button
                                     type="button"
                                     data-testid="plain-folder-forget"

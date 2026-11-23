@@ -9,7 +9,7 @@
  * would. The depths feed the buttons' greying, the way `bodyWritable` feeds the editing ones.
  */
 
-import { history, redo, redoDepth, undo, undoDepth } from '@codemirror/commands'
+import { history, historyField, redo, redoDepth, undo, undoDepth } from '@codemirror/commands'
 import { Annotation, type EditorState, type Extension, Facet, StateField, Transaction, type TransactionSpec } from '@codemirror/state'
 import type { Command } from '@codemirror/view'
 import { yUndoManagerKeymap } from 'y-codemirror.next'
@@ -69,6 +69,20 @@ export const joinableUndoStepField = StateField.define<boolean>({
  */
 export function localHistoryExtension(): Extension {
     return [history({ joinToEvent: (tr, adjacent) => adjacent || tr.annotation(joinsPreviousUndoStep) === true }), joinableUndoStepField]
+}
+
+/**
+ * An editor's own undo history, to hand to the editor that replaces it over the same text
+ * ({@link carriedHistory}): a file's editor switched for another (ADR 0204). Undefined where the
+ * editor keeps none of its own.
+ */
+export function historyOf(state: EditorState): unknown {
+    return state.field(historyField, false)
+}
+
+/** Start an editor's own history as `kept`, which {@link historyOf} gave. The texts must be the same. */
+export function carriedHistory(kept: unknown): Extension {
+    return kept === undefined ? [] : historyField.init(() => kept)
 }
 
 /** What {@link dispatchIntoPreviousUndoStep} needs of a view: an `EditorView`, or a test's stand-in over a state. */

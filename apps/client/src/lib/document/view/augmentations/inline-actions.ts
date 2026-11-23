@@ -131,6 +131,45 @@ export function confirmClusterAction(wrap: Element, command: string): void {
  * tick after a copy takes the accent so it reads as an outcome, not as another button.
  */
 export function actionClusterTheme(className: string, buttonClass: string): Extension {
+    return [actionButtonTheme(buttonClass), clusterTheme(className)]
+}
+
+const buttonThemes = new Map<string, Extension>()
+
+/**
+ * The look of a cluster's buttons alone, for a surface that draws them in a container of its own
+ * (the overlay on a picture, image-embed.ts). One extension for each class, so two augmentations
+ * that ask for the same buttons add the rules once.
+ */
+export function actionButtonTheme(buttonClass: string): Extension {
+    let theme = buttonThemes.get(buttonClass)
+    if (!theme) {
+        theme = EditorView.baseTheme({
+            [`.${buttonClass}`]: {
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '3px',
+                border: 'none',
+                borderRadius: '4px',
+                background: 'transparent',
+                color: 'var(--gk-text-muted, currentColor)',
+                cursor: 'pointer',
+                lineHeight: '0',
+            },
+            [`.${buttonClass}:hover`]: {
+                background: 'var(--gk-surface-2, rgba(127,127,127,0.15))',
+                color: 'var(--gk-text-default, currentColor)',
+            },
+            [`.${buttonClass}--done, .${buttonClass}--done:hover`]: { color: 'var(--gk-accent, #007ACC)' },
+        })
+        buttonThemes.set(buttonClass, theme)
+    }
+    return theme
+}
+
+/** The cluster's own box: where it sits on the line, and how quiet it is until wanted. */
+function clusterTheme(className: string): Extension {
     return EditorView.baseTheme({
         [`.${className}`]: {
             display: 'inline-flex',
@@ -144,23 +183,6 @@ export function actionClusterTheme(className: string, buttonClass: string): Exte
         },
         [`.${className}:hover, .${className}:focus-within`]: { opacity: '1' },
         [`.cm-line:hover .${className}`]: { opacity: '0.8' },
-        [`.${buttonClass}`]: {
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '3px',
-            border: 'none',
-            borderRadius: '4px',
-            background: 'transparent',
-            color: 'var(--gk-text-muted, currentColor)',
-            cursor: 'pointer',
-            lineHeight: '0',
-        },
-        [`.${buttonClass}:hover`]: {
-            background: 'var(--gk-surface-2, rgba(127,127,127,0.15))',
-            color: 'var(--gk-text-default, currentColor)',
-        },
-        [`.${buttonClass}--done, .${buttonClass}--done:hover`]: { color: 'var(--gk-accent, #007ACC)' },
         // No hover to wait for on touch: fully visible there, as the read-only cluster is.
         '@media (hover: none)': {
             [`.${className}`]: { opacity: '1' },
