@@ -60,7 +60,7 @@ export interface SidebarViewContextMenuTarget {
     panelId: string
 }
 
-/** The [[Activity Bar]] itself, from the button at its foot: the hidden Views, its side, Reset Sidebars. */
+/** The [[Activity Bar]] itself, from the button at its foot: the hidden Views, its side, Reset workspace. */
 export interface ActivityBarContextMenuTarget {
     kind: 'activity-bar'
 }
@@ -244,7 +244,7 @@ export interface TabContextMenuTarget {
 }
 
 /**
- * A View [[Favourite]]'s row in the Graph Sidebar: a Kanban board, a Map View (ADR 0169). Not a
+ * A View [[Favourite]]'s row in the Explorer: a Kanban board, a Map View (ADR 0169). Not a
  * document, so the document rows do not apply; the favourite pair does.
  */
 export interface ViewFavouriteContextMenuTarget {

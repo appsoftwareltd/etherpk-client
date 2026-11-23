@@ -59,6 +59,7 @@
     import SpellingSettingsTab from "#lib/document/spelling/ui/SpellingSettingsTab.svelte";
     import UsageStatisticsSetting from "#lib/telemetry/ui/UsageStatisticsSetting.svelte";
     import PrimarySidebarSetting from "#lib/layout/renderers/PrimarySidebarSetting.svelte";
+    import ResetWorkspaceSetting from "#lib/layout/renderers/ResetWorkspaceSetting.svelte";
     import { usageStatistics } from "#lib/telemetry/usage-statistics-device.js";
     import ExtensionsSettingsTab from "#lib/extensions/ExtensionsSettingsTab.svelte";
     import type { ExtensionDirectory } from "#lib/extensions/directory.js";
@@ -106,6 +107,7 @@
         templates = null,
         tab = undefined,
         onchangetab = undefined,
+        onresetworkspace = null,
         onsave,
         onclose,
     }: {
@@ -201,6 +203,8 @@
          * workspace remembers it and keeps the address honest.
          */
         onchangetab?: (tab: "general" | "share" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance") => void;
+        /** Reset workspace, already confirmed; null hides it (the dialog opened outside an open graph). */
+        onresetworkspace?: (() => void) | null;
         onsave: (result: { name: string; settings: GraphSettings; folderPath?: string }) => void;
         onclose: () => void;
     } = $props();
@@ -1291,6 +1295,9 @@
                 <div class="border-t border-neutral-100 dark:border-neutral-800 pt-4">
                     <PrimarySidebarSetting />
                 </div>
+                {#if onresetworkspace}
+                    <ResetWorkspaceSetting unsaved onreset={onresetworkspace} />
+                {/if}
                 {#if usageStatistics().available}
                     <!-- The person's own and applied at once: nothing for Save to commit. Absent
                          where the deployment counts nothing. -->

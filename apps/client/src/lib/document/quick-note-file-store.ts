@@ -1,5 +1,5 @@
 /**
- * Storing the files of a [[Quick Note]] (ADR 0186): the one step the Quick Notes Modal, the
+ * Storing the files of a [[Quick Note]] (ADR 0186): the one step the Quick Notes View, the
  * [[Share Target]]'s page and the workspace's hand-off share, so a file is treated the same
  * whichever of them took it. A picture is re-encoded as an upload in a document is (ADR 0080),
  * any other file is stored as given, and each is saved through the graph's [[Asset]] store.

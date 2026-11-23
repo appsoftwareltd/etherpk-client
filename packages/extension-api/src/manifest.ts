@@ -44,8 +44,11 @@ export interface ViewDeclaration {
      * is all the Activity Bar draws of it: without one the Client draws the first letter of the
      * title. `side` is the earlier way to say the same thing, `left` for primary and `right` for
      * secondary, and is read when `sidebar` is absent. Give both for a Client older than `sidebar`.
+     *
+     * `command` is the Command that shows the View. Bind a shortcut to it, and the Client names that
+     * shortcut when it asks whether to close the View. An older Client ignores it.
      */
-    resident?: { side?: 'left' | 'right'; sidebar?: 'primary' | 'secondary'; desktopOnly?: boolean }
+    resident?: { side?: 'left' | 'right'; sidebar?: 'primary' | 'secondary'; desktopOnly?: boolean; command?: string }
     /**
      * A short address of the View's own, followed by the target when `target` is `concept`: for an
      * extension from the Extension Directory `/graph/<where>/<name>/x/<extension id>/<segment>`, and for one that
@@ -55,7 +58,7 @@ export interface ViewDeclaration {
     address?: { segment: string; target?: 'concept' }
     /**
      * The person can add the View to their Favourites from its tab's menu, and open it again from
-     * the Graph Sidebar. Only for a `main` View with an `address`, and either a `target` (the one View
+     * the Explorer. Only for a `main` View with an `address`, and either a `target` (the one View
      * of its kind) or an address whose target is `concept` (one View per concept, which then
      * follows the concept through a rename). An older Client ignores it.
      */
@@ -302,9 +305,10 @@ function checkView(view: unknown, index: number, id: string, kinds: Set<string>,
             (!sideGiven && !sidebarGiven) ||
             (sideGiven && resident.side !== 'left' && resident.side !== 'right') ||
             (sidebarGiven && resident.sidebar !== 'primary' && resident.sidebar !== 'secondary') ||
-            (resident.desktopOnly !== undefined && typeof resident.desktopOnly !== 'boolean')
+            (resident.desktopOnly !== undefined && typeof resident.desktopOnly !== 'boolean') ||
+            (resident.command !== undefined && typeof resident.command !== 'string')
         ) {
-            errors.push(`${where}.resident must be { sidebar: "primary" | "secondary", desktopOnly?: boolean }, or the earlier { side: "left" | "right" }.`)
+            errors.push(`${where}.resident must be { sidebar: "primary" | "secondary", desktopOnly?: boolean, command?: string }, or the earlier { side: "left" | "right" }.`)
         }
     }
     if (view.address !== undefined) {

@@ -219,9 +219,9 @@ never for the older days shown beneath it. A panel is as tall as what it draws, 
 nothing takes no space, and it draws its own heading and spacing. It mounts in a shadow root with the
 extension's stylesheets, as a View does.
 
-### Graph Sidebar buttons
+### Explorer buttons
 
-A button in the Graph Sidebar, below Search and today's date, runs a Command:
+A button in the Explorer, below Search and today's date, runs a Command:
 `context.graphSidebar.register({ id, title, description, icon, order, when, command })`. These rules
 keep the buttons readable together:
 
@@ -230,11 +230,12 @@ keep the buttons readable together:
 - **`description`** says what the button does, such as "Open a map of every place and route in this
   graph". The Client shows it as the button's help text. Don't write a keyboard shortcut in it: the
   Client adds the key chords bound to the button's Command itself.
-- **`icon`** is clear on its own. On a phone the buttons show their icons only.
+- **`icon`** is clear on its own. On a phone the buttons show their icons only, and the Activity Bar
+  shows every button as a shortcut, its icon with `title` as the tooltip.
 - **`when`** hides the button where it does not apply. A button for the desktop alone passes
   `when: () => context.layout.isDesktop()`. A `when` that throws hides the button too.
-- **`order`** places the button among the others. The Graph Map's is 20 and the Graph Kanban's is
-  30.
+- **`order`** places the button among those of other installed extensions. The buttons of the
+  extensions that come with EtherPK (Graph Kanban, Graph Map) are always first.
 
 ### Opening documents, the theme and Events
 
@@ -496,7 +497,7 @@ to it opens the View. On a device without the extension, it opens a page that na
 and offers to install it, if the directory lists it.
 
 `"favourite": true` lets a person add the View to their Favourites from its tab's menu, and open it
-again from the graph sidebar, where its row shows the tab's title and icon. It needs `region`
+again from the Explorer, where its row shows the tab's title and icon. It needs `region`
 `main`, an `address`, and either a fixed `target` or an address whose `target` is `concept`. A
 favourite of a View about a concept follows the concept when it is renamed. An older Client ignores
 the key.
@@ -511,6 +512,10 @@ so give a View that starts there an `icon`: without one the Client draws the fir
 title. The Secondary Sidebar's Views are tabs. A person can move the View to the other Sidebar, reorder
 it and hide it, and that choice takes precedence over the manifest. `context.layout.reveal(kind)`
 brings it to the front of its Sidebar, wherever the person has put it.
+
+Name the Command that does that as `"command"` of the `resident`, and bind a shortcut to it. The Client
+asks before it closes or hides a Sidebar View, and names that shortcut as the way to re-open it. With
+no shortcut it says where the View is listed. An older Client ignores `command`.
 
 A Client older than `sidebar` reads `"side"` in its place (`"left"` or `"right"`), and a Client that
 knows `sidebar` reads `side` only when `sidebar` is absent, `left` as primary and `right` as

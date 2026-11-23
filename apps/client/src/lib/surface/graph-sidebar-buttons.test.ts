@@ -3,16 +3,24 @@ import { describe, expect, it } from 'vitest'
 import { createContributionRegistry } from './contribution-registry'
 import { graphSidebarButtons, registerGraphSidebarButton, sidebarButtonColumns } from './graph-sidebar-buttons'
 
-// The buttons an extension adds to the Graph Sidebar, after Search and today's date: one way in
+// The buttons an extension adds to the Explorer, after Search and today's date: one way in
 // to what it shows for the whole graph, such as the Graph Map (ADR 0139).
 
-describe('the Graph Sidebar’s extension buttons', () => {
+describe('the Explorer’s extension buttons', () => {
     it('are listed by their order, then the order they were added in', () => {
         const registry = createContributionRegistry()
         registerGraphSidebarButton(registry, { id: 'maps.whole', title: 'Graph Map', command: 'maps.openWhole', order: 20 })
         registerGraphSidebarButton(registry, { id: 'garden.all', title: 'All beds', command: 'garden.all' })
         registerGraphSidebarButton(registry, { id: 'garden.open', title: 'Garden', command: 'garden.open', order: 10 })
         expect(graphSidebarButtons(registry).map((button) => button.title)).toEqual(['Garden', 'Graph Map', 'All beds'])
+    })
+
+    it('list the ones that come with EtherPK first, whatever order another extension asks for', () => {
+        const registry = createContributionRegistry()
+        registerGraphSidebarButton(registry, { id: 'calendar.open', title: 'Calendar', command: 'calendar.open', order: 1 })
+        registerGraphSidebarButton(registry, { id: 'maps.whole', title: 'Graph Map', command: 'maps.openWhole', order: 20, bundled: true })
+        registerGraphSidebarButton(registry, { id: 'kanban.whole', title: 'Graph Kanban', command: 'kanban.openWhole', order: 10, bundled: true })
+        expect(graphSidebarButtons(registry).map((button) => button.title)).toEqual(['Graph Kanban', 'Graph Map', 'Calendar'])
     })
 
     it('go when taken back', () => {

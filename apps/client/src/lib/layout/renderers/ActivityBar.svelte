@@ -4,6 +4,8 @@
         panelId: string
         kind: string
         title: string
+        /** The shortcut that shows it, as the tooltip names it, or null where there is none to name. */
+        chord: string | null
         /** An icon name from `surface/icons`. Without one the title's first letter is drawn. */
         icon?: string
         /**
@@ -12,6 +14,18 @@
          * into it, which sits after the arranged Views and has a tab's menu.
          */
         arranged: boolean
+    }
+
+    /** A shortcut under the Views' icons: it opens something in the editor area, or a dialog, and shows no View. */
+    export interface ActivityShortcut {
+        id: string
+        title: string
+        icon: string
+        /** The shortcut that runs it, as the tooltip names it, or null where there is none to name. */
+        chord: string | null
+        /** The Command it runs, and what the Command is given. */
+        command: string
+        args?: unknown
     }
 </script>
 
@@ -26,7 +40,11 @@
      * It is a vertical tab list: one View shows at a time, and the arrows move between the icons.
      * An icon is reordered by dragging it with a mouse or pen, by Alt+Up and Alt+Down, or from its
      * menu, which every device has. The button at the foot opens the bar's own menu: the hidden
-     * Views, the side the bar is on, and Reset Sidebars.
+     * Views, the side the bar is on, and Reset workspace.
+     *
+     * Under a rule below the Views are the Explorer's own buttons again (Search, Today and those
+     * extensions add), as icons: shortcuts to what opens in a pane or a dialog, in reach whichever
+     * View shows. They are buttons and not tabs, so they are outside the tab list.
      *
      * It draws what it is given and reports what was done. Which Views there are, and what a
      * choice does, are the workspace's (`sidebar-arrangement-binding.ts`).
@@ -34,23 +52,29 @@
     import { tick } from 'svelte'
 
     import { attachContextMenu, type ContextMenuTarget, openContextMenu } from '#lib/surface/index.js'
+    import { withChord } from '#lib/surface/control-help.js'
     import { iconSvg } from '#lib/surface/icons.js'
 
     let {
         items,
+        shortcuts = [],
         showingPanelId,
         side,
         onselect,
+        onshortcut,
         onreorder,
         onstep,
         menuTarget,
     }: {
         items: readonly ActivityItem[]
+        /** The shortcuts under the Views, in order. With none there is no rule. */
+        shortcuts?: readonly ActivityShortcut[]
         /** The View the Sidebar is showing, or null while it is collapsed or empty. */
         showingPanelId: string | null
         /** The side of the Layout the bar is on, which is the side its rule and its marker face away from. */
         side: 'left' | 'right'
         onselect: (item: ActivityItem) => void
+        onshortcut?: (shortcut: ActivityShortcut) => void
         /** An arranged icon was dropped at `index` among the arranged icons. */
         onreorder: (item: ActivityItem, index: number) => void
         /** An arranged icon was moved one place with the keyboard. */
@@ -166,41 +190,66 @@
 <svelte:window onkeydown={onwindowkeydown} />
 
 <nav class="bar" data-side={side} data-testid="activity-bar" aria-label="Primary Sidebar views">
-    <div class="tabs" role="tablist" aria-orientation="vertical" bind:this={list}>
-        {#each items as item (item.panelId)}
-            {@const showing = item.panelId === showingPanelId}
-            <button
-                type="button"
-                role="tab"
-                class="tab"
-                class:dragging={drag?.item.panelId === item.panelId}
-                data-own-button-style="a tab of a vertical tab list"
-                data-testid="activity-icon"
-                data-kind={item.kind}
-                aria-label={item.title}
-                aria-selected={showing}
-                tabindex={item.panelId === tabStop ? 0 : -1}
-                data-tooltip={item.title}
-                onclick={() => onclick(item)}
-                onkeydown={(event) => onkeydown(event, item)}
-                onpointerdown={(event) => onpointerdown(event, item)}
-                {onpointermove}
-                onpointerup={() => endDrag(true)}
-                onpointercancel={() => endDrag(false)}
-                {@attach iconMenu(item)}
-            >
-                {#if item.icon}
-                    <!-- In-repo constant markup from the icon table, or an extension's own icon,
-                         which `iconSvg` cleans before it is drawn. -->
-                    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                    {@html iconSvg(item.icon, { size: 20 })}
-                {:else}
-                    <span class="letter" aria-hidden="true">{letter(item.title)}</span>
-                {/if}
-            </button>
-        {/each}
-        {#if drag}
-            <div class="drop-line" style:top="{drag.lineTop}px" data-testid="activity-drop-line"></div>
+    <div class="icons">
+        <div class="tabs" role="tablist" aria-orientation="vertical" bind:this={list}>
+            {#each items as item (item.panelId)}
+                {@const showing = item.panelId === showingPanelId}
+                <button
+                    type="button"
+                    role="tab"
+                    class="tab"
+                    class:dragging={drag?.item.panelId === item.panelId}
+                    data-own-button-style="a tab of a vertical tab list"
+                    data-testid="activity-icon"
+                    data-kind={item.kind}
+                    aria-label={item.title}
+                    aria-selected={showing}
+                    tabindex={item.panelId === tabStop ? 0 : -1}
+                    data-tooltip={withChord(item.title, item.chord)}
+                    aria-description={item.chord ? `Shortcut: ${item.chord}` : undefined}
+                    onclick={() => onclick(item)}
+                    onkeydown={(event) => onkeydown(event, item)}
+                    onpointerdown={(event) => onpointerdown(event, item)}
+                    {onpointermove}
+                    onpointerup={() => endDrag(true)}
+                    onpointercancel={() => endDrag(false)}
+                    {@attach iconMenu(item)}
+                >
+                    {#if item.icon}
+                        <!-- In-repo constant markup from the icon table, or an extension's own icon,
+                             which `iconSvg` cleans before it is drawn. -->
+                        <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                        {@html iconSvg(item.icon, { size: 20 })}
+                    {:else}
+                        <span class="letter" aria-hidden="true">{letter(item.title)}</span>
+                    {/if}
+                </button>
+            {/each}
+            {#if drag}
+                <div class="drop-line" style:top="{drag.lineTop}px" data-testid="activity-drop-line"></div>
+            {/if}
+        </div>
+        {#if shortcuts.length > 0}
+            <div class="rule" role="separator" data-testid="activity-rule"></div>
+            <div class="shortcuts" role="group" aria-label="Shortcuts" data-testid="activity-shortcuts">
+                {#each shortcuts as shortcut (shortcut.id)}
+                    <button
+                        type="button"
+                        class="gk-icon-button"
+                        data-testid="activity-shortcut"
+                        data-command={shortcut.command}
+                        aria-label={shortcut.title}
+                        data-tooltip={withChord(shortcut.title, shortcut.chord)}
+                        aria-description={shortcut.chord ? `Shortcut: ${shortcut.chord}` : undefined}
+                        onclick={() => onshortcut?.(shortcut)}
+                    >
+                        <!-- In-repo constant markup from the icon table, or an extension's own icon,
+                             which `iconSvg` cleans before it is drawn. -->
+                        <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                        {@html iconSvg(shortcut.icon, { size: 20 })}
+                    </button>
+                {/each}
+            </div>
         {/if}
     </div>
     <button
@@ -239,20 +288,36 @@
     }
 
     /* The icons scroll when there are more than the bar is tall, and the menu button stays put. */
-    .tabs {
-        position: relative;
+    .icons {
         display: flex;
         flex: 1;
         flex-direction: column;
-        align-items: center;
-        gap: 0.25rem;
+        gap: 0.5rem;
         width: 100%;
         min-height: 0;
         overflow-y: auto;
         scrollbar-width: none;
     }
-    .tabs::-webkit-scrollbar {
+    .icons::-webkit-scrollbar {
         display: none;
+    }
+    .tabs,
+    .shortcuts {
+        position: relative;
+        display: flex;
+        flex: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+        width: 100%;
+    }
+    /* Between the Views and the shortcuts: as wide as an icon, so it divides the column and not the bar. */
+    .rule {
+        flex: none;
+        align-self: center;
+        width: 1.5rem;
+        height: 1px;
+        background: var(--gk-border-strong);
     }
 
     /* A tab drawn as an icon button is drawn: 32px square, 8px corners, the icon muted until it

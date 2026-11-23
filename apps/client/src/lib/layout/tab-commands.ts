@@ -78,6 +78,8 @@ export function otherPanelsInPanes(panes: PaneModel[], panelId: string): string[
 export interface TabCommandDeps {
     /** Read lazily — the workspace recreates the controller on a presenter swap. */
     controller: () => LayoutController | undefined
+    /** Ask before these panels are closed, when any is a Sidebar View, then run `proceed`. */
+    confirmClose?: (panelIds: readonly string[], proceed: () => void) => void
 }
 
 export function registerTabCommands(
@@ -111,7 +113,11 @@ export function registerTabCommands(
         const found = closing(arg, side)
         if (!found) return
         // By ViewRef, which is what closeView takes; a panel id IS the key for a singleton.
-        for (const id of found.ids) found.controller.closeView(parseViewKey(id))
+        const proceed = () => {
+            for (const id of found.ids) deps.controller()?.closeView(parseViewKey(id))
+        }
+        if (deps.confirmClose) deps.confirmClose(found.ids, proceed)
+        else proceed()
     }
 
     /** Whether a row would close anything — an offer that does nothing is worse than no offer. */

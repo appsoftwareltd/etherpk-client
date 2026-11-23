@@ -16,10 +16,11 @@ import {
 } from '#lib/layout/sidebar-arrangement-binding.js'
 import type { SidebarRegion } from '#lib/layout/sidebar-arrangement.js'
 import type { LayoutController, LayoutRenderer, SidebarSide, ViewRef } from '#lib/layout/index.js'
-import type { ActivityItem } from '#lib/layout/renderers/ActivityBar.svelte'
+import type { ActivityItem, ActivityShortcut } from '#lib/layout/renderers/ActivityBar.svelte'
 import type { ContextMenuTarget } from '#lib/surface/index.js'
 
 import { revealResident, toggleResidentSidebar } from './residents'
+import { closePrompt, type ClosePrompt } from './sidebar-close-prompt'
 
 export interface SidebarsOptions {
     settings: ArrangementSettings
@@ -28,9 +29,16 @@ export interface SidebarsOptions {
     /** Read on each use: the workspace makes a new one for each presenter. */
     controller: () => LayoutController | undefined
     renderer: () => LayoutRenderer | undefined
-    /** The name and icon a View goes by, as its tab would show them. */
-    title: (view: ViewRef) => string
+    /** The name a View goes by, and what its Activity Bar icon shows and says. */
+    name: (view: ViewRef) => string
+    label: (view: ViewRef) => string
     icon: (view: ViewRef) => string | undefined
+    /** The shortcut to name for a View shown by this Command, or null with none that works here. */
+    chord: (command: string | undefined) => string | null
+    /** The shortcuts under the Views' icons. Read by the bar, which follows what it reads reactively. */
+    shortcuts: () => readonly Omit<ActivityShortcut, 'chord'>[]
+    /** Run a Command the workspace has; one gone with its extension does nothing. */
+    run: (command: string, args: unknown) => void
     /** False while the Layout is being built or taken down. */
     settled: () => boolean
 }
@@ -40,6 +48,7 @@ export interface ActivityBarState {
     region: SidebarRegion
     side: SidebarSide
     items: ActivityItem[]
+    shortcuts: readonly ActivityShortcut[]
     showingPanelId: string | null
 }
 
@@ -53,6 +62,8 @@ export interface Sidebars {
     toggleLabel(side: SidebarSide): string
     /** An icon was chosen: show its View, or collapse the Sidebar when it is the one showing. */
     choose(item: ActivityItem): void
+    /** A shortcut was pressed. */
+    runShortcut(shortcut: ActivityShortcut): void
     reorder(item: ActivityItem, index: number): void
     step(item: ActivityItem, delta: -1 | 1): void
     menuTarget(item: ActivityItem): ContextMenuTarget
@@ -60,6 +71,15 @@ export interface Sidebars {
     toggle(side: SidebarSide): void
     /** Bring a Sidebar View to the front of its expanded Sidebar, hidden or not. */
     reveal(kind: string): void
+    /** Close a tab as its × does: a Sidebar View asks first (ADR 0198), and any other tab closes at once. */
+    closeTab(panelId: string, close: () => void): void
+    /** Ask before these tabs close, when a Sidebar View is among them. */
+    confirmClose(panelIds: readonly string[], proceed: () => void): void
+    /** Ask before these Views are hidden. */
+    confirmHide(kinds: readonly string[], proceed: () => void): void
+    /** The question on screen, or null. Reactive. */
+    closing(): ClosePrompt | null
+    answerClosing(yes: boolean): void
     /** Follow a new controller's Layout, once it is restored. */
     attach(controller: LayoutController): void
     /** Stop following, before the Layout is taken down. */
@@ -83,6 +103,27 @@ export function createSidebars(options: SidebarsOptions): Sidebars {
         options.renderer()?.setPrimarySidebar?.(binding.regionOf('primary'))
     })
 
+    /** What is being asked, and what a yes does. */
+    let asked = $state.raw<{ prompt: ClosePrompt; proceed: () => void } | null>(null)
+
+    function ask(kinds: readonly string[], verb: 'Close' | 'Hide', proceed: () => void): void {
+        const views = kinds.flatMap((kind) => {
+            const resident = binding.resident(kind)
+            return resident ? [{ name: options.name(resident.fallback()), chord: options.chord(resident.command) }] : []
+        })
+        // Nothing here is a Sidebar View any more: there is nothing to bring back.
+        if (views.length === 0) proceed()
+        else asked = { prompt: closePrompt(views, verb), proceed }
+    }
+
+    /** The Sidebar Views among these panels: a resident's View in a Sidebar, and not a copy of it in the editor area. */
+    function sidebarKinds(panelIds: readonly string[]): string[] {
+        const controller = options.controller()
+        if (!controller) return []
+        const open = (['left-sidebar', 'right-sidebar'] as const).flatMap((region) => controller.regionViews(region).views)
+        return open.filter((instance) => panelIds.includes(instance.panelId) && binding.roleOfKind(instance.view.kind) !== undefined).map((instance) => instance.view.kind)
+    }
+
     const regionOfSide = (side: SidebarSide): SidebarRegion => (side === 'left' ? 'left-sidebar' : 'right-sidebar')
 
     function bar(): ActivityBarState | null {
@@ -97,10 +138,12 @@ export function createSidebars(options: SidebarsOptions): Sidebars {
             items: views.map((instance) => ({
                 panelId: instance.panelId,
                 kind: instance.view.kind,
-                title: options.title(instance.view),
+                title: options.label(instance.view),
+                chord: options.chord(binding.resident(instance.view.kind)?.command),
                 icon: options.icon(instance.view),
                 arranged: binding.roleOfKind(instance.view.kind) === 'primary',
             })),
+            shortcuts: options.shortcuts().map((shortcut) => ({ ...shortcut, chord: options.chord(shortcut.command) })),
             showingPanelId: collapsed ? null : frontPanelId,
         }
     }
@@ -131,6 +174,7 @@ export function createSidebars(options: SidebarsOptions): Sidebars {
             if (instance) controller.focusView(instance.view)
             controller.toggleSidebar(side, true)
         },
+        runShortcut: (shortcut) => options.run(shortcut.command, shortcut.args),
         reorder: (item, index) => binding.seatAt(item.kind, index),
         step: (item, delta) => binding.moveBy(item.kind, delta),
         menuTarget: (item) =>
@@ -152,6 +196,16 @@ export function createSidebars(options: SidebarsOptions): Sidebars {
             const controller = options.controller()
             const resident = binding.resident(kind)
             if (controller && resident) revealResident(controller, resident)
+        },
+
+        closeTab: (panelId, close) => ask(sidebarKinds([panelId]), 'Close', close),
+        confirmClose: (panelIds, proceed) => ask(sidebarKinds(panelIds), 'Close', proceed),
+        confirmHide: (kinds, proceed) => ask(kinds, 'Hide', proceed),
+        closing: () => asked?.prompt ?? null,
+        answerClosing(yes) {
+            const answered = asked
+            asked = null
+            if (yes) answered?.proceed()
         },
 
         attach(controller) {

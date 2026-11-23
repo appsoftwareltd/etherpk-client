@@ -47,6 +47,11 @@ export type CatalogueEntry =
           builtIn?: boolean
       }
 
+/** Whether an extension comes with EtherPK, rather than from the Extension Directory or a dev folder. */
+export function comesWithEtherpk(entry: CatalogueEntry): boolean {
+    return entry.source === 'compiled-in' || entry.builtIn === true
+}
+
 /** One package the catalogue refused, and why. */
 export interface BrokenExtension {
     /** The folder or package it came from: what someone fixing it looks for. */

@@ -1,11 +1,16 @@
 /**
  * The files chosen for a [[Quick Note]] that is not added yet: held in memory, shown by
  * `QuickNoteBox`, and handed over whole when the note is added. Both surfaces that write a
- * note hold one (the Quick Notes Modal and the Share Target's page).
+ * note hold one (the Quick Notes View's note in progress and the Share Target's page).
  *
  * A picture gets an object URL for its thumbnail, revoked when the file leaves the list, so a
  * long-lived tab does not keep every photo it was ever shown.
+ *
+ * Plain TypeScript, not runes, so it is tested in Node: a template or a derived that reads it
+ * follows it through `createSubscriber`.
  */
+import { createSubscriber } from 'svelte/reactivity'
+
 import { isImageExt, splitNameExt } from '#lib/storage/fs/asset-store.js'
 
 import type { QuickNoteBoxFile } from './QuickNoteBox.svelte'
@@ -21,10 +26,18 @@ function isPicture(file: File): boolean {
 }
 
 export class PendingNoteFiles {
-    #pending = $state.raw<Pending[]>([])
+    #pending: Pending[] = []
+    #redraw: () => void = () => {}
+    readonly #watch = createSubscriber((update) => {
+        this.#redraw = update
+        return () => {
+            this.#redraw = () => {}
+        }
+    })
 
     /** What the box shows. */
     get shown(): QuickNoteBoxFile[] {
+        this.#watch()
         return this.#pending.map((entry) => entry.shown)
     }
 
@@ -33,6 +46,7 @@ export class PendingNoteFiles {
     }
 
     get count(): number {
+        this.#watch()
         return this.#pending.length
     }
 
@@ -46,12 +60,12 @@ export class PendingNoteFiles {
                 ...(isPicture(file) ? { previewUrl: URL.createObjectURL(file) } : {}),
             },
         }))
-        this.#pending = [...this.#pending, ...added]
+        this.#set([...this.#pending, ...added])
     }
 
     remove(id: string): void {
         for (const entry of this.#pending) if (entry.shown.id === id) revoke(entry)
-        this.#pending = this.#pending.filter((entry) => entry.shown.id !== id)
+        this.#set(this.#pending.filter((entry) => entry.shown.id !== id))
     }
 
     /** Empty the list and hand back its files: the note is being added, or the form started over. */
@@ -63,7 +77,12 @@ export class PendingNoteFiles {
 
     clear(): void {
         this.#pending.forEach(revoke)
-        this.#pending = []
+        this.#set([])
+    }
+
+    #set(next: Pending[]): void {
+        this.#pending = next
+        this.#redraw()
     }
 }
 

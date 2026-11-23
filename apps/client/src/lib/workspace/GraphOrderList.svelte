@@ -155,6 +155,15 @@
         return document.documentElement
     }
 
+    /**
+     * A step of scrolling, cut short at the end of the list: what comes before or after it on the page
+     * is nowhere to drop a card.
+     */
+    function withinList(step: number, box: DOMRect, top: number, bottom: number): number {
+        if (step > 0) return Math.min(step, Math.max(0, box.bottom - (bottom - AUTOSCROLL_EDGE)))
+        return Math.max(step, Math.min(0, box.top - (top + AUTOSCROLL_EDGE * 2)))
+    }
+
     /** While the pointer is held near the edge of what scrolls, keep scrolling, faster nearer the edge. */
     function autoscroll(): void {
         if (!drag || !list) return
@@ -166,7 +175,8 @@
         const pastBottom = pointerY - (bottom - AUTOSCROLL_EDGE)
         const step = pastTop > 0 ? -pastTop / 4 : pastBottom > 0 ? pastBottom / 4 : 0
         const before = scroller.scrollTop
-        if (step !== 0) scroller.scrollTop = before + step
+        const allowed = withinList(step, list.getBoundingClientRect(), top, bottom)
+        if (allowed !== 0) scroller.scrollTop = before + allowed
         if (scroller.scrollTop !== before) followPointer(drag)
         autoscrollFrame = requestAnimationFrame(autoscroll)
     }

@@ -3,18 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
     addQuickNote,
     adoptQuickNotes,
-    getQuickNoteDraft,
     getQuickNotes,
-    offerQuickNoteDraft,
     type QuickNote,
     removeQuickNotes,
     resetQuickNotes,
     discardQuickNotes,
     sanitizeQuickNotes,
     setQuickNoteDiscardHandler,
-    setQuickNoteDraft,
     setQuickNotes,
-    subscribeQuickNoteDraft,
     subscribeQuickNotes,
     unionQuickNotes,
 } from './quick-notes'
@@ -162,47 +158,27 @@ describe('quick notes', () => {
         expect(listener).toHaveBeenCalledTimes(1)
     })
 
-    it('holds the unsent draft text until the graph closes', () => {
-        setQuickNotes([], persistSpy())
-        setQuickNoteDraft('half a thou')
-        expect(getQuickNoteDraft()).toBe('half a thou')
-        resetQuickNotes()
-        expect(getQuickNoteDraft()).toBe('')
-        expect(getQuickNotes()).toEqual([])
-    })
-})
-
-describe('a draft offered from outside the modal', () => {
-    it('becomes the draft and reaches a mounted View, which the box seeds from otherwise', () => {
-        // The workspace puts a refused share into the box (ADR 0087). A View already mounted
-        // hears about it; one that mounts later reads the draft as it always has.
-        const listener = vi.fn()
-        const off = subscribeQuickNoteDraft(listener)
-        offerQuickNoteDraft('Shared text')
-        expect(listener).toHaveBeenCalledWith('Shared text')
-        expect(getQuickNoteDraft()).toBe('Shared text')
-        off()
-        offerQuickNoteDraft('Another')
-        expect(listener).toHaveBeenCalledTimes(1)
+    it('a refused add takes only its own note off the list, not one added while it was in flight', async () => {
+        let refuse!: (error: Error) => void
+        const writes = [new Promise<void>((_, reject) => (refuse = reject)), Promise.resolve()]
+        setQuickNotes([], { add: () => writes.shift()!, remove: async () => {} })
+        const first = addQuickNote('water the beans')
+        await addQuickNote('mend the shed door')
+        refuse(new Error('offline'))
+        await expect(first).rejects.toThrow('offline')
+        expect(getQuickNotes().map((held) => held.text)).toEqual(['mend the shed door'])
     })
 
-    it('goes after text already in the box, a blank line between, so neither is lost', () => {
-        // One rule, here, not in the modal: a box holding "buy milk" keeps it AND gets the share.
-        const listener = vi.fn()
-        const off = subscribeQuickNoteDraft(listener)
-        setQuickNoteDraft('buy milk')
-        offerQuickNoteDraft('Shared text')
-        expect(getQuickNoteDraft()).toBe('buy milk\n\nShared text')
-        expect(listener).toHaveBeenCalledWith('buy milk\n\nShared text')
-        off()
-    })
-
-    it('typing into the box does not echo back to the listeners', () => {
-        const listener = vi.fn()
-        const off = subscribeQuickNoteDraft(listener)
-        setQuickNoteDraft('typed')
-        expect(listener).not.toHaveBeenCalled()
-        off()
+    it('a refused removal brings back only what it removed, and keeps a note added meanwhile', async () => {
+        let refuse!: (error: Error) => void
+        const refused = new Promise<void>((_, reject) => (refuse = reject))
+        setQuickNotes([note('a', 1), note('b', 2)], { add: async () => {}, remove: () => refused })
+        const removing = removeQuickNotes(['a'])
+        await addQuickNote('mend the shed door')
+        refuse(new Error('offline'))
+        await expect(removing).rejects.toThrow('offline')
+        expect(getQuickNotes().map((held) => held.id).filter((id) => id === 'a' || id === 'b').sort()).toEqual(['a', 'b'])
+        expect(getQuickNotes()).toHaveLength(3)
     })
 })
 

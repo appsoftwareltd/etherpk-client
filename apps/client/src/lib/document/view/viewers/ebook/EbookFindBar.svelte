@@ -1,5 +1,6 @@
 <script lang="ts">
     /** Find in this EBook: a search of its text in the frame, never the graph's index. Results list by chapter. */
+    import { helpForKey } from "#lib/surface/control-help.js";
     import { iconSvg } from "#lib/surface/icons.js";
 
     import { isSearchable, type EbookReader } from "./ebook-reader.svelte";
@@ -62,15 +63,15 @@
             data-testid="ebook-find-input"
         />
         <span class="min-w-16 text-sm text-(--gk-text-muted)" role="status" data-testid="ebook-find-status">{status}</span>
-        <button type="button" class="gk-icon-button" aria-label="Previous match" data-tooltip="Previous match" onclick={() => goToMatch(current - 1)} data-testid="ebook-find-previous">
+        <button type="button" class="gk-icon-button" aria-label="Previous match" {...helpForKey("Previous match", "Shift+Enter")} onclick={() => goToMatch(current - 1)} data-testid="ebook-find-previous">
             <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
             {@html iconSvg("move-up")}
         </button>
-        <button type="button" class="gk-icon-button" aria-label="Next match" data-tooltip="Next match" onclick={() => goToMatch(current + 1)} data-testid="ebook-find-next">
+        <button type="button" class="gk-icon-button" aria-label="Next match" {...helpForKey("Next match", "Enter")} onclick={() => goToMatch(current + 1)} data-testid="ebook-find-next">
             <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
             {@html iconSvg("move-down")}
         </button>
-        <button type="button" class="gk-icon-button" aria-label="Close find" data-tooltip="Close find" onclick={() => reader.closeFind()} data-testid="ebook-find-close">
+        <button type="button" class="gk-icon-button" aria-label="Close find" {...helpForKey("Close find", "Escape")} onclick={() => reader.closeFind()} data-testid="ebook-find-close">
             <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
             {@html iconSvg("close")}
         </button>

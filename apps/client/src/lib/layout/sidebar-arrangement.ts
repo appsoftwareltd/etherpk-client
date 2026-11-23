@@ -35,6 +35,12 @@ export interface SidebarArrangement {
 export interface KnownSidebarView {
     kind: string
     role: SidebarRole
+    /**
+     * The View it sits after when it joins an arrangement that does not list it yet, such as one a
+     * person made before an update added it. Without one, or with that View in the other Sidebar, it
+     * joins the end.
+     */
+    after?: string
 }
 
 /** The Views each Sidebar shows, in order. */
@@ -69,7 +75,9 @@ export function normalise(arrangement: SidebarArrangement, known: readonly Known
     for (const view of known) {
         if (placed.has(view.kind)) continue
         placed.add(view.kind)
-        ;(view.role === 'primary' ? primary : secondary).push(view.kind)
+        const list = view.role === 'primary' ? primary : secondary
+        const before = view.after === undefined ? -1 : list.indexOf(view.after)
+        list.splice(before < 0 ? list.length : before + 1, 0, view.kind)
     }
     return { primarySide: arrangement.primarySide, primary, secondary, hidden: [...new Set(arrangement.hidden)] }
 }

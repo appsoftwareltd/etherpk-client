@@ -1,7 +1,7 @@
 /**
  * The Commands, [[Context Menu]] rows and [[Command Menu]] rows of a [[Kanban Board]] (ADR 0113):
  * Open Kanban Board on a document tab or a wikilink, `/kanban` in the editor, the Graph Kanban's
- * Command Menu row and Graph Sidebar button, Open page on a board's own tab, and the rows of a
+ * Command Menu row and Explorer button, Open page on a board's own tab, and the rows of a
  * card's own menu and of a lane's. All of them on either layout but Open in pane below, since the
  * [[Phone Layout]] has no room for a [[Task Detail]]. And Open in task editor on any task the Client
  * raises a menu on, a task's line in an editor or a Tasks View row: the [[Task Editor]] (ADR 0170)
@@ -38,7 +38,7 @@ export const KANBAN_OPEN_BOARD_FOR = 'kanban.openBoardFor'
  * of the editor in use when none is given.
  */
 export const KANBAN_OPEN_WHOLE = 'kanban.openWhole'
-/** The Graph Kanban, by its name: its tab, its Command Menu row and its Graph Sidebar button. */
+/** The Graph Kanban, by its name: its tab, its Command Menu row and its Explorer button. */
 const GRAPH_KANBAN = 'Graph Kanban'
 /** Open the document of the concept a board is about, from the board's tab. */
 export const KANBAN_OPEN_PAGE = 'kanban.openPage'
@@ -235,8 +235,8 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         title: GRAPH_KANBAN,
         description: 'Open a Kanban board of every task in this graph',
         icon: 'kanban',
-        // After the Graph Map (20), as the grid reads: Search, today, the map, the board.
-        order: 30,
+        // First of the extensions' buttons, straight after Search and Today; the Graph Map is 20.
+        order: 10,
         command: KANBAN_OPEN_WHOLE,
     })
     commands.register(KANBAN_OPEN_PAGE, (arg) => {

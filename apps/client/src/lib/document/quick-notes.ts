@@ -37,11 +37,11 @@ export interface QuickNotesPersist {
     remove(ids: readonly string[]): Promise<void>
 }
 
-/** A hard ceiling, so a corrupt or hostile list cannot swamp the modal or the root doc. */
+/** A hard ceiling, so a corrupt or hostile list cannot swamp the View or the root doc. */
 const MAX_QUICK_NOTES = 10_000
 
 /**
- * How much text one note takes in: the cap on the modal's box (`maxlength`) and on the `text`
+ * How much text one note takes in: the cap on the View's box (`maxlength`) and on the `text`
  * field of a [[Share Target]] share (share-target.ts), which a whole shared article would
  * otherwise blow through - and every note on a Server Backend sits in the root doc that every
  * device loads on every open. Not enforced by `addQuickNote` itself: a share's title and
@@ -97,11 +97,7 @@ export function unionQuickNotes(existing: readonly QuickNote[], incoming: readon
 let list: QuickNote[] = []
 let persist: QuickNotesPersist | null = null
 let onDiscard: ((notes: readonly QuickNote[]) => void) | null = null
-/** Text for the modal's box, held per graph: what a refused share left for the person to add later. */
-let draft = ''
 const listeners = new Set<(notes: QuickNote[]) => void>()
-/** Told when text is put into the box from OUTSIDE the modal; the modal's own typing is not echoed. */
-const draftListeners = new Set<(text: string) => void>()
 
 /** Newest first; ties broken by id so two devices agree on the order of a same-instant pair. */
 function sorted(notes: readonly QuickNote[]): QuickNote[] {
@@ -174,13 +170,13 @@ export async function addQuickNote(text: string, options: AddQuickNoteOptions = 
     const trimmed = text.trim()
     if (trimmed === '') return null
     const note = filedUnder({ id: newId(), text: trimmed, createdAt: options.createdAt ?? Date.now() }, options.under)
-    const previous = list
     list = [...list, note]
     emit()
     try {
         await persist?.add(note)
     } catch (err) {
-        list = previous
+        // By id, never back to a list kept from before: another note may have been added since.
+        list = list.filter((n) => n.id !== note.id)
         emit()
         throw err
     }
@@ -193,13 +189,13 @@ export async function removeQuickNotes(ids: readonly string[]): Promise<void> {
     const removing = ids.filter((id) => present.has(id))
     if (removing.length === 0) return
     const gone = new Set(removing)
-    const previous = list
+    const removed = list.filter((n) => gone.has(n.id))
     list = list.filter((n) => !gone.has(n.id))
     emit()
     try {
         await persist?.remove(removing)
     } catch (err) {
-        list = previous
+        list = unionQuickNotes(list, removed)
         emit()
         throw err
     }
@@ -222,37 +218,10 @@ export function setQuickNoteDiscardHandler(handler: ((notes: readonly QuickNote[
     onDiscard = handler
 }
 
-export function getQuickNoteDraft(): string {
-    return draft
-}
-
-export function setQuickNoteDraft(text: string): void {
-    draft = text
-}
-
-/**
- * Put text into the box from outside the modal: the workspace, when a [[Share Target]] share's
- * write was refused (ADR 0087), so the text is not lost. Text already in the box is kept and
- * the offer goes after it, a blank line between - the one rule, here, so the box and this
- * draft cannot disagree. A modal already mounted hears the whole new draft
- * (`subscribeQuickNoteDraft`); one that mounts later reads it as it always has.
- */
-export function offerQuickNoteDraft(text: string): void {
-    draft = draft.trim() === '' ? text : `${draft.replace(/\s+$/, '')}\n\n${text}`
-    for (const listener of draftListeners) listener(draft)
-}
-
-/** Hear text offered from outside the modal. Returns an unsubscribe. */
-export function subscribeQuickNoteDraft(listener: (text: string) => void): () => void {
-    draftListeners.add(listener)
-    return () => draftListeners.delete(listener)
-}
-
 /** Graph close / test seam. */
 export function resetQuickNotes(): void {
     list = []
     persist = null
     onDiscard = null
-    draft = ''
     emit()
 }

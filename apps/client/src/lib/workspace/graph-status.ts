@@ -1,7 +1,7 @@
 /**
  * The one status dot of an open graph: sync and the [[Local Mirror]] together.
  *
- * A synced graph used to say this in two places, a sync row at the foot of the Graph Sidebar and a
+ * A synced graph used to say this in two places, a sync row at the foot of the Explorer and a
  * mirror dot in the toolbar, and a person had to read both to learn whether their work was safe.
  * The dot here is green only when every part that applies is working: sync, and the mirror when
  * one is set up. Pressing it opens a dialog with a section for each.

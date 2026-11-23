@@ -46,8 +46,7 @@
         <option value="right">On the right</option>
     </select>
     <p class="gk-hint" id="primary-sidebar-side-hint">
-        The Primary Sidebar is the one with the column of icons. The Secondary Sidebar, with tabs, takes the other side.
-        This setting is yours, not the graph's: it applies at once, in every graph and folder you open, and on your other
-        devices when your account syncs a graph.
+        The Primary Sidebar displays a set of vertically stacked icons. The Secondary Sidebar is placed on the opposite
+        side. This setting is per user across all graphs, and applies on other devices for synced graphs.
     </p>
 </div>

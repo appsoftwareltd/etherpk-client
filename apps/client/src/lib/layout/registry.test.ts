@@ -89,6 +89,28 @@ describe('view registry icons', () => {
     })
 })
 
+describe('what a View is called', () => {
+    const view = { kind: 'explorer', target: 'root' }
+
+    it('is its title, unless the kind has a name, and its icon says the name unless it has a label', () => {
+        const registry = createViewRegistry()
+        registry.register({ kind: 'explorer', component: FakeComponent, title: () => 'Explorer: Garden', name: () => 'Explorer' })
+        registry.register({ kind: 'tasks', component: FakeComponent, title: () => 'Tasks' })
+        expect([registry.title(view), registry.name(view), registry.label(view)]).toEqual(['Explorer: Garden', 'Explorer', 'Explorer'])
+        const tasks = { kind: 'tasks', target: 'tasks' }
+        expect([registry.name(tasks), registry.label(tasks)]).toEqual(['Tasks', 'Tasks'])
+    })
+
+    it('can say a state in its label and its icon, read each time', () => {
+        let open = false
+        const registry = createViewRegistry()
+        registry.register({ kind: 'explorer', component: FakeComponent, name: () => 'Shed', label: () => (open ? 'Shed (unlocked)' : 'Shed'), icon: () => (open ? 'lock-open' : 'lock') })
+        expect([registry.icon(view), registry.label(view)]).toEqual(['lock', 'Shed'])
+        open = true
+        expect([registry.icon(view), registry.label(view), registry.name(view)]).toEqual(['lock-open', 'Shed (unlocked)', 'Shed'])
+    })
+})
+
 describe('view registry tab title width', () => {
     it('caps every tab title at the same number of characters by default', () => {
         const registry = createViewRegistry()

@@ -57,7 +57,8 @@
     import type { PdfGraphService } from '#lib/document/pdf/pdf-service.js'
     import { registerAssetViewers } from '#lib/document/view/viewers/register.js'
     import { attachKeybindings, createCommandRegistry, createContributionRegistry, createEventBus } from '#lib/surface/index.js'
-    import { createKeybindingTable } from '#lib/surface/keybindings.js'
+    import { hasKeyboard } from '#lib/surface/control-help.js'
+    import { createKeybindingTable, isApplePlatform } from '#lib/surface/keybindings.js'
     import ContextMenu from '#lib/surface/ui/ContextMenu.svelte'
     import KeyboardShortcutsDialog from '#lib/workspace/KeyboardShortcutsDialog.svelte'
     import WorkspaceToolbar from '#lib/workspace/WorkspaceToolbar.svelte'
@@ -67,9 +68,12 @@
     import { graphAddressOf } from '#lib/navigation/graph-address.js'
     import { APP_KEYBINDINGS, type ShortcutBinding } from '#lib/workspace/keyboard-shortcuts.js'
     import ActivityBar from '#lib/layout/renderers/ActivityBar.svelte'
-    import { registerSidebarCommands } from '#lib/layout/sidebar-commands.js'
+    import { registerSidebarCommands, WORKSPACE_RESET } from '#lib/layout/sidebar-commands.js'
     import { personSettings } from '#lib/person-settings/person-settings.js'
     import { createSidebars } from '#lib/workspace/sidebars.svelte.js'
+    import { reopeningChord } from '#lib/workspace/sidebar-close-prompt.js'
+    import SidebarClosePrompt from '#lib/workspace/SidebarClosePrompt.svelte'
+    import { RESET_WORKSPACE_PROMPT } from '#lib/workspace/workspace-reset.js'
     import {
         type WorkspaceGeneration,
         clearWorkspaceServices,
@@ -150,6 +154,9 @@
     const TREE_VIEW: ViewRef = { kind: 'file-tree', target: 'root' }
     const START_VIEW: ViewRef = { kind: 'plain-start', target: 'start' }
     const OUTLINE_VIEW: ViewRef = { kind: 'plain-outline', target: 'outline' }
+    /** The Commands that show them. */
+    const SHOW_FILES = 'plain.showFiles'
+    const SHOW_OUTLINE = 'plain.showOutline'
 
     const commands = createCommandRegistry()
     const contributions = createContributionRegistry()
@@ -169,6 +176,9 @@
         { key: 'Mod+P', command: 'plain.goToFile', label: 'Go to a file', group: 'Go to' },
         { key: 'Alt+F', command: 'plain.goToFile', label: 'Go to a file', group: 'Go to' },
         { key: 'Mod+Shift+F', command: 'plain.search', label: 'Search in the folder', group: 'Go to' },
+        // A letter for each Sidebar View, as a graph's have. G is the Explorer's there.
+        { key: 'Alt+G', command: SHOW_FILES, label: 'Files', group: 'Sidebars' },
+        { key: 'Alt+O', command: SHOW_OUTLINE, label: 'Outline', group: 'Sidebars' },
     ]
     const keybindings = createKeybindingTable([...PLAIN_KEYBINDINGS, ...APP_KEYBINDINGS.filter((binding) => binding.command !== 'search.open')])
     const shownBindings = $derived(keybindings.bindings.filter((binding) => commands.has(binding.command)))
@@ -188,6 +198,8 @@
     let goToFileOpen = $state(false)
     let searchOpen = $state(false)
     let settingsOpen = $state(false)
+    /** The Reset workspace confirmation is showing. */
+    let resetOpen = $state(false)
     /** The folder's own settings (plain-settings.ts): the defaults until its hidden folder has been read. */
     let settings = $state.raw<PlainSettings>(DEFAULT_PLAIN_SETTINGS)
     let stateFolder: PlainStateFolder | undefined
@@ -245,16 +257,28 @@
 
     // The two Sidebars (ADR 0198): Files in the Primary, chosen from the Activity Bar, and Outline
     // in the Secondary, each where the person's Sidebar Arrangement keeps it (ADR 0199).
+    /** The shortcut a tooltip or a question names for a Command, or null: a phone has no keys to name. */
+    const chord = (command: string | undefined) => (useMobile || !hasKeyboard() ? null : reopeningChord(keybindings.bindings, command, isApplePlatform()))
     const sidebars = createSidebars({
         settings: personSettings(),
         residents: () => [
-            { kind: TREE_VIEW.kind, role: 'primary', fallback: () => TREE_VIEW },
-            { kind: OUTLINE_VIEW.kind, role: 'secondary', fallback: () => OUTLINE_VIEW },
+            { kind: TREE_VIEW.kind, role: 'primary', fallback: () => TREE_VIEW, command: SHOW_FILES },
+            { kind: OUTLINE_VIEW.kind, role: 'secondary', fallback: () => OUTLINE_VIEW, command: SHOW_OUTLINE },
         ],
         controller: () => controller,
         renderer: () => renderer,
-        title: (view) => registry.title(view),
+        name: (view) => registry.name(view),
+        label: (view) => registry.label(view),
         icon: (view) => registry.icon(view),
+        // The buttons above the file tree, under their names.
+        shortcuts: () => [
+            { id: 'go-to-file', title: 'Go to file', icon: 'go-to-file', command: 'plain.goToFile' },
+            { id: 'search', title: 'Search', icon: 'search', command: 'plain.search' },
+        ],
+        run: (command, args) => {
+            if (commands.has(command)) void commands.execute(command, args)
+        },
+        chord,
         settled: () => !disposed,
     })
     const activityBar = $derived(useMobile ? null : sidebars.bar())
@@ -578,7 +602,7 @@
                 noteActive()
             },
             onViewClosed: (panelId) => controller?.forgetClosedView(panelId),
-            onCloseRequested: (panelId) => controller?.closePanel(panelId),
+            onCloseRequested: (panelId) => sidebars.closeTab(panelId, () => controller?.closePanel(panelId)),
             onViewMoved: () => controller?.noteRendererChanged(),
         })
     }
@@ -609,17 +633,71 @@
         sidebars.attach(controller)
     }
 
-    async function switchPresenter(mobile: boolean): Promise<void> {
-        if (mobile === useMobile || disposed) return
-        const snapshot = controller?.serialize().model
+    /** Take the Layout down, for another presenter or a fresh Layout to be put up in its place. */
+    function takeDownPresenter(): void {
         sidebars.detach()
         renderer?.destroy?.()
         controller = undefined
         renderer = undefined
         mobileRenderer = undefined
-        useMobile = mobile
-        await tick()
-        await mountPresenter(snapshot)
+    }
+
+    /**
+     * Reset workspace, confirmed: what a folder opens with the first time, over a fresh presenter,
+     * with the person's Sidebar Arrangement back at its defaults (ADR 0199). An edit not yet saved
+     * is written first. One that cannot be saved stays in the store, as when a tab closes, and the
+     * store says so itself.
+     */
+    async function resetWorkspace(): Promise<void> {
+        resetOpen = false
+        await inLayoutTurn(async () => {
+            if (!controller || !tree) return
+            await store?.flushAll().catch((error: unknown) => console.warn('[plain-folder] a file could not be saved before the reset', error))
+            if (disposed) return
+            takeDownPresenter()
+            sidebars.binding.reset()
+            // Replaced, not pushed: Back must not return to an address whose tab is now closed. A
+            // file still being followed from the address is not wanted either.
+            following = null
+            if (!onlyFile) {
+                addressed = plainFolderUrl(folderName)
+                replaceState(addressed + window.location.search, page.state)
+            }
+            await tick()
+            await mountPresenter(freshLayout().model)
+            if (disposed) return
+            noteActive()
+            await openFirstFile(tree)
+            saveLayout()
+            showNotice({ id: RESET_NOTICE, tone: 'info', text: 'Workspace reset' })
+        }).catch((error: unknown) => {
+            console.warn('[plain-folder] the workspace could not be reset', error)
+            showNotice({ id: RESET_NOTICE, tone: 'error', text: `The workspace could not be reset (${error instanceof Error ? error.message : String(error)}). Reload the page to open the folder again.` })
+        })
+    }
+    const RESET_NOTICE = 'plain-workspace-reset'
+
+    /** Put the same Layout up again on the other presenter, when the window crosses the phone's width. */
+    async function switchPresenter(mobile: boolean): Promise<void> {
+        await inLayoutTurn(async () => {
+            if (mobile === useMobile) return
+            const snapshot = controller?.serialize().model
+            takeDownPresenter()
+            useMobile = mobile
+            await tick()
+            await mountPresenter(snapshot)
+        })
+    }
+
+    /**
+     * One at a time: putting a Layout up waits on an import and on the container's size, and a
+     * second one started in between would leave two over one container.
+     */
+    let layoutTurn: Promise<void> = Promise.resolve()
+    function inLayoutTurn(work: () => Promise<void>): Promise<void> {
+        const turn = layoutTurn.then(() => (disposed ? undefined : work()))
+        layoutTurn = turn.catch(() => {})
+        return turn
     }
 
     /** Compare the open files and the listing with the folder: on focus and on a light poll. */
@@ -754,6 +832,12 @@
                 commands.register('layout.toggleBacklinks', () => {
                     sidebars.toggle('right')
                 })
+                commands.register(SHOW_FILES, () => {
+                    sidebars.reveal(TREE_VIEW.kind)
+                })
+                commands.register(SHOW_OUTLINE, () => {
+                    sidebars.reveal(OUTLINE_VIEW.kind)
+                })
                 commands.register('help.openShortcuts', () => {
                     shortcutsOpen = true
                 })
@@ -762,6 +846,9 @@
                 })
                 commands.register('plain.search', () => {
                     searchOpen = true
+                })
+                commands.register(WORKSPACE_RESET, () => {
+                    resetOpen = true
                 })
                 commands.register('plain.settings', () => {
                     settingsOpen = true
@@ -776,8 +863,8 @@
                     registerLinkCommands(commands, contributions, { onError: (text) => showNotice({ id: 'plain-link', tone: 'error', text }) }),
                     registerPasteCommands(commands, contributions),
                     registerBlockCommands(commands, contributions),
-                    registerTabCommands(commands, contributions, { controller: () => controller }),
-                    registerSidebarCommands(commands, contributions, { binding: sidebars.binding, controller: () => controller, title: (view) => registry.title(view) }),
+                    registerTabCommands(commands, contributions, { controller: () => controller, confirmClose: sidebars.confirmClose }),
+                    registerSidebarCommands(commands, contributions, { binding: sidebars.binding, controller: () => controller, name: (view) => registry.name(view), confirmHide: sidebars.confirmHide }),
                     registerSpellingCommands(commands, contributions),
                     registerBookmarkCommands(commands, contributions, {
                         openDocumentAtLine: (path, line) =>
@@ -871,6 +958,7 @@
     {/if}
     {#if !useMobile}
         <WorkspaceToolbar
+            {chord}
             ontoggleleft={() => void commands.execute('layout.toggleSidebar')}
             ontoggleright={() => void commands.execute('layout.toggleBacklinks')}
             onshortcuts={() => void commands.execute('help.openShortcuts')}
@@ -888,6 +976,8 @@
             {#if activityBar}
                 <ActivityBar
                     items={activityBar.items}
+                    shortcuts={activityBar.shortcuts}
+                    onshortcut={sidebars.runShortcut}
                     showingPanelId={activityBar.showingPanelId}
                     side={activityBar.side}
                     onselect={sidebars.choose}
@@ -934,7 +1024,22 @@
 />
 
 {#if settingsOpen}
-    <PlainSettingsDialog folderName={folderName} pastedFiles={settings.pastedFiles} onpastedfiles={setPastedFiles} onclose={() => (settingsOpen = false)} />
+    <PlainSettingsDialog
+        {folderName}
+        pastedFiles={settings.pastedFiles}
+        onpastedfiles={setPastedFiles}
+        onresetworkspace={() => {
+            settingsOpen = false
+            void resetWorkspace()
+        }}
+        onclose={() => (settingsOpen = false)}
+    />
+{/if}
+
+<SidebarClosePrompt {sidebars} />
+
+{#if resetOpen}
+    <ConfirmDialog open={true} {...RESET_WORKSPACE_PROMPT} onconfirm={() => void resetWorkspace()} oncancel={() => (resetOpen = false)} />
 {/if}
 
 {#if shortcutsOpen}

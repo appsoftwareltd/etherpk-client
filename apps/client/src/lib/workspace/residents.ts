@@ -1,7 +1,7 @@
 /**
  * Reaching a [[Sidebar]] resident (CONTEXT.md → Sidebar).
  *
- * A resident is furniture: the graph sidebar, Tasks, Backlinks, and the Views extensions declare.
+ * A resident is furniture: the Explorer, Tasks, Backlinks, and the Views extensions declare.
  * A person can hide one (ADR 0198), and a hidden one is closed, so every control that reaches a
  * resident brings it back first.
  *

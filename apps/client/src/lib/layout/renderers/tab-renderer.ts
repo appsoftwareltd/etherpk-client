@@ -10,7 +10,7 @@
  * document a [[Publication]] names as an include wears a globe, since its text is on a website.
  * One slot for both, because the two exclude each other: a protected document is never
  * published, and protecting a public one withdraws it first. The icon before the title is the
- * View kind's own (`ViewRegistryEntry.icon`) - the Graph Sidebar's tab wears the graph glyph
+ * View kind's own (`ViewRegistryEntry.icon`) - the Explorer's tab wears the graph glyph
  * ahead of the graph's name - and, unlike the indicators, never changes while the tab lives.
  *
  * **A capped title.** The title is drawn about `titleCharsFor` characters wide (the View

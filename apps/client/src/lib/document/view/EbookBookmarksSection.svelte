@@ -1,5 +1,5 @@
 <!--
-    The graph Sidebar's EBook bookmarks: the places the person marked, under the name of each EBook, below
+    The Explorer's EBook bookmarks: the places the person marked, under the name of each EBook, below
     the PDF Bookmarks. A row opens the EBook at its place. It shows only once there is one, because most
     graphs hold no EBook. Removing one acts at once, because marking the place again is a click in the tab.
 -->

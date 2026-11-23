@@ -30,6 +30,8 @@ import { openingHeight, STUB_HEIGHT } from './ui/heights'
 import type { ChatSession } from './ui/session.svelte'
 
 export const CHATS_VIEW = 'agent-chat.chats'
+/** Shows the list of chats. Named in the manifest, so the Client can say how to re-open it. */
+export const CHATS_COMMAND = 'agent-chat.showChats'
 export const OPEN_COMMAND = 'agent-chat.open'
 /** The workspace's Command that opens a graph's settings at the Agents tab. */
 export const AGENTS_SETTINGS_COMMAND = 'agents.settings'
@@ -271,6 +273,14 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
         when: (editor) => !editor.protectedDocument && editor.bodyWritable,
         command: OPEN_COMMAND,
     })
+    // The list of chats, shown as the other Sidebar Views are: C for chats. The find box has its own
+    // Alt+C while the keyboard is in it, as it has Alt+R.
+    context.commands.register(CHATS_COMMAND, () => context.layout.reveal(CHATS_VIEW))
+    try {
+        context.keybindings.register({ key: 'Alt+C', command: CHATS_COMMAND, label: 'Agent Chats', group: 'Sidebars' })
+    } catch {
+        // Another extension took the chord: the list is still in Sidebar views.
+    }
     try {
         context.keybindings.register({ key: 'Alt+A', command: OPEN_COMMAND, label: 'Ask an agent about this document', group: 'Agent Chat' })
     } catch {

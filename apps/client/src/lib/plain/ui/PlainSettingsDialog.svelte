@@ -6,6 +6,7 @@
     import Dialog from '@appsoftwareltd/etherpk-shared/dialog'
 
     import PrimarySidebarSetting from '#lib/layout/renderers/PrimarySidebarSetting.svelte'
+    import ResetWorkspaceSetting from '#lib/layout/renderers/ResetWorkspaceSetting.svelte'
 
     import type { AssetPlacement } from '../plain-assets'
 
@@ -13,12 +14,15 @@
         folderName,
         pastedFiles,
         onpastedfiles,
+        onresetworkspace,
         onclose,
     }: {
         folderName: string
         pastedFiles: AssetPlacement
         /** Rejects with the reason when the setting could not be kept. */
         onpastedfiles: (placement: AssetPlacement) => Promise<void>
+        /** Reset workspace, already confirmed. */
+        onresetworkspace: () => void
         onclose: () => void
     } = $props()
 
@@ -64,13 +68,16 @@
                 <option value="named">A folder named after the document</option>
             </select>
             <p class="gk-hint" id="plain-settings-pasted-hint">
-                A picture pasted into guide/watering.md is saved as {EXAMPLES[pastedFiles]}. This is kept in the folder’s hidden .etherpk folder, so everyone who opens the folder gets the same.
+                A picture pasted into guide/watering.md is saved as {EXAMPLES[pastedFiles]}. This setting is kept in the folder’s hidden .etherpk folder.
             </p>
             {#if error}<p class="gk-error" role="alert">{error}</p>{/if}
         </div>
         <!-- The person's own, not the folder's: kept with their settings, not in `.etherpk` (ADR 0199). -->
         <div class="mt-4">
             <PrimarySidebarSetting />
+        </div>
+        <div class="mt-4">
+            <ResetWorkspaceSetting onreset={onresetworkspace} />
         </div>
     {/snippet}
 </Dialog>

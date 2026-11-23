@@ -1,5 +1,5 @@
 /**
- * The look of a Graph Sidebar button (Search, Today, Quick notes and the extensions' buttons), in
+ * The look of an Explorer button (Search, Today and the extensions' buttons), in
  * one place so the Sidebar and the Style Guide's specimens draw the same thing ([[Style Guide]],
  * "Sidebar buttons"). Nothing outside the Sidebar's button grid uses these: a push button
  * anywhere else is a `gk-button`.

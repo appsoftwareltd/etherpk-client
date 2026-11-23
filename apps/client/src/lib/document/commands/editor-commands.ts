@@ -118,7 +118,7 @@ function editTableAtCursor(
 
 /**
  * What a [[Plain Folder]] leaves out of the editor's Commands, by id: the ones that write a graph's
- * syntax (a day as a wikilink, `[[`, a task's tags) or act on a graph (its search, its workspace).
+ * syntax (a day as a wikilink, `[[`, a task's tags) or act on a graph (its search).
  * A file there is plain markdown, and a row that wrote `[[2026-11-21]]` into it would write text.
  */
 const GRAPH_ONLY = new Set([
@@ -133,7 +133,6 @@ const GRAPH_ONLY = new Set([
     'task.bar.due',
     'task.bar.menu',
     'search.open',
-    'workspace.reset',
     'asset.upload',
 ])
 
@@ -369,7 +368,7 @@ export function registerEditorCommands(
     item({ id: 'document.findReplace', title: 'Find and replace', detail: 'Find text in this document, and replace it', icon: 'search', group: 'Go to', order: 11, keywords: ['find', 'replace', 'search', 'match', 'text'], command: 'document.findReplace' })
     // Opens a confirmation, never resets on its own; not gated on `bodyWritable`, because it
     // touches the Layout and nothing in any document.
-    item({ id: 'workspace.reset', title: 'Reset workspace', detail: 'Close every tab and restore the sidebars', icon: 'reset', group: 'Settings', order: 200, keywords: ['layout', 'panes', 'tabs', 'sidebars', 'default'], command: 'workspace.reset' })
+    item({ id: 'workspace.reset', title: 'Reset workspace', detail: 'Close every tab and put the sidebars back to their defaults', icon: 'reset', group: 'Settings', order: 200, keywords: ['layout', 'panes', 'tabs', 'sidebars', 'default'], command: 'workspace.reset' })
     // One row at a time, naming the change it makes. Not gated on `bodyWritable`: the preference
     // writes to no document, so it stays on a locked Protected Document (where it has no effect).
     item({ id: 'editor.spellCheckOff', title: 'Spell check: turn off', detail: 'Stop underlining misspellings on this device', icon: 'spell-check', group: 'Settings', order: 180, keywords: ['spelling', 'spellcheck', 'dictionary'], when: () => isSpellCheckEnabled(), command: 'editor.toggleSpellCheck', args: { enabled: false } })

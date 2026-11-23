@@ -486,6 +486,14 @@ export interface ViewRegistryEntry {
     /** Human title for the tab; defaults to the target. */
     title?: (view: ViewRef) => string
     /**
+     * What the View is called where its title says more than its name: the Explorer's title has the
+     * graph's name in it, and Backlinks' the document's. The [[Activity Bar]]'s icon, the rows that
+     * show and hide the View and the question before it closes use this. Defaults to the title.
+     */
+    name?: () => string
+    /** What the kind's [[Activity Bar]] icon says, where that is a state as well as its name. Defaults to the name. */
+    label?: () => string
+    /**
      * A fixed label this kind's titles open with, ahead of what the tab is about ("Backlinks: "
      * before the document's name). A tab shows about `TAB_TITLE_CHARS` (registry.ts) characters of its
      * title; the prefix's length is added to that, so the subject after it gets the room a
@@ -496,9 +504,10 @@ export interface ViewRegistryEntry {
      * An icon from `surface/icons` drawn before the title on every presenter's tab - the desktop
      * tab and the phone's strips alike, so the two never disagree about what a kind looks like.
      * Per kind, not per View: it says what sort of thing the tab is, which is what a glance at
-     * a strip wants to know. Absent for most kinds; the title carries them.
+     * a strip wants to know. Absent for most kinds; the title carries them. A function for a
+     * kind whose icon says a state as well: the padlock of Protected documents, open or closed.
      */
-    icon?: string
+    icon?: string | (() => string)
     /**
      * The target is a [[Concept]]'s name and the View is about that concept: a rename re-keys it in
      * place, as it does the concept's document tab (workspace/document-mutations.ts). A
@@ -541,6 +550,10 @@ export interface ViewRegistry {
     /** The region a View of this kind opens into by default. */
     naturalRegion(kind: string): Region | undefined
     title(view: ViewRef): string
+    /** What the View is called: its kind's `name`, or its title. */
+    name(view: ViewRef): string
+    /** What its Activity Bar icon says: its kind's `label`, or its name. */
+    label(view: ViewRef): string
     /** The icon name the View's kind registered, or undefined for a kind without one. */
     icon(view: ViewRef): string | undefined
     /**

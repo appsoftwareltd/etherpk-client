@@ -44,7 +44,7 @@
     } from "#lib/document/share-target.js";
     import QuickNoteBox from "#lib/document/view/QuickNoteBox.svelte";
     import QuickNoteFileUnder from "#lib/document/view/QuickNoteFileUnder.svelte";
-    import { PendingNoteFiles } from "#lib/document/view/quick-note-pending-files.svelte.js";
+    import { PendingNoteFiles } from "#lib/document/view/quick-note-pending-files.js";
     import { SHARE_FILES_DROPPED } from "#lib/share/share-post.js";
     import { forgetSharedFiles, keepSharedFiles, readSharedFiles } from "#lib/share/shared-files.js";
     import { createIdbGraphRegistry, getLastGraphId, type GraphRecord } from "#lib/storage/index.js";

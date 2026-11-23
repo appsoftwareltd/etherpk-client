@@ -61,7 +61,7 @@
         label: string;
         placeholder?: string;
         maxlength?: number;
-        /** The share page's size: more room and larger corners than the modal's box. */
+        /** The share page's size: more room and larger corners than the View's box. */
         roomy?: boolean;
         readonly?: boolean;
         invalid?: boolean;
@@ -79,7 +79,7 @@
         oninput?: () => void;
         /** A key the list did not take. Return true when it was handled. */
         onkey?: (event: KeyboardEvent) => boolean;
-        /** A control of the caller's at the right end of the button row: the modal's Add as task. */
+        /** A control of the caller's at the right end of the button row: the View's Add as task. */
         tools?: Snippet;
     } = $props();
 

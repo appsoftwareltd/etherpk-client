@@ -48,7 +48,7 @@ const arrangement = fc
 
 /** The Views a graph and device can show: some of the kinds, each with a default Sidebar. */
 const known = fc
-    .uniqueArray(fc.record({ kind, role }), { selector: (view) => view.kind, maxLength: KINDS.length })
+    .uniqueArray(fc.record({ kind, role, after: fc.option(kind, { nil: undefined }) }), { selector: (view) => view.kind, maxLength: KINDS.length })
     .map((views): KnownSidebarView[] => views)
 
 type Change = (arrangement: SidebarArrangement, known: readonly KnownSidebarView[]) => SidebarArrangement

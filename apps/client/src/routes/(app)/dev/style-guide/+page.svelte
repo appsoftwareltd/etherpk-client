@@ -134,7 +134,7 @@
     <section class="space-y-4" data-testid="style-guide-sidebar-buttons">
         <h2 class="text-lg font-semibold text-(--gk-text-strong)">Sidebar buttons</h2>
         <div class="grid w-76 grid-cols-2 gap-2 rounded-lg border border-(--gk-border-soft) bg-(--gk-surface-1) p-2">
-            {#each [["search", "Search"], ["todays-journal", "Today"], ["quick-notes", "Quick notes"]] as [icon, label], index (label)}
+            {#each [["search", "Search"], ["todays-journal", "Today"]] as [icon, label], index (label)}
                 <button type="button" class={sidebarButton} data-testid={index === 0 ? "style-guide-sidebar-button" : undefined}>
                     <span class="inline-flex shrink-0 items-center gap-1.5">
                         <span class="inline-flex shrink-0 text-(--gk-text-subtle)" aria-hidden="true">{@html iconSvg(icon, { size: 16 })}</span>
@@ -143,8 +143,8 @@
                 </button>
             {/each}
         </div>
-        <div class="grid w-76 grid-cols-3 gap-2 rounded-lg border border-(--gk-border-soft) bg-(--gk-surface-1) p-2">
-            {#each [["search", "Search"], ["todays-journal", "Today's journal"], ["quick-notes", "Quick notes"]] as [icon, label] (label)}
+        <div class="grid w-76 grid-cols-2 gap-2 rounded-lg border border-(--gk-border-soft) bg-(--gk-surface-1) p-2">
+            {#each [["search", "Search"], ["todays-journal", "Today's journal"]] as [icon, label] (label)}
                 <button type="button" class={sidebarIconButton} aria-label={label} data-tooltip={label}>{@html iconSvg(icon, { size: 18 })}</button>
             {/each}
         </div>

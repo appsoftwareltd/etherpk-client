@@ -8,7 +8,7 @@ describe('graphExportStem', () => {
         expect(graphExportStem('Work / Home', 'g1')).not.toContain('/')
     })
 
-    it('calls a graph with no name "Graph", as the Graph Sidebar tab does, never "_"', () => {
+    it('calls a graph with no name "Graph", as the Explorer tab does, never "_"', () => {
         expect(graphExportStem('', 'g1')).toBe('Graph')
         expect(graphExportStem('   ', 'g1')).toBe('Graph')
         expect(graphExportStem('g1', 'g1')).toBe('Graph')

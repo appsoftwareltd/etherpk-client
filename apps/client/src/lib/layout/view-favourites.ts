@@ -1,6 +1,6 @@
 /**
  * Views as [[Favourite]]s (ADR 0169): which Views can be one, and how a View favourite's row in the
- * Graph Sidebar reads and what it opens.
+ * Explorer reads and what it opens.
  *
  * A View kind says it can be a favourite in its registration (`favourite`), which the workspace
  * copies from an extension's manifest, so nothing here names an extension. Its entry is then
@@ -80,7 +80,7 @@ export function createViewFavourites(deps: ViewFavouritesDeps): ViewFavourites {
             const entry = registry.get(favourite.kind)
             const view = viewOf(entry, favourite)
             const availability = deps.availability(favourite.kind)
-            const icon = view ? registry.icon(view) : entry?.icon
+            const icon = registry.icon(view ?? { kind: favourite.kind, target: '' })
             const row: ViewFavouriteRow = {
                 title: view ? registry.title(view) : favourite.concept === undefined ? favourite.kind : `${favourite.kind}: ${favourite.concept}`,
                 ...(icon === undefined ? {} : { icon }),

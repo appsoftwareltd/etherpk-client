@@ -47,7 +47,7 @@ import { registerGraphSidebarButton } from '#lib/surface/graph-sidebar-buttons.j
 import { registerJournalPanel } from '#lib/surface/journal-panels.js'
 import type { EventName } from '#lib/surface/index.js'
 
-import type { CatalogueEntry } from './catalogue'
+import { type CatalogueEntry, comesWithEtherpk } from './catalogue'
 import { toInteractiveFence } from './fence-widgets'
 import { buildFrame } from './frames'
 import { type ContextLifecycle, extensionPersonStorage, extensionSettings } from './person-scoped'
@@ -79,6 +79,7 @@ export function createScopedContext(
 ): ScopedContext {
     const id = entry.id
     const manifest = entry.package.manifest
+    const bundled = comesWithEtherpk(entry)
     const declaredKinds = new Set((manifest.views ?? []).map((view) => view.kind))
     /**
      * An extension that comes with EtherPK, which may use the Proposed part and run any Command: one
@@ -242,7 +243,7 @@ export function createScopedContext(
                 own('Graph Sidebar button', button.id)
                 runs(`Graph Sidebar button "${button.id}"`, button.command)
                 if (disposed) return noop
-                return keep(registerGraphSidebarButton(graph.contributions, { ...button, icon: icon(button.icon) }))
+                return keep(registerGraphSidebarButton(graph.contributions, { ...button, icon: icon(button.icon), bundled }))
             },
         },
         journalPanels: {

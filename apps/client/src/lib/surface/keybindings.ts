@@ -132,7 +132,7 @@ export function sameChord(a: string, b: string): boolean {
  */
 export function createKeybindingTable<B extends Keybinding>(initial: readonly B[]) {
     const bindings: B[] = [...initial]
-    // Whoever shows a chord (the Graph Sidebar's help text) hears when one is added or taken out,
+    // Whoever shows a chord (the Explorer's help text) hears when one is added or taken out,
     // because an extension can bind a chord after that surface has drawn.
     const listeners = new Set<() => void>()
     const changed = () => {
@@ -172,6 +172,15 @@ export function chordsFor(bindings: readonly Keybinding[], command: string, appl
     return bindings
         .filter((binding) => binding.command === command && (apple === undefined || boundOnPlatform(binding, apple)))
         .map((binding) => binding.key)
+}
+
+/**
+ * Whether the app hears a chord on this platform. Option with a key alone types a character on the
+ * usual Mac layouts, and is matched by the character it types.
+ */
+export function chordWorks(spec: string, apple: boolean): boolean {
+    const chord = parseChord(spec)
+    return !(apple && chord.alt && !chord.mod && !chord.ctrl)
 }
 
 /**
@@ -265,6 +274,8 @@ const ARIA_KEYS: Record<string, string> = {
     escape: 'Escape',
     backspace: 'Backspace',
     delete: 'Delete',
+    pageup: 'PageUp',
+    pagedown: 'PageDown',
     ' ': 'Space',
 }
 
@@ -279,6 +290,8 @@ const KEY_CAPS: Record<string, string> = {
     escape: 'Esc',
     backspace: 'Backspace',
     delete: 'Delete',
+    pageup: 'Page Up',
+    pagedown: 'Page Down',
     ' ': 'Space',
 }
 

@@ -9,7 +9,7 @@
  * this match". What it adds is **normalisation of the label before scoring**, which is what makes
  * a [[Scoped Concept]] findable by the words a human would type.
  *
- * It began as the Graph Sidebar's Quick Find box, which Search replaced (ADR 0139).
+ * It began as the Explorer's Quick Find box, which Search replaced (ADR 0139).
  */
 
 import { matchScore } from './view/augmentations/wikilink-complete-core'

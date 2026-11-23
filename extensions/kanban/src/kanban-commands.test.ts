@@ -325,7 +325,7 @@ describe('the Graph Kanban', () => {
         expect(listCommandMenuItems(setup(false).contributions, editing).map((item) => item.title)).toContain('Graph Kanban')
     })
 
-    it('is a Graph Sidebar button with help text, after the Graph Map, on either layout', async () => {
+    it('is an Explorer button with help text, before the Graph Map, on either layout', async () => {
         // Read from the registry as the Sidebar reads it, `when` and all.
         const sidebarButtons = (contributions: ReturnType<typeof setup>['contributions']) =>
             contributions
@@ -338,7 +338,7 @@ describe('the Graph Kanban', () => {
             title: 'Graph Kanban',
             description: 'Open a Kanban board of every task in this graph',
             icon: 'kanban.kanban',
-            order: 30,
+            order: 10,
             command: KANBAN_OPEN_WHOLE,
         })
         await desktop.commands.execute(button.command, button.args)

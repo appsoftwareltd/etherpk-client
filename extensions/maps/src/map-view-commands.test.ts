@@ -71,7 +71,7 @@ describe("a wikilink's Open Map View row", () => {
     })
 })
 
-describe("the Graph Sidebar's Graph Map button", () => {
+describe("the Explorer's Graph Map button", () => {
     it("opens the Graph Map, with the map's own icon", async () => {
         const maps = setup()
         const [button] = graphSidebarButtons(maps.contributions)

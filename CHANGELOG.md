@@ -5,6 +5,44 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.45.0 - 2026-11-23
+
+### Client
+
+- **Quick notes in the sidebar.** Quick notes is a view of the Primary Sidebar, chosen from its icon
+  in the Activity Bar, in place of the window and its button in the sidebar. **Alt+N** shows it
+  with the cursor in the box. What you have typed and attached is kept while another view shows.
+- **A graph opens on today's journal.** A graph opened in a new browser tab, from the installed app
+  or from the list of graphs shows today's entry, with the tabs you left beside it. Tabs of earlier
+  days you never wrote in are closed. Reloading the page, and a link to a document, open that
+  document as before.
+- **Explorer.** The Graph Sidebar is called Explorer, and its header gives the graph's name after it.
+- **Protected documents in the sidebar.** Protected documents is a view of the Primary Sidebar with a
+  padlock icon, in place of the section in the Explorer. The padlock is open while the graph is
+  unlocked. **Alt+K** shows it.
+- **Shortcuts in the Activity Bar.** Search, Today and the buttons extensions add to the Explorer are
+  also icons under the sidebar views, below a line. The Explorer now scrolls as one, its buttons with
+  the rest. Graph Kanban comes before Graph Map, and the buttons of extensions you install come last.
+- **Tooltips name shortcuts.** On a device with a keyboard, a control that has a shortcut shows it
+  after its name, such as **Search (Ctrl + K)**.
+- **Closing a sidebar view asks first,** and names the shortcut that brings it back. **Alt+C** shows
+  Agent Chats, and in a Plain Folder **Alt+G** shows Files and **Alt+O** Outline. An extension's
+  manifest can name the Command that shows its view, as `"command"` of `resident`.
+- **One Reset workspace.** **Reset workspace** also puts the sidebars' arrangement back to the
+  defaults, in every graph and folder, and replaces **Reset Sidebars**. It is under **Primary
+  Sidebar** in a graph's settings and in a Plain Folder's.
+- **Plain Folders on the Graphs page.** The **Plain Folders** section is there before you have opened
+  one, with **Open a Plain Folder**. The dialog then has **Open as a Plain Folder** selected.
+- **Fixes.**
+  - The sidebar toggles show no tooltip.
+  - The home page lists Quick share as planned for the Android, Linux and Windows apps.
+  - The hints under **Primary Sidebar** and **Where pasted files go** are shorter.
+  - Text that could not be added as a quick note goes back into the box after anything you typed
+    meanwhile.
+  - A quick note that could not be saved no longer takes others added at the same moment off the
+    list, and a folder graph does not save it later.
+  - After a dialog closes, the tooltip of the button it was opened from shows beside that button.
+
 ## 0.44.0 - 2026-11-23
 
 ### Client

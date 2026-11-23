@@ -1,5 +1,5 @@
 <!--
-    The graph Sidebar's [[Bookmark]]s (ADR 0159): the person's bookmarked lines, grouped under the
+    The Explorer's [[Bookmark]]s (ADR 0159): the person's bookmarked lines, grouped under the
     name of the document each is in. Groups sort by name and lines by their place in the document,
     so nothing here has an order to keep or to move under the pointer.
 

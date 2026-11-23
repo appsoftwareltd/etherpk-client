@@ -78,7 +78,7 @@ interface Regions {
 }
 
 /** A controller over the given Panes, recording closes and pins. */
-function harness(regions: Regions = { main: [pane('p1', A, B, C)] }) {
+function harness(regions: Regions = { main: [pane('p1', A, B, C)] }, confirmClose?: (panelIds: readonly string[], proceed: () => void) => void) {
     const closed: string[] = []
     const pinned: { panelId: string; pinned: boolean }[] = []
     const model = {
@@ -101,7 +101,7 @@ function harness(regions: Regions = { main: [pane('p1', A, B, C)] }) {
 
     const commands = createCommandRegistry()
     const contributions = createContributionRegistry()
-    const dispose = registerTabCommands(commands, contributions, { controller: () => controller })
+    const dispose = registerTabCommands(commands, contributions, { controller: () => controller, confirmClose })
     const rows = (target: ContextMenuTarget) => listContextMenuItems(contributions, target).map((r) => r.label)
     return { commands, contributions, closed, pinned, dispose, rows }
 }
@@ -113,6 +113,16 @@ describe('the tab close Commands', () => {
         const h = harness()
         await h.commands.execute(TABS_CLOSE_OTHERS, tab(B))
         expect(h.closed).toEqual([A, C])
+    })
+
+    it('asks first where the workspace asks, and closes only on a yes', async () => {
+        const asked: { ids: readonly string[]; proceed: () => void }[] = []
+        const h = harness(undefined, (ids, proceed) => void asked.push({ ids, proceed }))
+        await h.commands.execute(TABS_CLOSE_RIGHT, tab(A))
+        expect(asked.map(({ ids }) => ids)).toEqual([[B, C]])
+        expect(h.closed).toEqual([])
+        asked[0].proceed()
+        expect(h.closed).toEqual([B, C])
     })
 
     it('closes those to the right, and those to the left', async () => {

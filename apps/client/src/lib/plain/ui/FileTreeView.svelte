@@ -480,7 +480,7 @@
         openContextMenu({ kind: 'plain-entry', path: '', entry: 'root' }, event.clientX, event.clientY)
     }}
 >
-    <!-- The sidebar's button grid, as a graph's sidebar has (Style Guide, "Graph Sidebar buttons"). -->
+    <!-- The sidebar's button grid, as a graph's sidebar has (Style Guide, "Explorer buttons"). -->
     <div class="buttons">
         <button type="button" class={sidebarButton} data-testid="sidebar-go-to-file" onclick={() => void tryGetActiveCommandRegistry()?.execute('plain.goToFile')}>
             <span class="button-icon" aria-hidden="true">

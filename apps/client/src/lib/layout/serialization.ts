@@ -175,12 +175,12 @@ export interface DefaultLayoutOptions {
  */
 export const TASKS_VIEW = { kind: 'tasks', target: 'tasks' } as const
 /**
- * The identity Quick Notes had while it was a View, a resident of the left Sidebar. It is a
- * modal now (ADR 0189) and no View of this kind is registered, but a Layout saved before then
- * still holds the tab, so the workspace closes it after a restore. MAINTENANCE.md says when
- * this can go.
+ * The Quick Notes View's one and only identity, a singleton as Tasks is (ADR 0200). The one it had
+ * as a tab of the left Sidebar, so a Layout saved then still holds it.
  */
-export const RETIRED_QUICK_NOTES_VIEW = { kind: 'quick-notes', target: 'quick-notes' } as const
+export const QUICK_NOTES_VIEW = { kind: 'quick-notes', target: 'quick-notes' } as const
+/** The Protected Documents View's one and only identity, a singleton as Tasks is. */
+export const PROTECTED_DOCUMENTS_VIEW = { kind: 'protected-documents', target: 'protected-documents' } as const
 
 function pane(view: ViewInstance['view']): {
     id: string
@@ -193,7 +193,7 @@ function pane(view: ViewInstance['view']): {
 
 /**
  * The Layout a brand-new graph (or an unreadable/incompatible payload) opens
- * with: today's journal entry in `main`, the graph sidebar in the `left-sidebar`, and the two
+ * with: today's journal entry in `main`, the Explorer in the `left-sidebar`, and the two
  * right-Sidebar residents - [[Backlink]]s and the [[Tasks View]] - as two tabs of one Pane in
  * the `right-sidebar`, collapsed or not as the caller says. Four Views in all.
  */
@@ -202,7 +202,7 @@ export function defaultLayout(options: DefaultLayoutOptions = {}): SerializedLay
     const rightSidebarCollapsed = options.rightSidebarCollapsed ?? true
 
     const mainPane = pane({ kind: 'document', target: journalTarget })
-    // The left Sidebar's resident: the graph sidebar (CONTEXT.md → Sidebar).
+    // The left Sidebar's resident: the Explorer (CONTEXT.md → Sidebar).
     const treePane = pane({ kind: 'document-tree', target: 'root' })
     // The right Sidebar's RESIDENTS (CONTEXT.md → Sidebar): Backlinks and Tasks, as two tabs of
     // one Pane, present from the first open on every device. Tasks is a resident rather than a

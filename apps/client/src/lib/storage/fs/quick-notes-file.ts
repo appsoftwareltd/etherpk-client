@@ -8,7 +8,7 @@
  * over the in-memory adapter. A missing or malformed file reads as no notes.
  */
 
-import { type QuickNote, sanitizeQuickNotes } from '#lib/document/quick-notes.js'
+import { type QuickNote, type QuickNotesPersist, sanitizeQuickNotes } from '#lib/document/quick-notes.js'
 
 import type { DirectoryAdapter } from './directory-adapter'
 
@@ -31,4 +31,30 @@ export async function readQuickNotes(adapter: DirectoryAdapter): Promise<QuickNo
 
 export async function writeQuickNotes(adapter: DirectoryAdapter, notes: readonly QuickNote[]): Promise<void> {
     await adapter.write('etherpk', QUICK_NOTES_FILE, quickNotesFileText(notes))
+}
+
+/**
+ * The open graph's list, kept in the file. Each change is written whole, over the list as the
+ * change before it left it and after that write has ended, and a write that is refused changes
+ * nothing: the note goes back to the person, and a later write must not save it as well.
+ */
+export function quickNotesFilePersist(adapter: DirectoryAdapter, initial: readonly QuickNote[]): QuickNotesPersist {
+    let notes = initial
+    let turn: Promise<void> = Promise.resolve()
+    const change = (make: (notes: readonly QuickNote[]) => readonly QuickNote[]): Promise<void> => {
+        const write = turn.then(async () => {
+            const next = make(notes)
+            await writeQuickNotes(adapter, next)
+            notes = next
+        })
+        turn = write.catch(() => {})
+        return write
+    }
+    return {
+        add: (note) => change((held) => [...held, note]),
+        remove: (ids) => {
+            const gone = new Set(ids)
+            return change((held) => held.filter((note) => !gone.has(note.id)))
+        },
+    }
 }

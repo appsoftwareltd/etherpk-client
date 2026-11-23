@@ -5,7 +5,7 @@ import type { ContextMenuTarget } from '#lib/surface/index.js'
 
 import { createLayoutController } from './controller'
 import { createSidebarArrangementBinding, type ArrangementSettings, type SidebarResident } from './sidebar-arrangement-binding'
-import { registerSidebarCommands } from './sidebar-commands'
+import { registerSidebarCommands, WORKSPACE_RESET } from './sidebar-commands'
 import { createStubRenderer } from './testing/stub-renderer'
 import type { ViewRef } from './types'
 import { viewKey } from './view-ref'
@@ -20,7 +20,7 @@ const RESIDENTS: SidebarResident[] = [
 ]
 
 /** A workspace's Sidebars with their Commands and menu rows registered, as a workspace wires them. */
-function setup() {
+function setup(confirmHide?: (kinds: readonly string[], proceed: () => void) => void) {
     const values = new Map<string, string>()
     const listeners = new Set<() => void>()
     const settings: ArrangementSettings = {
@@ -44,7 +44,7 @@ function setup() {
     binding.attach(controller)
     const commands = createCommandRegistry()
     const contributions = createContributionRegistry()
-    const detach = registerSidebarCommands(commands, contributions, { binding, controller: () => controller, title: (ref) => TITLES[ref.kind] ?? ref.kind })
+    const detach = registerSidebarCommands(commands, contributions, { binding, controller: () => controller, name: (ref) => TITLES[ref.kind] ?? ref.kind, confirmHide })
     const rows = (target: ContextMenuTarget) => listContextMenuItems(contributions, target)
     const labels = (target: ContextMenuTarget) => rows(target).map((row) => row.label)
     /** Choose a row by its label, as the menu does: its Command, with the target. */
@@ -56,7 +56,7 @@ function setup() {
     const icon = (kind: string): ContextMenuTarget => ({ kind: 'sidebar-view', viewKind: kind, panelId: viewKey(view(kind)) })
     const tab = (kind: string): ContextMenuTarget => ({ kind: 'tab', panelId: viewKey(view(kind)), view: view(kind) })
     const bar: ContextMenuTarget = { kind: 'activity-bar' }
-    return { binding, controller, labels, choose, icon, tab, bar, detach, rows }
+    return { binding, controller, commands, labels, choose, icon, tab, bar, detach, rows }
 }
 
 describe('an Activity Bar icon’s menu', () => {
@@ -75,6 +75,16 @@ describe('an Activity Bar icon’s menu', () => {
         await choose(icon('garden'), 'Move to Secondary Sidebar')
         expect(binding.shown()).toEqual({ primary: ['kitchen'], secondary: ['attic', 'garden'] })
         await choose(icon('kitchen'), 'Hide')
+        expect(binding.hidden()).toEqual(['kitchen'])
+    })
+
+    it('asks before it hides, and hides nothing until the answer is yes', async () => {
+        const asked: { kinds: readonly string[]; proceed: () => void }[] = []
+        const { binding, choose, icon } = setup((kinds, proceed) => void asked.push({ kinds, proceed }))
+        await choose(icon('kitchen'), 'Hide')
+        expect(asked.map(({ kinds }) => kinds)).toEqual([['kitchen']])
+        expect(binding.hidden()).toEqual([])
+        asked[0].proceed()
         expect(binding.hidden()).toEqual(['kitchen'])
     })
 
@@ -103,15 +113,15 @@ describe('a Secondary Sidebar tab’s menu', () => {
 })
 
 describe('the Activity Bar’s own menu', () => {
-    it('offers the side and Reset Sidebars, and a row for each hidden View', async () => {
+    it('offers the side, Reset workspace, and a row for each hidden View', async () => {
         const { binding, labels, choose, bar } = setup()
-        expect(labels(bar)).toEqual(['Move Primary Sidebar to the right', 'Reset Sidebars'])
+        expect(labels(bar)).toEqual(['Move Primary Sidebar to the right', 'Reset workspace'])
         binding.hide('kitchen')
         binding.hide('attic')
-        expect(labels(bar)).toEqual(['Show Kitchen', 'Show Attic', 'Move Primary Sidebar to the right', 'Reset Sidebars'])
+        expect(labels(bar)).toEqual(['Show Kitchen', 'Show Attic', 'Move Primary Sidebar to the right', 'Reset workspace'])
         await choose(bar, 'Show Kitchen')
         expect(binding.hidden()).toEqual(['attic'])
-        expect(labels(bar)).toEqual(['Show Attic', 'Move Primary Sidebar to the right', 'Reset Sidebars'])
+        expect(labels(bar)).toEqual(['Show Attic', 'Move Primary Sidebar to the right', 'Reset workspace'])
     })
 
     it('moves the Primary Sidebar across and names the way back', async () => {
@@ -121,13 +131,16 @@ describe('the Activity Bar’s own menu', () => {
         expect(labels(bar)).toContain('Move Primary Sidebar to the left')
     })
 
-    it('resets the Sidebars', async () => {
-        const { binding, choose, bar, icon } = setup()
+    it('runs the workspace’s own Reset workspace, which asks before it does anything', async () => {
+        const { binding, choose, bar, icon, commands } = setup()
+        let asked = 0
+        commands.register(WORKSPACE_RESET, () => {
+            asked += 1
+        })
         await choose(icon('garden'), 'Hide')
-        await choose(bar, 'Move Primary Sidebar to the right')
-        await choose(bar, 'Reset Sidebars')
-        expect(binding.sideOf('primary')).toBe('left')
-        expect(binding.hidden()).toEqual([])
+        await choose(bar, 'Reset workspace')
+        expect(asked).toBe(1)
+        expect(binding.hidden()).toEqual(['garden'])
     })
 })
 

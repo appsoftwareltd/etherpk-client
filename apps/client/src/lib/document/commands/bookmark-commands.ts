@@ -41,7 +41,7 @@ export interface BookmarkCommandDeps {
      * Reading Position the activation would otherwise restore.
      */
     openDocumentAtLine(concept: string, line: number): void
-    /** Bring the graph Sidebar into view, for a label edit started from an editor. */
+    /** Bring the Explorer into view, for a label edit started from an editor. */
     revealSidebar(): void
     onError?(text: string): void
 }

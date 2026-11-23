@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { controlHelp, controlHelpText, createControlHelp } from './control-help'
+import { controlHelp, controlHelpText, createControlHelp, helpForKey } from './control-help'
 import { createKeybindingTable } from './keybindings'
 
 // Help text for a control that runs a Command (ADR 0139): what it does, and the chords bound to
@@ -37,6 +37,27 @@ describe('help text over the live keybinding table', () => {
         expect(helpFor('Open graph search modal', 'search.open')['data-tooltip']).toBe('Open graph search modal (Ctrl + K)')
         table.add({ key: 'Alt+F', command: 'search.open' })
         expect(helpFor('Open graph search modal', 'search.open')['aria-keyshortcuts']).toBe('Control+K Alt+F')
+    })
+
+    it('names only the chords the app hears: never Option and a key alone on a Mac', () => {
+        const table = createKeybindingTable([{ key: 'Mod+K', command: 'search.open' }, { key: 'Alt+F', command: 'search.open' }, { key: 'Alt+J', command: 'today.open' }])
+        const helpFor = createControlHelp(table, true)
+        expect(helpFor('Search', 'search.open')['data-tooltip']).toBe('Search (⌘K)')
+        expect(helpFor('Today', 'today.open')).toEqual({ 'data-tooltip': 'Today', 'aria-description': 'Today', 'aria-keyshortcuts': undefined })
+    })
+
+    it('names no chord where there is no keyboard', () => {
+        const table = createKeybindingTable([{ key: 'Mod+K', command: 'search.open' }])
+        expect(createControlHelp(table, false, () => false)('Search', 'search.open')['data-tooltip']).toBe('Search')
+    })
+
+    it('names the key of a control that runs no Command, where there is a keyboard', () => {
+        expect(helpForKey('Undo', 'Mod+Z', false, () => true)).toEqual({ 'data-tooltip': 'Undo (Ctrl + Z)', 'aria-description': 'Undo (Ctrl + Z)', 'aria-keyshortcuts': 'Control+Z' })
+        expect(helpForKey('Undo', 'Mod+Z', true, () => true)['data-tooltip']).toBe('Undo (⌘Z)')
+        expect(helpForKey('Previous match', 'Shift+Enter', false, () => true)['data-tooltip']).toBe('Previous match (Shift + Enter)')
+        expect(helpForKey('Next page', 'PageDown', false, () => true)['data-tooltip']).toBe('Next page (Page Down)')
+        expect(helpForKey('Undo', 'Mod+Z', false, () => false)['data-tooltip']).toBe('Undo')
+        expect(helpForKey('Next page', null, false, () => true)['data-tooltip']).toBe('Next page')
     })
 
     it('names no chord without a table', () => {

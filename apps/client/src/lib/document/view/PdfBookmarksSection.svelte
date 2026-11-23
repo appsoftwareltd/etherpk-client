@@ -1,5 +1,5 @@
 <!--
-    The graph Sidebar's [[PDF Bookmark]]s: the pages the person marked, under the name of each PDF, below
+    The Explorer's [[PDF Bookmark]]s: the pages the person marked, under the name of each PDF, below
     the line Bookmarks. With none the section is its heading alone, and opening it says how to add
     one (`bookmarks/section-open.ts`). A row opens the PDF at its page. Removing one acts at once, because marking
     the page again is a click in the PDF's toolbar.

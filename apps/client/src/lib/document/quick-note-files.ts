@@ -6,7 +6,7 @@
  * the line travels with the text and an image renders there as any image line does. Nothing
  * about the file is a field on the note.
  *
- * Pure over text: what a note's text is once its files are stored, how the Quick Notes Modal
+ * Pure over text: what a note's text is once its files are stored, how the Quick Notes View
  * reads a note back as text, pictures and files, and which assets a note references.
  */
 import { assetNameFromRef, buildAssetMarkdown, displayNameForRef, isImageAssetRef } from '#lib/storage/fs/asset-store.js'
@@ -39,7 +39,7 @@ const LEADING_CHECKBOX = /^\[([ xX])\][ \t]*\n?/
 
 /**
  * Whether a note is a [[Task]], and its text without the checkbox. The checkbox is the note's own
- * text (`shareNoteText`), so the move to the journal writes it as it is; the Quick Notes Modal
+ * text (`shareNoteText`), so the move to the journal writes it as it is; the Quick Notes View
  * draws it as a box in front of the text. Null for a note that does not start with one.
  */
 export function quickNoteTask(text: string): { done: boolean; text: string } | null {
@@ -47,7 +47,7 @@ export function quickNoteTask(text: string): { done: boolean; text: string } | n
     return match ? { done: match[1] !== ' ', text: text.slice(match[0].length) } : null
 }
 
-/** One run of a note as the Quick Notes Modal shows it. */
+/** One run of a note as the Quick Notes View shows it. */
 export type QuickNotePart =
     | { kind: 'text'; text: string }
     | { kind: 'image'; url: string; alt: string }

@@ -10,6 +10,10 @@
  * graph), the Backlinks preferences (Highlight reference and the fold of the backlinks beneath
  * documents, ADR 0135), and of course all shared graph content.
  *
+ * The person's [[Sidebar Arrangement]] goes back to its defaults too (ADR 0199, amended 2026-11-23).
+ * It is one setting for every graph, Plain Folder and device, so the confirmation says the Sidebars
+ * change everywhere. The workspace resets it, through the binding that keeps the Layout in step.
+ *
  * The Layout is not cleared here: the workspace restores `defaultLayout()` over a fresh
  * presenter and saves it, which is one write rather than a delete and a write. This clears the
  * localStorage keys of the companions that go, so the stores the workspace creates next start
@@ -19,6 +23,14 @@
 
 import { TASK_FILTER_KEY_PREFIX } from '#lib/document/task-filter-store.js'
 import { READING_POSITIONS_KEY_PREFIX } from '#lib/navigation/reading-positions.js'
+
+/** What Reset workspace asks first, in a graph and in a Plain Folder. */
+export const RESET_WORKSPACE_PROMPT = {
+    title: 'Reset workspace?',
+    message:
+        'Closes every tab here, and puts both sidebars and their views back to the defaults. The sidebars change in every graph and folder you open, and on your other devices for synced graphs.',
+    confirmLabel: 'Reset',
+} as const
 
 /** The per-graph keys a reset forgets, so a test can assert the exact set. */
 export function workspaceResetKeys(graphId: string): string[] {

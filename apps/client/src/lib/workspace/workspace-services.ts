@@ -84,8 +84,8 @@ export function createWorkspaceHealth(): WorkspaceHealth {
 }
 
 /**
- * What a surface outside the workspace needs to show and drive the graph's lock: the sidebar's
- * Protected notes control. The two readable fields are runes underneath, so a template that reads
+ * What a surface outside the workspace needs to show and drive the graph's lock: the Protected
+ * Documents View. The two readable fields are runes underneath, so a template that reads
  * them re-renders on a lock transition. Actions only — no key, no record, nothing to leak.
  */
 export interface ProtectionControls {
@@ -97,6 +97,14 @@ export interface ProtectionControls {
     lockNow(): void
     /** Open the unlock prompt. */
     requestUnlock(): void
+    /** What is known of the graph's record: it is read after the graph opens, and the read can fail. */
+    record(): { state: 'reading' } | { state: 'problem'; message: string } | { state: 'none' } | { state: 'set-up' }
+    /** Read the record again, after a problem. */
+    readAgain(): Promise<void>
+    /** This device's idle lock, in milliseconds; zero for never. */
+    idleLockMs(): number
+    /** Open the Protected Documents tab of Settings. */
+    openSettings(): void
 }
 
 /**
@@ -164,7 +172,7 @@ export interface WorkspaceServices {
     contributions?: ContributionRegistry
     /**
      * The app's chords, live: the app's own and those extensions add as they start. What a
-     * control reads to name its shortcut in its help text (the Graph Sidebar's buttons).
+     * control reads to name its shortcut in its help text (the Explorer's buttons).
      */
     keybindings?: KeybindingTable
     readingPositions?: ReadingPositionStore

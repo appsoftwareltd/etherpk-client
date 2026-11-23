@@ -63,13 +63,19 @@
     } from "#lib/layout/renderers/tab-renderer.js";
     // Type only: the adapter itself is `import()`ed in the browser (see mountPresenter).
     import type { DockviewRenderer } from "#lib/layout/renderers/dockview-adapter.js";
-    import { RETIRED_QUICK_NOTES_VIEW, TASKS_VIEW } from "#lib/layout/serialization.js";
+    import { PROTECTED_DOCUMENTS_VIEW, QUICK_NOTES_VIEW, TASKS_VIEW } from "#lib/layout/serialization.js";
     import type { Resident } from "./residents";
     import { createSidebars } from "./sidebars.svelte";
-    import ActivityBar from "#lib/layout/renderers/ActivityBar.svelte";
+    import { createSubscriber } from "svelte/reactivity";
+    import ActivityBar, { type ActivityShortcut } from "#lib/layout/renderers/ActivityBar.svelte";
+    import { hasKeyboard } from "#lib/surface/control-help.js";
+    import { GRAPH_SIDEBAR_BUTTON_KIND, graphSidebarButtons } from "#lib/surface/graph-sidebar-buttons.js";
     import type { SidebarResident } from "#lib/layout/sidebar-arrangement-binding.js";
-    import { registerSidebarCommands } from "#lib/layout/sidebar-commands.js";
-    import { forgetWorkspaceCompanions } from "./workspace-reset";
+    import { registerSidebarCommands, WORKSPACE_RESET } from "#lib/layout/sidebar-commands.js";
+    import { staleJournalDrafts } from "./open-on-today";
+    import { reopeningChord } from "./sidebar-close-prompt";
+    import SidebarClosePrompt from "./SidebarClosePrompt.svelte";
+    import { forgetWorkspaceCompanions, RESET_WORKSPACE_PROMPT } from "./workspace-reset";
 
     import type { MobileRenderer } from "#lib/layout/renderers/mobile-renderer.svelte.js";
     import {
@@ -107,7 +113,8 @@
     import { registerTaskStatusCommands } from "#lib/document/commands/task-status-commands.js";
     import type { AgentReach } from "#lib/document/agent-instruction.js";
     import { parseTaskReference, resolveTaskReference, type TaskReference } from "#lib/document/task-reference.js";
-    import QuickNotesModal from "#lib/document/view/QuickNotesModal.svelte";
+    import ProtectedDocumentsView from "#lib/document/view/ProtectedDocumentsView.svelte";
+    import QuickNotesView from "#lib/document/view/QuickNotesView.svelte";
     import {
         createTaskFilterStore,
         type TaskFilterStore,
@@ -141,10 +148,11 @@
         type QuickNote,
         setQuickNoteDiscardHandler,
         adoptQuickNotes,
-        offerQuickNoteDraft,
         resetQuickNotes,
         setQuickNotes,
     } from "#lib/document/quick-notes.js";
+    import { draftConceptNowExists } from "#lib/document/draft-presence.js";
+    import { noteInProgress } from "#lib/document/note-in-progress.js";
     import { deleteFilesOfDiscardedNotes } from "#lib/document/quick-note-file-cleanup.js";
     import { type PendingShare, peekPendingShare, shareNoteTextWithFiles, takePendingShare } from "#lib/document/share-target.js";
     import { storeNoteFiles } from "#lib/document/quick-note-file-store.js";
@@ -181,8 +189,8 @@
     import { isSpellCheckEnabled, subscribeSpellCheck } from "#lib/document/spell-check-preference.js";
     import { readDictionary, writeDictionary } from "#lib/storage/fs/dictionary-file.js";
     import {
+        quickNotesFilePersist,
         readQuickNotes,
-        writeQuickNotes,
     } from "#lib/storage/fs/quick-notes-file.js";
     import {
         deleteGraphTheme,
@@ -405,7 +413,7 @@
     } from "#lib/surface/index.js";
     import { iconSvg, registerIcons } from "#lib/surface/icons.js";
     import { personSettings } from "#lib/person-settings/person-settings.js";
-    import { createKeybindingTable } from "#lib/surface/keybindings.js";
+    import { createKeybindingTable, isApplePlatform } from "#lib/surface/keybindings.js";
     import { builtInCatalogue } from "#lib/extensions/built-ins.js";
     import { withInstalled } from "#lib/extensions/catalogue.js";
     import { EXTENSION_ADDRESS_KIND } from "#lib/extensions/addresses.js";
@@ -733,6 +741,7 @@
         updateWorkspaceServices,
         type WorkspaceGeneration,
         workspaceService,
+        type ProtectionControls,
     } from "./workspace-services";
     import {
         clearGraphAccent,
@@ -740,7 +749,7 @@
         setGraphAccent,
     } from "./graph-accent.svelte";
     import { graphExportStem } from "./export-stem";
-    import { sidebarTabTitle } from "./sidebar-tab-title";
+    import { EXPLORER_NAME, EXPLORER_TITLE_PREFIX, explorerTitle } from "./explorer-title";
 
     /** Dev/e2e Server Backend gate (Phase 3): injected relay + raw graph key. */
     interface ServerGate {
@@ -848,14 +857,7 @@
     let shareWaiting = $state(false);
     /** The share was added while the open was still running; the loading notice says so. */
     let shareLanded = $state(false);
-    /**
-     * The [[Quick Notes Modal]] (ADR 0189), open or not. `focusBox` says whether opening puts the
-     * caret in its box: yes from the button and Alt+N, no when a share opens it, since on a
-     * phone the caret raises the keyboard over the note that just landed.
-     */
-    let quickNotes = $state.raw<{ focusBox: boolean } | null>(null);
-    let quickNotesModal = $state<QuickNotesModal>();
-    /** A share landed before the Layout was up: the modal opens once it is, as Settings does. */
+    /** A share landed before the Layout was up: Quick notes shows it once it is, as Settings does. */
     let shareOpensQuickNotes = false;
     /** Set with the `missing` phase: which of the registry-miss cases this is. */
     let missing = $state<MissingGraphDiagnosis | null>(null);
@@ -1417,7 +1419,7 @@
     let contentWidth = $state<number | null>(maxContentWidthOf({}));
     const workspaceStyle = $derived(toolbarStyle + contentWidthStyle(contentWidth));
     /**
-     * Title the Graph Sidebar's dockview tab from the current name. The tab is titled once, when
+     * Title the Explorer's dockview tab from the current name. The tab is titled once, when
      * its panel is created, and two things make that stale: a restored Layout carries the title
      * it was saved with (dockview's `fromJSON` keeps it, so a graph opened under an older build
      * or before its name was known says "Graph" forever), and a synced graph's name arrives
@@ -1429,10 +1431,8 @@
         // The title is read BEFORE the renderer is consulted: the effect below only depends on
         // what it actually read, and with no renderer yet the optional chain would skip the
         // name, leaving an effect that never re-runs when the name changes.
-        const title = sidebarTabTitle(graphDisplayName, graphId);
+        const title = explorerTitle(graphDisplayName, graphId);
         renderer?.setTitleForKind?.("document-tree", title);
-        // The Activity Bar names the graph sidebar's icon by the same title.
-        sidebars.redraw();
     }
     $effect(() => {
         retitleSidebar();
@@ -1740,6 +1740,8 @@
         // Graph-wide, for the surfaces that cannot watch the generation: the sidebar's lock
         // control, and a collab-bound editor that has to remount to show a projection.
         bus?.emit("protection:changed", {});
+        // The Protected Documents View's icon is an open padlock while unlocked.
+        sidebars.redraw();
         protectedBookmarks.schedule();
         const view = getActiveEditorView();
         if (view) view.dispatch({ effects: protectionTick.of() });
@@ -1985,6 +1987,14 @@
     function viewForActivatedPanel(panelId: string): ViewRef {
         const active = controller?.activeView();
         return active?.panelId === panelId ? active.view : parseViewKey(panelId);
+    }
+
+    /** What is known of the graph's protection record, for the Protected Documents View. */
+    function protectionRecordState(session: ProtectionSession): ReturnType<ProtectionControls["record"]> {
+        const problem = session.recordProblem;
+        if (problem) return { state: "problem", message: problem.message };
+        if (!session.service.isRecordKnown) return { state: "reading" };
+        return { state: session.isConfigured ? "set-up" : "none" };
     }
 
     /** What the protected-fence augmentation reads to decide what each fence should show. */
@@ -3183,19 +3193,21 @@
     }
 
     /**
-     * The three residents (CONTEXT.md → Sidebar) as the Commands reach them. Backlinks is keyed by
+     * The five residents (CONTEXT.md → Sidebar) as the Commands reach them. Backlinks is keyed by
      * the document it opened on, so its fallback is today, the seed the default Layout uses; the
-     * other two are singletons.
+     * others are singletons.
      */
-    const RESIDENTS: Record<"graph" | "backlinks" | "tasks", Resident> = {
-        graph: { kind: "document-tree", fallback: () => ({ kind: "document-tree", target: "root" }) },
-        backlinks: { kind: "backlinks", fallback: () => ({ kind: "backlinks", target: todayISO() }) },
-        tasks: { kind: TASKS_VIEW.kind, fallback: () => TASKS_VIEW },
+    const RESIDENTS: Record<"graph" | "backlinks" | "tasks" | "quickNotes" | "protectedDocuments", Resident & { command: string }> = {
+        graph: { kind: "document-tree", fallback: () => ({ kind: "document-tree", target: "root" }), command: "graph.open" },
+        backlinks: { kind: "backlinks", fallback: () => ({ kind: "backlinks", target: todayISO() }), command: "backlinks.open" },
+        tasks: { kind: TASKS_VIEW.kind, fallback: () => TASKS_VIEW, command: "tasks.open" },
+        quickNotes: { kind: QUICK_NOTES_VIEW.kind, fallback: () => QUICK_NOTES_VIEW, command: QUICK_NOTES_OPEN },
+        protectedDocuments: { kind: PROTECTED_DOCUMENTS_VIEW.kind, fallback: () => PROTECTED_DOCUMENTS_VIEW, command: "protection.open" },
     };
 
     /**
      * Reset workspace, confirmed: the Layout a brand-new graph opens with, over a fresh
-     * presenter, plus the per-device state that hangs off the old arrangement
+     * presenter, with the person's Sidebar Arrangement back at its defaults (ADR 0199), plus the per-device state that hangs off the old arrangement
      * (workspace-reset.ts). The same teardown-and-remount the desktop/phone switch uses, so
      * every open editor is torn down the way it is there - nothing typed is lost, because
      * editors write through to the store as they go. The URL goes back to the graph root
@@ -3225,6 +3237,9 @@
                 controller = undefined;
                 renderer = undefined;
                 mobileRenderer = undefined;
+                // After the old Layout is let go and before the fresh one is made, so the fresh
+                // one is written, and turned, for the arrangement it will show.
+                sidebars.binding.reset();
                 void writeOwnHistory(() =>
                     goto(`${graphUrl(graphAddress)}${withoutSettingsTab(page.url.search)}`, {
                         shallow: true,
@@ -3301,7 +3316,7 @@
     const contributions = createContributionRegistry();
     const registry = createViewRegistry(contributions);
     registry.register({ kind: "document", component: DocumentView });
-    // The kind stays `document-tree` even though the View is now the Graph Sidebar: the kind
+    // The kind stays `document-tree` even though the View is now the Explorer: the kind
     // is the key in every persisted Layout, and renaming it would strand the left sidebar of
     // every graph anyone has already opened.
     registry.register({
@@ -3311,7 +3326,9 @@
         // The graph's name, so the sidebar says which graph is open where the eye already
         // rests; "Graph" until the name is known. The phone strip reads this live; the desktop
         // tab is titled once at creation and retitled by the effect beside `toolbarStyle`.
-        title: () => sidebarTabTitle(graphDisplayName, graphId),
+        title: () => explorerTitle(graphDisplayName, graphId),
+        name: () => EXPLORER_NAME,
+        titlePrefix: EXPLORER_TITLE_PREFIX,
         icon: "graph",
     });
     // All Documents lives in the MAIN region, not the sidebar: at real scale (2838 documents
@@ -3373,6 +3390,24 @@
         title: () => "Tasks",
         // The editor's task checkbox: what the Activity Bar draws for Tasks (ADR 0198).
         icon: "task",
+    });
+    // The [[Quick Notes View]] (ADR 0200), a resident of the Primary Sidebar after Tasks.
+    registry.register({
+        kind: QUICK_NOTES_VIEW.kind,
+        component: QuickNotesView,
+        naturalRegion: "left-sidebar",
+        title: () => "Quick notes",
+        icon: "quick-notes",
+    });
+    // The [[Protected Documents View]], after Quick notes. The padlock and the name say which state
+    // the graph is in, since the View itself is out of sight while another shows.
+    registry.register({
+        kind: PROTECTED_DOCUMENTS_VIEW.kind,
+        component: ProtectedDocumentsView,
+        naturalRegion: "left-sidebar",
+        title: () => "Protected documents",
+        label: () => (protection?.isUnlocked ? "Protected documents (unlocked)" : "Protected documents"),
+        icon: () => (protection?.isUnlocked ? "lock-open" : "lock"),
     });
 
     // The chords the window listens with: the app's own, and those extensions add as they start.
@@ -3500,7 +3535,7 @@
     });
     /**
      * Every Sidebar View of a graph, in the order and the Sidebar a person who has arranged nothing
-     * finds them (ADR 0198): the graph sidebar, Tasks and the extensions' own in the Primary
+     * finds them (ADR 0198): the Explorer, Tasks and the extensions' own in the Primary
      * Sidebar, Backlinks and the extensions' own in the Secondary. A View of an extension that is
      * off, and a desktop's only View in the Phone Layout, cannot be shown here and keeps its place
      * in the person's [[Sidebar Arrangement]].
@@ -3514,11 +3549,14 @@
                     kind: resident.kind,
                     role: sidebar,
                     fallback: () => resident.fallback,
+                    command: resident.command,
                     available: extensionHost.isOn(resident.extensionId) && !(resident.desktopOnly && useMobile),
                 }));
         return [
             { ...RESIDENTS.graph, role: "primary" },
             { ...RESIDENTS.tasks, role: "primary" },
+            { ...RESIDENTS.quickNotes, role: "primary", after: RESIDENTS.tasks.kind },
+            { ...RESIDENTS.protectedDocuments, role: "primary", after: RESIDENTS.quickNotes.kind },
             ...declared("primary"),
             { ...RESIDENTS.backlinks, role: "secondary" },
             ...declared("secondary"),
@@ -3526,13 +3564,39 @@
     }
     // The two Sidebars: the person's arrangement, kept in step with the Layout, and what the
     // Activity Bar draws (ADR 0198, ADR 0199).
+    /**
+     * The Activity Bar's shortcuts: the Explorer's buttons, in its order and under its names, so the
+     * two never differ. An extension adds one through the one Contribution Point for both, and the
+     * list is read again as one is added or taken back.
+     */
+    const watchKeys = createSubscriber((update) => keybindingTable.subscribe(update));
+    /** The shortcut a tooltip or a question names for a Command, or null: a phone has no keys to name. */
+    function chord(command: string | undefined): string | null {
+        watchKeys();
+        return useMobile || !hasKeyboard() ? null : reopeningChord(keybindingTable.bindings, command, isApplePlatform());
+    }
+    const watchShortcuts = createSubscriber((update) => contributions.subscribe(GRAPH_SIDEBAR_BUTTON_KIND, update));
+    function activityShortcuts(): Omit<ActivityShortcut, "chord">[] {
+        watchShortcuts();
+        return [
+            { id: "search", title: "Search", icon: "search", command: "search.open" },
+            { id: "today", title: "Today", icon: "todays-journal", command: "document.openTodayJournal" },
+            ...graphSidebarButtons(contributions).map(({ id, title, icon, command, args }) => ({ id, title, icon: icon ?? "default", command, args })),
+        ];
+    }
     const sidebars = createSidebars({
         settings: personSettings(),
         residents: sidebarResidents,
         controller: () => controller,
         renderer: () => renderer,
-        title: (view) => registry.title(view),
+        name: (view) => registry.name(view),
+        label: (view) => registry.label(view),
         icon: (view) => registry.icon(view),
+        shortcuts: () => activityShortcuts(),
+        run: (command, args) => {
+            if (commandRegistry?.has(command)) void commandRegistry.execute(command, args);
+        },
+        chord,
         settled: () => !suppressSave,
     });
     // An extension switched on or off adds or takes away its Sidebar View.
@@ -4428,18 +4492,8 @@
             // browser owns the folder, so the whole list is rewritten on every change. Read
             // before the folder scan so a waiting share lands on one file read (ADR 0087,
             // amended), not after every document has been listed.
-            let fsQuickNotes = await attempt.wait(readQuickNotes(adapter));
-            setQuickNotes(fsQuickNotes, {
-                add: async (note) => {
-                    fsQuickNotes = [...fsQuickNotes, note];
-                    await writeQuickNotes(adapter, fsQuickNotes);
-                },
-                remove: async (ids) => {
-                    const gone = new Set(ids);
-                    fsQuickNotes = fsQuickNotes.filter((n) => !gone.has(n.id));
-                    await writeQuickNotes(adapter, fsQuickNotes);
-                },
-            });
+            const fsQuickNotes = await attempt.wait(readQuickNotes(adapter));
+            setQuickNotes(fsQuickNotes, quickNotesFilePersist(adapter, fsQuickNotes));
             setQuickNoteDiscardHandler(deleteDiscardedNoteFiles);
             // [[Bookmark]]s: etherpk/bookmarks.json (ADR 0159). A folder belongs to one browser, so
             // its list is the person's list, written whole from the list each change produces. A
@@ -4980,7 +5034,7 @@
             sidebars.reveal(RESIDENTS.backlinks.kind);
         });
         // Reset workspace: the Command opens the confirmation; `resetWorkspace` does the work.
-        commandRegistry.register("workspace.reset", () => {
+        commandRegistry.register(WORKSPACE_RESET, () => {
             resetDialogOpen = true;
         });
         // Today is read at the press, never cached: a tab left open overnight reaches the new day.
@@ -5015,12 +5069,17 @@
         commandRegistry.register("tasks.open", () => {
             sidebars.reveal(RESIDENTS.tasks.kind);
         });
-        // The Quick Notes Modal with the caret in its box, so Alt+N, type, Enter captures a
-        // thought from anywhere without a pointer. Opening places the caret itself (the dialog's
-        // focus contract); pressed again over the open modal, the caret goes back to the box.
+        // Quick Notes is a resident of the Primary Sidebar, revealed as Tasks is, and the caret goes
+        // in its box: Alt+N, type, Enter captures a thought from anywhere without a pointer. Pressed
+        // again in front of the View, the caret goes back to the box.
         commandRegistry.register(QUICK_NOTES_OPEN, () => {
-            if (quickNotes) quickNotesModal?.focusInput();
-            else quickNotes = { focusBox: true };
+            sidebars.reveal(RESIDENTS.quickNotes.kind);
+            noteInProgress.askFocus("box");
+        });
+        // The Protected Documents View. It shows the View and unlocks nothing: a shortcut pressed by
+        // mistake must not raise a passphrase prompt.
+        commandRegistry.register(RESIDENTS.protectedDocuments.command, () => {
+            sidebars.reveal(RESIDENTS.protectedDocuments.kind);
         });
         // The Settings modal, for a surface with no cog of its own. The desktop toolbar carries
         // one; the mobile presenter's chrome does not, so on a phone the Sidebar offers Settings
@@ -5335,14 +5394,16 @@
             contributions,
             {
                 controller: () => controller,
+                confirmClose: sidebars.confirmClose,
             },
         );
         // The Sidebars' rows: hide, reorder and move a View, the hidden Views, the Primary
-        // Sidebar's side, Reset Sidebars (ADR 0198).
+        // Sidebar's side, Reset workspace (ADR 0198).
         const detachSidebarRows = registerSidebarCommands(commandRegistry, contributions, {
             binding: sidebars.binding,
             controller: () => controller,
-            title: (view) => registry.title(view),
+            name: (view) => registry.name(view),
+            confirmHide: sidebars.confirmHide,
         });
         detachTabCommands = () => {
             detachTabRows();
@@ -5583,6 +5644,13 @@
                 },
                 lockNow,
                 requestUnlock: () => void openUnlockProtection(null),
+                record: () => protectionRecordState(protectionSession),
+                readAgain: async () => {
+                    await protectionSession.refresh();
+                    notifyProtectionChanged();
+                },
+                idleLockMs: () => readLockSettings().idleLockMs,
+                openSettings: () => openGraphSettings("protection"),
             },
             recents,
             taskFilter,
@@ -5746,10 +5814,8 @@
         attempt: GraphOpenAttempt,
         model?: LayoutModel,
     ) {
-        const initial = model
-            ? { version: LAYOUT_VERSION, model }
-            : ((await attempt.wait(layoutStore!.load(graphId))) ??
-              freshLayout());
+        const saved = model ? null : await attempt.wait(layoutStore!.load(graphId));
+        const initial = model ? { version: LAYOUT_VERSION, model } : (saved ?? freshLayout());
 
         if (useMobile) {
             const { createMobileRenderer } = await attempt.wait(
@@ -5799,7 +5865,7 @@
                     controller?.forgetClosedView(panelId),
                 // A tab's × closes through the controller, which decides the tab that comes
                 // forward (ADR 0150), as every other close does.
-                onCloseRequested: (panelId) => controller?.closePanel(panelId),
+                onCloseRequested: (panelId) => sidebars.closeTab(panelId, () => controller?.closePanel(panelId)),
                 // A tab dragged to another group: the group it left brings forward the model's
                 // choice, not dockview's (ADR 0150).
                 onViewMoved: () => controller?.noteRendererChanged(),
@@ -5833,11 +5899,6 @@
         // A restored Layout brings the title its tab was saved with; the name is the truth.
         retitleSidebar();
         followRenamesObserved();
-        // Quick Notes was the left Sidebar's second resident until it became a modal (ADR 0189).
-        // A Layout saved before then still holds its tab, and no View of that kind is registered
-        // any more, so the tab is closed here, inside the save suppression and before the
-        // baseline save below writes the Layout without it.
-        if (controller.isOpen(RETIRED_QUICK_NOTES_VIEW)) controller.closeView(RETIRED_QUICK_NOTES_VIEW);
         // The Sidebars' Views are the person's arrangement of them (ADR 0199), not what the Layout
         // was saved with: each is opened, moved, reordered or closed to match, here and from now
         // on. A Layout saved before a View existed, or under another arrangement, is put right.
@@ -5846,30 +5907,61 @@
         requestAnimationFrame(() => {
             if (attempt.isCurrent()) suppressSave = false;
         });
-        // Navigation: a Document URL on a fresh load means "restore the layout,
-        // then ensure that document is open and focused" (ADR 0023); a bare URL
-        // is replaceState-normalised by seed(). First mount only — a presenter
-        // swap carries live state and keeps its current Visit.
-        if (!seeded) {
-            const view = viewFromParams();
-            const reference = view?.kind === "document" ? parseTaskReference(location.href) : null;
-            if (view) controller.openView(view);
-            if (reference) void revealReferencedTask(reference);
-            suppressNav = false;
-            navEngine?.seed();
-            adoptSettingsFromUrl();
-            seeded = true;
-            // Settings asked for while the Layout was mounting opens now, on an entry after the
-            // seeded one, and takes focus in place of the document.
-            const asked = settingsAskedBeforeSeed;
-            settingsAskedBeforeSeed = null;
-            if (asked) openGraphSettings(asked.tab, asked.options);
-            else focusInitialDocument();
-            runLaunchFromUrl();
-            openSharedQuickNotes();
-        } else {
-            suppressNav = false;
-        }
+        // Navigation, on the first mount only: a presenter swap carries live state and keeps its
+        // current Visit.
+        if (seeded) suppressNav = false;
+        else openWhatTheAddressNames(controller, saved !== null);
+    }
+
+    /**
+     * A Document URL on a fresh load means "restore the layout, then ensure that document is open
+     * and focused" (ADR 0023). A bare URL means "restore the layout, then today's journal", and
+     * `seed()` puts its address there. `restored` says a saved Layout was there to restore: a fresh
+     * one has today in front already, on a phone behind the drawer it opens with, and a graph just
+     * created leads with its Welcome page.
+     */
+    function openWhatTheAddressNames(layout: LayoutController, restored: boolean): void {
+        const view = viewFromParams();
+        const reference = view?.kind === "document" ? parseTaskReference(location.href) : null;
+        if (view) layout.openView(view);
+        else if (restored) openOnToday(layout);
+        if (reference) void revealReferencedTask(reference);
+        suppressNav = false;
+        navEngine?.seed();
+        adoptSettingsFromUrl();
+        seeded = true;
+        // Settings asked for while the Layout was mounting opens now, on an entry after the
+        // seeded one, and takes focus in place of the document.
+        const asked = settingsAskedBeforeSeed;
+        settingsAskedBeforeSeed = null;
+        if (asked) openGraphSettings(asked.tab, asked.options);
+        else focusInitialDocument();
+        runLaunchFromUrl();
+        openSharedQuickNotes();
+        // Saves are still held back, and what a bare address just did to the Layout (today, the
+        // View a share showed) is where the next open starts.
+        if (!view) saveLayout();
+    }
+
+    /**
+     * The graph was opened by its own address: today's journal comes to the front at its top, as
+     * the Journal Calendar opens a day (ADR 0154), and the tabs of earlier days nothing was
+     * written for go. The demo keeps the Layout it was left with, since its journal entry is its
+     * tour, written for the day it was first opened. Nothing is focused here: the open places the
+     * keyboard once, at its end.
+     */
+    function openOnToday(layout: LayoutController): void {
+        if (isDemoGraph(graphId)) return;
+        const open = store;
+        const today = todayISO();
+        layout.openView({ kind: "document", target: today });
+        revealTop(today);
+        // A phone's drawer, left open, would be over it.
+        if (useMobile) for (const side of ["left", "right"] as const) layout.toggleSidebar(side, false);
+        // A synced graph whose documents have not arrived yet cannot say which days have an entry.
+        if (!open || open.listDocuments().length === 0) return;
+        const hasEntry = (day: string) => draftConceptNowExists(open, graphIndex, day);
+        for (const panelId of staleJournalDrafts(layout.regionViews("main").views, { today, hasEntry })) layout.closePanel(panelId);
     }
 
     /**
@@ -5970,7 +6062,6 @@
         openAttempt = attempt;
         shareWaiting = peekPendingShare()?.graphId === graphId;
         shareLanded = false;
-        quickNotes = null;
         shareOpensQuickNotes = false;
         // A Settings request held by an open that failed is not carried into this one.
         settingsAskedBeforeSeed = null;
@@ -6028,7 +6119,7 @@
      * wired - the root doc hydrated from the cache on a Server Backend, the notes file read on a
      * Filesystem Backend - before the relay wait, the index and the presenter, so a phone is not
      * kept waiting on the whole open for a one-line write. The note carries the instant it was
-     * shared, and the Quick Notes Modal opens with it at the top once the graph is ready.
+     * shared, and the Quick Notes View shows it at the top once the graph is ready.
      * The caret is NOT put in the box - on a phone that pops the keyboard, and the user
      * came to put something down, not to type. Taken before the add, so a reload cannot add it
      * twice; a refused write puts the text in the box as unsent text, the same fallback a typed
@@ -6038,7 +6129,7 @@
      * Add the waiting share to Quick notes. A share with files (ADR 0186) waits for the graph's
      * asset store, which is built a little later in the open than the notes are wired: the early
      * call leaves it stashed and the call after the store exists lands it. Its files are stored
-     * first and their references written after the text, as the Quick Notes Modal does. A share
+     * first and their references written after the text, as the Quick Notes View does. A share
      * of text lands on the early call, as it always has.
      */
     async function landPendingShare(): Promise<void> {
@@ -6059,20 +6150,22 @@
     }
 
     /**
-     * Open the Quick Notes Modal on the share that landed, its note at the top of the list: now,
-     * or from the end of the first `mountPresenter` when the share landed before the Layout was
-     * up, so the modal takes focus after the presenter has finished placing its own.
+     * Show Quick notes on the share that landed, its note at the top of the list: now, or from the
+     * end of the first `mountPresenter` when the share landed before the Layout was up. The
+     * keyboard goes to the list and not to the box, where the caret would raise a phone's keyboard
+     * over the note.
      */
     function openSharedQuickNotes(): void {
         if (!seeded || !shareOpensQuickNotes) return;
         shareOpensQuickNotes = false;
-        quickNotes = { focusBox: false };
+        sidebars.reveal(RESIDENTS.quickNotes.kind);
+        noteInProgress.askFocus("list");
     }
 
     /** A share that could not be added: its text goes into the box, and the notice says what happened. */
     function keepShareThatFailed(share: PendingShare, error: Error): string {
         const kept = share.text.trim() !== "";
-        if (kept) offerQuickNoteDraft(share.text);
+        if (kept) noteInProgress.offer(share.text);
         if (!share.filesId) return `Could not add the shared text to Quick notes, so it is in the box for you to add later: ${error.message}`;
         return `Could not add what you shared to Quick notes: ${error.message}${kept ? " The text is in the box for you to add later." : ""}`;
     }
@@ -8095,6 +8188,7 @@
         clearGraphAccent(graphId);
         resetFavourites();
         resetQuickNotes();
+        noteInProgress.reset();
         // The editors were destroyed above (renderer.destroy), and each wrote back where its
         // bookmarks are as it went. Those writes are bound to this graph's list. The wait for them
         // is at the end of this function, so the graph's storage, which is disposed after it,
@@ -8379,17 +8473,6 @@
     <SearchModal controller={searchController} />
 {/if}
 
-<!-- Mounted for as long as the graph is open and only opened and closed, so the box keeps what
-     was in it across a dismissal. Unmounted with the graph, whose notes it lists. -->
-{#if phase === "ready"}
-    <QuickNotesModal
-        bind:this={quickNotesModal}
-        open={quickNotes !== null}
-        focusBox={quickNotes?.focusBox ?? true}
-        onclose={() => (quickNotes = null)}
-    />
-{/if}
-
 {#if settingProtectionPassphrase}
     <SetProtectionPassphraseDialog
         concept={settingProtectionPassphrase.concept ?? undefined}
@@ -8549,12 +8632,12 @@
     />
 {/if}
 
+<SidebarClosePrompt {sidebars} />
+
 {#if resetDialogOpen}
     <ConfirmDialog
         open={true}
-        title="Reset workspace?"
-        message="Closes every tab and restores the sidebars and their views as a new graph opens with."
-        confirmLabel="Reset"
+        {...RESET_WORKSPACE_PROMPT}
         onconfirm={() => void resetWorkspace()}
         oncancel={() => (resetDialogOpen = false)}
     />
@@ -8680,7 +8763,11 @@
                   lockSettings: readLockSettings(),
                   canBindPasskey: passkeysAvailable(),
                   hasPasskey: protectionPasskeyBound,
-                  onsettings: (next) => writeLockSettings(next),
+                  onsettings: (next) => {
+                      writeLockSettings(next);
+                      // The Protected Documents View says when the graph locks by itself.
+                      notifyProtectionChanged();
+                  },
                   onsetup: () => {
                       // Close Settings first: the set-passphrase dialog is a modal of its own, and
                       // two stacked modals fight over focus and Escape.
@@ -8702,6 +8789,12 @@
             writeSettingsTab(graphId, tab);
             moveSettingsTab(tab);
             if (tab === "mirror") void refreshExportTab();
+        }}
+        onresetworkspace={() => {
+            // The reset's own address has no Settings in it, so the modal goes with the Layout.
+            graphSettingsDialog = null;
+            settingsShowToken += 1;
+            void resetWorkspace();
         }}
         onsave={saveGraphSettings}
         onclose={closeGraphSettings}
@@ -8776,6 +8869,7 @@
 <div class="workspace" class:hidden={phase !== "ready"} style={workspaceStyle}>
     {#if !useMobile}
         <WorkspaceToolbar
+            {chord}
             ontoggleleft={() => toggleSidebar("left")}
             ontoggleright={() => toggleSidebar("right")}
             leftLabel={sidebars.toggleLabel("left")}
@@ -8796,6 +8890,8 @@
             {#if activityBar}
                 <ActivityBar
                     items={activityBar.items}
+                    shortcuts={activityBar.shortcuts}
+                    onshortcut={sidebars.runShortcut}
                     showingPanelId={activityBar.showingPanelId}
                     side={activityBar.side}
                     onselect={sidebars.choose}

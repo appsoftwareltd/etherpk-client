@@ -4,7 +4,7 @@
  * One `- [[YYYY-MM-DD]]` [[Block]] per day the notes were written, oldest day first, and each
  * note nested under its day as one bullet, oldest first. A note filed under a concept is one
  * level deeper, under that concept's bullet (ADR 0186). The journal is read top to bottom,
- * so it reads chronologically even though the modal shows newest first. Notes written today
+ * so it reads chronologically even though the View shows newest first. Notes written today
  * still nest under today's wikilink inside today's entry: one rule, no exception to explain.
  *
  * Pure: the day a note belongs to is decided by the caller (local time, via `todayISO`'s

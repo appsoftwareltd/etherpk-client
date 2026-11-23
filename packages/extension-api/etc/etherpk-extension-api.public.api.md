@@ -786,6 +786,7 @@ export interface ViewDeclaration {
         side?: 'left' | 'right';
         sidebar?: 'primary' | 'secondary';
         desktopOnly?: boolean;
+        command?: string;
     };
     target?: string;
     title: string;

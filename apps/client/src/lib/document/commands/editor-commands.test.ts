@@ -937,11 +937,11 @@ describe('registerEditorCommands for a Plain Folder', () => {
 
     it('leaves out what writes a graph’s syntax, and keeps what edits text', () => {
         const plain = registered(true)
-        for (const id of ['date.today', 'date.pick', 'editor.insertWikilinkOpen', 'task.bar.priority', 'search.open', 'workspace.reset']) {
+        for (const id of ['date.today', 'date.pick', 'editor.insertWikilinkOpen', 'task.bar.priority', 'search.open']) {
             expect(plain.commands.has(id)).toBe(false)
             expect([...plain.menu, ...plain.bar]).not.toContain(id)
         }
-        for (const id of ['editor.bold', 'table.insert', 'editor.insertCodeBlock', 'document.findReplace']) expect(plain.menu).toContain(id)
+        for (const id of ['editor.bold', 'table.insert', 'editor.insertCodeBlock', 'document.findReplace', 'workspace.reset']) expect(plain.menu).toContain(id)
         for (const id of ['editor.toggleBullet', 'editor.indent', 'editor.undo']) expect(plain.bar).toContain(id)
     })
 

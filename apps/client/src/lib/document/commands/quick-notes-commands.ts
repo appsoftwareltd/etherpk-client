@@ -1,10 +1,10 @@
 /**
- * The [[Quick Notes Modal]]'s one shared [[Command]]: move every [[Quick Note]] into today's
- * [[Journal Entry]] (ADR 0078). Registered as a Command so the modal's button, the Command
+ * The [[Quick Notes View]]'s one shared [[Command]]: move every [[Quick Note]] into today's
+ * [[Journal Entry]] (ADR 0078). Registered as a Command so the View's button, the Command
  * Menu row and any keybinding all run the same code and refuse the same way.
  *
- * Adding and deleting a note stay local to the modal: they need the box's text or a note id,
- * and nothing outside the modal has either.
+ * Adding and deleting a note stay local to the View: they need the box's text or a note id,
+ * and nothing outside the View has either.
  */
 
 import {
@@ -20,7 +20,7 @@ import { journalSeparator, quickNotesAsJournalBlocks } from '../quick-notes-jour
 import type { DocumentStore } from '../types'
 
 export const QUICK_NOTES_MOVE = 'quickNotes.moveToJournal'
-/** Opens the [[Quick Notes Modal]] with the caret in its box; registered by the workspace, which hosts it. */
+/** Shows the [[Quick Notes View]] with the caret in its box; registered by the workspace, which hosts it. */
 export const QUICK_NOTES_OPEN = 'quickNotes.open'
 
 export interface MoveQuickNotesOptions {

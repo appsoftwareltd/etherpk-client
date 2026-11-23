@@ -1,7 +1,7 @@
 /**
  * The [[Command]]s and [[Context Menu]] rows of the two Sidebars (ADR 0198): hide a View, bring a
  * hidden one back, reorder an icon, move a View between the Primary and the Secondary Sidebar,
- * move the Primary Sidebar to the other side, and Reset Sidebars.
+ * move the Primary Sidebar to the other side, and the workspace's own Reset workspace.
  *
  * Rows over the registry, as the tab rows are (`tab-commands.ts`). Each acts on the person's
  * [[Sidebar Arrangement]] through the binding, which rearranges the Layout to match.
@@ -19,14 +19,21 @@ export const SIDEBAR_MOVE_DOWN = 'sidebar.moveViewDown'
 export const SIDEBAR_TO_SECONDARY = 'sidebar.moveToSecondary'
 export const SIDEBAR_TO_PRIMARY = 'sidebar.moveToPrimary'
 export const SIDEBAR_SWAP = 'sidebar.swapSides'
-export const SIDEBAR_RESET = 'sidebar.reset'
+/**
+ * Reset workspace: asks, then closes every tab and puts both Sidebars back to their defaults (ADR
+ * 0199, amended 2026-11-23). Registered by the workspace, a graph's or a Plain Folder's. The Activity
+ * Bar's menu offers it, so it is in reach with the Explorer or the file tree hidden.
+ */
+export const WORKSPACE_RESET = 'workspace.reset'
 
 export interface SidebarCommandDeps {
     binding: SidebarArrangementBinding
     /** Read lazily: the workspace recreates the controller on a presenter swap. */
     controller: () => LayoutController | undefined
-    /** The name a View goes by, as its tab says it. */
-    title: (view: ViewRef) => string
+    /** The name a View goes by (the View registry's `name`). */
+    name: (view: ViewRef) => string
+    /** Ask before these Views are hidden, then run `proceed`. Without it they are hidden at once. */
+    confirmHide?: (kinds: readonly string[], proceed: () => void) => void
 }
 
 /** The kind of the arranged View a row acts on: an icon of the Activity Bar, or a tab of the Secondary Sidebar. */
@@ -57,7 +64,9 @@ export function registerSidebarCommands(commands: CommandRegistry, contributions
     disposers.push(
         commands.register(SIDEBAR_HIDE, (arg) => {
             const named = kind(arg)
-            if (named !== null) binding.hide(named)
+            if (named === null) return
+            if (deps.confirmHide) deps.confirmHide([named], () => binding.hide(named))
+            else binding.hide(named)
         }),
         commands.register(SIDEBAR_MOVE_UP, (arg) => {
             const named = kind(arg)
@@ -80,7 +89,6 @@ export function registerSidebarCommands(commands: CommandRegistry, contributions
             if (typeof arg === 'string') binding.show(arg)
         }),
         commands.register(SIDEBAR_SWAP, () => binding.swapSides()),
-        commands.register(SIDEBAR_RESET, () => binding.reset()),
     )
 
     disposers.push(
@@ -134,10 +142,10 @@ export function registerSidebarCommands(commands: CommandRegistry, contributions
             when: (target) => target.kind === 'activity-bar',
         }),
         registerContextMenuItem(contributions, {
-            id: SIDEBAR_RESET,
-            label: 'Reset Sidebars',
+            id: WORKSPACE_RESET,
+            label: 'Reset workspace',
             icon: 'reset',
-            command: SIDEBAR_RESET,
+            command: WORKSPACE_RESET,
             order: 210,
             when: (target) => target.kind === 'activity-bar',
         }),
@@ -155,7 +163,7 @@ export function registerSidebarCommands(commands: CommandRegistry, contributions
                 id: command,
                 label: () => {
                     const resident = binding.resident(hidden)
-                    return `Show ${resident ? deps.title(resident.fallback()) : hidden}`
+                    return `Show ${resident ? deps.name(resident.fallback()) : hidden}`
                 },
                 command,
                 order: 100 + showRows.size,

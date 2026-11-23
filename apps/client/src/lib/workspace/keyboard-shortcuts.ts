@@ -80,17 +80,19 @@ export const APP_KEYBINDINGS: AppKeybinding[] = [
     // about that. Listed before Alt+F, so the Search buttons' help text names it first.
     { key: 'Mod+K', command: 'search.open', label: 'Search the graph', group: 'Go to' },
     { key: 'Alt+F', command: 'search.open', label: 'Search the graph', group: 'Go to' },
-    // The Quick Notes Modal, with the caret in its box: Alt+N, type, Enter (ADR 0189).
-    { key: 'Alt+N', command: 'quickNotes.open', label: 'Quick notes, ready to type', group: 'Go to' },
     // ── Sidebars ──────────────────────────────────────────────────────────────────────────
-    // One letter per Sidebar (L, R) to toggle it, and one per resident (G, B, T) to get to it: a
+    // One letter per Sidebar (L, R) to toggle it, and one per resident (G, B, T, N, K) to get to it: a
     // reveal ends with the View in front of an expanded Sidebar, a toggle collapses as often as it
     // expands, and each brings a closed resident back (workspace/residents.ts, 2026-09-18). An
     // extension's resident binds its own letter as it starts (ADR 0121): the Graph View's is M,
-    // for map, which is why this one is "Graph Sidebar" rather than "Graph".
-    { key: 'Alt+G', command: 'graph.open', label: 'Graph Sidebar', group: 'Sidebars' },
+    // for map, which is why this one is "Explorer" rather than "Graph".
+    { key: 'Alt+G', command: 'graph.open', label: 'Explorer', group: 'Sidebars' },
     { key: 'Alt+B', command: 'backlinks.open', label: 'Backlinks', group: 'Sidebars' },
     { key: 'Alt+T', command: 'tasks.open', label: 'Tasks', group: 'Sidebars' },
+    // Quick notes also takes the caret: Alt+N, type, Enter (ADR 0200).
+    { key: 'Alt+N', command: 'quickNotes.open', label: 'Quick notes, ready to type', group: 'Sidebars' },
+    // K for key. It shows the View and unlocks nothing.
+    { key: 'Alt+K', command: 'protection.open', label: 'Protected documents', group: 'Sidebars' },
     { key: 'Alt+L', command: 'layout.toggleSidebar', label: 'Show or hide the left sidebar', group: 'Sidebars' },
     { key: 'Alt+R', command: 'layout.toggleBacklinks', label: 'Show or hide the right sidebar', group: 'Sidebars' },
     // ── Editor ────────────────────────────────────────────────────────────────────────────

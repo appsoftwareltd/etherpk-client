@@ -1,5 +1,5 @@
 /**
- * Whether a Graph Sidebar section that explains itself while empty (Bookmarks, PDF Bookmarks) is
+ * Whether an Explorer section that explains itself while empty (Bookmarks, PDF Bookmarks) is
  * open. Empty, it shows its heading alone, so a new graph's Sidebar is not mostly help text. With
  * an item it is open, and the person's own choice wins over both. The choice is kept while the
  * Sidebar is mounted and no longer.

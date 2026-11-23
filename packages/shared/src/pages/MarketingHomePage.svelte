@@ -261,7 +261,7 @@
         links: [],
         synced: yes,
         folder: yes,
-        quickShare: { text: "Not decided", tone: "note" },
+        quickShare: { text: "Planned", tone: "note" },
         status: "Planned",
     }));
     const wayGroups = $derived([

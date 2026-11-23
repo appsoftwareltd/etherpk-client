@@ -194,7 +194,7 @@ export const ICON_PATHS: Record<string, string> = {
     check: '<path d="M3.5 8.5 6.5 11.5 12.5 5"/>',
 
     // Sidebar
-    /** Three linked nodes: a knowledge graph. Leads the Graph Sidebar's tab, before the graph's name. */
+    /** Three linked nodes: a knowledge graph. Leads the Explorer's tab, before the graph's name. */
     graph: '<circle cx="4" cy="4.5" r="1.8"/><circle cx="12" cy="5.5" r="1.8"/><circle cx="7.5" cy="12" r="1.8"/><path d="M5.8 4.7 10.2 5.3M5 6.1l1.7 4.3M8.6 10.6l2.6-3.6"/>',
     /** Three dots in a row: a menu of further actions. */
     more: [3.5, 8, 12.5].map((x) => `<circle cx="${x}" cy="8" r="1.15" fill="currentColor" stroke="none"/>`).join(''),
@@ -223,7 +223,7 @@ const HEROICON_PATHS: Record<string, string> = {
      */
     filter: '<path d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/>',
     /**
-     * heroicons/outline `bolt`, a lightning flash: something done quickly. On the graph Sidebar's
+     * heroicons/outline `bolt`, a lightning flash: something done quickly. On the Explorer's
      * Quick notes button.
      */
     'quick-notes': '<path d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"/>',
@@ -245,7 +245,7 @@ const HEROICON_PATHS: Record<string, string> = {
     'headless-client':
         '<path d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z"/>',
     /**
-     * heroicons/outline `calendar`: open today's [[Journal Entry]]. On the Graph Sidebar's Today's
+     * heroicons/outline `calendar`: open today's [[Journal Entry]]. On the Explorer's Today's
      * journal button and the phone top bar's, so the two read as the same action.
      */
     /**

@@ -77,7 +77,7 @@ const VIEW_COMPONENT = 'view'
 
 /**
  * A Sidebar's width until the person gives it another (a first run, Reset workspace). The same on
- * both sides. The left is wide enough for the Graph Sidebar's action buttons two by two, a classic
+ * both sides. The left is wide enough for the Explorer's action buttons two by two, a classic
  * scrollbar beside them included (ADR 0139).
  */
 const DEFAULT_SIDEBAR_WIDTH = 304

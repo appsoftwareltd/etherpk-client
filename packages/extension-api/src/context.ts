@@ -126,7 +126,7 @@ export interface ExtensionCommandBar {
 }
 
 /**
- * Adding buttons to the Graph Sidebar's group of action buttons, after Search and today's date.
+ * Adding buttons to the Explorer's group of action buttons, after Search and today's date.
  *
  * @public
  */
@@ -416,7 +416,7 @@ export interface ExtensionContext {
     readonly contextMenu: ExtensionContextMenu
     /** Adding Command Menu rows. */
     readonly commandMenu: ExtensionCommandMenu
-    /** Adding buttons to the Graph Sidebar. */
+    /** Adding buttons to the Explorer. */
     readonly graphSidebar: ExtensionGraphSidebar
     /**
      * Adding buttons to the phone's Command Bar.

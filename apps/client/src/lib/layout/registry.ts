@@ -71,8 +71,15 @@ export function createViewRegistry(
             const e = entry(view.kind)
             return e?.title ? e.title(view) : view.target
         },
+        name(view: ViewRef) {
+            return entry(view.kind)?.name?.() ?? this.title(view)
+        },
+        label(view: ViewRef) {
+            return entry(view.kind)?.label?.() ?? this.name(view)
+        },
         icon(view: ViewRef) {
-            return entry(view.kind)?.icon
+            const icon = entry(view.kind)?.icon
+            return typeof icon === 'function' ? icon() : icon
         },
         tabTitleChars(view: ViewRef) {
             // Code points, as a reader counts them, not UTF-16 units.

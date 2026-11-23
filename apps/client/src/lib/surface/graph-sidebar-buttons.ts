@@ -1,6 +1,6 @@
 /**
- * The **Graph Sidebar button** Contribution Point: a button an extension adds to the graph
- * [[Sidebar]]'s group of action buttons, after Search and today's date, as a way in to what it
+ * The **Explorer button** Contribution Point: a button an extension adds to the [[Explorer]]'s group
+ * of action buttons and, as an icon, to the [[Activity Bar]]'s shortcuts, after Search and today's date, as a way in to what it
  * shows for the whole graph (the maps extension's Graph Map, the kanban extension's Graph Kanban,
  * ADR 0139). Like a Command Menu row (`command-menu.ts`), a button is a presentation over one
  * Command: pressing it runs `command` through the Command registry, so the same action stays
@@ -11,10 +11,10 @@
  */
 import type { ContributionRegistry } from './contribution-registry'
 
-/** The point kind under which Graph Sidebar buttons are registered. */
+/** The point kind under which Explorer buttons are registered. */
 export const GRAPH_SIDEBAR_BUTTON_KIND = 'graph-sidebar-button'
 
-/** One button in the Graph Sidebar's group of action buttons. */
+/** One button in the Explorer's group of action buttons. */
 export interface GraphSidebarButton {
     /** Stable, namespaced id, under the extension's id. */
     id: string
@@ -30,6 +30,11 @@ export interface GraphSidebarButton {
     icon?: string
     /** Lower lists earlier; a button without one lists after every button that has one. */
     order?: number
+    /**
+     * The extension comes with EtherPK. Those list first, whatever `order` another asks for, so that
+     * installing an extension adds to the end and moves nothing. Set by the extension host.
+     */
+    bundled?: boolean
     /**
      * Whether the button shows here, asked each time the Sidebar draws its buttons. Absent means
      * everywhere. The Sidebar mounts afresh with its presenter, so a button for the desktop layout
@@ -62,15 +67,15 @@ function showsHere(button: GraphSidebarButton): boolean {
 }
 
 /**
- * The buttons that show here, in the order the Sidebar shows them: by `order`, then the order
- * they were added in.
+ * The buttons that show here, in the order both surfaces show them: those of the extensions that
+ * come with EtherPK, then the others, each by `order` and then the order they were added in.
  */
 export function graphSidebarButtons(registry: ContributionRegistry): GraphSidebarButton[] {
     return registry
         .list(GRAPH_SIDEBAR_BUTTON_KIND)
         .map((entry) => entry.value as GraphSidebarButton)
         .filter(showsHere)
-        .sort((a, b) => buttonOrder(a) - buttonOrder(b))
+        .sort((a, b) => Number(b.bundled ?? false) - Number(a.bundled ?? false) || buttonOrder(a) - buttonOrder(b))
 }
 
 /**

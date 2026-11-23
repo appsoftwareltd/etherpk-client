@@ -71,8 +71,15 @@
     /** Show the words at the top left, measure them there, then move them beside the control. */
     function draw(target: HTMLElement, mode: TooltipMode) {
         shown = { text: words(target), x: 0, y: 0, side: 'below' }
+        // Placed nowhere yet, so `follow` draws it again if it cannot be measured now.
+        placedAt = { left: NaN, top: NaN }
         flushSync()
-        if (!tip) return
+        if (!tip) {
+            // Shown while Svelte is in the middle of an update of its own (a dialog going away gives
+            // the focus back to its button): measured once that update is done.
+            followFrame = requestAnimationFrame(follow)
+            return
+        }
         const box = target.getBoundingClientRect()
         placedAt = { left: box.left, top: box.top }
         const size = tip.getBoundingClientRect()

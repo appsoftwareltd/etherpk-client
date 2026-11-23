@@ -171,6 +171,8 @@
     align-items: center;
     padding: 0 0.5rem;
     background-color: var(--gk-surface-0);
+    /* A heading's rule, drawn across the whole row: no tab's edge joins it to what is below. */
+    box-shadow: inset 0 -1px 0 var(--gk-border-soft);
 }
 .dockview-theme-compass .gk-primary-sidebar .dv-tab.dv-inactive-tab,
 .dockview-theme-compass .gk-primary-sidebar .dv-default-tab-action,
@@ -183,7 +185,9 @@
     margin: 0;
     padding: 5px 4px;
     border-color: transparent;
+    background-color: transparent;
     color: var(--gk-text-strong);
+    font-weight: 600;
 }
 /* The row is the Sidebar's width, so the title runs to its edge before it is ellipsised. Each
    box from the strip down to the title may shrink, or the title stays as wide as its text and
@@ -360,7 +364,7 @@
 }
 
 /*
- * The View kind's icon, between the pin and the title (the graph glyph on the Graph Sidebar's
+ * The View kind's icon, between the pin and the title (the graph glyph on the Explorer's
  * tab). Muted like the indicators: it says what sort of tab this is, not that anything happened.
  */
 .dockview-theme-compass .gk-tab-icon {

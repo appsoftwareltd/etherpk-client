@@ -1,5 +1,5 @@
 /**
- * Wikilinks in a plain text box: the [[Quick Notes Modal]]'s and the [[Share Target]]'s.
+ * Wikilinks in a plain text box: the [[Quick Notes View]]'s and the [[Share Target]]'s.
  *
  * A textarea has no editor behind it, so the three things the document editor does for a link
  * are done here over a string and a caret: wrapping a selection, finding the open `[[` the

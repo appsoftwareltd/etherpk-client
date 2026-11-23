@@ -14,7 +14,7 @@
      * hangs under the dot until they close it. A folder graph has no dot.
      *
      * Reset workspace has no button here: an icon alone does not say what it does, and a circle
-     * of arrows reads as "reload". It is a named row at the foot of the Graph Sidebar, beside
+     * of arrows reads as "reload". It is a named row at the foot of the Explorer, beside
      * Settings, and a Command.
      *
      * The indexing icon is a status light too, and not a control: it shows while the search index
@@ -25,6 +25,7 @@
 
     import type { Snippet } from 'svelte'
 
+    import { withChord } from '#lib/surface/control-help.js'
     import SidebarToggleIcon from '#lib/layout/renderers/SidebarToggleIcon.svelte'
 
     import type { GraphStatus, StatusCallout as Callout } from './graph-status'
@@ -45,6 +46,7 @@
         settingsLabel = 'Graph name and settings',
         rightLabel = 'Toggle backlinks',
         lead,
+        chord = () => null,
     }: {
         ontoggleleft: () => void
         ontoggleright: () => void
@@ -70,14 +72,21 @@
         rightLabel?: string
         /** What is open, after the left toggle: a [[Plain Folder]]'s name and what it is. A graph draws none. */
         lead?: Snippet
+        /** The shortcut a tooltip names for a Command, or null. */
+        chord?: (command: string) => string | null
     } = $props()
+
+    /** The shortcut for a screen reader, which the tooltip says after the name. */
+    const described = (command: string) => {
+        const named = chord(command)
+        return named === null ? undefined : `Shortcut: ${named}`
+    }
 </script>
 
 <div class="toolbar" data-testid="ws-toolbar">
     <button
         type="button"
         class="gk-icon-button gk-button--raised"
-        data-tooltip={leftLabel}
         data-testid="ws-toggle-left"
         onclick={ontoggleleft}
         aria-label={leftLabel}
@@ -129,7 +138,8 @@
     <button
         type="button"
         class="gk-icon-button gk-button--raised"
-        data-tooltip="Keyboard shortcuts"
+        data-tooltip={withChord("Keyboard shortcuts", chord('help.openShortcuts'))}
+        aria-description={described('help.openShortcuts')}
         aria-label="Keyboard shortcuts"
         data-testid="ws-keyboard-shortcuts"
         onclick={onshortcuts}
@@ -160,7 +170,8 @@
     <button
         type="button"
         class="gk-icon-button gk-button--raised"
-        data-tooltip="Tasks"
+        data-tooltip={withChord("Tasks", chord('tasks.open'))}
+        aria-description={described('tasks.open')}
         aria-label="Tasks"
         data-testid="ws-tasks"
         onclick={ontasks}
@@ -173,7 +184,6 @@
     <button
         type="button"
         class="gk-icon-button gk-button--raised"
-        data-tooltip={rightLabel}
         data-testid="ws-toggle-right"
         onclick={ontoggleright}
         aria-label={rightLabel}

@@ -69,6 +69,7 @@
     import type { ImportFormat } from "#lib/import/types.js";
     import { chosenPlainFolderState, plainFolderUrl } from "#lib/plain/plain-address.js";
     import type { PlainFolderRecord } from "#lib/plain/plain-folder-registry.js";
+    import type { PlainFoldersListing } from "#lib/plain/plain-folders-section.js";
     import { createIdbPlainFolderRegistry } from "#lib/plain/plain-folder-registry-idb.js";
     import OpenFolderDialog from "#lib/plain/ui/OpenFolderDialog.svelte";
     import PlainFoldersSection from "#lib/plain/ui/PlainFoldersSection.svelte";
@@ -700,17 +701,20 @@
     // Plain Folders (ADR 0194): kept apart from the graphs, in a registry of their own.
     const plainRegistry = createIdbPlainFolderRegistry();
     let plainFolders = $state.raw<PlainFolderRecord[]>([]);
+    let plainFoldersListing = $state<PlainFoldersListing>("pending");
     /** A chosen folder that is not a graph, and the question it raises. */
     let folderQuestion = $state.raw<{ handle: FileSystemDirectoryHandle; verdict: Extract<FolderVerdict, { kind: "ask" }> } | null>(null);
     let folderQuestionBusy = $state(false);
     let folderQuestionError = $state<string | null>(null);
     let plainFolderMessage = $state.raw<{ id: string; text: string; tone: "info" | "error" } | null>(null);
 
-    /** A list that cannot be read leaves the section out; the graphs above are not held up by it. */
+    /** A list that cannot be read is said so in the section; the graphs above are not held up by it. */
     async function listPlainFolders(): Promise<void> {
         try {
             plainFolders = await plainRegistry.list();
+            plainFoldersListing = "listed";
         } catch (err) {
+            plainFoldersListing = "unreadable";
             console.error("Could not read the Plain Folder list:", err);
         }
     }
@@ -1130,12 +1134,15 @@
 
     /** Read this browser's graphs and synced copies. False when the list cannot be read at all. */
     async function listRegistry(): Promise<boolean> {
+        // A registry of their own: they are listed though the graphs cannot be, and neither list waits
+        // on the other to be read.
+        const plainListed = listPlainFolders();
         try {
             const listed = await registry.listGraphs();
             // Before the list shows, so the Agents tab never calls a folder a graph in the browser.
             await readLocalFolders(listed).catch(() => undefined);
             graphs = listed;
-            await listPlainFolders();
+            await plainListed;
         } catch (err) {
             // A registry that cannot be read is not a registry that is empty, and the two used
             // to look identical: the list rejected, everything after it was skipped, and the
@@ -2391,9 +2398,10 @@
         return queueHistoryWrite(() => goto(plainFolderUrl(folder.name), { state: chosenPlainFolderState(folder) }));
     }
 
-    async function openFolder() {
+    /** Choose a folder and open it. `preferred` is what the person asked to open it as, if they said. */
+    async function openFolder(preferred?: FolderChoice) {
         try {
-            await openFolderHandle(await pickGraphDirectory());
+            await openFolderHandle(await pickGraphDirectory(), preferred);
         } catch (err) {
             // Closing the picker is a choice, not a failure: nothing is said and the page stays
             // as it was.
@@ -2429,7 +2437,7 @@
     }
 
     /** Open a folder the person chose or dropped. Rejects when it cannot be read. */
-    async function openFolderHandle(handle: FileSystemDirectoryHandle) {
+    async function openFolderHandle(handle: FileSystemDirectoryHandle, preferred?: FolderChoice) {
         // Look inside before anything is written: a graph's folder opens as before, and any
         // other folder is asked about (choose-folder.ts).
         const chosen = await examineChosenFolder(handle, {
@@ -2446,7 +2454,8 @@
             if (refusal) setStatus(refusal, "error");
         } else {
             folderQuestionError = null;
-            folderQuestion = { handle, verdict: chosen.verdict };
+            // What the person asked for is selected over what the folder itself suggests.
+            folderQuestion = { handle, verdict: { ...chosen.verdict, preferred: preferred ?? chosen.verdict.preferred } };
         }
     }
 
@@ -4615,7 +4624,7 @@
                 {#if supported}
                     <button
                         data-testid="graphs-open-folder"
-                        onclick={openFolder}
+                        onclick={() => void openFolder()}
                         class={SECONDARY_BUTTON}
                         >Open folder</button
                     >
@@ -5071,7 +5080,7 @@
                 {/if}
 
                 <!-- Not graphs, so below them and in a section that says so (ADR 0194). -->
-                <PlainFoldersSection folders={plainFolders} message={plainFolderMessage} onopen={(folder) => void openPlainFolderCard(folder)} onforget={(folder) => void forgetPlainFolder(folder)} />
+                <PlainFoldersSection folders={plainFolders} listing={plainFoldersListing} canOpen={supported} message={plainFolderMessage} onopenfolder={() => void openFolder("plain")} onopen={(folder) => void openPlainFolderCard(folder)} onforget={(folder) => void forgetPlainFolder(folder)} />
 
                 {#if !firstRun && servers.length === 0}
                     <!-- A returning browser with no Sync Server: the way to one, where its graphs would be. -->

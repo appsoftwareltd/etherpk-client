@@ -44,6 +44,25 @@ describe('the default arrangement', () => {
     })
 })
 
+describe('a View that joins an arrangement a person already has', () => {
+    const joining: KnownSidebarView[] = [...KNOWN.slice(0, 2), { kind: 'shed', role: 'primary', after: 'kitchen' }, { kind: 'orchard', role: 'primary', after: 'shed' }, ...KNOWN.slice(2)]
+    const kept: SidebarArrangement = { ...DEFAULT_ARRANGEMENT, primary: ['kitchen', 'pantry', 'garden'], secondary: ['attic', 'cellar'] }
+
+    it('sits after the View it names, wherever the person has moved that one', () => {
+        expect(normalise(kept, joining).primary).toEqual(['kitchen', 'shed', 'orchard', 'pantry', 'garden'])
+        expect(shown(DEFAULT_ARRANGEMENT, joining).primary).toEqual(['garden', 'kitchen', 'shed', 'orchard'])
+    })
+
+    it('joins the end when the View it names is in the other Sidebar, or it names none', () => {
+        expect(normalise({ ...kept, primary: ['garden'], secondary: ['kitchen'] }, joining).primary).toEqual(['garden', 'shed', 'orchard'])
+        expect(normalise(kept, [...KNOWN, { kind: 'shed', role: 'primary' }]).primary).toEqual(['kitchen', 'pantry', 'garden', 'shed'])
+    })
+
+    it('stays where the person has put it', () => {
+        expect(normalise({ ...kept, primary: ['orchard', 'shed', 'kitchen'] }, joining).primary).toEqual(['orchard', 'shed', 'kitchen', 'garden'])
+    })
+})
+
 describe('swapping sides', () => {
     it('moves the Primary Sidebar to the right and back', () => {
         const swapped = swapSides(DEFAULT_ARRANGEMENT)

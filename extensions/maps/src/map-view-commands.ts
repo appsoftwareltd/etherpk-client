@@ -5,7 +5,7 @@
  *   the one the link names,
  * - the Command Menu's Open Map View row, for the concept the caret's block answers to, or the
  *   choice at the caret when it answers to several, as `/kanban` offers a board,
- * - the Command Menu's Graph Map row, and the Graph Sidebar's Graph Map button after Search and
+ * - the Command Menu's Graph Map row, and the Explorer's Graph Map button after Search and
  *   today's date,
  * - Open page on a concept's Map View tab, for the document it is about.
  *
@@ -22,7 +22,7 @@ import { parseViewKey } from '#lib/layout/view-ref.js'
 
 import { MAP_VIEW_KIND, MAP_WHOLE, MAPS_OPEN_AT_CARET, MAPS_OPEN_FOR, MAPS_OPEN_FROM_MENU, MAPS_OPEN_PAGE, MAPS_OPEN_WHOLE, mapViewOf } from './identity'
 
-/** The whole graph's Map View, by its name: its tab, its Command Menu row and its graph sidebar button. */
+/** The whole graph's Map View, by its name: its tab, its Command Menu row and its Explorer button. */
 const GRAPH_MAP = 'Graph Map'
 
 /** The concept of the Map View a tab holds, or null for any other tab or target. */
@@ -127,7 +127,7 @@ export function registerMapViewCommands(context: ExtensionContext): void {
         title: GRAPH_MAP,
         description: 'Open a map of every place and route in this graph',
         icon: 'map',
-        // First of the extensions' buttons, straight after Search and today's date; the Graph Kanban is 30.
+        // After the Graph Kanban (10).
         order: 20,
         command: MAPS_OPEN_WHOLE,
     })

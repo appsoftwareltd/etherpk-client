@@ -1,7 +1,7 @@
 <script lang="ts">
     /**
-     * The graph [[Sidebar]]: a group of action buttons ([[Search]], today's [[Journal Entry]],
-     * the [[Quick Notes Modal]], the buttons extensions add) fixed at its top, and scrolling
+     * The Explorer: a group of action buttons ([[Search]], today's [[Journal Entry]],
+     * the buttons extensions add) fixed at its top, and scrolling
      * under them the [[Journal Calendar]], [[Favourite]]s, [[Recents]], the way
      * into [[All Documents]], and a synced graph's sync status at its foot (ADR 0139).
      *
@@ -77,8 +77,6 @@
     import { iconSvg } from "#lib/surface/icons.js";
     import { sidebarButton, sidebarIconButton } from "./sidebar-button.js";
     import {
-        currentWorkspaceServices,
-        type ProtectionControls,
         workspaceService,
     } from "#lib/workspace/workspace-services.js";
 
@@ -98,20 +96,6 @@
 
     let favouritesOpen = $state(true);
     let recentsOpen = $state(true);
-
-    /**
-     * The graph's lock control. Raw: its two readable fields are getters over the session's runes,
-     * and a template that reads them re-renders on a lock transition without a proxy in the way.
-     * Re-read on every lock event, because the record is read off the graph-open critical path
-     * and this View can mount before it has landed.
-     */
-    let detachProtectionWatch: (() => void) | undefined;
-    let protection = $state.raw<ProtectionControls | undefined>(
-        currentWorkspaceServices()?.protection,
-    );
-    const unlocked = $derived(
-        protection?.status === "unlocked" || protection?.status === "masked",
-    );
 
     /**
      * How a View favourite's row reads (ADR 0169). Read once: the workspace
@@ -267,7 +251,7 @@
 
     // ---- The action buttons -----------------------------------------------------------
     /**
-     * The buttons extensions add after Search, Today and Quick notes (the maps extension's Graph Map,
+     * The buttons extensions add after Search and Today (the maps extension's Graph Map,
      * the kanban extension's Graph Kanban), read again whenever one is added or taken back, as an
      * extension starts or is switched off.
      */
@@ -293,17 +277,6 @@
 
     function openSearch() {
         void tryGetActiveCommandRegistry()?.execute(SEARCH_OPEN);
-    }
-
-    /**
-     * Quick notes, the third button: the modal that takes a thought down and holds it until it
-     * is moved to the journal (ADR 0189). Drawn only where the Command exists, like Search.
-     */
-    const QUICK_NOTES_OPEN = "quickNotes.open";
-    const canQuickNote = tryGetActiveCommandRegistry()?.has(QUICK_NOTES_OPEN) ?? false;
-
-    function openQuickNotes() {
-        void tryGetActiveCommandRegistry()?.execute(QUICK_NOTES_OPEN);
     }
 
     /**
@@ -347,7 +320,6 @@
         [
             canSearch ? "Search" : "",
             "Today",
-            canQuickNote ? "Quick notes" : "",
             ...extensionButtons.map((button) => button.title),
         ].join("\n"),
     );
@@ -589,12 +561,6 @@
     // ---- Wiring ---------------------------------------------------------------------
     let unsubscribers: (() => void)[] = [];
     onMount(() => {
-        detachProtectionWatch = tryGetActiveEventBus()?.on(
-            "protection:changed",
-            () => {
-                protection = currentWorkspaceServices()?.protection;
-            },
-        );
         refresh();
         const bus = tryGetActiveEventBus();
         if (bus) {
@@ -622,7 +588,6 @@
         );
     });
     onDestroy(() => {
-        detachProtectionWatch?.();
         if (protectedTimer) clearTimeout(protectedTimer);
         for (const dispose of unsubscribers) dispose();
         unsubscribers = [];
@@ -642,12 +607,6 @@
      */
     const hasSettingsCommand =
         tryGetActiveCommandRegistry()?.has("graph.settings.open") ?? false;
-    const hasResetCommand =
-        tryGetActiveCommandRegistry()?.has("workspace.reset") ?? false;
-
-    function resetWorkspace() {
-        void tryGetActiveCommandRegistry()?.execute("workspace.reset");
-    }
 
     function openSettings() {
         void tryGetActiveCommandRegistry()?.execute("graph.settings.open");
@@ -656,16 +615,16 @@
 
 <svelte:window onkeydown={onWindowKeydown} />
 
-<!-- Two parts: the action buttons, which stay where they are, and everything else, which
-     scrolls under them. The Sidebar itself does not scroll, so the buttons are in reach however
-     far down the lists have been read. -->
+<!-- It scrolls as one, the action buttons with everything else: the Activity Bar has them too, in
+     reach however far down the lists have been read. The scrollbar's room is kept whether it shows
+     or not, so its coming and going never changes how many columns the buttons take. -->
 <div
     bind:this={sidebarEl}
-    class="flex h-full flex-col text-(--gk-text-default)"
+    class="flex h-full flex-col overflow-y-auto text-(--gk-text-default) [scrollbar-gutter:stable]"
     style:font-family="var(--gk-sans, 'Inter', system-ui, sans-serif)"
     data-testid="graph-sidebar"
 >
-    <!-- ── The action buttons: Search, Today, Quick notes, the extensions' buttons (ADR 0139) ── -->
+    <!-- ── The action buttons: Search, Today, the extensions' buttons (ADR 0139) ── -->
     <!--
         One row, two columns or one, whichever keeps every label whole (`columns`). Search,
         Today and Quick notes come first, so they lead the row and head the grid and the stack.
@@ -691,7 +650,6 @@
             </span>
         {/if}
     {/snippet}
-    <!-- The padding under the buttons is the gap the lists scroll away into. -->
     <div class="shrink-0 p-2" data-testid="sidebar-header">
     <div
         bind:this={buttonsEl}
@@ -725,18 +683,6 @@
             <!-- The calendar at the same line weight as the buttons beside it. -->
             {@render buttonContent("todays-journal", "Today")}
         </button>
-        {#if canQuickNote}
-            <button
-                type="button"
-                data-testid="sidebar-quick-notes"
-                onclick={openQuickNotes}
-                class={iconsOnly ? sidebarIconButton : sidebarButton}
-                aria-label={iconsOnly ? "Quick notes" : undefined}
-                {...helpFor("Open quick notes, ready to type", QUICK_NOTES_OPEN)}
-            >
-                {@render buttonContent("quick-notes", "Quick notes")}
-            </button>
-        {/if}
         {#each extensionButtons as button (button.id)}
             <button
                 type="button"
@@ -753,7 +699,7 @@
     </div>
     </div>
 
-    <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2" data-testid="sidebar-scroll">
+    <div class="flex flex-1 shrink-0 flex-col gap-2 px-2 pb-2">
     <!-- ── Journal Calendar ───────────────────────────────────────────────────── -->
     <section>
         <button
@@ -778,52 +724,6 @@
             />
         {/if}
     </section>
-
-    <!-- ── Protected documents ────────────────────────────────────────────────── -->
-    <!-- One control for the whole graph, because the key is the unit (ADR 0058): unlocking
-         anywhere unlocks every protected note on this device, and locking here locks them all.
-         Shown only once the graph has a Protection Key; the Settings tab is the front door. -->
-    {#if protection?.isConfigured}
-        <section data-testid="protection-section">
-            <div
-                class="flex w-full items-center gap-1 px-2 py-1 text-left text-sm font-semibold tracking-wide text-(--gk-text-subtle) uppercase pointer-coarse:min-h-11"
-            >
-                Protected documents
-            </div>
-            <!-- A button rather than a full-width row: the icon says which state the graph is
-                 in, and the label is the verb that leaves it, so there is nothing else to say.
-                 Filled with the accent while unlocked - the same fill the Tasks View's active
-                 filter wears - because that is the state worth noticing, and Lock now the action
-                 worth reaching for; Unlock is the quiet outline. -->
-            <div class="px-2 pb-2">
-                <button
-                    type="button"
-                    data-testid={unlocked
-                        ? "protection-lock"
-                        : "protection-unlock"}
-                    data-state={unlocked ? "unlocked" : "locked"}
-                    data-own-button-style="filled with the accent while unlocked, the state worth noticing"
-                    onclick={() =>
-                        unlocked
-                            ? protection?.lockNow()
-                            : protection?.requestUnlock()}
-                    class="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors pointer-coarse:min-h-11 {unlocked
-                        ? 'border-transparent bg-(--gk-accent,#2563eb) text-(--gk-surface-0) hover:bg-(--gk-accent-hover,#1d4ed8)'
-                        : 'border-(--gk-border-soft) text-(--gk-text-default) hover:bg-(--gk-surface-2)'}"
-                >
-                    <span class="inline-flex shrink-0" aria-hidden="true">
-                        <!-- In-repo constant markup from the icon table, never user or document
-                             content — the same justification the Command Bar's icons carry. -->
-                        <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                        {@html iconSvg(unlocked ? "lock-open" : "lock", {
-                            size: 16,
-                        })}
-                    </span>
-                    <span>{unlocked ? "Lock now" : "Unlock"}</span>
-                </button>
-            </div>
-        </section>
-    {/if}
 
     <!-- ── Favourites ─────────────────────────────────────────────────────────── -->
     <section>
@@ -1090,33 +990,6 @@
                     />
                 </svg>
                 <span>Settings</span>
-            </button>
-        {/if}
-        {#if hasResetCommand}
-            <!-- On every presenter, unlike Settings: neither the phone top bar nor the desktop
-                 toolbar has a button for it, so this named row and the Command are how it is
-                 reached. Opens the confirmation. -->
-            <button
-                type="button"
-                data-testid="reset-workspace"
-                onclick={resetWorkspace}
-                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
-            >
-                <svg
-                    class="h-4 w-4 shrink-0"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                    aria-hidden="true"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
-                    />
-                </svg>
-                <span>Reset workspace</span>
             </button>
         {/if}
     </div>

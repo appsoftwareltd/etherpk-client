@@ -70,7 +70,7 @@ describe('iconSvg', () => {
     })
 
     it("draws Today's journal as the Heroicons calendar, at Heroicons' own weight when asked for a stroke of 1", () => {
-        // Heroicons 2.2.0 outline `calendar`, verbatim: the Graph Sidebar's button and the phone's top bar share it.
+        // Heroicons 2.2.0 outline `calendar`, verbatim: the Explorer's button and the phone's top bar share it.
         const svg = iconSvg('todays-journal', { strokeWidth: 1 })
         expect(svg).toContain('viewBox="0 0 24 24"')
         expect(svg).toContain('stroke-width="1.5"')

@@ -132,7 +132,7 @@ export function composeSharedNote(payload: SharedPayload): ComposedShare | null 
  * What Add puts in the [[Quick Note]]: the edited text, trimmed, or `null` when nothing is left.
  * For a task, a checkbox in front, so the move to the journal writes the first line as
  * `  - [ ] <text>` and the note lands as a [[Task]]. The checkbox is the note's own text rather
- * than a field beside it, so the Quick Notes Modal shows what will land (drawn as a box) and nothing about
+ * than a field beside it, so the Quick Notes View shows what will land (drawn as a box) and nothing about
  * the note's record, sync or file changes (ADR 0087, amended 2026-10-13). Text that already
  * starts with a checkbox is left alone, so a share sent back to the page cannot get a second.
  */

@@ -38,7 +38,7 @@ const INTRODUCTION = 'This page is for trying things. Your own notes go in the j
 
 /**
  * How to reach today's journal, which is open in the tab to the right of this page. **Today** is
- * the label of the Graph Sidebar's button, and a phone has the same Command on its top bar.
+ * the label of the Explorer's button, and a phone has the same Command on its top bar.
  */
 const TODAYS_JOURNAL =
     "To open today's journal entry, select its tab, or select **Today** in the left sidebar. On a phone, tap the calendar icon in the top bar."

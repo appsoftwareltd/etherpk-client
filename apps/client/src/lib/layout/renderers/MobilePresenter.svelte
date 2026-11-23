@@ -307,7 +307,7 @@
 
     // --- Today's journal ----------------------------------------------------------
     /**
-     * The top bar's way to today's [[Journal Entry]]: the Graph Sidebar's Today's journal button
+     * The top bar's way to today's [[Journal Entry]]: the Explorer's Today's journal button
      * without its words, so a phone reaches today without opening the left drawer first. It runs
      * the Command Alt+J runs, which reads today at the press, never at mount: a tab left open
      * overnight reaches the new day. Drawn only where that Command exists. The workspace registers
@@ -342,7 +342,7 @@
     }
 
     /**
-     * Help text for the top bar's buttons: what each does and its chord, as the Graph Sidebar's
+     * Help text for the top bar's buttons: what each does and its chord, as the Explorer's
      * buttons carry it. A narrow desktop window gets this bar too, with a keyboard behind it.
      */
     const helpFor = createControlHelp(workspaceService('keybindings'))
@@ -401,7 +401,7 @@
 {#snippet viewIcon(v: ViewInstance)}
     {@const icon = renderer.registry.icon(v.view)}
     {#if icon}
-        <!-- The View kind's icon (the graph glyph on the Graph Sidebar's tab), as the desktop
+        <!-- The View kind's icon (the graph glyph on the Explorer's tab), as the desktop
              tab renderer draws it. Decorative: the label says what the tab is. -->
         <span class="tab-icon" aria-hidden="true">
             <!-- eslint-disable-next-line svelte/no-at-html-tags -->
@@ -443,6 +443,8 @@
     <div class="primary" data-side={bar.side}>
         <ActivityBar
             items={bar.items}
+            shortcuts={bar.shortcuts}
+            onshortcut={(shortcut) => sidebars?.runShortcut(shortcut)}
             showingPanelId={bar.showingPanelId}
             side={bar.side}
             onselect={(item) => sidebars?.choose(item)}
@@ -498,7 +500,6 @@
         <button
             class="toggle"
             data-testid="mobile-toggle-left"
-            data-tooltip={sidebars?.toggleLabel('left') ?? 'Toggle document tree'}
             aria-label={sidebars?.toggleLabel('left') ?? 'Toggle document tree'}
             aria-expanded={leftOpen}
             onclick={() => toggleSidebarExclusive('left')}
@@ -513,7 +514,7 @@
                 onclick={openSearch}
                 {...helpFor('Open graph search modal', SEARCH_OPEN)}
             >
-                <!-- The Graph Sidebar's search glass at the toggles' size and line weight.
+                <!-- The Explorer's search glass at the toggles' size and line weight.
                      In-repo constant markup from the icon table. -->
                 <span class="bar-icon" aria-hidden="true">
                     <!-- eslint-disable-next-line svelte/no-at-html-tags -->
@@ -560,7 +561,7 @@
                 onclick={openToday}
                 {...helpFor("Open today's journal", OPEN_TODAY)}
             >
-                <!-- The Graph Sidebar's calendar, at the toggles' size and line weight: the
+                <!-- The Explorer's calendar, at the toggles' size and line weight: the
                      outline is as heavy as their panel outlines beside it. In-repo constant
                      markup from the icon table. -->
                 <span class="bar-icon" aria-hidden="true">
@@ -575,7 +576,6 @@
         <button
             class="toggle"
             data-testid="mobile-toggle-right"
-            data-tooltip={sidebars?.toggleLabel('right') ?? 'Toggle backlinks'}
             aria-label={sidebars?.toggleLabel('right') ?? 'Toggle backlinks'}
             aria-expanded={rightOpen}
             onclick={() => toggleSidebarExclusive('right')}
@@ -1226,9 +1226,10 @@
         margin: 0;
         padding: 0.5rem 0.75rem;
         overflow: hidden;
+        border-bottom: 1px solid var(--gk-border-soft);
         color: var(--gk-text-strong);
         font-size: 0.875rem;
-        font-weight: 500;
+        font-weight: 600;
         line-height: 1.25rem;
         text-overflow: ellipsis;
         white-space: nowrap;

@@ -70,6 +70,8 @@ export interface DeclaredResident {
     desktopOnly: boolean
     /** The View to open when the resident has been closed. */
     fallback: ViewRef
+    /** The Command that shows it, when the manifest names one. */
+    command?: string
 }
 
 export interface ExtensionHost {
@@ -139,6 +141,7 @@ function residentOf(extensionId: string, declaration: ViewDeclaration, resident:
         sidebar: resident.sidebar ?? (resident.side === 'left' ? 'primary' : 'secondary'),
         desktopOnly: resident.desktopOnly ?? false,
         fallback: { kind: declaration.kind, target: declaration.target ?? '' },
+        ...(resident.command === undefined ? {} : { command: resident.command }),
     }
 }
 

@@ -612,7 +612,6 @@
 <div class="flex h-full flex-col overflow-hidden break-words text-(--gk-text-default)" data-testid="tasks-view">
     <div class="flex flex-col gap-2 border-b border-(--gk-border-soft) p-3">
         <div class="flex items-baseline gap-2">
-            <h3 class="m-0 text-sm font-normal uppercase tracking-[0.04em] text-(--gk-text-muted)">Tasks</h3>
             {#if !isDefaultFilter}
                 <button
                     type="button"

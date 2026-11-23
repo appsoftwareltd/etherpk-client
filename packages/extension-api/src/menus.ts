@@ -220,7 +220,7 @@ export interface CommandBarButton {
 }
 
 /**
- * A button in the Graph Sidebar's group of action buttons, after Search and today's date: a way in
+ * A button in the Explorer's group of action buttons, after Search and today's date: a way in
  * to what the extension shows for the whole graph, such as the Graph Map. Pressing it runs
  * `command`.
  *

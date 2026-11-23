@@ -17,6 +17,7 @@
     import { refusingPdfState } from "#lib/document/pdf/synced-pdf-state.js";
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
     import { COMMAND_BAR_KIND, type CommandBarItem, listCommandBarItems, tryGetActiveCommandRegistry, tryGetActiveContributionRegistry } from "#lib/surface/index.js";
+    import { helpForKey } from "#lib/surface/control-help.js";
     import { iconSvg } from "#lib/surface/icons.js";
     import { editorContext } from "#lib/document/index.js";
     import { registerFileSelection } from "#lib/document/file-in-front.js";
@@ -666,7 +667,7 @@
 {#snippet turnPage(direction: "previous" | "next", className: string)}
     {@const previous = direction === "previous"}
     {@const label = previous ? "Previous page" : "Next page"}
-    <button type="button" class={className} aria-label={label} data-tooltip={label} disabled={previous ? reader.page <= 1 : reader.page >= reader.pageCount} onclick={() => (previous ? reader.previousPage() : reader.nextPage())}>
+    <button type="button" class={className} aria-label={label} {...helpForKey(label, reader.preferences.pageByPage ? (previous ? "PageUp" : "PageDown") : null)} disabled={previous ? reader.page <= 1 : reader.page >= reader.pageCount} onclick={() => (previous ? reader.previousPage() : reader.nextPage())}>
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
         {@html iconSvg(previous ? "pdf-page-previous" : "pdf-page-next")}
     </button>
@@ -706,27 +707,27 @@
 <!-- The buttons of the toolbar, in `button`'s style: the toolbar's own on a desktop, the Command Bar's where
      there is one. The page box and the zoom level are words, which the Command Bar has no room for. -->
 {#snippet tools(button: string)}
-    <button type="button" class={button} aria-label="Find in this PDF" data-tooltip="Find in this PDF" onclick={() => reader.openFind()} data-testid="pdf-find-open">{@render icon("search")}</button>
+    <button type="button" class={button} aria-label="Find in this PDF" {...helpForKey("Find in this PDF", "Mod+F")} onclick={() => reader.openFind()} data-testid="pdf-find-open">{@render icon("search")}</button>
     {@render turnPage("previous", `${button} max-sm:hidden`)}
     {#if !inBar}{@render pageBox()}{/if}
     {@render turnPage("next", `${button} max-sm:hidden`)}
     {#if !inBar}<span class="etherpk-pdf-divider max-sm:hidden"></span>{/if}
-    <button type="button" class={`${button} max-sm:hidden`} aria-label="Zoom out" data-tooltip="Zoom out" onclick={() => reader.zoomOut()} data-testid="pdf-zoom-out">{@render icon("zoom-out")}</button>
+    <button type="button" class={`${button} max-sm:hidden`} aria-label="Zoom out" {...helpForKey("Zoom out", "Mod+-")} onclick={() => reader.zoomOut()} data-testid="pdf-zoom-out">{@render icon("zoom-out")}</button>
     {#if !inBar}<span class="w-12 shrink-0 text-center text-sm text-(--gk-text-muted) max-sm:hidden" data-testid="pdf-zoom-level">{Math.round(reader.scale * 100)}%</span>{/if}
-    <button type="button" class={`${button} max-sm:hidden`} aria-label="Zoom in" data-tooltip="Zoom in" onclick={() => reader.zoomIn()} data-testid="pdf-zoom-in">{@render icon("zoom-in")}</button>
+    <button type="button" class={`${button} max-sm:hidden`} aria-label="Zoom in" {...helpForKey("Zoom in", "Mod+=")} onclick={() => reader.zoomIn()} data-testid="pdf-zoom-in">{@render icon("zoom-in")}</button>
     <button type="button" class={`${button} max-sm:hidden`} aria-label="Fit the width" data-tooltip="Fit the width" onclick={() => reader.fitWidth()} data-testid="pdf-fit-width">{@render icon("fit")}</button>
     {#if !inBar}<span class="etherpk-pdf-divider"></span>{/if}
     {#each shownTools as entry (entry.tool)}
         <button type="button" class={button} aria-label={entry.label} data-tooltip={blockedHere(entry.tool) ? NEEDS_TEXT[entry.tool] : entry.label} aria-description={blockedHere(entry.tool) ? NEEDS_TEXT[entry.tool] : entry.label} aria-pressed={reader.tool === entry.tool} disabled={blockedHere(entry.tool)} onclick={() => reader.setTool(entry.tool)} data-testid={`pdf-tool-${entry.tool}`} {@attach scrollIntoBar(entry.tool)}>{@render icon(entry.icon)}</button>
     {/each}
-    <button type="button" class={button} aria-label="Undo" data-tooltip="Undo" disabled={!reader.canUndo} onclick={() => reader.undo()} data-testid="pdf-undo">{@render icon("undo")}</button>
-    <button type="button" class={button} aria-label="Redo" data-tooltip="Redo" disabled={!reader.canRedo} onclick={() => reader.redo()} data-testid="pdf-redo">{@render icon("redo")}</button>
+    <button type="button" class={button} aria-label="Undo" {...helpForKey("Undo", "Mod+Z")} disabled={!reader.canUndo} onclick={() => reader.undo()} data-testid="pdf-undo">{@render icon("undo")}</button>
+    <button type="button" class={button} aria-label="Redo" {...helpForKey("Redo", "Mod+Shift+Z")} disabled={!reader.canRedo} onclick={() => reader.redo()} data-testid="pdf-redo">{@render icon("redo")}</button>
     {#if !inBar}<span class="etherpk-pdf-divider"></span>{/if}
     <button type="button" class={[button, reader.bookmarkHere && "etherpk-pdf-bookmarked"]} aria-label={reader.bookmarkHere ? "Remove the PDF Bookmark on this page" : "Add a PDF Bookmark"} data-tooltip={reader.bookmarkHere ? "Remove the PDF Bookmark on this page" : "Add a PDF Bookmark"} aria-pressed={!!reader.bookmarkHere} onclick={() => reader.toggleBookmark()} data-testid="pdf-bookmark">{@render icon("bookmark")}</button>
     <button type="button" class={button} aria-label="Annotations and PDF Bookmarks" data-tooltip="Annotations and PDF Bookmarks" aria-pressed={panelOpen} onclick={togglePanel} data-testid="pdf-panel-toggle">{@render icon("list")}</button>
     <button type="button" class={`${button} max-sm:hidden`} aria-label="Add your signature" data-tooltip="Add your signature" onclick={() => (signatureOpen = true)} data-testid="pdf-sign">{@render icon("pdf-signature")}</button>
     <button type="button" class={button} aria-label="Save a copy" data-tooltip="Save a copy" onclick={openSave} data-testid="pdf-save">{@render icon("pdf-save")}</button>
-    <button type="button" class={`${button} max-sm:hidden`} aria-label="Print" data-tooltip="Print" onclick={() => (printOptionsOpen = true)} data-testid="pdf-print">{@render icon("pdf-print")}</button>
+    <button type="button" class={`${button} max-sm:hidden`} aria-label="Print" {...helpForKey("Print", "Mod+P")} onclick={() => (printOptionsOpen = true)} data-testid="pdf-print">{@render icon("pdf-print")}</button>
 {/snippet}
 
 {#snippet moreToggle(button: string)}

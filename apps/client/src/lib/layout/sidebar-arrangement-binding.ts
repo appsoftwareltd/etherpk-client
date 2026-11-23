@@ -51,6 +51,8 @@ const ROLES: readonly SidebarRole[] = ['primary', 'secondary']
 export interface SidebarResident extends KnownSidebarView {
     /** The identity to open it under when it is not open. */
     fallback: () => ViewRef
+    /** The Command that shows it, whose shortcut is named before the View is closed. */
+    command?: string
     /**
      * False for a View this graph or device cannot show now: an extension that is off, the Graph
      * View in the Phone Layout. It keeps its place in the arrangement and is closed here.
@@ -112,7 +114,7 @@ export interface SidebarArrangementBinding {
     seatAt(kind: string, index: number): void
     moveToRole(kind: string, role: SidebarRole): void
     swapSides(): void
-    /** Back to the defaults: the Primary Sidebar on the left, every View in its own Sidebar, none hidden. */
+    /** Back to the defaults (Reset workspace): the Primary Sidebar on the left, every View in its own Sidebar, none hidden. */
     reset(): void
     /** Called after the arrangement, or what the Layout shows of it, changes. Returns the unsubscribe. */
     subscribe(listener: () => void): () => void

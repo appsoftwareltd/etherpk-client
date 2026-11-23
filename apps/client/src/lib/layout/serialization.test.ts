@@ -18,7 +18,7 @@ describe('serialization', () => {
         )
 
         const leftViews = model.regions['left-sidebar'].panes.flatMap((p) => p.views)
-        // The graph sidebar alone: Quick Notes is a modal, not a tab beside it (ADR 0189).
+        // The Explorer alone: the person's Sidebar Arrangement opens the others beside it (ADR 0199).
         expect(leftViews.map((v) => v.view.kind)).toEqual(['document-tree'])
         const leftPane = model.regions['left-sidebar'].panes[0]
         expect(leftPane.views.find((v) => v.panelId === leftPane.activePanelId)?.view.kind).toBe('document-tree')

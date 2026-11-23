@@ -28,6 +28,7 @@
     import { putTopBarOverView, topBarOverView } from "#lib/layout/top-bar-over-view.svelte.js";
     import { COMMAND_BAR_KIND, type CommandBarItem, listCommandBarItems, tryGetActiveCommandRegistry, tryGetActiveContributionRegistry } from "#lib/surface/index.js";
     import { offerCommandBarTools } from "#lib/surface/command-bar-tools.svelte.js";
+    import { helpForKey } from "#lib/surface/control-help.js";
     import { iconSvg } from "#lib/surface/icons.js";
     import { hideAppHeaderOnPhone } from "#lib/workspace/app-header.svelte.js";
     import { currentWorkspaceServices, workspaceService } from "#lib/workspace/workspace-services.js";
@@ -558,7 +559,7 @@
 {#snippet turnPage(direction: "previous" | "next", className: string, testId: string)}
     {@const previous = direction === "previous"}
     {@const label = previous ? "Previous page" : "Next page"}
-    <button type="button" class={className} aria-label={label} data-tooltip={label} onclick={() => (previous ? reader.previous() : reader.next())} data-testid={testId}>
+    <button type="button" class={className} aria-label={label} {...helpForKey(label, previous ? "PageUp" : "PageDown")} onclick={() => (previous ? reader.previous() : reader.next())} data-testid={testId}>
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
         {@html iconSvg(previous ? "pdf-page-previous" : "pdf-page-next")}
     </button>
@@ -596,7 +597,7 @@
 
 <!-- The buttons of the toolbar, in `button`'s style: the toolbar's own on a desktop, the Command Bar's where there is one. -->
 {#snippet tools(button: string)}
-    <button type="button" class={button} aria-label="Find in this EBook" data-tooltip="Find in this EBook" onclick={() => reader.openFind()} data-testid="ebook-find-open">{@render icon("search")}</button>
+    <button type="button" class={button} aria-label="Find in this EBook" {...helpForKey("Find in this EBook", "Mod+F")} onclick={() => reader.openFind()} data-testid="ebook-find-open">{@render icon("search")}</button>
     {@render turnPage("previous", `${button} max-sm:hidden`, "ebook-previous")}
     {#if !inBar}{@render percentBox()}{/if}
     {@render turnPage("next", `${button} max-sm:hidden`, "ebook-next")}
@@ -607,8 +608,8 @@
     <button type="button" class={button} aria-label="Read aloud" data-tooltip="Read aloud" aria-pressed={reader.readAloud.state !== "off"} onclick={toggleReadAloud} data-testid="ebook-read-aloud">{@render icon("ebook-read-aloud")}</button>
     <button type="button" class={button} aria-label="Highlight text" data-tooltip="Highlight text as you select it" aria-description="Highlight text as you select it" aria-pressed={reader.highlightToolOn} onclick={() => reader.toggleHighlightTool()} data-testid="ebook-tool-highlight">{@render icon("highlight")}</button>
     {#if !inBar}<span class="etherpk-ebook-divider"></span>{/if}
-    <button type="button" class={button} aria-label="Undo" data-tooltip="Undo" disabled={!reader.canUndo} onclick={() => reader.undo()} data-testid="ebook-undo">{@render icon("undo")}</button>
-    <button type="button" class={button} aria-label="Redo" data-tooltip="Redo" disabled={!reader.canRedo} onclick={() => reader.redo()} data-testid="ebook-redo">{@render icon("redo")}</button>
+    <button type="button" class={button} aria-label="Undo" {...helpForKey("Undo", "Mod+Z")} disabled={!reader.canUndo} onclick={() => reader.undo()} data-testid="ebook-undo">{@render icon("undo")}</button>
+    <button type="button" class={button} aria-label="Redo" {...helpForKey("Redo", "Mod+Shift+Z")} disabled={!reader.canRedo} onclick={() => reader.redo()} data-testid="ebook-redo">{@render icon("redo")}</button>
 {/snippet}
 
 {#snippet moreToggle(button: string)}
