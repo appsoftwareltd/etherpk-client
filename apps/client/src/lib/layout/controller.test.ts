@@ -1220,3 +1220,116 @@ describe('a View that guards its tab', () => {
         expect(controller.isOpen(view)).toBe(false)
     })
 })
+
+describe('LayoutController — seating a View in a Sidebar (ADR 0198)', () => {
+    const garden: ViewRef = { kind: 'garden', target: 'root' }
+    const kitchen: ViewRef = { kind: 'kitchen', target: 'root' }
+    const attic: ViewRef = { kind: 'attic', target: 'root' }
+
+    function sidebars() {
+        const ctx = setup()
+        ctx.controller.openView(docA)
+        ctx.controller.openView(garden, { region: 'left-sidebar', activate: false })
+        ctx.controller.openView(kitchen, { region: 'left-sidebar', activate: false })
+        ctx.controller.openView(attic, { region: 'right-sidebar', activate: false })
+        return ctx
+    }
+    const kindsIn = (controller: LayoutController, region: 'left-sidebar' | 'right-sidebar') =>
+        controller.regionViews(region).views.map((v) => v.view.kind)
+
+    it('reports the Views of a region in tab order, the one in front and whether it is collapsed', () => {
+        const { controller } = sidebars()
+        expect(kindsIn(controller, 'left-sidebar')).toEqual(['garden', 'kitchen'])
+        expect(controller.regionViews('left-sidebar').frontPanelId).toBe(viewKey(garden))
+        expect(controller.regionViews('left-sidebar').collapsed).toBe(false)
+        controller.toggleSidebar('left', false)
+        expect(controller.regionViews('left-sidebar').collapsed).toBe(true)
+        expect(controller.regionViews('right-sidebar').views).toHaveLength(1)
+    })
+
+    it('reorders a View within its Sidebar, leaving the front tab and the active View alone', () => {
+        const { controller, renderer } = sidebars()
+        controller.seatView(viewKey(kitchen), 'left-sidebar', 0)
+        expect(kindsIn(controller, 'left-sidebar')).toEqual(['kitchen', 'garden'])
+        expect(controller.regionViews('left-sidebar').frontPanelId).toBe(viewKey(garden))
+        expect(controller.activeView()?.panelId).toBe(viewKey(docA))
+        expect(renderer.moved.at(-1)).toMatchObject({ panelId: viewKey(kitchen), index: 0, placement: { region: 'left-sidebar', activate: false } })
+    })
+
+    it('moves a View to the other Sidebar at the index asked for, keeping its instance', () => {
+        const { controller, renderer } = sidebars()
+        const addedBefore = renderer.added.length
+        controller.seatView(viewKey(garden), 'right-sidebar', 0)
+        expect(kindsIn(controller, 'left-sidebar')).toEqual(['kitchen'])
+        expect(kindsIn(controller, 'right-sidebar')).toEqual(['garden', 'attic'])
+        // The Sidebar it left brings its other tab forward; the one it joined keeps its front tab.
+        expect(controller.regionViews('left-sidebar').frontPanelId).toBe(viewKey(kitchen))
+        expect(controller.regionViews('right-sidebar').frontPanelId).toBe(viewKey(attic))
+        expect(renderer.added).toHaveLength(addedBefore)
+        expect(renderer.removed).toEqual([])
+        expect(renderer.moved.at(-1)).toMatchObject({ panelId: viewKey(garden), index: 0, placement: { region: 'right-sidebar', siblingPanelId: viewKey(attic) } })
+    })
+
+    it('puts a View in front of a Sidebar that was empty', () => {
+        const { controller } = sidebars()
+        controller.closeView(attic)
+        controller.seatView(viewKey(kitchen), 'right-sidebar', 0)
+        expect(controller.regionViews('right-sidebar').frontPanelId).toBe(viewKey(kitchen))
+    })
+
+    it('keeps the keyboard with a View that had it', () => {
+        const { controller, renderer } = sidebars()
+        controller.focusView(garden)
+        controller.seatView(viewKey(garden), 'right-sidebar', 1)
+        expect(controller.activeView()).toMatchObject({ panelId: viewKey(garden), region: 'right-sidebar' })
+        expect(renderer.focused.at(-1)).toBe(viewKey(garden))
+    })
+
+    it('does nothing for a View already in its seat, one that is not open, and the main region', () => {
+        const onChange = vi.fn()
+        const renderer = createStubRenderer()
+        const controller = createLayoutController({ renderer, onChange })
+        controller.openView(garden, { region: 'left-sidebar', activate: false })
+        controller.openView(kitchen, { region: 'left-sidebar', activate: false })
+        onChange.mockClear()
+        controller.seatView(viewKey(garden), 'left-sidebar', 0)
+        controller.seatView(viewKey(attic), 'left-sidebar', 0)
+        controller.seatView(viewKey(garden), 'main', 0)
+        // Past the end is the end.
+        controller.seatView(viewKey(kitchen), 'left-sidebar', 9)
+        expect(renderer.moved).toEqual([])
+        expect(onChange).not.toHaveBeenCalled()
+    })
+
+    it('opens a View in the region its kind is given, ahead of the registry', () => {
+        const renderer = createStubRenderer()
+        const registry = createViewRegistry()
+        registry.register({ kind: 'garden', component: (() => {}) as never, naturalRegion: 'left-sidebar' })
+        const controller = createLayoutController({ renderer, registry, regionFor: (kind) => (kind === 'garden' ? 'right-sidebar' : undefined) })
+        expect(controller.openView(garden).region).toBe('right-sidebar')
+        expect(controller.openView(docA).region).toBe('main')
+    })
+
+    it('swaps the two Sidebars’ widths and collapsed states', () => {
+        const toggled: string[] = []
+        const renderer = createStubRenderer({ sidebarWidths: { 'left-sidebar': 300, 'right-sidebar': 420 } })
+        const controller = createLayoutController({ renderer, onSidebarToggle: (side, collapsed) => toggled.push(`${side}:${collapsed}`) })
+        controller.openView(garden, { region: 'left-sidebar', activate: false })
+        controller.openView(attic, { region: 'right-sidebar', activate: false })
+        controller.toggleSidebar('right', false)
+        toggled.length = 0
+        controller.swapSidebarChrome()
+        const { regions } = controller.serialize().model
+        expect(regions['left-sidebar'].collapsed).toBe(true)
+        expect(regions['right-sidebar'].collapsed).toBe(false)
+        expect(renderer.widths.slice(-2)).toMatchObject([
+            { region: 'left-sidebar', width: 420 },
+            { region: 'right-sidebar', width: 300 },
+        ])
+        expect(renderer.collapsed.slice(-2)).toEqual([
+            { region: 'left-sidebar', collapsed: true },
+            { region: 'right-sidebar', collapsed: false },
+        ])
+        expect(toggled.sort()).toEqual(['left:true', 'right:false'])
+    })
+})

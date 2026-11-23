@@ -783,7 +783,8 @@ export interface ViewDeclaration {
     kind: string;
     region: ViewRegion;
     resident?: {
-        side: 'left' | 'right';
+        side?: 'left' | 'right';
+        sidebar?: 'primary' | 'secondary';
         desktopOnly?: boolean;
     };
     target?: string;

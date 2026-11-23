@@ -21,6 +21,7 @@ import {
     nextFront,
     remainingFocusTarget,
     removePanel,
+    seatInstance,
     setPinned,
 } from './model'
 import { paneBelow, paneToTheRight } from './pane-neighbour'
@@ -73,6 +74,12 @@ export interface LayoutControllerOptions {
      * person selects in the renderer. What it throws is ignored.
      */
     onViewOpened?: (view: ViewRef) => void
+    /**
+     * The region a View of a kind opens into, ahead of the registry's natural region: where the
+     * person's [[Sidebar Arrangement]] puts a Sidebar View (ADR 0199). Undefined leaves the kind to
+     * the registry.
+     */
+    regionFor?: (kind: string) => Region | undefined
 }
 
 const REGION_FOR_SIDE: Record<SidebarSide, Region> = {
@@ -117,7 +124,7 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
     }
 
     function resolveRegion(view: ViewRef, opts: OpenViewOptions): Region {
-        return opts.region ?? registry?.naturalRegion(view.kind) ?? 'main'
+        return opts.region ?? options.regionFor?.(view.kind) ?? registry?.naturalRegion(view.kind) ?? 'main'
     }
 
     /**
@@ -657,6 +664,58 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
             model.regions[region].collapsed = collapsed
             renderer.setRegionCollapsed(region, collapsed)
             onSidebarToggle?.(side, collapsed)
+            onChange?.()
+        },
+
+        regionViews(region) {
+            reconcile()
+            const regionModel = model.regions[region]
+            return {
+                views: regionModel.panes.flatMap((pane) => pane.views),
+                frontPanelId: regionModel.panes[0]?.activePanelId ?? null,
+                collapsed: regionModel.collapsed,
+            }
+        },
+
+        seatView(panelId, region, index) {
+            if (region === 'main') return
+            reconcile()
+            const keyboard = model.activePanelId === panelId
+            // Named before the View arrives: a tab already there, for a renderer that finds a group by one.
+            const sibling = model.regions[region].panes[0]?.views.find((v) => v.panelId !== panelId)?.panelId
+            const seat = seatInstance(model, panelId, region, index, nextPaneId)
+            if (seat === null) return
+            const paneId = model.regions[region].panes[0].id
+            renderer.moveView?.(panelId, { region, paneId, mode: 'tab', ...(sibling ? { siblingPanelId: sibling } : {}), activate: false }, seat)
+            if (keyboard) renderer.focusView(panelId)
+            onChange?.()
+        },
+
+        frontView(panelId) {
+            reconcile()
+            if (locatePanel(model, panelId)?.pane.activePanelId !== panelId) frontInItsPane(panelId)
+        },
+
+        swapSidebarChrome() {
+            reconcile()
+            const [left, right] = [model.regions['left-sidebar'], model.regions['right-sidebar']]
+            const width = (region: Region) => renderer.regionWidth?.(region) ?? model.regions[region].width
+            const widths = { left: width('left-sidebar'), right: width('right-sidebar') }
+            const collapsed = { left: left.collapsed, right: right.collapsed }
+            const give = (region: Region, side: SidebarSide, to: { width: number | undefined; collapsed: boolean }) => {
+                const regionModel = model.regions[region]
+                if (to.width === undefined) delete regionModel.width
+                else {
+                    regionModel.width = to.width
+                    renderer.setRegionWidth?.(region, to.width)
+                }
+                if (regionModel.collapsed === to.collapsed) return
+                regionModel.collapsed = to.collapsed
+                renderer.setRegionCollapsed(region, to.collapsed)
+                onSidebarToggle?.(side, to.collapsed)
+            }
+            give('left-sidebar', 'left', { width: widths.right, collapsed: collapsed.right })
+            give('right-sidebar', 'right', { width: widths.left, collapsed: collapsed.left })
             onChange?.()
         },
 

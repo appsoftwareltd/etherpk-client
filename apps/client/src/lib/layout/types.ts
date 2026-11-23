@@ -185,8 +185,38 @@ export interface LayoutController {
     /** Whether the View behind `panelId` is pinned; false for a panel that is not open. */
     isViewPinned(panelId: string): boolean
     toggleSidebar(side: SidebarSide, open?: boolean): void
+    /**
+     * The Views of a region in tab order, with the one in front of its first Pane and whether the
+     * region is collapsed: what the [[Activity Bar]] draws from, without the cost of `serialize`.
+     */
+    regionViews(region: Region): RegionViews
+    /**
+     * Seat an open View in a Sidebar at `index` among its tabs, moving it there from wherever it
+     * is and keeping its component (ADR 0198): how a View changes Sidebar and how an icon is
+     * reordered. The active View stays the active View, and a Sidebar keeps the tab it had in
+     * front unless it had none. A no-op for a View that is not open or is in that seat already,
+     * and for the main region.
+     */
+    seatView(panelId: string, region: Region, index: number): void
+    /**
+     * Bring an open View to the front of its Pane, leaving the active View and the keyboard where
+     * they are. A no-op for a View that is not open.
+     */
+    frontView(panelId: string): void
+    /**
+     * Give each Sidebar the other's width and collapsed state: what follows the Views when the
+     * Primary Sidebar changes side (ADR 0199).
+     */
+    swapSidebarChrome(): void
     serialize(): SerializedLayout
     restore(state: SerializedLayout | null): void
+}
+
+/** What {@link LayoutController.regionViews} reports. */
+export interface RegionViews {
+    views: ViewInstance[]
+    frontPanelId: string | null
+    collapsed: boolean
 }
 
 // ── Shared, viewport-independent state model ────────────────────────────────
@@ -394,6 +424,13 @@ export interface LayoutRenderer {
      * the model. Undefined where the renderer has none to report (the phone presenter).
      */
     regionWidth?(region: Region): number | undefined
+    /**
+     * Which Sidebar region is the [[Primary Sidebar]] (ADR 0198), whose Views are chosen from the
+     * [[Activity Bar]]: a renderer that draws tab strips draws that region without one, under a
+     * row naming the View in front. Absent ⇒ the renderer draws both Sidebars alike, or is told
+     * another way (the phone presenter takes it as a prop).
+     */
+    setPrimarySidebar?(region: Region | null): void
     /** Optional engine geometry, merged into {@link SerializedLayout.renderer}. */
     serializeGeometry?(): unknown
     /** Re-apply engine geometry produced by {@link serializeGeometry}. */

@@ -35,8 +35,9 @@ export interface SyncProtocolLimits {
     maxOutboundBufferedBytes: number
     /**
      * Sockets one user may hold open on one graph. Every browser tab holds its own socket, and
-     * so does every Headless Client serving the graph to an agent, so a person with many of both
-     * can reach it. The socket over the limit is closed with {@link SOCKETS_LIMIT_CLOSE_CODE}.
+     * so does every Headless Client serving the graph to an agent, so the default leaves room
+     * for a person who keeps many tabs open: an idle socket costs the relay a few kilobytes.
+     * The socket over the limit is closed with {@link SOCKETS_LIMIT_CLOSE_CODE}.
      */
     maxSocketsPerUserGraph: number
 }
@@ -51,7 +52,7 @@ export const SYNC_PROTOCOL_LIMITS: Readonly<SyncProtocolLimits> = Object.freeze(
     maxPresenceEnvelopeBytes: 16 * 1024,
     maxSubscriptionsPerConnection: 4096,
     maxOutboundBufferedBytes: 64 * 1024 * 1024,
-    maxSocketsPerUserGraph: 10,
+    maxSocketsPerUserGraph: 32,
 })
 
 export type SyncProtocolLimitOverrides = Partial<SyncProtocolLimits>

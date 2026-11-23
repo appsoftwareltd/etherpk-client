@@ -79,7 +79,7 @@ describe('the extension host', () => {
         expect(board.conceptTarget).toBe(true)
         expect(views[1].icon).toBe('link')
         expect(views[2].titlePrefix).toBeUndefined()
-        expect(host.residents()).toEqual([{ kind: 'graph-view.local', side: 'right', desktopOnly: true, fallback: { kind: 'graph-view.local', target: 'local' } }])
+        expect(host.residents()).toEqual([{ kind: 'graph-view.local', extensionId: 'graph-view', sidebar: 'secondary', desktopOnly: true, fallback: { kind: 'graph-view.local', target: 'local' } }])
         expect(host.icons()).toEqual({ 'kanban.kanban': '<rect/>' })
         expect(kanbanActivate).not.toHaveBeenCalled()
     })

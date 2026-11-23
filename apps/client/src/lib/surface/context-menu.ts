@@ -46,6 +46,24 @@ export type ContextMenuTarget =
     | ViewFavouriteContextMenuTarget
     | ExtensionContextMenuTarget
     | PlainEntryContextMenuTarget
+    | SidebarViewContextMenuTarget
+    | ActivityBarContextMenuTarget
+
+/**
+ * An icon of the [[Activity Bar]]: a View of the Primary Sidebar that the person arranges
+ * (ADR 0198). Its rows hide it, reorder it and move it to the Secondary Sidebar.
+ */
+export interface SidebarViewContextMenuTarget {
+    kind: 'sidebar-view'
+    /** The View's kind, which is what a [[Sidebar Arrangement]] names it by. */
+    viewKind: string
+    panelId: string
+}
+
+/** The [[Activity Bar]] itself, from the button at its foot: the hidden Views, its side, Reset Sidebars. */
+export interface ActivityBarContextMenuTarget {
+    kind: 'activity-bar'
+}
 
 /**
  * An entry of a [[Plain Folder]]'s file tree, named by its path from the folder's root, or the

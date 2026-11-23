@@ -542,7 +542,9 @@
 
         {#if mode === "whole" && timeline && timeline.days.length > 0}
             <!-- The replay: journal days from first to last, the picture growing as it goes. -->
-            <div class="flex items-center gap-3 border-t border-(--gk-border-soft) px-3 py-2" data-testid="graph-view-replay">
+            <!-- Wraps: in a narrow Pane the day's label goes under the slider, which keeps a width a
+                 pointer can use. -->
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-(--gk-border-soft) px-3 py-2" data-testid="graph-view-replay">
                 <button
                     type="button"
                     class="gk-button"
@@ -560,7 +562,7 @@
                         playing = false;
                         replayIndex = Number(event.currentTarget.value);
                     }}
-                    class="min-w-0 flex-1 accent-(--gk-accent)"
+                    class="min-w-32 flex-1 accent-(--gk-accent)"
                     aria-label="Journal day"
                     aria-valuetext={replayDay ?? "Today"}
                     data-testid="graph-view-replay-day"

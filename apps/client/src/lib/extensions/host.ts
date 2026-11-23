@@ -60,7 +60,13 @@ export interface DeclaredView {
 /** A View kind that lives in a Sidebar from the moment a graph opens. */
 export interface DeclaredResident {
     kind: string
-    side: 'left' | 'right'
+    /** The extension that declared it: its View is shown only while that extension is on. */
+    extensionId: string
+    /**
+     * The Sidebar it starts in (ADR 0198): the manifest's `sidebar`, or for a manifest written
+     * before that, its `side`, `left` as the Primary Sidebar and `right` as the Secondary.
+     */
+    sidebar: 'primary' | 'secondary'
     desktopOnly: boolean
     /** The View to open when the resident has been closed. */
     fallback: ViewRef
@@ -125,6 +131,17 @@ interface Running {
     module: ExtensionModule
 }
 
+/** A View declaration's resident as the workspace needs it: its Sidebar, and the View to open when it is hidden. */
+function residentOf(extensionId: string, declaration: ViewDeclaration, resident: NonNullable<ViewDeclaration['resident']>): DeclaredResident {
+    return {
+        kind: declaration.kind,
+        extensionId,
+        sidebar: resident.sidebar ?? (resident.side === 'left' ? 'primary' : 'secondary'),
+        desktopOnly: resident.desktopOnly ?? false,
+        fallback: { kind: declaration.kind, target: declaration.target ?? '' },
+    }
+}
+
 export function createExtensionHost(options: ExtensionHostOptions): ExtensionHost {
     const { client, switches } = options
     // The host's own copy, since `add` and `remove` change it and the built-in catalogue is shared.
@@ -181,14 +198,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
             }
             declared.push(view)
             added.push(view)
-            if (declaration.resident) {
-                residents.push({
-                    kind: declaration.kind,
-                    side: declaration.resident.side,
-                    desktopOnly: declaration.resident.desktopOnly ?? false,
-                    fallback: { kind: declaration.kind, target: declaration.target ?? '' },
-                })
-            }
+            if (declaration.resident) residents.push(residentOf(entry.id, declaration, declaration.resident))
         }
         return { views: added, icons: addedIcons }
     }

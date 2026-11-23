@@ -66,7 +66,10 @@
     import { graphUrl } from '#lib/navigation/document-url.js'
     import { graphAddressOf } from '#lib/navigation/graph-address.js'
     import { APP_KEYBINDINGS, type ShortcutBinding } from '#lib/workspace/keyboard-shortcuts.js'
-    import { revealResident, toggleResidentSidebar, type Resident } from '#lib/workspace/residents.js'
+    import ActivityBar from '#lib/layout/renderers/ActivityBar.svelte'
+    import { registerSidebarCommands } from '#lib/layout/sidebar-commands.js'
+    import { personSettings } from '#lib/person-settings/person-settings.js'
+    import { createSidebars } from '#lib/workspace/sidebars.svelte.js'
     import {
         type WorkspaceGeneration,
         clearWorkspaceServices,
@@ -147,8 +150,6 @@
     const TREE_VIEW: ViewRef = { kind: 'file-tree', target: 'root' }
     const START_VIEW: ViewRef = { kind: 'plain-start', target: 'start' }
     const OUTLINE_VIEW: ViewRef = { kind: 'plain-outline', target: 'outline' }
-    const TREE_RESIDENT: Resident = { kind: 'file-tree', side: 'left', fallback: () => TREE_VIEW }
-    const OUTLINE_RESIDENT: Resident = { kind: 'plain-outline', side: 'right', fallback: () => OUTLINE_VIEW }
 
     const commands = createCommandRegistry()
     const contributions = createContributionRegistry()
@@ -241,6 +242,22 @@
     const layoutStore = createLocalLayoutStore()
     let saveTimer: ReturnType<typeof setTimeout> | undefined
     let disposed = false
+
+    // The two Sidebars (ADR 0198): Files in the Primary, chosen from the Activity Bar, and Outline
+    // in the Secondary, each where the person's Sidebar Arrangement keeps it (ADR 0199).
+    const sidebars = createSidebars({
+        settings: personSettings(),
+        residents: () => [
+            { kind: TREE_VIEW.kind, role: 'primary', fallback: () => TREE_VIEW },
+            { kind: OUTLINE_VIEW.kind, role: 'secondary', fallback: () => OUTLINE_VIEW },
+        ],
+        controller: () => controller,
+        renderer: () => renderer,
+        title: (view) => registry.title(view),
+        icon: (view) => registry.icon(view),
+        settled: () => !disposed,
+    })
+    const activityBar = $derived(useMobile ? null : sidebars.bar())
 
     /** The View a file opens in: the editor for text, a viewer for everything else. */
     const viewFor = (path: string): ViewRef => ({ kind: isEditableKind(fileKindOf(path)) ? 'document' : 'asset', target: path })
@@ -468,7 +485,8 @@
         model.regions.main = { panes: [pane(START_VIEW)], collapsed: false }
         model.regions['right-sidebar'] = { panes: [pane(OUTLINE_VIEW)], collapsed: true }
         model.activePanelId = viewKey(START_VIEW)
-        return { version: LAYOUT_VERSION, model }
+        // Written for the Primary Sidebar on the left, and turned for a person who keeps it on the right.
+        return sidebars.binding.orient({ version: LAYOUT_VERSION, model })
     }
 
     function scheduleSave(): void {
@@ -551,7 +569,10 @@
         return createDockviewRenderer({
             container,
             registry,
-            onGeometryChange: scheduleSave,
+            onGeometryChange: () => {
+                scheduleSave()
+                sidebars.binding.noteLayoutChanged()
+            },
             onActiveViewChange: (view) => {
                 if (view) controller?.notePanelActivated(viewKey(view))
                 noteActive()
@@ -572,8 +593,10 @@
             renderer,
             registry,
             defaultLayoutFactory: freshLayout,
+            regionFor: (kind) => sidebars.binding.regionForKind(kind),
             onChange: () => {
                 scheduleSave()
+                sidebars.binding.noteLayoutChanged()
                 noteActive()
             },
         })
@@ -582,14 +605,14 @@
         // The bookmark sections and the readers open a tab through the controller in front.
         setActiveLayoutController(controller)
         controller.restore(initial)
-        // The tree and the Outline are the Sidebars' residents: a Layout saved without one gets it back.
-        if (controller.findView(TREE_RESIDENT.kind) === undefined) controller.openView(TREE_VIEW)
-        if (controller.findView(OUTLINE_RESIDENT.kind) === undefined) controller.openView(OUTLINE_VIEW, { activate: false })
+        // The tree and the Outline are the Sidebars' Views, each where the person keeps it (ADR 0199).
+        sidebars.attach(controller)
     }
 
     async function switchPresenter(mobile: boolean): Promise<void> {
         if (mobile === useMobile || disposed) return
         const snapshot = controller?.serialize().model
+        sidebars.detach()
         renderer?.destroy?.()
         controller = undefined
         renderer = undefined
@@ -726,10 +749,10 @@
                 plainSession.set(session)
 
                 commands.register('layout.toggleSidebar', () => {
-                    if (controller) toggleResidentSidebar(controller, [TREE_RESIDENT])
+                    sidebars.toggle('left')
                 })
                 commands.register('layout.toggleBacklinks', () => {
-                    if (controller) toggleResidentSidebar(controller, [OUTLINE_RESIDENT])
+                    sidebars.toggle('right')
                 })
                 commands.register('help.openShortcuts', () => {
                     shortcutsOpen = true
@@ -754,6 +777,7 @@
                     registerPasteCommands(commands, contributions),
                     registerBlockCommands(commands, contributions),
                     registerTabCommands(commands, contributions, { controller: () => controller }),
+                    registerSidebarCommands(commands, contributions, { binding: sidebars.binding, controller: () => controller, title: (view) => registry.title(view) }),
                     registerSpellingCommands(commands, contributions),
                     registerBookmarkCommands(commands, contributions, {
                         openDocumentAtLine: (path, line) =>
@@ -761,7 +785,7 @@
                                 revealDocumentLine(path, line)
                             }),
                         revealSidebar: () => {
-                            if (controller) revealResident(controller, TREE_RESIDENT)
+                            sidebars.reveal(TREE_VIEW.kind)
                         },
                         onError: (text) => showNotice({ id: 'plain-bookmarks', tone: 'error', text }),
                     }),
@@ -809,6 +833,7 @@
             clearInterval(poll)
             saveLayout()
             for (const off of detach) off()
+            sidebars.dispose()
             renderer?.destroy?.()
             if (plainSession.current === session) plainSession.set(null)
             setActiveLayoutController(null)
@@ -851,19 +876,32 @@
             onshortcuts={() => void commands.execute('help.openShortcuts')}
             onsettings={() => (settingsOpen = true)}
             settingsLabel="Folder settings"
-            leftLabel="Toggle the file tree"
-            rightLabel="Toggle the outline"
+            leftLabel={sidebars.toggleLabel('left')}
+            rightLabel={sidebars.toggleLabel('right')}
         >
             {#snippet lead()}
                 <span class="folder-name" data-testid="plain-folder-name">{folderName}</span>
                 <span class="kind">{onlyFile ? 'File' : 'Plain Folder'}</span>
             {/snippet}
         </WorkspaceToolbar>
-        <div bind:this={container} data-testid="workspace-layout" class="layout"></div>
+        <div class={['layout-row', { 'primary-right': activityBar?.side === 'right' }]}>
+            {#if activityBar}
+                <ActivityBar
+                    items={activityBar.items}
+                    showingPanelId={activityBar.showingPanelId}
+                    side={activityBar.side}
+                    onselect={sidebars.choose}
+                    onreorder={sidebars.reorder}
+                    onstep={sidebars.step}
+                    menuTarget={sidebars.menuTarget}
+                />
+            {/if}
+            <div bind:this={container} data-testid="workspace-layout" class="layout"></div>
+        </div>
     {:else}
         <div class="layout" data-testid="workspace-mobile">
             {#if controller && mobileRenderer}
-                <MobilePresenter {controller} renderer={mobileRenderer} />
+                <MobilePresenter {controller} renderer={mobileRenderer} {sidebars} />
             {/if}
         </div>
     {/if}
@@ -938,6 +976,16 @@
         overflow: clip;
         flex: 1;
         min-height: 0;
+        min-width: 0;
+    }
+    /* The Activity Bar and the Layout, side by side, the bar on the Primary Sidebar's side (ADR 0198). */
+    .layout-row {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+    }
+    .layout-row.primary-right {
+        flex-direction: row-reverse;
     }
     /* What is open, beside the left toggle: the folder's name, and a badge as the Graphs page draws a kind. */
     .folder-name {

@@ -111,8 +111,22 @@ describe('readExtensionPackage', () => {
 
     it('refuses a resident with no side', () => {
         expect(errorsOf(graphView({ views: [{ kind: 'graph-view.local', title: 'Graph View', region: 'right-sidebar', resident: { side: 'top' } }] }))).toEqual([
-            '"etherpk.views[0]".resident must be { side: "left" | "right", desktopOnly?: boolean }.',
+            '"etherpk.views[0]".resident must be { sidebar: "primary" | "secondary", desktopOnly?: boolean }, or the earlier { side: "left" | "right" }.',
         ])
+    })
+
+    it('takes a resident that names its Sidebar, with or without a side', () => {
+        const view = { kind: 'graph-view.local', title: 'Graph View', region: 'right-sidebar' }
+        expect(errorsOf(graphView({ views: [{ ...view, resident: { sidebar: 'primary' } }] }))).toEqual([])
+        expect(errorsOf(graphView({ views: [{ ...view, resident: { sidebar: 'secondary', side: 'right', desktopOnly: true } }] }))).toEqual([])
+    })
+
+    it('refuses a resident that names neither, or a Sidebar there is not', () => {
+        const view = { kind: 'graph-view.local', title: 'Graph View', region: 'right-sidebar' }
+        const refused = ['"etherpk.views[0]".resident must be { sidebar: "primary" | "secondary", desktopOnly?: boolean }, or the earlier { side: "left" | "right" }.']
+        expect(errorsOf(graphView({ views: [{ ...view, resident: {} }] }))).toEqual(refused)
+        expect(errorsOf(graphView({ views: [{ ...view, resident: { sidebar: 'left' } }] }))).toEqual(refused)
+        expect(errorsOf(graphView({ views: [{ ...view, resident: { sidebar: 'primary', side: 'top' } }] }))).toEqual(refused)
     })
 
     it('refuses an address segment declared twice, and a target other than a concept', () => {

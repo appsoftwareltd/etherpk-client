@@ -37,8 +37,15 @@ export interface ViewDeclaration {
     /**
      * The View lives in a Sidebar from the moment a graph opens, beside the Client's own residents,
      * and the Sidebar's toggle brings it back if it was closed. `desktopOnly` keeps it off a phone.
+     *
+     * `sidebar` names the Sidebar it starts in: `primary`, whose Views a person chooses from the
+     * icons of the Activity Bar, or `secondary`, whose Views are tabs. A person can move it to the
+     * other afterwards. A resident in the Primary Sidebar should declare an `icon`, since the icon
+     * is all the Activity Bar draws of it: without one the Client draws the first letter of the
+     * title. `side` is the earlier way to say the same thing, `left` for primary and `right` for
+     * secondary, and is read when `sidebar` is absent. Give both for a Client older than `sidebar`.
      */
-    resident?: { side: 'left' | 'right'; desktopOnly?: boolean }
+    resident?: { side?: 'left' | 'right'; sidebar?: 'primary' | 'secondary'; desktopOnly?: boolean }
     /**
      * A short address of the View's own, followed by the target when `target` is `concept`: for an
      * extension from the Extension Directory `/graph/<where>/<name>/x/<extension id>/<segment>`, and for one that
@@ -288,8 +295,16 @@ function checkView(view: unknown, index: number, id: string, kinds: Set<string>,
     if (!REGIONS.includes(view.region as ViewRegion)) errors.push(`${where}.region must be one of ${REGIONS.join(', ')}.`)
     if (view.resident !== undefined) {
         const resident = view.resident
-        if (!isRecord(resident) || (resident.side !== 'left' && resident.side !== 'right') || (resident.desktopOnly !== undefined && typeof resident.desktopOnly !== 'boolean')) {
-            errors.push(`${where}.resident must be { side: "left" | "right", desktopOnly?: boolean }.`)
+        const sideGiven = isRecord(resident) && resident.side !== undefined
+        const sidebarGiven = isRecord(resident) && resident.sidebar !== undefined
+        if (
+            !isRecord(resident) ||
+            (!sideGiven && !sidebarGiven) ||
+            (sideGiven && resident.side !== 'left' && resident.side !== 'right') ||
+            (sidebarGiven && resident.sidebar !== 'primary' && resident.sidebar !== 'secondary') ||
+            (resident.desktopOnly !== undefined && typeof resident.desktopOnly !== 'boolean')
+        ) {
+            errors.push(`${where}.resident must be { sidebar: "primary" | "secondary", desktopOnly?: boolean }, or the earlier { side: "left" | "right" }.`)
         }
     }
     if (view.address !== undefined) {

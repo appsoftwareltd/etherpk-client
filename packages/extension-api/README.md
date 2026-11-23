@@ -505,8 +505,16 @@ the key.
 the desktop layout is showing, which it is at 1024 pixels wide and more.
 
 A View kind can live in a Sidebar from the moment a graph opens, beside the Client's own Sidebar
-Views, with `"resident": { "side": "left" }` (or `"right"`, and `"desktopOnly": true` for the desktop
-alone). `context.layout.reveal(kind)` brings it to the front of its Sidebar.
+Views, with `"resident": { "sidebar": "primary" }` (or `"secondary"`, and `"desktopOnly": true` for
+the desktop alone). The Primary Sidebar's Views are chosen from a column of icons, the Activity Bar,
+so give a View that starts there an `icon`: without one the Client draws the first letter of its
+title. The Secondary Sidebar's Views are tabs. A person can move the View to the other Sidebar, reorder
+it and hide it, and that choice takes precedence over the manifest. `context.layout.reveal(kind)`
+brings it to the front of its Sidebar, wherever the person has put it.
+
+A Client older than `sidebar` reads `"side"` in its place (`"left"` or `"right"`), and a Client that
+knows `sidebar` reads `side` only when `sidebar` is absent, `left` as primary and `right` as
+secondary. Give both to run on either.
 
 ## Styles
 

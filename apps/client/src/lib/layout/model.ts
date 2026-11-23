@@ -159,6 +159,41 @@ export function moveInstance(model: LayoutModel, panelId: string, to: PaneModel)
     return seat
 }
 
+/**
+ * Seat an open instance at `index` of a Sidebar region's Pane, from wherever it is (ADR 0198). A
+ * Sidebar is one Pane, made here when the region has none. The Pane keeps the tab it had in front,
+ * and takes the arrival as its front tab only when it had none. The instance leaves its own Pane
+ * as a close would. The active View stays the active View. Returns the index it was seated at, or
+ * `null` when it is not open or is there already.
+ */
+export function seatInstance(model: LayoutModel, panelId: string, region: Region, index: number, newPaneId: () => string): number | null {
+    const from = locatePanel(model, panelId)
+    if (!from) return null
+    const regionModel = model.regions[region]
+    const existing = regionModel.panes[0]
+    if (existing && from.pane === existing) {
+        const at = existing.views.indexOf(from.instance)
+        const seat = Math.max(0, Math.min(index, existing.views.length - 1))
+        if (seat === at) return null
+        existing.views.splice(at, 1)
+        existing.views.splice(seat, 0, from.instance)
+        return seat
+    }
+    const wasActive = model.activePanelId === panelId
+    removePanel(model, panelId)
+    // Read again: the region's only Pane may have been the one the instance left, and gone with it.
+    let to = regionModel.panes[0]
+    if (!to) {
+        to = { id: newPaneId(), views: [], activePanelId: null }
+        regionModel.panes.push(to)
+    }
+    const seat = Math.max(0, Math.min(index, to.views.length))
+    to.views.splice(seat, 0, from.instance)
+    if (to.activePanelId === null) bringToFront(to, panelId)
+    if (wasActive) activatePanel(model, panelId)
+    return seat
+}
+
 /** Pick a sensible new global focus after the active panel was removed. */
 export function remainingFocusTarget(model: LayoutModel): string | null {
     const main = activePaneOf(model, 'main')

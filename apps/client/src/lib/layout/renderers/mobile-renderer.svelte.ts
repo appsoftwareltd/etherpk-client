@@ -74,6 +74,8 @@ export function createMobileRenderer(
         },
         addView: bump,
         removeView: bump,
+        // The model has the View's new Sidebar and seat (ADR 0198); the presenter re-reads it.
+        moveView: bump,
         focusView: (panelId: string) => {
             state.lastFocusedPanelId = panelId
             state.focusRev += 1

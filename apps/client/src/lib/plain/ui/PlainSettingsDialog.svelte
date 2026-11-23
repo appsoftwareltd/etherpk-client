@@ -5,6 +5,8 @@
      */
     import Dialog from '@appsoftwareltd/etherpk-shared/dialog'
 
+    import PrimarySidebarSetting from '#lib/layout/renderers/PrimarySidebarSetting.svelte'
+
     import type { AssetPlacement } from '../plain-assets'
 
     let {
@@ -65,6 +67,10 @@
                 A picture pasted into guide/watering.md is saved as {EXAMPLES[pastedFiles]}. This is kept in the folder’s hidden .etherpk folder, so everyone who opens the folder gets the same.
             </p>
             {#if error}<p class="gk-error" role="alert">{error}</p>{/if}
+        </div>
+        <!-- The person's own, not the folder's: kept with their settings, not in `.etherpk` (ADR 0199). -->
+        <div class="mt-4">
+            <PrimarySidebarSetting />
         </div>
     {/snippet}
 </Dialog>

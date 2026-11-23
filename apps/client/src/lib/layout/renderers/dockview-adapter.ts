@@ -195,6 +195,8 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
     const sidebarWidth: Partial<Record<SidebarRegion, number>> = {}
     // Desired collapsed state, applied lazily if the group does not exist yet.
     const collapsedState: Partial<Record<Region, boolean>> = {}
+    // The Sidebar that is the Primary one (ADR 0198), marked on its group once the group exists.
+    let primarySidebar: Region | null = null
 
     // The component rather than `createDockview` (which returns only `component.api`): its
     // `removePanel` takes the `removeEmptyGroup` option the api's does not, which is how the
@@ -536,7 +538,25 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
         // Tabs along the top, as on every other group: dockview puts an edge group's on its outer side.
         edge.setHeaderPosition('top')
         regionGroupId[region] = id
+        markPrimarySidebar()
         return api.getGroup(id)!
+    }
+
+    /**
+     * Mark the Primary Sidebar's group, and unmark the other (ADR 0198). The theme draws a marked
+     * group's header as one row naming the View in front, since its Views are chosen from the
+     * Activity Bar: the other tabs and the close button are not drawn, and the row takes no
+     * pointer, so it cannot be dragged, clicked or given a tab's menu.
+     */
+    function markPrimarySidebar(): void {
+        for (const region of SIDEBARS) {
+            const id = regionGroupId[region]
+            const element = api.groups.find((group) => group.id === id)?.element
+            if (!element) continue
+            element.classList.toggle('gk-primary-sidebar', region === primarySidebar)
+            // Which side the Sidebar is on, for a stylesheet or a spec that must tell the two apart.
+            element.dataset.sidebar = region === 'left-sidebar' ? 'left' : 'right'
+        }
     }
 
     /**
@@ -655,6 +675,41 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
     })
     resizeObserver.observe(container)
 
+    /** A region's own group, made when it has none. */
+    function regionGroupOf(region: Region): DockviewGroupPanel | undefined {
+        const id = ensureRegionGroup(region)
+        return api.groups.find((group) => group.id === id)
+    }
+
+    /** Move a panel into a new Pane split off the one holding `placement.fromPanelId`, in the editor area. */
+    function moveToSplit(panel: IDockviewPanel, placement: ViewPlacement): void {
+        const from = editorGroupOf(placement.fromPanelId) ?? regionGroupOf(placement.region)
+        if (placement.background && from) {
+            // dockview activates the group a move to a group's edge makes, so a move in the
+            // background makes the group first, inactive, and moves the panel into it: a
+            // move into an empty group fronts the panel there and activates nothing.
+            const group = api.addGroup({ referenceGroup: from, direction: splitDirection(placement.mode), skipSetActive: true })
+            panel.api.moveTo({ group, index: 0, skipSetActive: true })
+            return
+        }
+        // A move to a group's edge makes a new group there.
+        panel.api.moveTo({ group: from, position: directionToPosition(splitDirection(placement.mode)) })
+    }
+
+    /**
+     * Seat a panel in `target` at `index` without bringing it forward (ADR 0198): the group's front
+     * tab and the active View stay as they were. dockview's move takes the panel out of its group
+     * and puts it back, and brings forward a tab of its own choosing on the way, so both are put
+     * back after it.
+     */
+    function seatQuietly(panel: IDockviewPanel, target: DockviewGroupPanel | undefined, index: number): void {
+        const front = target?.activePanel
+        const active = api.activePanel
+        panel.api.moveTo({ group: target, index, skipSetActive: true })
+        if (front && front.api.group === target) frontInGroup(front)
+        if (active && api.activePanel !== active) active.api.setActive()
+    }
+
     const renderer: DockviewRenderer = {
         api,
 
@@ -722,31 +777,21 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
             // The same `moveGroupOrPanel` a tab drag takes, so the panel - and the component
             // mounted in it - carries on, and `onDidMovePanel` settles the editor area and the
             // pinned block and tells the app (ADR 0150) exactly as it does after a drag.
-            const regionGroup = () => {
-                const id = ensureRegionGroup(placement.region)
-                return api.groups.find((group) => group.id === id)
-            }
-            if (placement.mode.startsWith('split-') && !isSidebar(placement.region)) {
-                const from = editorGroupOf(placement.fromPanelId) ?? regionGroup()
-                if (placement.background && from) {
-                    // dockview activates the group a move to a group's edge makes, so a move in the
-                    // background makes the group first, inactive, and moves the panel into it: a
-                    // move into an empty group fronts the panel there and activates nothing.
-                    const group = api.addGroup({ referenceGroup: from, direction: splitDirection(placement.mode), skipSetActive: true })
-                    panel.api.moveTo({ group, index: 0, skipSetActive: true })
-                    return
-                }
-                // A move to a group's edge makes a new group there.
-                panel.api.moveTo({ group: from, position: directionToPosition(splitDirection(placement.mode)) })
-                return
-            }
+            if (placement.mode.startsWith('split-') && !isSidebar(placement.region)) return moveToSplit(panel, placement)
             const sibling = placement.siblingPanelId ? api.getPanel(placement.siblingPanelId) : undefined
+            const target = sibling?.api.group ?? regionGroupOf(placement.region)
+            if (placement.activate === false && !placement.background) return seatQuietly(panel, target, index)
             panel.api.moveTo({
-                group: sibling?.api.group ?? regionGroup(),
+                group: target,
                 index,
                 skipSetActive: placement.activate === false || placement.background === true,
             })
             if (placement.background && placement.activate !== false) frontInGroup(panel)
+        },
+
+        setPrimarySidebar(region: Region | null) {
+            primarySidebar = region
+            markPrimarySidebar()
         },
 
         paneBounds(panelId: string) {
@@ -846,6 +891,7 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
             // The model's word on each Sidebar, over the collapsed state and width a saved geometry
             // carries: a Sidebar collapsed or empty is out of sight, an open one is at its own width.
             for (const region of SIDEBARS) showSidebar(region)
+            markPrimarySidebar()
         },
 
         serializeGeometry(): DockviewGeometry {

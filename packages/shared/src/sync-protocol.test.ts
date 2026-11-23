@@ -27,7 +27,7 @@ describe('shared sync protocol', () => {
             maxPresenceEnvelopeBytes: 16 * 1024,
             maxSubscriptionsPerConnection: 4096,
             maxOutboundBufferedBytes: 64 * 1024 * 1024,
-            maxSocketsPerUserGraph: 10,
+            maxSocketsPerUserGraph: 32,
         })
     })
 

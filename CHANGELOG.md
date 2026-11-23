@@ -5,6 +5,17 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.44.0 - 2026-11-23
+
+### Client
+
+- **Primary and Secondary Sidebar.** The left sidebar's views are chosen from the Activity Bar, a
+  column of icons, and Tasks and the Graph View are there with the Graph Sidebar. The right sidebar
+  keeps its tabs. You can hide, reorder and move views and swap the sidebars' sides. The arrangement
+  is the same in every graph, and on your other devices when your account syncs a graph. On a phone,
+  the icons are inside the drawer. An extension's manifest can say
+  `"resident": { "sidebar": "primary" }` or `"secondary"`.
+
 ## 0.42.0 - 2026-11-22
 
 ### Client

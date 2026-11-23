@@ -22,11 +22,15 @@
     import { noteTopBarOpened, topBarOverView } from '../top-bar-over-view.svelte'
     import { createViewVisibility, watchPageVisibility } from '../view-visibility'
     import { workspaceService } from '#lib/workspace/workspace-services.js'
+    import type { Sidebars } from '#lib/workspace/sidebars.svelte.js'
+
+    import ActivityBar from './ActivityBar.svelte'
 
     let {
         controller,
         renderer,
         markFor = () => null,
+        sidebars,
     }: {
         controller: LayoutController
         renderer: MobileRenderer
@@ -36,6 +40,12 @@
          * and whether a [[Protected Document]] is readable right now is invisible from its title.
          */
         markFor?: (panelId: string) => TabMark | null
+        /**
+         * The workspace's two Sidebars (ADR 0198). With them, the Primary Sidebar's drawer has the
+         * [[Activity Bar]] down its outer edge in place of a strip of tabs. Without (the layout
+         * harness), both drawers have a strip.
+         */
+        sidebars?: Sidebars
     } = $props()
 
     // A View is mounted here only while it is the one shown (the active main View, or the front
@@ -64,6 +74,11 @@
         const main = model.regions.main
         const pane = main.panes.find((p) => p.id === main.activePaneId) ?? main.panes[0]
         return pane?.views.find((v) => v.panelId === pane.activePanelId) ?? mainViews[0]
+    })
+    /** The Activity Bar's icons, re-read with the model: a View opened or closed bumps the renderer, not the arrangement. */
+    const activityBar = $derived.by(() => {
+        void renderer.rev
+        return sidebars?.bar() ?? null
     })
     const leftOpen = $derived(!model.regions['left-sidebar'].collapsed)
     const rightOpen = $derived(!model.regions['right-sidebar'].collapsed)
@@ -413,9 +428,43 @@
      Sidebar View is furniture you collapse (the region toggle already hides the whole
      drawer), not something to close, and an × per tab in a strip this narrow is mostly a way
      to lose a panel by accident. -->
+{#snippet drawerBody(inst: ViewInstance | undefined)}
+    <div class="drawer-body">
+        {#if inst}{@const C = component(inst.view.kind)}{#if C}<C view={inst.view} {visibility} {...entryProps(inst.view.kind)} />
+        {:else}<p class="empty" data-testid="view-unavailable">{unavailableViewMessage(inst.view.kind)}</p>{/if}{/if}
+    </div>
+{/snippet}
+
+<!-- The Primary Sidebar's drawer (ADR 0198): the Activity Bar down its outer edge, and beside it
+     the View chosen there, under a row that names it. The bar is inside the drawer, so nothing is
+     added to the screen while the drawer is closed. -->
+{#snippet primaryDrawer(region: Region, bar: NonNullable<typeof activityBar>)}
+    {@const inst = activeOf(region)}
+    <div class="primary" data-side={bar.side}>
+        <ActivityBar
+            items={bar.items}
+            showingPanelId={bar.showingPanelId}
+            side={bar.side}
+            onselect={(item) => sidebars?.choose(item)}
+            onreorder={(item, index) => sidebars?.reorder(item, index)}
+            onstep={(item, delta) => sidebars?.step(item, delta)}
+            menuTarget={(item) => sidebars!.menuTarget(item)}
+        />
+        <div class="primary-view">
+            {#if inst}
+                <h2 class="drawer-title" data-testid="mobile-drawer-title">{renderer.title(inst.view)}</h2>
+            {/if}
+            {@render drawerBody(inst)}
+        </div>
+    </div>
+{/snippet}
+
 {#snippet drawer(region: Region)}
     {@const views = viewsIn(region)}
     {@const inst = activeOf(region)}
+    {#if activityBar && activityBar.region === region}
+        {@render primaryDrawer(region, activityBar)}
+    {:else}
     {#if views.length > 0}
         <div class="drawer-tabs" data-testid="mobile-drawer-tabs">
             {#each views as v (v.panelId)}
@@ -438,10 +487,8 @@
             {/each}
         </div>
     {/if}
-    <div class="drawer-body">
-        {#if inst}{@const C = component(inst.view.kind)}{#if C}<C view={inst.view} {visibility} {...entryProps(inst.view.kind)} />
-        {:else}<p class="empty" data-testid="view-unavailable">{unavailableViewMessage(inst.view.kind)}</p>{/if}{/if}
-    </div>
+    {@render drawerBody(inst)}
+    {/if}
 {/snippet}
 
 <div class="mobile" data-testid="mobile-presenter" style="--keyboard-inset: {keyboardInset}px; --top-bar-over: {overView ? topBarHeight : 0}px">
@@ -451,8 +498,8 @@
         <button
             class="toggle"
             data-testid="mobile-toggle-left"
-            data-tooltip="Toggle document tree"
-            aria-label="Toggle document tree"
+            data-tooltip={sidebars?.toggleLabel('left') ?? 'Toggle document tree'}
+            aria-label={sidebars?.toggleLabel('left') ?? 'Toggle document tree'}
             aria-expanded={leftOpen}
             onclick={() => toggleSidebarExclusive('left')}
         >
@@ -528,8 +575,8 @@
         <button
             class="toggle"
             data-testid="mobile-toggle-right"
-            data-tooltip="Toggle backlinks"
-            aria-label="Toggle backlinks"
+            data-tooltip={sidebars?.toggleLabel('right') ?? 'Toggle backlinks'}
+            aria-label={sidebars?.toggleLabel('right') ?? 'Toggle backlinks'}
             aria-expanded={rightOpen}
             onclick={() => toggleSidebarExclusive('right')}
         >
@@ -608,13 +655,13 @@
 
         {#if leftOpen}
             <button class="backdrop" aria-label="Close left sidebar" onclick={() => controller.toggleSidebar('left', false)}></button>
-            <aside class="drawer left" data-testid="mobile-drawer-left">
+            <aside class={['drawer', 'left', { 'with-bar': activityBar?.region === 'left-sidebar' }]} data-testid="mobile-drawer-left">
                 {@render drawer('left-sidebar')}
             </aside>
         {/if}
         {#if rightOpen}
             <button class="backdrop" aria-label="Close right sidebar" onclick={() => controller.toggleSidebar('right', false)}></button>
-            <aside class="drawer right" data-testid="mobile-drawer-right">
+            <aside class={['drawer', 'right', { 'with-bar': activityBar?.region === 'right-sidebar' }]} data-testid="mobile-drawer-right">
                 {@render drawer('right-sidebar')}
             </aside>
         {/if}
@@ -1144,6 +1191,47 @@
     }
     .drawer-tabs {
         gap: 0.375rem; /* the tabs themselves are the shared .tab rule above */
+    }
+    /* The Primary Sidebar's drawer is wider by the Activity Bar, so its View has the width the
+       other drawer's has: the Journal Calendar's seven columns need it. */
+    .drawer.with-bar {
+        width: calc(78% + 3rem);
+        max-width: 23rem;
+    }
+    @media (pointer: coarse) {
+        .drawer.with-bar {
+            width: calc(78% + 3.5rem);
+            max-width: 23.5rem;
+        }
+    }
+    /* The Primary Sidebar's drawer: the Activity Bar on the drawer's outer edge, the View beside it. */
+    .primary {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+    }
+    .primary[data-side='right'] {
+        flex-direction: row-reverse;
+    }
+    .primary-view {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+    }
+    /* The row naming the View in front, where the strip of tabs would be: the tab's own text. */
+    .drawer-title {
+        flex: none;
+        margin: 0;
+        padding: 0.5rem 0.75rem;
+        overflow: hidden;
+        color: var(--gk-text-strong);
+        font-size: 0.875rem;
+        font-weight: 500;
+        line-height: 1.25rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
     .drawer.left {
         left: 0;

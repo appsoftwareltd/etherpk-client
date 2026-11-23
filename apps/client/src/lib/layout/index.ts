@@ -17,6 +17,7 @@ export type {
     PaneSide,
     Region,
     RegionModel,
+    RegionViews,
     RenderedPane,
     SerializedLayout,
     SidebarSide,

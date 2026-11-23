@@ -58,6 +58,7 @@
     import ProtectionSettingsTab from "#lib/document/protection/ui/ProtectionSettingsTab.svelte";
     import SpellingSettingsTab from "#lib/document/spelling/ui/SpellingSettingsTab.svelte";
     import UsageStatisticsSetting from "#lib/telemetry/ui/UsageStatisticsSetting.svelte";
+    import PrimarySidebarSetting from "#lib/layout/renderers/PrimarySidebarSetting.svelte";
     import { usageStatistics } from "#lib/telemetry/usage-statistics-device.js";
     import ExtensionsSettingsTab from "#lib/extensions/ExtensionsSettingsTab.svelte";
     import type { ExtensionDirectory } from "#lib/extensions/directory.js";
@@ -1285,6 +1286,11 @@
                         class="font-mono select-all">{graphId}</code
                     >
                 </p>
+                <!-- The person's own and applied at once, as usage statistics below: nothing for
+                     Save to commit (ADR 0199). -->
+                <div class="border-t border-neutral-100 dark:border-neutral-800 pt-4">
+                    <PrimarySidebarSetting />
+                </div>
                 {#if usageStatistics().available}
                     <!-- The person's own and applied at once: nothing for Save to commit. Absent
                          where the deployment counts nothing. -->

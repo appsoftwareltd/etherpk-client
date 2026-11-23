@@ -161,6 +161,47 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+/* ── The Primary Sidebar's title row (ADR 0198) ──────────────────────────────
+   The Primary Sidebar's Views are chosen from the Activity Bar, so its group has no strip of
+   tabs. Its header draws one row: the title of the View in front, which is that View's own tab
+   with the other tabs, the icon the bar already shows and the close button left out. The row
+   takes no pointer, so it is not dragged, clicked or given a tab's menu. */
+.dockview-theme-compass .gk-primary-sidebar .dv-tabs-and-actions-container {
+    pointer-events: none;
+    align-items: center;
+    padding: 0 0.5rem;
+    background-color: var(--gk-surface-0);
+}
+.dockview-theme-compass .gk-primary-sidebar .dv-tab.dv-inactive-tab,
+.dockview-theme-compass .gk-primary-sidebar .dv-default-tab-action,
+.dockview-theme-compass .gk-primary-sidebar .gk-tab-icon,
+.dockview-theme-compass .gk-primary-sidebar .dv-tabs-overflow-dropdown-root,
+.dockview-theme-compass .gk-primary-sidebar .dv-right-actions-container {
+    display: none;
+}
+.dockview-theme-compass .gk-primary-sidebar .dv-tab.dv-active-tab {
+    margin: 0;
+    padding: 5px 4px;
+    border-color: transparent;
+    color: var(--gk-text-strong);
+}
+/* The row is the Sidebar's width, so the title runs to its edge before it is ellipsised. Each
+   box from the strip down to the title may shrink, or the title stays as wide as its text and
+   is cut off at the Sidebar's edge with no ellipsis. */
+.dockview-theme-compass .gk-primary-sidebar .dv-tabs-container,
+.dockview-theme-compass .gk-primary-sidebar .dv-tab.dv-active-tab {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.dockview-theme-compass .gk-primary-sidebar .dv-default-tab {
+    min-width: 0;
+}
+.dockview-theme-compass .gk-primary-sidebar .dv-default-tab-content {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: none;
+}
+
 /* The coloured active-tab underline is redundant with the connected style. */
 .dockview-theme-compass .dv-tab-group-underline {
     display: none;

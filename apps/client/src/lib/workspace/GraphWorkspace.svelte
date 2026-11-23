@@ -64,7 +64,11 @@
     // Type only: the adapter itself is `import()`ed in the browser (see mountPresenter).
     import type { DockviewRenderer } from "#lib/layout/renderers/dockview-adapter.js";
     import { RETIRED_QUICK_NOTES_VIEW, TASKS_VIEW } from "#lib/layout/serialization.js";
-    import { revealResident, toggleResidentSidebar, type Resident } from "./residents";
+    import type { Resident } from "./residents";
+    import { createSidebars } from "./sidebars.svelte";
+    import ActivityBar from "#lib/layout/renderers/ActivityBar.svelte";
+    import type { SidebarResident } from "#lib/layout/sidebar-arrangement-binding.js";
+    import { registerSidebarCommands } from "#lib/layout/sidebar-commands.js";
     import { forgetWorkspaceCompanions } from "./workspace-reset";
 
     import type { MobileRenderer } from "#lib/layout/renderers/mobile-renderer.svelte.js";
@@ -1427,6 +1431,8 @@
         // name, leaving an effect that never re-runs when the name changes.
         const title = sidebarTabTitle(graphDisplayName, graphId);
         renderer?.setTitleForKind?.("document-tree", title);
+        // The Activity Bar names the graph sidebar's icon by the same title.
+        sidebars.redraw();
     }
     $effect(() => {
         retitleSidebar();
@@ -3182,9 +3188,9 @@
      * other two are singletons.
      */
     const RESIDENTS: Record<"graph" | "backlinks" | "tasks", Resident> = {
-        graph: { kind: "document-tree", side: "left", fallback: () => ({ kind: "document-tree", target: "root" }) },
-        backlinks: { kind: "backlinks", side: "right", fallback: () => ({ kind: "backlinks", target: todayISO() }) },
-        tasks: { kind: TASKS_VIEW.kind, side: "right", fallback: () => TASKS_VIEW },
+        graph: { kind: "document-tree", fallback: () => ({ kind: "document-tree", target: "root" }) },
+        backlinks: { kind: "backlinks", fallback: () => ({ kind: "backlinks", target: todayISO() }) },
+        tasks: { kind: TASKS_VIEW.kind, fallback: () => TASKS_VIEW },
     };
 
     /**
@@ -3214,6 +3220,7 @@
                         backlinksPreferences,
                     });
                 }
+                sidebars.detach();
                 renderer?.destroy?.();
                 controller = undefined;
                 renderer = undefined;
@@ -3271,11 +3278,14 @@
      * both closed: its journal entry is the tour, and the drawer would cover it.
      */
     function freshLayout() {
-        return defaultLayout({
-            journalTarget: todayISO(),
-            rightSidebarCollapsed: useMobile,
-            leftSidebarCollapsed: useMobile && isDemoGraph(graphId),
-        });
+        // Written for the Primary Sidebar on the left, and turned for a person who keeps it on the right.
+        return sidebars.binding.orient(
+            defaultLayout({
+                journalTarget: todayISO(),
+                rightSidebarCollapsed: useMobile,
+                leftSidebarCollapsed: useMobile && isDemoGraph(graphId),
+            }),
+        );
     }
 
     /** The toolbar's toggles run the same Commands as the chords, so a closed resident comes back from either. */
@@ -3361,6 +3371,8 @@
         component: TasksView,
         naturalRegion: "right-sidebar",
         title: () => "Tasks",
+        // The editor's task checkbox: what the Activity Bar draws for Tasks (ADR 0198).
+        icon: "task",
     });
 
     // The chords the window listens with: the app's own, and those extensions add as they start.
@@ -3486,13 +3498,52 @@
             },
         },
     });
-    /** The residents extensions declare for one Sidebar, the desktop's only ones on a desktop. */
-    function extensionResidents(side: "left" | "right"): Resident[] {
-        return extensionHost
-            .residents()
-            .filter((resident) => resident.side === side && !(resident.desktopOnly && useMobile))
-            .map(({ kind, side: residentSide, fallback }) => ({ kind, side: residentSide, fallback: () => fallback }));
+    /**
+     * Every Sidebar View of a graph, in the order and the Sidebar a person who has arranged nothing
+     * finds them (ADR 0198): the graph sidebar, Tasks and the extensions' own in the Primary
+     * Sidebar, Backlinks and the extensions' own in the Secondary. A View of an extension that is
+     * off, and a desktop's only View in the Phone Layout, cannot be shown here and keeps its place
+     * in the person's [[Sidebar Arrangement]].
+     */
+    function sidebarResidents(): SidebarResident[] {
+        const declared = (sidebar: "primary" | "secondary"): SidebarResident[] =>
+            extensionHost
+                .residents()
+                .filter((resident) => resident.sidebar === sidebar)
+                .map((resident) => ({
+                    kind: resident.kind,
+                    role: sidebar,
+                    fallback: () => resident.fallback,
+                    available: extensionHost.isOn(resident.extensionId) && !(resident.desktopOnly && useMobile),
+                }));
+        return [
+            { ...RESIDENTS.graph, role: "primary" },
+            { ...RESIDENTS.tasks, role: "primary" },
+            ...declared("primary"),
+            { ...RESIDENTS.backlinks, role: "secondary" },
+            ...declared("secondary"),
+        ];
     }
+    // The two Sidebars: the person's arrangement, kept in step with the Layout, and what the
+    // Activity Bar draws (ADR 0198, ADR 0199).
+    const sidebars = createSidebars({
+        settings: personSettings(),
+        residents: sidebarResidents,
+        controller: () => controller,
+        renderer: () => renderer,
+        title: (view) => registry.title(view),
+        icon: (view) => registry.icon(view),
+        settled: () => !suppressSave,
+    });
+    // An extension switched on or off adds or takes away its Sidebar View.
+    onMount(() => {
+        const stop = extensionHost.subscribe(() => sidebars.binding.apply());
+        return () => {
+            stop();
+            sidebars.dispose();
+        };
+    });
+    const activityBar = $derived(useMobile ? null : sidebars.bar());
 
     // Browser Back/Forward over shallow entries: the popped entry's Visit arrives
     // via page.state. (Our own pushUrl also lands here; apply() is id-idempotent.)
@@ -4916,25 +4967,17 @@
         // Each Sidebar toggle brings its resident back first if it has been closed (residents.ts):
         // a chord that expanded an empty Sidebar was the only way to lose a View for good.
         commandRegistry.register("layout.toggleSidebar", () => {
-            if (controller) toggleResidentSidebar(controller, [RESIDENTS.graph, ...extensionResidents("left")]);
+            sidebars.toggle("left");
         });
         commandRegistry.register("layout.toggleBacklinks", () => {
-            // An extension's resident (the Graph View's, on a desktop) is one of the right Sidebar's
-            // too, so a Sidebar holding only it is not empty and the toggle collapses it rather than
-            // restoring Backlinks.
-            if (controller)
-                toggleResidentSidebar(controller, [
-                    RESIDENTS.backlinks,
-                    RESIDENTS.tasks,
-                    ...extensionResidents("right"),
-                ]);
+            sidebars.toggle("right");
         });
         // The reveal commands (Alt+G / Alt+B): the resident in front of an expanded Sidebar.
         commandRegistry.register("graph.open", () => {
-            if (controller) revealResident(controller, RESIDENTS.graph);
+            sidebars.reveal(RESIDENTS.graph.kind);
         });
         commandRegistry.register("backlinks.open", () => {
-            if (controller) revealResident(controller, RESIDENTS.backlinks);
+            sidebars.reveal(RESIDENTS.backlinks.kind);
         });
         // Reset workspace: the Command opens the confirmation; `resetWorkspace` does the work.
         commandRegistry.register("workspace.reset", () => {
@@ -4970,7 +5013,7 @@
         // collapsed Sidebar would still be invisible. Expanding after is what makes "open
         // Tasks" mean the user can see them. (The resident itself is ensured post-restore.)
         commandRegistry.register("tasks.open", () => {
-            if (controller) revealResident(controller, RESIDENTS.tasks);
+            sidebars.reveal(RESIDENTS.tasks.kind);
         });
         // The Quick Notes Modal with the caret in its box, so Alt+N, type, Enter captures a
         // thought from anywhere without a pointer. Opening places the caret itself (the dialog's
@@ -5069,14 +5112,14 @@
                 // phone's drawer) reads it at mount; one already mounted hears it.
                 showBacklinks: (concept) => {
                     backlinksPreferences?.show(concept, getActiveDocument());
-                    if (controller) revealResident(controller, RESIDENTS.backlinks);
+                    sidebars.reveal(RESIDENTS.backlinks.kind);
                 },
                 // Show Tasks, the same way: the Name Filter set in the store first, under the
                 // name the concept resolves to (a wikilink may name an alias), then the View
                 // revealed.
                 showTasks: (concept) => {
                     taskFilter?.show(canonicalConceptName(concept));
-                    if (controller) revealResident(controller, RESIDENTS.tasks);
+                    sidebars.reveal(RESIDENTS.tasks.kind);
                 },
                 findIn: (concept) => void findInDocumentTab(concept),
                 // Open in pane to the right, and below (ADR 0155). The page opens in the background,
@@ -5127,8 +5170,7 @@
                     else controller?.openView(view);
                 },
                 reveal(kind) {
-                    const resident = extensionHost.residents().find((candidate) => candidate.kind === kind);
-                    if (controller && resident) revealResident(controller, { kind, side: resident.side, fallback: () => resident.fallback });
+                    if (extensionHost.residents().some((candidate) => candidate.kind === kind)) sidebars.reveal(kind);
                 },
                 openDocument(concept, options = {}) {
                     const target = canonicalConceptName(concept);
@@ -5231,7 +5273,7 @@
         detachBookmarkCommands = registerBookmarkCommands(commandRegistry, contributions, {
             openDocumentAtLine: (concept, line) => openConceptAtDocumentLine(concept, line),
             revealSidebar: () => {
-                if (controller) revealResident(controller, RESIDENTS.graph);
+                sidebars.reveal(RESIDENTS.graph.kind);
             },
             onError: (text) => notify(text),
         });
@@ -5288,13 +5330,24 @@
             },
         );
         // Tab management (close others / to the right / to the left) on any Pane tab.
-        detachTabCommands = registerTabCommands(
+        const detachTabRows = registerTabCommands(
             commandRegistry,
             contributions,
             {
                 controller: () => controller,
             },
         );
+        // The Sidebars' rows: hide, reorder and move a View, the hidden Views, the Primary
+        // Sidebar's side, Reset Sidebars (ADR 0198).
+        const detachSidebarRows = registerSidebarCommands(commandRegistry, contributions, {
+            binding: sidebars.binding,
+            controller: () => controller,
+            title: (view) => registry.title(view),
+        });
+        detachTabCommands = () => {
+            detachTabRows();
+            detachSidebarRows();
+        };
         // The built-in Augmentation renderers (mermaid, math) — ADR 0022.
         detachRenderers = registerAugmentationRenderers(contributions);
         // The one list: the same rows the Keyboard Shortcuts card shows (keyboard-shortcuts.ts),
@@ -5718,7 +5771,11 @@
             renderer = createDockviewRenderer({
                 container: container!,
                 registry,
-                onGeometryChange: scheduleSave, // persist drags / resizes
+                // Persist drags and resizes, and take the order a Sidebar tab was dragged to.
+                onGeometryChange: () => {
+                    scheduleSave();
+                    sidebars.binding.noteLayoutChanged();
+                },
                 markFor: (panelId) => tabMarkFor(panelId),
                 // The pin on a pinned tab. The controller owns the flag and is created just
                 // below; the renderer asks lazily, on each repaint, so the order is fine.
@@ -5752,8 +5809,12 @@
             renderer,
             registry,
             onViewOpened: (view) => workspaceUsage.viewOpened(view),
+            // A Sidebar View opens in the Sidebar the person keeps it in (ADR 0199).
+            regionFor: (kind) => sidebars.binding.regionForKind(kind),
             onChange: () => {
                 scheduleSave(); // persist open / close / focus / collapse
+                // A Sidebar tab closed, or a View brought back by its Command, changes the arrangement.
+                sidebars.binding.noteLayoutChanged();
                 if (!suppressNav) navEngine?.sync();
             },
         });
@@ -5772,26 +5833,15 @@
         // A restored Layout brings the title its tab was saved with; the name is the truth.
         retitleSidebar();
         followRenamesObserved();
-        // Tasks is a RESIDENT of the right Sidebar (CONTEXT.md → Sidebar): present as a tab from
-        // the first open, on every device. A Layout persisted before it became one has no
-        // Tasks tab and — being per-device — would never gain it, so the resident is ensured
-        // here rather than by bumping LAYOUT_VERSION, which would discard everyone's panes to
-        // add one tab. `activate: false` places it without stealing focus or expanding anything;
-        // a Layout that already holds it is untouched (openView focuses the existing View).
-        if (!controller.isOpen(TASKS_VIEW))
-            controller.openView(TASKS_VIEW, { activate: false });
         // Quick Notes was the left Sidebar's second resident until it became a modal (ADR 0189).
         // A Layout saved before then still holds its tab, and no View of that kind is registered
         // any more, so the tab is closed here, inside the save suppression and before the
         // baseline save below writes the Layout without it.
         if (controller.isOpen(RETIRED_QUICK_NOTES_VIEW)) controller.closeView(RETIRED_QUICK_NOTES_VIEW);
-        // Every resident an extension declares is ensured the same way, behind the others: the Graph
-        // View's on a desktop or tablet only (CONTEXT.md → Sidebar), since a phone has no room to draw
-        // it. It also gives every Layout saved before a resident existed its tab.
-        for (const resident of [...extensionResidents("left"), ...extensionResidents("right")]) {
-            const view = resident.fallback();
-            if (!controller.isOpen(view)) controller.openView(view, { activate: false });
-        }
+        // The Sidebars' Views are the person's arrangement of them (ADR 0199), not what the Layout
+        // was saved with: each is opened, moved, reordered or closed to match, here and from now
+        // on. A Layout saved before a View existed, or under another arrangement, is put right.
+        sidebars.attach(controller);
         saveLayout();
         requestAnimationFrame(() => {
             if (attempt.isCurrent()) suppressSave = false;
@@ -5901,6 +5951,7 @@
                 attempt.checkpoint();
                 if (mobile === useMobile || phase !== "ready") return;
                 const snapshot = controller?.serialize().model;
+                sidebars.detach();
                 renderer?.destroy?.();
                 controller = undefined;
                 renderer = undefined;
@@ -5954,7 +6005,8 @@
                 (mobile) => void switchPresenter(mobile),
             );
         } catch (error) {
-            renderer?.destroy?.();
+            sidebars.detach();
+                renderer?.destroy?.();
             renderer = undefined;
             controller = undefined;
             mobileRenderer = undefined;
@@ -8000,7 +8052,8 @@
         releasePreloadedDocument?.();
         releasePreloadedDocument = undefined;
         preloadedDocumentReady = undefined;
-        renderer?.destroy?.();
+        sidebars.detach();
+                renderer?.destroy?.();
         renderer = undefined;
         controller = undefined;
         mobileRenderer = undefined;
@@ -8725,6 +8778,8 @@
         <WorkspaceToolbar
             ontoggleleft={() => toggleSidebar("left")}
             ontoggleright={() => toggleSidebar("right")}
+            leftLabel={sidebars.toggleLabel("left")}
+            rightLabel={sidebars.toggleLabel("right")}
             onshortcuts={() =>
                 void commandRegistry?.execute("help.openShortcuts")}
             onsettings={() => openGraphSettings()}
@@ -8735,11 +8790,26 @@
             ondismisscallout={dismissStatusCallout}
             indexing={indexingIconShown}
         />
-        <div
-            bind:this={container}
-            data-testid="workspace-layout"
-            class="layout"
-        ></div>
+        <!-- The Activity Bar stands beside the Layout, on the Primary Sidebar's side, and stays
+             while that Sidebar is collapsed (ADR 0198). -->
+        <div class="layout-row" class:primary-right={activityBar?.side === "right"}>
+            {#if activityBar}
+                <ActivityBar
+                    items={activityBar.items}
+                    showingPanelId={activityBar.showingPanelId}
+                    side={activityBar.side}
+                    onselect={sidebars.choose}
+                    onreorder={sidebars.reorder}
+                    onstep={sidebars.step}
+                    menuTarget={sidebars.menuTarget}
+                />
+            {/if}
+            <div
+                bind:this={container}
+                data-testid="workspace-layout"
+                class="layout"
+            ></div>
+        </div>
     {:else}
         <div class="layout" data-testid="workspace-mobile">
             {#if controller && mobileRenderer}
@@ -8747,6 +8817,7 @@
                     {controller}
                     renderer={mobileRenderer}
                     markFor={tabMarkFor}
+                    {sidebars}
                 />
             {/if}
         </div>
@@ -8827,5 +8898,15 @@
         overflow: clip;
         flex: 1;
         min-height: 0;
+        min-width: 0;
+    }
+    /* The Activity Bar and the Layout, side by side, the bar on the Primary Sidebar's side. */
+    .layout-row {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+    }
+    .layout-row.primary-right {
+        flex-direction: row-reverse;
     }
 </style>
