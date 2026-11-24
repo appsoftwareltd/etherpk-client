@@ -132,9 +132,8 @@ export function removePdfBookmark(id: string): Promise<void> {
     return change([], [id])
 }
 
-/** The PDF is gone: its bookmarks go with it. */
-export function removePdfBookmarksOf(hash: string): Promise<void> {
-    return change([], list.filter((b) => b.hash === hash).map((b) => b.id))
+export function removePdfBookmarksAt(ids: readonly string[]): Promise<void> {
+    return change([], ids)
 }
 
 /** A PDF was opened, or renamed: every bookmark on these bytes opens this tab under this name. */

@@ -4,7 +4,7 @@ import {
     addEbookBookmark,
     adoptEbookTarget,
     followEbookRename,
-    removeEbookBookmarksOf,
+    removeEbookBookmarksAt,
     resetEbookBookmarks,
     retargetImportedEbookBookmarks,
     sanitizeEbookBookmarks,
@@ -55,9 +55,9 @@ describe('EBook bookmarks', () => {
         expect(seen[0].target).toBe('id-1.epub')
     })
 
-    it('goes with its EBook', async () => {
+    it('removes the ones it is given and no other', async () => {
         setEbookBookmarks([mark('a'), mark('b', { hash: 'b'.repeat(64) })], async () => {})
-        await removeEbookBookmarksOf(HASH)
+        await removeEbookBookmarksAt(['a'])
         expect(seen.map((b) => b.id)).toEqual(['b'])
     })
 

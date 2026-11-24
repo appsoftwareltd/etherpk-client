@@ -55,7 +55,10 @@ function saving(folder: PlainStateFolder, what: string) {
         problem: () => refused,
         /** Run a write to the folder, after the ones before it. */
         save(work: () => Promise<void>): void {
-            pending = pending.then(work).catch((error: unknown) => {
+            // Started at once: the folder runs writes in the order they are asked for, so one asked for
+            // before a delete is in the folder before the delete's clean-up reads it.
+            const run = (async () => work())()
+            pending = Promise.all([pending, run]).catch((error: unknown) => {
                 refused = `Changes to this ${what} could not be saved to the folder’s .etherpk folder (${error instanceof Error ? error.message : String(error)}).`
                 changed()
             })
@@ -133,7 +136,7 @@ export function createPlainPdfStateHost(deps: PlainReaderStateDeps & { memory: P
                 },
             }
         },
-        // A PDF removed in the tree keeps its annotations: they are found again if the file returns.
+        // The place alone. What is kept in the folder goes with a delete in EtherPK (forget-deleted.ts).
         async forget(hash) {
             memory.forgetPdf(folderId, hash)
         },

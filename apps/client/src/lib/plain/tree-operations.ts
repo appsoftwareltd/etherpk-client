@@ -81,14 +81,15 @@ const COUNT_LIMIT = 2000
 
 /**
  * The sentence a delete is confirmed with: what goes, and that it cannot be undone. A directory
- * names how many files go with it.
+ * names how many files go with it, and `notes` what the person wrote on them ("3 annotations").
  */
-export async function deleteSentence(tree: Tree, path: string, kind: 'file' | 'directory'): Promise<string> {
+export async function deleteSentence(tree: Tree, path: string, kind: 'file' | 'directory', notes: string | null = null): Promise<string> {
     const name = baseName(path)
-    if (kind === 'file') return `Delete “${name}”? This cannot be undone: the file is removed from the folder, not moved to a bin.`
+    const withNotes = notes === null ? '' : `, with your ${notes}`
+    if (kind === 'file') return `Delete “${name}”${withNotes}? This cannot be undone: the file is removed from the folder, not moved to a bin.`
     const { files, more } = await countFilesUnder(tree, path)
     const holds = files === 0 ? 'which is empty' : `and the ${more ? 'more than ' : ''}${files} ${files === 1 ? 'file' : 'files'} in it`
-    return `Delete the folder “${name}” ${holds}? This cannot be undone: they are removed, not moved to a bin.`
+    return `Delete the folder “${name}” ${holds}${withNotes}? This cannot be undone: they are removed, not moved to a bin.`
 }
 
 async function countFilesUnder(tree: Tree, path: string): Promise<{ files: number; more: boolean }> {

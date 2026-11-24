@@ -90,6 +90,11 @@
                 {#if !uncheckedWarning}This is the only place it is used.{/if} Deleting removes it from this document
                 and deletes the file itself. {deleteOutcomeSentence(keptDays)}
             </p>
+            {#if prompt.takesNotes}
+                <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="delete-asset-notes">
+                    Your annotations on this file are deleted with the file.
+                </p>
+            {/if}
             {#if uncheckedWarning}
                 <p
                     class="rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-900 dark:text-amber-200"

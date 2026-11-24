@@ -1,0 +1,168 @@
+/*
+ * What prints (ADR 0207). On screen the container shows nothing. In print it is all that shows, black
+ * on white whatever the theme, so every colour here is written out rather than taken from a token.
+ */
+.etherpk-print {
+    display: none;
+}
+
+@media print {
+    /* The workspace is held to the window's height, which would print one page of it. */
+    html.etherpk-printing,
+    body.etherpk-printing {
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        background: #fff !important;
+        color-scheme: light !important;
+    }
+    body.etherpk-printing > *:not(.etherpk-print) {
+        display: none !important;
+    }
+    body.etherpk-printing > .etherpk-print {
+        display: block;
+        color: #000;
+    }
+
+    .etherpk-print-document {
+        font-size: 11pt;
+        line-height: 1.5;
+        overflow-wrap: anywhere;
+    }
+    .etherpk-print-document :is(h1, h2, h3, h4, h5, h6) {
+        margin: 1.2em 0 0.4em;
+        font-weight: 600;
+        line-height: 1.25;
+        break-after: avoid;
+    }
+    .etherpk-print-document > h1:first-child {
+        margin-top: 0;
+    }
+    .etherpk-print-document h1 {
+        font-size: 20pt;
+    }
+    .etherpk-print-document h2 {
+        font-size: 16pt;
+    }
+    .etherpk-print-document h3 {
+        font-size: 13pt;
+    }
+    .etherpk-print-document :is(p, ul, ol, pre, table, blockquote, figure) {
+        margin: 0 0 0.6em;
+    }
+    .etherpk-print-document :is(ul, ol) {
+        padding-left: 1.4em;
+    }
+    .etherpk-print-document ul {
+        list-style: disc;
+    }
+    .etherpk-print-document ol {
+        list-style: decimal;
+    }
+    .etherpk-print-document li > :is(ul, ol) {
+        margin-bottom: 0;
+    }
+    .etherpk-print-document li > p {
+        margin-bottom: 0.2em;
+    }
+    .etherpk-print-document li:has(> input[type='checkbox']),
+    .etherpk-print-document li:has(> p > input[type='checkbox']) {
+        list-style: none;
+    }
+    /* Drawn in black, as a disabled box prints in a grey that fades on paper. */
+    .etherpk-print-document input[type='checkbox'] {
+        appearance: none;
+        display: inline-block;
+        width: 0.85em;
+        height: 0.85em;
+        margin: 0 0.4em 0 -1.3em;
+        border: 1px solid #000;
+        border-radius: 0.15em;
+        vertical-align: -0.1em;
+        text-align: center;
+    }
+    .etherpk-print-document input[type='checkbox']:checked::before {
+        content: '\2713';
+        display: block;
+        color: #000;
+        font-weight: 700;
+        line-height: 0.85em;
+    }
+    .etherpk-print-document .task-tag {
+        margin-right: 0.3em;
+        border: 1px solid #737373;
+        border-radius: 0.25em;
+        padding: 0 0.35em;
+    }
+    .etherpk-print-document blockquote {
+        border-left: 2px solid #737373;
+        padding-left: 0.9em;
+    }
+    .etherpk-print-document :is(code, pre) {
+        font-family: ui-monospace, monospace;
+        font-size: 10.5pt;
+    }
+    /* Code wraps: a line past the page's edge would be lost. */
+    .etherpk-print-document pre {
+        border: 1px solid #a3a3a3;
+        border-radius: 0.25em;
+        padding: 0.5em 0.7em;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+    .etherpk-print-document mark {
+        background: #fff;
+        color: #000;
+        text-decoration: underline;
+    }
+    .etherpk-print-document a {
+        color: #000;
+        text-decoration: underline;
+    }
+    .etherpk-print-document hr {
+        border: 0;
+        border-top: 1px solid #a3a3a3;
+        margin: 1em 0;
+    }
+    .etherpk-print-document table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .etherpk-print-document :is(th, td) {
+        border: 1px solid #737373;
+        padding: 0.25em 0.5em;
+        text-align: left;
+        vertical-align: top;
+    }
+    .etherpk-print-document thead {
+        display: table-header-group;
+    }
+    /* Not split across two pages where it fits on one. */
+    .etherpk-print-document :is(table, figure, img, svg, tr, .math-block) {
+        break-inside: avoid;
+    }
+    .etherpk-print-document :is(img, svg) {
+        max-width: 100%;
+        max-height: 24cm;
+        height: auto;
+        object-fit: contain;
+    }
+    .etherpk-print-document .etherpk-print-left-out {
+        display: block;
+        border: 1px dashed #737373;
+        padding: 0.3em 0.6em;
+    }
+
+    .etherpk-print-drawing img {
+        display: block;
+        max-width: 100%;
+        max-height: 24cm;
+        height: auto;
+        margin: 0 auto;
+    }
+
+    .etherpk-pdf-print img {
+        display: block;
+        break-after: page;
+    }
+}

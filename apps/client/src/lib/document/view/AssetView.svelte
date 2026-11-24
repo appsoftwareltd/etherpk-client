@@ -16,6 +16,8 @@
      * is framed, for the reasons in ADR 0055. A type with no viewer is not a failure: the tab
      * says so and offers the download, which always works.
      */
+    import { untrack } from "svelte";
+
     import { AssetIntegrityError, AssetUnavailableError, displayAssetName, isBareAssetId, type ResolvedAsset } from "#lib/storage/fs/asset-store.js";
     import { assetViewerFor, tryGetActiveContributionRegistry } from "#lib/surface/index.js";
     import { viewKey, type ViewRef } from "#lib/layout/index.js";
@@ -53,10 +55,17 @@
     });
     const Viewer = $derived(viewer?.component);
 
+    /**
+     * The target alone, as a string. The phone layout hands a View a new ref each time anything in the
+     * Layout changes, a drawer opening among them, and the load below must run for a new Asset only:
+     * it takes down the viewer and builds it again.
+     */
+    const wanted = $derived(view.target);
+
     // Fetching the bytes is a genuine external effect: on a synced graph it is a network round
     // trip plus a decrypt, and it has to re-run when the tab is pointed at a different asset.
     $effect(() => {
-        const target = view.target;
+        const target = wanted;
         void attempt;
         resolved = null;
         failed = false;
@@ -79,7 +88,7 @@
                     // give the tab that - on a synced graph the difference is a uuid versus
                     // "Q3 Report.pdf". A no-op where the name did not change.
                     if (asset.name !== displayAssetName(target)) {
-                        workspaceService("retitleView")?.(panelId ?? viewKey(view), asset.name);
+                        workspaceService("retitleView")?.(panelId ?? viewKey(untrack(() => view)), asset.name);
                     }
                 },
                 missing: () => (failed = true),

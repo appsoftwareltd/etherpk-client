@@ -56,6 +56,7 @@
         withCachedToolbarColor,
         writeGraphSettings,
     } from "#lib/storage/index.js";
+    import { closedFolderForgetting, forgettingAssetTools } from "#lib/workspace/asset-forgetting.js";
     import {
         type GraphAssetTools,
         filesystemAssetTools,
@@ -3114,7 +3115,7 @@
                 record: graph,
                 settings,
                 adapter,
-                assetTools: filesystemAssetTools(adapter),
+                assetTools: forgettingAssetTools(filesystemAssetTools(adapter), closedFolderForgetting(adapter, graph.id)),
             };
         } catch (err) {
             setRowStatus(

@@ -46,6 +46,8 @@ export interface AssetDeletePrompt {
     /** What to call the asset in the dialog — the resolved name, else the reference. */
     name: string
     plan: AssetDeletePlan
+    /** Deleting the file takes what the person wrote on it, which the dialog says. */
+    takesNotes?: boolean
 }
 
 /** What the user chose. `delete` is only ever offered when the plan allows it. */
@@ -85,6 +87,8 @@ export interface AssetCommandDeps {
     canCopyImage: (ref: string) => boolean
     /** Apply an editor change; the workspace supplies the focused editor. */
     applyToEditor: (command: ReturnType<typeof removeAssetReference>) => boolean
+    /** Whether deleting the asset would delete annotations the person has on it. */
+    holdsNotes?: (assetId: string, ref: string) => Promise<boolean>
     /** Ask the user. Resolves with their choice. */
     promptDelete: (prompt: AssetDeletePrompt) => Promise<AssetDeleteChoice>
     /** Surface a failure (the workspace's status line). */
@@ -187,6 +191,12 @@ export function registerAssetCommands(
         deps.openAsset(assetViewTarget(assetId, target.ref), target.ref, target.line, target.concept)
     }
 
+    /** What the prompt adds when the file goes and takes annotations with it. Not known counts as none. */
+    async function notesTaken(deletesFile: boolean, assetId: string, ref: string): Promise<Pick<AssetDeletePrompt, 'takesNotes'>> {
+        if (!deletesFile || !deps.holdsNotes) return {}
+        return (await deps.holdsNotes(assetId, ref).catch(() => false)) ? { takesNotes: true } : {}
+    }
+
     async function remove(target: EditableAssetTarget): Promise<void> {
         const tools = deps.tools()
         const assetId = tools?.identify(target.ref)
@@ -207,7 +217,7 @@ export function registerAssetCommands(
         // The name is only for the prompt. A file that cannot be fetched just now, or that arrived
         // damaged, must still be removable, so a failed lookup falls back to the reference.
         const name = (await deps.store()?.resolve(target.ref).catch(() => null))?.name ?? target.ref
-        const choice = await deps.promptDelete({ name, plan })
+        const choice = await deps.promptDelete({ name, plan, ...(await notesTaken(plan.deleteBytes, assetId, target.ref)) })
         if (choice === 'cancel') return
 
         // The reference goes first, and only if it actually went do the bytes follow: an editor

@@ -32,6 +32,8 @@ export interface PlainStateFolder {
     put(kind: string, id: string, value: unknown): Promise<void>
     /** Remove an item. Removing one that is not there is not an error. */
     remove(kind: string, id: string): Promise<void>
+    /** Resolves once every write and removal asked for so far has run. */
+    settled(): Promise<void>
     /** The items that could not be read, by path, since this folder was opened. */
     unreadable(): readonly string[]
 }
@@ -126,6 +128,8 @@ export function createPlainStateFolder(tree: FolderTreeAdapter, options: PlainSt
                 }
             })
         },
+
+        settled: async () => void (await writes),
 
         unreadable: () => [...bad].sort(),
     }

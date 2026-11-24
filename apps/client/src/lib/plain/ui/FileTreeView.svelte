@@ -31,7 +31,7 @@
     import PdfBookmarksSection from '#lib/document/view/PdfBookmarksSection.svelte'
     import { baseName, directoryHolding, dirOf, joinPath } from '../plain-path'
     import { type PlainSession, plainSession } from '../plain-session.svelte'
-    import { createFile, createFolder, deleteEntry, deleteSentence, moveEntry } from '../tree-operations'
+    import { createFile, createFolder, deleteSentence, moveEntry } from '../tree-operations'
 
     // Every View is handed its ViewRef; the tree shows the whole folder and reads nothing from it.
     let { view: _view }: { view: ViewRef } = $props()
@@ -344,12 +344,27 @@
 
     // --- delete ---------------------------------------------------------------------------------
 
+    /** How many times a delete has been asked about: an answer that comes late is for an earlier one. */
+    let deleteAsked = 0
+    const NOTES_MS = 1500
+
+    /** `answer`, or `otherwise` once it has taken too long to keep the person waiting. One that fails is nothing. */
+    function soon(answer: Promise<string | null>, otherwise: string): Promise<string | null> {
+        return Promise.race([answer.catch(() => null), new Promise<string>((resolve) => setTimeout(() => resolve(otherwise), NOTES_MS))])
+    }
+
     async function askDelete(path: string, kind: 'file' | 'directory'): Promise<void> {
         const current = session
         if (!current) return
         treeError = null
+        const asked = ++deleteAsked
         try {
-            deleting = { path, kind, sentence: await deleteSentence(current.tree, path, kind) }
+            // Reading what was written on the files can take a while in a large directory.
+            const notes = await soon(current.notesGoingWith(path), 'annotations, if any')
+            const sentence = await deleteSentence(current.tree, path, kind, notes)
+            // Asked about another entry meanwhile.
+            if (asked !== deleteAsked) return
+            deleting = { path, kind, sentence }
             deleteOpen = true
         } catch (error) {
             treeError = `Could not read ${baseName(path)}: ${error instanceof Error ? error.message : String(error)}`
@@ -362,8 +377,7 @@
         deleting = null
         if (!current || !going) return
         try {
-            await deleteEntry(current.tree, current.store, going.path)
-            current.entryRemoved(going.path)
+            await current.deleteEntry(going.path)
             if (open.has(going.path)) setOpen(going.path, false)
             current.listingChanged()
         } catch (error) {

@@ -16,6 +16,8 @@
  */
 
 import type { AssetByteReadiness } from '#lib/document/asset-delete.js'
+import { sha256Hex } from '#lib/crypto/digest.js'
+import { isReaderFile } from '#lib/document/reader-file.js'
 import { containsCipherFence } from '#lib/document/protection/fence-info.js'
 import type { ProtectedTextReader } from '#lib/document/protection/protected-text-reader.js'
 
@@ -137,6 +139,14 @@ export interface GraphAssetTools {
     identify(ref: string): string | null
     /** Whether an asset's bytes may be destroyed right now. See ADR 0054. */
     readyToDeleteBytes(): Promise<AssetByteReadiness>
+    /**
+     * The SHA-256 of each asset's bytes, by identity, where it can be known: a folder reads its PDFs
+     * and EBooks only, and a synced graph reads the encrypted metadata. It is what a reader keeps a
+     * person's annotations under.
+     */
+    hashesOf?(ids: readonly string[]): Promise<Map<string, string>>
+    /** Whether an asset the graph still holds has these bytes: what is kept under them is that one's too. */
+    copyOf?(hash: string): Promise<boolean>
 }
 
 const DOCUMENT_SUBDIRS: Subdir[] = ['journals', 'pages']
@@ -191,7 +201,39 @@ export function filesystemAssetTools(adapter: DirectoryAdapter, options: Filesys
         remove: (ids) => deleteOrphanedAssets(adapter, ids),
         identify: (ref) => assetNameFromRef(ref),
         readyToDeleteBytes: async () => ({ ready: true }),
+        hashesOf: (ids) => readerFileHashes(adapter, ids),
+        copyOf: (hash) => folderHolds(adapter, hash),
     }
+}
+
+/**
+ * Whether a PDF or an EBook in `assets/` has these bytes. EtherPK names a file after its bytes, so one
+ * named after others is passed over, and one named by hand is read. One that cannot be read may be it.
+ */
+async function folderHolds(adapter: DirectoryAdapter, hash: string): Promise<boolean> {
+    for (const { name } of await adapter.list('assets')) {
+        if (!isReaderFile(name)) continue
+        const named = assetHashFromName(name)?.hash
+        if (named !== undefined && !hash.startsWith(named)) continue
+        const held = (await readerFileHashes(adapter, [name])).get(name)
+        if (held === hash || (held === undefined && (await adapter.exists('assets', name)))) return true
+    }
+    return false
+}
+
+/** The hash of each PDF and EBook among `ids` that can be read. */
+async function readerFileHashes(adapter: DirectoryAdapter, ids: readonly string[]): Promise<Map<string, string>> {
+    const hashes = new Map<string, string>()
+    for (const id of ids) {
+        if (!isReaderFile(id)) continue
+        try {
+            const { bytes } = await adapter.readBinary('assets', id)
+            hashes.set(id, await sha256Hex(bytes))
+        } catch {
+            // Gone already, or closed to us: what was kept about it cannot be found.
+        }
+    }
+    return hashes
 }
 
 /** Remove the given asset files. Returns the number actually removed. */

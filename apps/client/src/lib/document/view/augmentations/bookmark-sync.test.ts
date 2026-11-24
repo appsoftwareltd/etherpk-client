@@ -110,6 +110,32 @@ describe('the editor and the bookmark list', () => {
         expect(persist).toHaveBeenCalledTimes(2)
     })
 
+    it('says nothing when an editor closes after its graph did, and tells the console', async () => {
+        const told = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        setBookmarks([bookmarkOn(NOTES, 2)], null)
+        const { host, sync } = editorOver(NOTES)
+        await settle()
+        host.dispatch({ changes: { from: 0, insert: '- rake the path\n' } })
+        // The graph's list closes while the write-back waits, and the editor goes right after it.
+        resetBookmarks()
+        sync.destroy()
+        await settle()
+        expect(getNotices()).toEqual([])
+        expect(told).toHaveBeenCalledTimes(1)
+        told.mockRestore()
+    })
+
+    it('says what was not saved, that the bookmarks are kept, and when it is tried again', async () => {
+        setBookmarks([bookmarkOn(NOTES, 2)], vi.fn<BookmarksPersist>().mockRejectedValue(new Error('The disk is full.')))
+        const { host } = editorOver(NOTES)
+        await settle()
+        host.dispatch({ changes: { from: 0, insert: '- rake the path\n' } })
+        await settle(WRITE_BACK_DELAY_MS)
+        expect(getNotices().at(-1)?.text).toBe(
+            'The new line numbers of your bookmarks were not saved. The disk is full. Your bookmarks are kept. EtherPK tries again after your next edit to this document.',
+        )
+    })
+
     it('writes back where a bookmark moved once edits settle', async () => {
         setBookmarks([bookmarkOn(NOTES, 2)], null)
         const { host } = editorOver(NOTES)

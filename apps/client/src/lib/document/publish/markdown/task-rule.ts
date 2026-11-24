@@ -51,7 +51,20 @@ export function taskRule(md: MarkdownIt): void {
             tokens[i].attrJoin('class', parsed.done ? 'task done' : 'task')
             const input = `<input type="checkbox" disabled${parsed.done ? ' checked' : ''}> `
             const badges = taskBadges(parsed)
-            inline.content = `${input}${badges.join(' ')}${badges.length > 0 ? ' ' : ''}${parsed.text}`
+            // Put in front once the text is parsed, rather than written into it: markup in the text
+            // would be the document's own, which a print shows as text (ADR 0207).
+            inline.meta = { ...(inline.meta as object | null), taskMarkup: `${input}${badges.join(' ')}${badges.length > 0 ? ' ' : ''}` }
+            inline.content = parsed.text
+        }
+        return true
+    })
+    md.core.ruler.after('inline', 'etherpk_task_markup', (state) => {
+        for (const token of state.tokens) {
+            const markup = (token.meta as { taskMarkup?: string } | null)?.taskMarkup
+            if (token.type !== 'inline' || markup === undefined) continue
+            const open = new state.Token('html_inline', '', 0)
+            open.content = markup
+            token.children = [open, ...(token.children ?? [])]
         }
         return true
     })

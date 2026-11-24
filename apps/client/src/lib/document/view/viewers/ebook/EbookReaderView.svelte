@@ -71,6 +71,8 @@
     let deleteOpen = $state(false);
     /** How long the graph keeps a deleted file (ADR 0184), read as the confirmation opens. */
     let deleteKeptDays = $state<number | "unknown" | undefined>(undefined);
+    /** What goes with the file, as the question names it. */
+    let deleteNotes = $state<string | null>(null);
     let deleteBusy = $state(false);
     let deleteMessage = $state("");
     let toast = $state("");
@@ -419,6 +421,10 @@
     function openDelete() {
         moreOpen = false;
         deleteMessage = "";
+        const held = reader.highlights.length;
+        deleteNotes = held > 0 ? `${held} highlight${held === 1 ? "" : "s"}` : null;
+        // A Plain Folder is asked: a copy of the file keeps what was written on it.
+        void files?.notesGoingWith?.(target).then((notes) => (deleteNotes = notes), () => {});
         deleteOpen = true;
         deleteKeptDays = workspaceService("versions") ? "unknown" : undefined;
         void keptDaysOf(workspaceService("versions")).then((days) => (deleteKeptDays = days));
@@ -438,7 +444,8 @@
             const answer = await files.deleteAsset(target, hash);
             if (answer.deleted) {
                 deleteOpen = false;
-                await forgetDeletedEbook(hash);
+                // A copy of the file keeps its highlights. A Plain Folder's delete has seen to its own.
+                if (!files.plain && !answer.copyLeft) await forgetDeletedEbook(hash);
                 return;
             }
             deleteMessage = answer.reason === "linked" ? `It cannot be deleted while it is linked. Remove the links in ${answer.documents.join(", ")} first.` : answer.message;
@@ -710,7 +717,7 @@
         {#if deleteOpen}
             <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2" role="alert" data-testid="ebook-delete-confirm">
                 <p class="min-w-40 flex-1 text-sm text-(--gk-text-default)">
-                    {deleteFileQuestion(displayName, reader.highlights.length > 0 ? `${reader.highlights.length} highlight${reader.highlights.length === 1 ? "" : "s"}` : null, deleteKeptDays)}
+                    {deleteFileQuestion(displayName, deleteNotes, deleteKeptDays)}
                 </p>
                 <button type="button" class="gk-button gk-button--danger gk-button--small" disabled={deleteBusy} onclick={confirmDelete} data-testid="ebook-delete-submit">Delete</button>
                 <button type="button" class="gk-button gk-button--small" onclick={() => (deleteOpen = false)}>Cancel</button>

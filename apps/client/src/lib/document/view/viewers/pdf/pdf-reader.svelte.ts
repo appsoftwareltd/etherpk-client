@@ -6,7 +6,7 @@
 import { contentMargins, cropFromSamples, pageFitsCrop, samplePages, type DocumentCrop, type Margins } from '#lib/document/pdf/crop-margins.js'
 import { DEFAULT_CUSTOM, DEFAULT_HIGHLIGHT, DEFAULT_INK, knownColour, knownStrokeWidth, type DrawingTool } from '#lib/document/pdf/annotation-palette.js'
 import type { FileSelection } from '#lib/document/file-in-front.js'
-import { pdfDeviceMemory, type PdfPreferences } from '#lib/document/pdf/device-memory.js'
+import { pdfDeviceMemory, type PdfPreferences, type RememberedPdf } from '#lib/document/pdf/device-memory.js'
 import type { PdfOpenedFrom } from '#lib/document/pdf/page-requests.js'
 import { boxesToQuads, mergeLineBoxes, type Box } from '#lib/document/pdf/pdf-geometry.js'
 import { addPdfBookmark, adoptPdfTarget, removePdfBookmark, subscribePdfBookmarks, type PdfBookmark } from '#lib/document/pdf/pdf-bookmarks.js'
@@ -15,12 +15,14 @@ import { SAVE_ENTRY_PREFIX } from '#lib/document/pdf/save-entries.js'
 
 import { loadPdfLibrary, openPdf, pdfHash, type PdfDocument, type PdfLib, type PdfLoadingTask, type PdfWeb } from './pdf-library'
 import { pdfL10n } from './pdf-l10n'
-import { listenForPinch, wheelZoomFactor } from './pdf-pinch'
+import { listenForPinch, type PinchChange, wheelZoomFactor } from './pdf-pinch'
 import { listenForTextDrag } from './pdf-text-drag'
 import { dropSignatures, heldSignatures, holdSignatures, signaturesKey, type HeldSignatures } from './held-signatures.svelte'
 import { listenForHandPan } from './pdf-hand-pan'
 import { HidingControls } from './pdf-hiding-controls'
 import { frameOf, PdfOverlays, type OverlayHost, type OverlayPage, type PdfTool, type PlacedSignature } from './pdf-overlay'
+import { PRINT_UNKNOWN } from '#lib/document/print/print-window.js'
+
 import { printPdf } from './pdf-print'
 import { browserKeepScreenOn, type KeepScreenOn } from './wake-lock'
 
@@ -31,6 +33,10 @@ const NOTE_FONT_SIZE = 11
 const UNDO_DEPTH = 100
 const PLACE_WRITE_DELAY_MS = 1500
 const DARK_PAGES = { background: '#171717', foreground: '#e5e5e5' }
+/** How long the tab's width must stay put before a page fits it again. */
+const WIDTH_SETTLED_MS = 120
+/** The zooms that follow the tab's width, as pdf.js names them. */
+const FITTED_ZOOMS: ReadonlySet<string> = new Set(['auto', 'page-width'])
 /** How close together two taps must land, in time and on screen, to be a double-tap. */
 const DOUBLE_TAP_MS = 320
 const DOUBLE_TAP_PX = 32
@@ -81,6 +87,12 @@ export const TOUCH_PHONE = '(pointer: coarse) and (max-width: 640px), (pointer: 
 
 export function isTouchFirst(): boolean {
     return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
+}
+
+/** The zoom to open at, as pdf.js takes it: a fit to the width fits the width the tab has now. */
+function rememberedZoom({ fitWidth, zoom }: RememberedPdf): string {
+    if (fitWidth) return 'page-width'
+    return zoom ? String(zoom) : 'auto'
 }
 
 export class PdfReader {
@@ -335,7 +347,9 @@ export class PdfReader {
         })
         eventBus.on('scalechanging', ({ scale }: { scale: number }) => {
             this.scale = scale
-            this.applyCropToPages()
+            // A margin is in pixels of the page, so a crop follows the zoom. Without one there is nothing
+            // to follow, on any of the pages, at each step of a pinch.
+            if (this.crop) this.applyCropToPages()
         })
         eventBus.on('updateviewarea', ({ location }: { location: { pageNumber: number; top: number } }) => this.onViewArea(location))
         eventBus.on('pagerendered', ({ source }: { source: OverlayPage }) => this.onPageRendered(source))
@@ -359,7 +373,7 @@ export class PdfReader {
         // A link clicked while the file was still loading is newer than the one remembered.
         if (this.openedFrom) this.memory.updatePdf(this.environment.graphId, this.hash, { openedFrom: this.openedFrom })
         else this.openedFrom = remembered.openedFrom ?? null
-        viewer.currentScaleValue = this.heldScale ?? (remembered.zoom ? String(remembered.zoom) : 'auto')
+        viewer.currentScaleValue = this.heldScale ?? rememberedZoom(remembered)
         this.heldScale = null
         this.scale = viewer.currentScale
         if (remembered.crop) void this.setCrop(true)
@@ -462,7 +476,8 @@ export class PdfReader {
 
     private rememberZoom(): void {
         if (!this.viewer || !this.hash) return
-        this.memory.updatePdf(this.environment.graphId, this.hash, { zoom: this.viewer.currentScale })
+        // A fit is remembered as one, so the next visit fits whatever width the tab then has.
+        this.memory.updatePdf(this.environment.graphId, this.hash, { zoom: this.viewer.currentScale, fitWidth: this.viewer.currentScaleValue === 'page-width' })
     }
 
     /**
@@ -506,11 +521,11 @@ export class PdfReader {
         listenForPinch(
             container,
             {
-                onStart: () => this.overlays.cancelStroke(),
-                onPinch: (origin, scaleFactor) => {
-                    this.viewer?.updateScale({ drawingDelay: 400, scaleFactor, origin: this.zoomOrigin(origin[0], origin[1]) })
+                onStart: () => {
+                    this.overlays.cancelStroke()
+                    this.pinchFrom = this.viewer?.currentScale ?? 1
                 },
-                onPan: (dx, dy) => container.scrollBy(-dx, -dy),
+                onMove: (change) => this.onPinch(change),
                 onEnd: () => this.rememberZoom(),
             },
             signal,
@@ -525,12 +540,7 @@ export class PdfReader {
             },
             signal,
         )
-        // The tab changed size (a panel opened, the phone turned): a crop fits its width again.
-        const resized = new ResizeObserver(() => {
-            if (this.crop) this.applyCropScale()
-        })
-        resized.observe(container)
-        signal.addEventListener('abort', () => resized.disconnect())
+        this.fitAgainAsWidthChanges(container, signal)
         // The whole tab, toolbar too: with the pointer anywhere in it the browser would scale the app.
         // On the window, ahead of everything, because a browser that has decided no listener wants a
         // wheel event sends it uncancelable, and then nothing can stop its zoom.
@@ -560,6 +570,57 @@ export class PdfReader {
             { signal },
         )
         container.addEventListener('mouseup', () => this.clearIdleSelecting(), { signal })
+    }
+
+    /** The zoom as two fingers took hold of the page. */
+    private pinchFrom = 1
+
+    /**
+     * The pan goes to pdf.js with the zoom: a zoom puts the page back where pdf.js last measured it, so
+     * a scroll of our own beside it would be undone. The zoom is the gesture's whole zoom, because
+     * pdf.js rounds each one to a hundredth.
+     */
+    private onPinch({ origin, pan, zoom }: PinchChange): void {
+        const viewer = this.viewer
+        if (!viewer) return
+        // A pan alone is no zoom: pdf.js would take it for a chosen one, and the fit would be lost.
+        if (zoom === 1) return viewer.panBy(pan[0], pan[1])
+        viewer.updateScale({ drawingDelay: 400, scaleFactor: (this.pinchFrom * zoom) / viewer.currentScale, origin: this.zoomOrigin(origin[0], origin[1]), pan })
+    }
+
+    /**
+     * The tab changed width: a Sidebar or a panel opened or closed, or the phone turned. A page fitted to
+     * the width fits the new one, once the width has settled: a Sidebar takes a few frames to arrive, and
+     * each fit draws the pages again. A zoom a person chose is left alone. pdf.js keeps the words at the
+     * top of the view at the top.
+     */
+    private fitAgainAsWidthChanges(container: HTMLDivElement, signal: AbortSignal): void {
+        let width = container.clientWidth
+        let settled: ReturnType<typeof setTimeout> | undefined
+        const resized = new ResizeObserver(() => {
+            // The height changes as the bars come and go, and nothing here is fitted to it alone.
+            if (container.clientWidth === width || container.clientWidth === 0) return
+            width = container.clientWidth
+            clearTimeout(settled)
+            settled = setTimeout(() => {
+                // Hidden behind another tab meanwhile: fitted when it is shown again.
+                if (container.clientWidth === 0) width = 0
+                else this.fitAgain()
+            }, WIDTH_SETTLED_MS)
+        })
+        resized.observe(container)
+        signal.addEventListener('abort', () => {
+            clearTimeout(settled)
+            resized.disconnect()
+        })
+    }
+
+    private fitAgain(): void {
+        const viewer = this.viewer
+        if (!viewer) return
+        const zoom = viewer.currentScaleValue
+        if (this.crop) this.applyCropScale()
+        else if (FITTED_ZOOMS.has(zoom)) viewer.currentScaleValue = zoom
     }
 
     private onWheel(event: WheelEvent): void {
@@ -1271,7 +1332,7 @@ export class PdfReader {
         this.printError = null
         this.printing = { done: 0, total: pdf.numPages }
         try {
-            await printPdf({
+            const outcome = await printPdf({
                 pdf,
                 lib,
                 annotations: includeAnnotations ? this.annotations : [],
@@ -1279,6 +1340,7 @@ export class PdfReader {
                 onProgress: (done, total) => (this.printing = { done, total }),
                 signal: this.controller.signal,
             })
+            if (outcome === 'unknown' && !this.destroyed) this.printError = PRINT_UNKNOWN
         } catch (error) {
             if (!this.destroyed) this.printError = `This PDF could not be printed (${error instanceof Error ? error.message : String(error)}).`
         } finally {

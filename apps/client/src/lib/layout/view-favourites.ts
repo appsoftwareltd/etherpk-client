@@ -10,6 +10,7 @@
  * Whether the extension behind a kind is on, off or gone comes from the workspace's extension host
  * through `availability`, so this stays plain TypeScript, tested in Node.
  */
+import { isReaderFile } from '#lib/document/reader-file.js'
 import type { ViewFavourite } from '#lib/document/favourite-entry.js'
 
 import type { ViewRef, ViewRegistry, ViewRegistryEntry } from './types'
@@ -55,9 +56,6 @@ function viewOf(entry: ViewRegistryEntry | undefined, favourite: ViewFavourite):
     return entry.soleTarget !== undefined && favourite.concept === undefined ? { kind: favourite.kind, target: entry.soleTarget } : null
 }
 
-/** The Asset tabs that are readers, by the file name the tab shows: a PDF's and an EBook's. */
-const READER_FILE = /\.(pdf|epub)$/i
-
 /** A PDF or an EBook names itself from what was stored, as a synced Asset's own target is a bare id. */
 function pdfRow({ kind, concept, name }: ViewFavourite): ViewFavouriteRow | null {
     if (kind !== 'asset' || concept === undefined) return null
@@ -68,7 +66,7 @@ export function createViewFavourites(deps: ViewFavouritesDeps): ViewFavourites {
     const { registry } = deps
     return {
         favouriteOf(view, title) {
-            if (view.kind === 'asset') return title !== undefined && READER_FILE.test(title) ? { kind: 'asset', concept: view.target, name: title } : null
+            if (view.kind === 'asset') return title !== undefined && isReaderFile(title) ? { kind: 'asset', concept: view.target, name: title } : null
             const entry = registry.get(view.kind)
             if (!entry?.favourite) return null
             if (entry.conceptTarget) return view.target.trim() === '' ? null : { kind: view.kind, concept: view.target }

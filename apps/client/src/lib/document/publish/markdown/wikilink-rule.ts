@@ -40,20 +40,28 @@ function stripBrackets(text: string): string {
     return text.replace(/^\[+/, '').replace(/\]+$/, '')
 }
 
-export function wikilinkRule(md: MarkdownIt, resolve: WikilinkResolve): void {
+/** `asText` writes each link as its words alone, for a print, where no link into the graph leads anywhere. */
+export function wikilinkRule(md: MarkdownIt, resolve: WikilinkResolve, asText = false): void {
     md.inline.ruler.before('link', 'etherpk_wikilink', (state: StateInline, silent: boolean): boolean => {
         const { src, pos, posMax } = state
         if (pos + 4 >= posMax || !src.startsWith('[[', pos)) return false
         const close = outermostClose(src, pos, posMax)
         if (close === -1) return false
-        if (silent) return true
-
         const run = src.slice(pos, close + 1)
         const segments = wikilinkSegments(parseWikilinks(run))
         if (segments.length === 0) return false
+        if (silent) {
+            // Skipped over, not written: markdown-it looks ahead this way, and refuses a rule that stays put.
+            state.pos = close + 1
+            return true
+        }
         for (const seg of segments) {
             const display = stripBrackets(run.slice(seg.start, seg.end))
             if (display.length === 0) continue
+            if (asText) {
+                state.push('text', '', 0).content = display
+                continue
+            }
             const target = resolve(seg.wikilink.concept)
             const open = state.push('link_open', 'a', 1)
             open.attrs = [

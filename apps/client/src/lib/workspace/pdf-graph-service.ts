@@ -21,6 +21,8 @@ import { pdfBookmarksFileBinding } from '#lib/storage/fs/pdf-bookmarks-file.js'
 import { assetIdFromRef, type ServerAssetStore } from '#lib/storage/synced/server-asset-store.js'
 import type { GraphSync } from '#lib/sync/graph-sync.js'
 
+import { lastCopy } from './asset-forgetting'
+
 /** What deleting and renaming need of the workspace, whichever backend it opened. */
 export interface PdfServiceContext {
     graphId: string
@@ -30,8 +32,8 @@ export interface PdfServiceContext {
     protectedUsage(needles: readonly string[]): Promise<ProtectedAssetUsage>
     /** The text of every [[Quick Note]] the graph holds: a note can reference a file (ADR 0186). */
     quickNoteTexts?(): readonly string[]
-    /** The Asset has gone: its Favourite, its Recent, its PDF Bookmarks and its tab go with it. */
-    assetGone(target: string, hash: string): void
+    /** The Asset has gone: its Favourite, its Recent, its PDF Bookmarks and its tab go with it. `hash` is null while a copy is left. */
+    assetGone(target: string, hash: string | null): void
     /** The Asset has a new identity or name: its Favourite, its Recent and its tab follow. */
     assetRenamed(from: string, to: string, name: string): void
 }
@@ -59,8 +61,19 @@ async function deleteAsset(context: PdfServiceContext, state: PdfStateHost, targ
         return { deleted: false, reason: 'not-ready', message: refusalMessage(plan.blockedBy) }
     }
     await tools.remove([id])
-    // After the bytes: a failure here leaves a little private state behind, never a missing PDF
-    // whose annotations were deleted first.
+    return forgetDeleted(context, state, tools, target, hash)
+}
+
+/**
+ * Forget what was kept about a PDF whose bytes have gone, after them: a failure here leaves a little
+ * private state behind, never a missing PDF whose annotations were deleted first. Another Asset with
+ * the same bytes keeps what is kept under them.
+ */
+async function forgetDeleted(context: PdfServiceContext, state: PdfStateHost, tools: GraphAssetTools, target: string, hash: string): Promise<AssetDeleteAnswer> {
+    if (!(await lastCopy(tools, hash))) {
+        context.assetGone(target, null)
+        return { deleted: true, copyLeft: true }
+    }
     await state.forget(hash).catch((error: unknown) => console.warn('[pdf] could not delete the state of a deleted PDF', error))
     context.assetGone(target, hash)
     return { deleted: true }

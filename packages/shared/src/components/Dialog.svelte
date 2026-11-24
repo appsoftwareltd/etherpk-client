@@ -270,7 +270,7 @@
                         </div>
 
                         {#if footer}
-                            <div class="flex justify-end gap-2 border-t border-neutral-100 dark:border-neutral-800 px-5 py-3 pointer-coarse:[&_button]:min-h-11">
+                            <div class="flex flex-wrap justify-end gap-2 border-t border-neutral-100 dark:border-neutral-800 px-5 py-3 pointer-coarse:[&_button]:min-h-11">
                                 {@render footer()}
                             </div>
                         {/if}

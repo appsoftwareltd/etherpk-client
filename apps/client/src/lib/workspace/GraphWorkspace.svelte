@@ -369,18 +369,23 @@
     import { registerBlockCommands } from "#lib/document/commands/block-commands.js";
     import { bookmarksFileBinding } from "#lib/storage/fs/bookmarks-file.js";
     import { cfiFromReference, requestEbookPlace } from "#lib/document/ebook/ebook-links.js";
-    import { followEbookRename, removeEbookBookmarksOf, resetEbookBookmarks } from "#lib/document/ebook/ebook-bookmarks.js";
+    import { followEbookRename, getEbookBookmarks, removeEbookBookmarksAt, resetEbookBookmarks } from "#lib/document/ebook/ebook-bookmarks.js";
     import type { EbookGraphService } from "#lib/document/ebook/ebook-state.js";
     import { createFolderEbookService, createSyncedEbookService, mirroredEbookBookmarks, openFolderEbookBookmarks, openSyncedEbookBookmarks } from "#lib/workspace/ebook-graph-service.js";
     import { ebookHashFromStateFile } from "#lib/document/ebook/file-ebook-state.js";
     import { readOwnEbookStateFiles } from "#lib/document/ebook/synced-ebook-files.js";
     import { pageFromReference, requestPdfPage, notePdfOpenedFrom } from "#lib/document/pdf/page-requests.js";
     import { pdfHashFromStateFile } from "#lib/document/pdf/file-pdf-state.js";
-    import { followPdfRename, removePdfBookmarksOf, resetPdfBookmarks } from "#lib/document/pdf/pdf-bookmarks.js";
+    import { followPdfRename, getPdfBookmarks, removePdfBookmarksAt, resetPdfBookmarks } from "#lib/document/pdf/pdf-bookmarks.js";
     import { orphanNote, type OrphanNotesInput } from "#lib/document/pdf/orphan-notes.js";
     import { pdfFavouriteTarget, removePdfFavourite, renamePdfFavourite } from "#lib/document/pdf/pdf-favourites.js";
     import { readOwnPdfStateFiles } from "#lib/document/pdf/synced-pdf-files.js";
     import type { PdfGraphService } from "#lib/document/pdf/pdf-service.js";
+    import { mainViewInFront } from "#lib/layout/main-view.js";
+    import { registerPrintCommands } from "#lib/document/commands/print-commands.js";
+    import { graphPrinting } from "#lib/workspace/print-service.js";
+    import { isReaderFile } from "#lib/document/reader-file.js";
+    import { forgetFolderState, forgetSyncedState, forgettingAssetTools } from "#lib/workspace/asset-forgetting.js";
     import {
         createFolderPdfService,
         createSyncedPdfService,
@@ -1818,6 +1823,81 @@
      * never holds (protected-asset-usage.ts). Stored text is read without opening anything: the
      * relay-checked batch read on a synced graph, the files on a folder graph.
      */
+    /** An Asset has gone, however it was deleted: what this person kept about it in the open graph goes too. */
+    function assetGone(targets: readonly string[], hash: string | null): void {
+        // The lists are the tab's own, and may be the next graph's by the time the file is gone.
+        if (session.isDisposed()) return;
+        const goes = (bookmark: { hash: string; target: string }) => bookmark.hash === hash || targets.includes(bookmark.target);
+        void removePdfBookmarksAt(getPdfBookmarks().filter(goes).map((bookmark) => bookmark.id)).catch(() => {});
+        void removeEbookBookmarksAt(getEbookBookmarks().filter(goes).map((bookmark) => bookmark.id)).catch(() => {});
+        for (const target of targets) {
+            void removePdfFavourite(target).catch(() => {});
+            recents?.forgetPdf(target);
+        }
+        // Closing the tab in front opens another, whose address closes Settings, and the orphan scan
+        // reports there. Its tabs close with Settings.
+        if (graphSettingsDialog) assetTabsToClose.push(...targets);
+        else closeAssetTabs(targets);
+    }
+
+    /** The tabs of files deleted from Settings, closed when Settings closes. */
+    const assetTabsToClose: string[] = [];
+    function closeAssetTabs(targets: readonly string[]): void {
+        for (const target of targets) controller?.closeView({ kind: "asset", target });
+    }
+    $effect(() => {
+        // Both are read each time: the address leaves Settings a moment after the modal goes.
+        const addressed = settingsTab !== null;
+        const showing = graphSettingsDialog !== null;
+        if (addressed || showing) return;
+        // After the address has gone back to the entry under Settings, which may be a tab to close.
+        void writeOwnHistory(() => closeAssetTabs(assetTabsToClose.splice(0)));
+    });
+
+    /** Delete the private state kept under a file's hash: a PDF's or an EBook's, whichever there is. */
+    async function forgetAssetState(hash: string): Promise<void> {
+        if (fsAdapter) return forgetFolderState(fsAdapter, graphId)(hash);
+        const graph = serverGraph;
+        if (!graph) return;
+        const members = (await currentMembers?.().catch(() => [])) ?? [];
+        await forgetSyncedState(hash, {
+            members: [personalLists?.memberKey ?? null, ...members.map((member) => member.userId)],
+            pdf: { index: (member) => graph.pdfStateIndex(member), state: () => createPdfService()?.state },
+            ebook: { index: (member) => graph.ebookStateIndex(member), state: () => createEbookService()?.state },
+        });
+    }
+
+    /** The open graph's asset tools, with what was kept about a deleted file forgotten (asset-forgetting.ts). */
+    function forgettingTools(): GraphAssetTools | null {
+        if (!assetTools) return null;
+        // A synced graph that keeps deleted files keeps their private state with them (ADR 0184).
+        const needsHashes = async () => !serverGraph || !(await keepsDeletedFiles());
+        return forgettingAssetTools(assetTools, {
+            synced: serverGraph !== undefined,
+            known: (id) => assetHashes.get(id),
+            needsHashes,
+            forgetState: forgetAssetState,
+            gone: assetGone,
+        });
+    }
+
+    /** The hashes of files a delete has been asked about, null for a file no reader opens (asset-forgetting.ts). */
+    const assetHashes = new Map<string, string | null>();
+
+    /** Whether deleting the asset would delete annotations this person has on it. Asked before the delete's question. */
+    async function assetHoldsNotes(assetId: string, ref: string): Promise<boolean> {
+        if (!isReaderFile(ref)) {
+            assetHashes.set(assetId, null);
+            return false;
+        }
+        const [notes, hashes, kept] = await Promise.all([orphanNotesInput(), assetTools?.hashesOf?.([assetId]), serverGraph ? keepsDeletedFiles() : false]);
+        const hash = hashes?.get(assetId) ?? null;
+        // Read for each question: a file can be replaced on disk between two.
+        if (hash === null) assetHashes.delete(assetId);
+        else assetHashes.set(assetId, hash);
+        return hash !== null && !kept && notes.annotatedHashes.includes(hash);
+    }
+
     /** The PDF tab's side of the open graph, for whichever backend it is on. */
     function createPdfService(): PdfGraphService | undefined {
         const context: PdfServiceContext = {
@@ -1826,13 +1906,7 @@
             usage: async (needles) => (!graphIndex || graphIndex.isBuilding() ? null : graphIndex.assetUsage(needles)),
             protectedUsage: protectedUsageOf,
             quickNoteTexts: allQuickNoteTexts,
-            assetGone: (target, hash) => {
-                void removePdfBookmarksOf(hash).catch(() => {});
-                void removeEbookBookmarksOf(hash).catch(() => {});
-                void removePdfFavourite(target).catch(() => {});
-                recents?.forgetPdf(target);
-                controller?.closeView({ kind: "asset", target });
-            },
+            assetGone: (target, hash) => assetGone([target], hash),
             assetRenamed: (from, to, name) => {
                 void renamePdfFavourite(from, to, name).catch(() => {});
                 void followPdfRename(from, to, name).catch(() => {});
@@ -1909,7 +1983,7 @@
         void deleteFilesOfDiscardedNotes(
             notes.map((note) => note.text),
             {
-                tools: assetTools,
+                tools: forgettingTools(),
                 usage: async (needles) => (!graphIndex || graphIndex.isBuilding() ? null : graphIndex.assetUsage(needles)),
                 protectedUsage: protectedUsageOf,
                 noteTexts: allQuickNoteTexts,
@@ -5202,6 +5276,27 @@
                 copyFilePath: (concept) => void copyDocumentFilePath(concept),
             },
         );
+        // Print or save as PDF… (ADR 0207), through the projection the editors read.
+        const detachPrintCommands = registerPrintCommands(
+            commandRegistry,
+            contributions,
+            graphPrinting({
+                store: () => protectedStore ?? store ?? null,
+                isProtected: (concept) => protectionKindOf(concept) !== "none",
+                drawing: () => {
+                    const { renderMermaid, renderMap } = publishEnvironment();
+                    return { renderMermaid, renderMap };
+                },
+                asset: async (reference) => (await assetStore?.resolve(reference))?.url ?? null,
+                front: () => (controller ? (mainViewInFront(controller.serialize().model)?.view ?? null) : null),
+                fence: lookupInteractiveFence,
+            }),
+        );
+        const detachDocumentRows = detachDocumentCommands;
+        detachDocumentCommands = () => {
+            detachDocumentRows?.();
+            detachPrintCommands();
+        };
         // The index is read through `graphIndex` at call time because the open can swap it for an
         // inline one (see `useGraphIndex`).
         const indexClosed = () => Promise.reject(new Error("The graph's index is not open."));
@@ -5344,7 +5439,8 @@
             contributions,
             {
                 store: () => assetStore ?? null,
-                tools: () => assetTools,
+                tools: forgettingTools,
+                holdsNotes: assetHoldsNotes,
                 index: () => graphIndex ?? null,
                 protectedUsage: protectedUsageOf,
                 quickNoteTexts: allQuickNoteTexts,
@@ -7990,7 +8086,7 @@
      * the copy until something unrelated happened to trigger a full pass.
      */
     function mirrorAwareAssetTools(): GraphAssetTools | null {
-        const tools = assetTools;
+        const tools = forgettingTools();
         if (!tools) return null;
         return {
             ...tools,
@@ -8195,10 +8291,14 @@
         resetFavourites();
         resetQuickNotes();
         noteInProgress.reset();
-        // The editors were destroyed above (renderer.destroy), and each wrote back where its
-        // bookmarks are as it went. Those writes are bound to this graph's list. The wait for them
-        // is at the end of this function, so the graph's storage, which is disposed after it,
-        // is still open when they run.
+        // Everything every packaged extension added to this graph is taken back (ADR 0121). Before
+        // the bookmark list closes: the Task Editor is an extension's, stands outside the Layout, and
+        // holds editors that store where their bookmarks are as they close.
+        extensionHost.stop();
+        // The Layout's editors were destroyed above (renderer.destroy) and an extension's just now,
+        // and each wrote back where its bookmarks are as it went. Those writes are bound to this
+        // graph's list. The wait for them is at the end of this function, so the graph's storage,
+        // which is disposed after it, is still open when they run.
         const bookmarkWrites = bookmarkList?.close() ?? Promise.resolve();
         bookmarkList = undefined;
         resetBookmarkStatus();
@@ -8209,8 +8309,6 @@
         backlinksPreferences = undefined;
         detachDocumentCommands?.();
         detachDocumentCommands = undefined;
-        // Everything every packaged extension added to this graph is taken back (ADR 0121).
-        extensionHost.stop();
         closeFenceWindow();
         closeExtensionWindow();
         setFenceHosting(null);
@@ -8263,7 +8361,7 @@
         // Last, and awaited: the session disposes the store, the root document and the cache only
         // after this resolves (graph-session.ts runs session teardown before the open's resources),
         // so the bookmark writes made before the close land in this graph. The wait is bounded by
-        // CLOSE_WAIT_MS. A write still queued then is refused and reported, never lost quietly.
+        // CLOSE_WAIT_MS. A write still queued then is refused, and its caller is told.
         await bookmarkWrites;
     }
 

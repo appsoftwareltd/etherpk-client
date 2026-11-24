@@ -22,6 +22,9 @@
     import { registerFindCommands } from '#lib/document/commands/find-commands.js'
     import { registerLinkCommands } from '#lib/document/commands/link-commands.js'
     import { registerPasteCommands } from '#lib/document/commands/paste-commands.js'
+    import { registerPrintCommands } from '#lib/document/commands/print-commands.js'
+    import { mainViewInFront } from '#lib/layout/main-view.js'
+    import { plainPrinting } from '#lib/workspace/print-service.js'
     import { revealDocumentLine } from '#lib/document/reveal.js'
     import { registerAugmentationRenderers } from '#lib/document/view/augmentations/renderers/register.js'
     import {
@@ -46,14 +49,14 @@
     import { IMAGE_DISPLAY_SIZE_OFF } from '#lib/storage/fs/graph-settings.js'
     import { describeFilesystemSaveFailure } from '#lib/storage/fs/save-error-copy.js'
     import { createIdbGraphRegistry } from '#lib/storage/graph-registry-idb.js'
-    import { getBookmarks, renameBookmarkConcept, sanitizeBookmarks, setBookmarks } from '#lib/document/bookmarks/bookmarks.js'
+    import { getBookmarks, removeBookmarksOnConcepts, renameBookmarkConcept, sanitizeBookmarks, setBookmarks } from '#lib/document/bookmarks/bookmarks.js'
     import { registerBookmarkCommands } from '#lib/document/commands/bookmark-commands.js'
     import { registerSpellingCommands } from '#lib/document/commands/spelling-commands.js'
     import { browserFoldMemory, releaseActiveFoldMemory, setActiveFoldMemory } from '#lib/document/view/augmentations/fold-memory.js'
-    import { followEbookRename, resetEbookBookmarks, sanitizeEbookBookmarks, setEbookBookmarks } from '#lib/document/ebook/ebook-bookmarks.js'
+    import { followEbookRename, getEbookBookmarks, removeEbookBookmarksAt, resetEbookBookmarks, sanitizeEbookBookmarks, setEbookBookmarks } from '#lib/document/ebook/ebook-bookmarks.js'
     import { ebookDeviceMemory } from '#lib/document/ebook/ebook-device-memory.js'
     import { pdfDeviceMemory } from '#lib/document/pdf/device-memory.js'
-    import { followPdfRename, resetPdfBookmarks, sanitizePdfBookmarks, setPdfBookmarks } from '#lib/document/pdf/pdf-bookmarks.js'
+    import { followPdfRename, getPdfBookmarks, removePdfBookmarksAt, resetPdfBookmarks, sanitizePdfBookmarks, setPdfBookmarks } from '#lib/document/pdf/pdf-bookmarks.js'
     import type { PdfGraphService } from '#lib/document/pdf/pdf-service.js'
     import { registerAssetViewers } from '#lib/document/view/viewers/register.js'
     import { attachKeybindings, createCommandRegistry, createContributionRegistry, createEventBus } from '#lib/surface/index.js'
@@ -94,11 +97,12 @@
     import { DEFAULT_PLAIN_SETTINGS, type PlainSettings, readPlainSettings, writePastedFiles } from '../plain-settings'
     import { suggestPaths } from '../path-complete-core'
     import { type PlainConflict, type PlainFolderStore, createPlainFolderStore } from '../plain-folder-store'
+    import { bookmarkGoes, type DeletedFiles, forgetDeleted, isUnder, notesGoingWith, readDeleted } from '../forget-deleted'
     import { addFavourite, movedFavourites, readFavourites, removeFavourite, sortFavourites } from '../plain-favourites'
     import { EBOOK_BOOKMARKS, LINE_BOOKMARKS, PDF_BOOKMARKS, listPersist, readList } from '../plain-lists'
     import { type PlainMedia, createPlainMedia } from '../plain-media'
     import { createPlainEbookStateHost, createPlainPdfStateHost } from '../plain-reader-state'
-    import { openPlainSpelling } from '../plain-spelling'
+    import { openPlainSpelling, readDictionary } from '../plain-spelling'
     import { type PlainStateFolder, createPlainStateFolder } from '../plain-state-folder'
     import { deleteEntry, moveEntry } from '../tree-operations'
     import { baseName, directoryHolding, dirOf, joinPath, resolveLink } from '../plain-path'
@@ -373,6 +377,52 @@
         }
     }
 
+    /** Every bookmark of the folder's PDFs and EBooks, which name a file by its bytes and its path. */
+    const readerBookmarks = () => [...getPdfBookmarks(), ...getEbookBookmarks()]
+
+    /**
+     * Delete an entry of the folder, from the tree or from its reader's tab, and what the person
+     * wrote on it (forget-deleted.ts). The bytes are read first and the items go last, so a delete
+     * that fails removes nothing.
+     */
+    async function deleteFromFolder(path: string): Promise<void> {
+        const [folderTree, folderStore, kept] = [tree, store, stateFolder]
+        if (!folderTree || !folderStore || !kept) throw new Error('the folder is not open')
+        // A file whose bytes cannot be read is still deleted, and what names its path still goes.
+        const deleted = await readDeleted(folderTree, kept, path, readerBookmarks()).catch((): DeletedFiles => ({ path, hashes: new Map() }))
+        await deleteEntry(folderTree, folderStore, path)
+        entryRemoved(path)
+        // The tab's reader has written what it held by the time its view is gone.
+        await tick()
+        try {
+            await forgetOnFiles(folderTree, kept, deleted)
+        } catch (error) {
+            // The file is gone either way. What is left in the folder belongs to no file.
+            console.warn('[plain-folder] could not remove what was written on a deleted file', error)
+        }
+    }
+
+    async function forgetOnFiles(folderTree: FolderTreeAdapter, kept: PlainStateFolder, deleted: DeletedFiles): Promise<void> {
+        const left = await forgetDeleted(folderTree, kept, deleted, readerBookmarks())
+        // The folder may have closed meanwhile, and the lists may be the next graph's.
+        if (disposed) return
+        const goes = (bookmark: { hash: string; target: string }) => bookmarkGoes(bookmark, deleted, left)
+        const inDeleted = (gone: string) => isUnder(gone, deleted.path)
+        // All asked for before the first is waited on: each is bound to the list that is open now.
+        await Promise.all([
+            removePdfBookmarksAt(getPdfBookmarks().filter(goes).map((bookmark) => bookmark.id)),
+            removeEbookBookmarksAt(getEbookBookmarks().filter(goes).map((bookmark) => bookmark.id)),
+            removeBookmarksOnConcepts(getBookmarks().map((bookmark) => bookmark.concept).filter(inDeleted)),
+        ])
+        for (const favourite of favourites.filter(inDeleted)) await removeFavourite(kept, favourite)
+        favourites = favourites.filter((favourite) => !inDeleted(favourite))
+        for (const hash of deleted.hashes.keys()) {
+            if (left.hasHash(hash)) continue
+            pdfDeviceMemory().forgetPdf(workspaceId, hash)
+            ebookDeviceMemory().forgetEbook(workspaceId, hash)
+        }
+    }
+
     /** The tree removed an entry: its tabs close, and an emptied main region shows the start View again. */
     function entryRemoved(path: string): void {
         if (!controller) return
@@ -443,9 +493,9 @@
             state: createPlainPdfStateHost({ folder: kept, folderId: workspaceId, memory: pdfDeviceMemory() }),
             backend: 'folder',
             plain: true,
+            notesGoingWith: (target) => notesGoingWith(folderTree, kept, target),
             async deleteAsset(target) {
-                await deleteEntry(folderTree, folderStore, target)
-                entryRemoved(target)
+                await deleteFromFolder(target)
                 void rescan()
                 return { deleted: true }
             },
@@ -515,7 +565,8 @@
         openFile,
         listingChanged: () => void rescan(),
         entryMoved,
-        entryRemoved,
+        notesGoingWith: async (path) => (tree && stateFolder ? notesGoingWith(tree, stateFolder, path) : null),
+        deleteEntry: deleteFromFolder,
         linksMayHaveBroken: (from, to) => void offerLinkRewrite({ from, to }),
         get favourites() {
             return favourites
@@ -780,6 +831,7 @@
                 tree = openTree()
                 // The folder is read once here, so a folder that cannot be read says so before anything mounts.
                 await tree.list('')
+                if (disposed) return
                 store = createPlainFolderStore(tree, {
                     autosaveMs,
                     onConflict: (raised) => {
@@ -802,13 +854,25 @@
                             text: `EtherPK created a hidden .etherpk folder in ${folderName}, where it keeps your highlights and bookmarks. Commit it to share them, or leave it out.`,
                         }),
                 })
-                // The pages and places bookmarked in the folder's PDFs and EBooks: the same lists a graph has.
-                const lineBookmarks = setBookmarks(sanitizeBookmarks(await readList(kept, LINE_BOOKMARKS)), listPersist(kept, LINE_BOOKMARKS))
-                detach.push(() => void lineBookmarks.close())
+                // Read first, opened together below. The lists are the tab's own, one for whichever graph
+                // or folder is open, so a folder left while it is being read must open none of them:
+                // its clean-up has run, and the next graph's lists may be open in their place.
+                const read = {
+                    lines: sanitizeBookmarks(await readList(kept, LINE_BOOKMARKS)),
+                    pdfs: sanitizePdfBookmarks(await readList(kept, PDF_BOOKMARKS)),
+                    ebooks: sanitizeEbookBookmarks(await readList(kept, EBOOK_BOOKMARKS)),
+                    words: await readDictionary(kept),
+                    settings: await readPlainSettings(kept),
+                    favourites: await readFavourites(kept),
+                }
+                if (disposed) return
                 stateFolder = kept
-                settings = await readPlainSettings(kept)
-                favourites = await readFavourites(kept)
-                detach.push(await openPlainSpelling(kept, workspaceId))
+                settings = read.settings
+                favourites = read.favourites
+                // The lines, pages and places bookmarked in the folder's files: the same lists a graph has.
+                const lineBookmarks = setBookmarks(read.lines, listPersist(kept, LINE_BOOKMARKS))
+                detach.push(() => void lineBookmarks.close())
+                detach.push(openPlainSpelling(kept, workspaceId, read.words))
                 // The bullets folded in the folder's files, kept on this device as a graph's are.
                 const folds = browserFoldMemory(workspaceId)
                 setActiveFoldMemory(folds)
@@ -816,8 +880,8 @@
                     releaseActiveFoldMemory(folds)
                     folds.dispose()
                 })
-                setPdfBookmarks(sanitizePdfBookmarks(await readList(kept, PDF_BOOKMARKS)), listPersist(kept, PDF_BOOKMARKS))
-                setEbookBookmarks(sanitizeEbookBookmarks(await readList(kept, EBOOK_BOOKMARKS)), listPersist(kept, EBOOK_BOOKMARKS))
+                setPdfBookmarks(read.pdfs, listPersist(kept, PDF_BOOKMARKS))
+                setEbookBookmarks(read.ebooks, listPersist(kept, EBOOK_BOOKMARKS))
                 detach.push(resetPdfBookmarks, resetEbookBookmarks, registerAssetViewers(contributions))
                 const readerFiles = readerFileService(tree, store, kept)
                 detach.push(
@@ -828,7 +892,6 @@
                         filesRead = true
                     }),
                 )
-                if (disposed) return
 
                 generation = publishWorkspaceServices({
                     graphId: workspaceId,
@@ -884,6 +947,23 @@
                     registerEditorCommands(commands, contributions, { plain: true }),
                     registerLinkCommands(commands, contributions, { onError: (text) => showNotice({ id: 'plain-link', tone: 'error', text }) }),
                     registerPasteCommands(commands, contributions),
+                    registerPrintCommands(
+                        commands,
+                        contributions,
+                        plainPrinting({
+                            store: () => store ?? null,
+                            // No extension runs in a Plain Folder, and no map is drawn. A diagram is.
+                            environment: async () => {
+                                const { createBrowserPublishEnvironment } = await import('#lib/document/publish/host/browser-environment.js')
+                                return createBrowserPublishEnvironment({ graphTheme: async () => null })
+                            },
+                            isMarkdown: (path) => fileEditors.editorOf(path) === 'markdown',
+                            file: async (path, reference) => (await media?.resolve(path, reference))?.url ?? null,
+                            remoteImages: () => profile.remoteImages.allowed(),
+                            nameOf: (path) => baseName(path).replace(/\.(md|markdown)$/i, ''),
+                            front: () => (controller ? (mainViewInFront(controller.serialize().model)?.view ?? null) : null),
+                        }),
+                    ),
                     registerBlockCommands(commands, contributions),
                     registerTabCommands(commands, contributions, { controller: () => controller, confirmClose: sidebars.confirmClose }),
                     registerSidebarCommands(commands, contributions, { binding: sidebars.binding, controller: () => controller, name: (view) => registry.name(view), confirmHide: sidebars.confirmHide }),
@@ -942,10 +1022,12 @@
             window.removeEventListener('pagehide', onPageHide)
             clearInterval(poll)
             saveLayout()
+            sidebars.dispose()
+            // The editors go before the lists they save to: each stores where its bookmarks are as it
+            // closes, and a list that has closed refuses the write.
+            renderer?.destroy?.()
             for (const off of detach) off()
             fileEditors.dispose()
-            sidebars.dispose()
-            renderer?.destroy?.()
             if (plainSession.current === session) plainSession.set(null)
             setActiveLayoutController(null)
             if (generation !== undefined) clearWorkspaceServices(generation)

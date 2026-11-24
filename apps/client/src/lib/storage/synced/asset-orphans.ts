@@ -251,6 +251,18 @@ export function serverAssetTools(deps: ServerAssetOrphanDeps): GraphAssetTools {
         remove: (ids) => deleteOrphanedServerAssets(deps, ids),
         identify: (ref) => assetIdFromRef(ref),
         readyToDeleteBytes: () => serverAssetByteReadiness(deps.graph),
+        async hashesOf(ids) {
+            const hashes = new Map<string, string>()
+            await assetNames(deps, ids, hashes)
+            return hashes
+        },
+        async copyOf(hash) {
+            const hashes = new Map<string, string>()
+            const held = await listCompleteServerAssetIds(deps)
+            await assetNames(deps, held, hashes)
+            // One whose hash could not be read may be it.
+            return held.some((id) => !hashes.has(id)) || [...hashes.values()].includes(hash)
+        },
     }
 }
 

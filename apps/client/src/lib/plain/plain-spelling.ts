@@ -38,9 +38,12 @@ export function dictionaryPersist(folder: PlainStateFolder) {
     }
 }
 
-/** Open Spell Check on a Plain Folder. Returns what closes it. */
-export async function openPlainSpelling(folder: PlainStateFolder, folderId: string): Promise<() => void> {
-    setGraphDictionary(await readDictionary(folder), dictionaryPersist(folder))
+/**
+ * Open Spell Check on a Plain Folder with the `words` read from it ({@link readDictionary}). Returns
+ * what closes it. It reads nothing itself, so a folder left while it was being read opens none of it.
+ */
+export function openPlainSpelling(folder: PlainStateFolder, folderId: string, words: string[]): () => void {
+    setGraphDictionary(words, dictionaryPersist(folder))
     const spell = getBrowserSpellService()
     setActiveSpellService(spell)
     const followPreference = (enabled: boolean) => (enabled ? spell.open(folderId) : spell.close())

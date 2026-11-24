@@ -17,6 +17,7 @@
 
 import type { Keybinding } from '#lib/surface/index.js'
 
+import { printKeyAvailable } from '#lib/document/commands/print-commands.js'
 import { findKeysAvailable } from '#lib/document/find/find-events.js'
 
 /** The parts of the focused element {@link focusLeavesChordFree} reads. */
@@ -80,6 +81,8 @@ export const APP_KEYBINDINGS: AppKeybinding[] = [
     // about that. Listed before Alt+F, so the Search buttons' help text names it first.
     { key: 'Mod+K', command: 'search.open', label: 'Search the graph', group: 'Go to' },
     { key: 'Alt+F', command: 'search.open', label: 'Search the graph', group: 'Go to' },
+    // The browser's own key, which would print the workspace around the document (ADR 0207).
+    { key: 'Mod+P', command: 'document.print', label: 'Print or save as PDF', group: 'Go to', when: printKeyAvailable },
     // ── Sidebars ──────────────────────────────────────────────────────────────────────────
     // One letter per Sidebar (L, R) to toggle it, and one per resident (G, B, T, N, K) to get to it: a
     // reveal ends with the View in front of an expanded Sidebar, a toggle collapses as often as it

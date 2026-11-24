@@ -230,7 +230,8 @@ function assetHrefOf(name: string): string {
     return `assets/${encodeURIComponent(name)}`
 }
 
-function bodyOf(doc: PublishDocument): string {
+/** A document's text without its frontmatter. */
+export function bodyOf(doc: PublishDocument): string {
     return parseFrontmatter(doc.text).body
 }
 
@@ -639,7 +640,7 @@ function includePages(publication: Publication, source: PublishSource, warnings:
 }
 
 /** What the pre-render pass made, each keyed as the renderer asks for it. */
-interface Prerendered {
+export interface Prerendered {
     mermaidSvg: Map<string, string>
     mapPictures: Map<string, MapPicture & { path: string; alt: string }>
     /** What each fence an extension publishes becomes, by its info word and body; null when it is left out. */
@@ -658,7 +659,7 @@ interface Fence {
  * The pre-render pass over every body that will be rendered: what each extension fence becomes,
  * the diagrams, the maps and the highlighted code. A map that cannot be drawn is an error.
  */
-async function prerenderFences(
+export async function prerenderFences(
     bodies: ReadonlyArray<{ doc: PublishDocument; body: string }>,
     probe: DocumentRenderer,
     env: PublishEnvironment,

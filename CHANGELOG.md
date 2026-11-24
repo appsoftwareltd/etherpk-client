@@ -5,6 +5,33 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.49.0 - 2026-11-24
+
+### Client
+
+- **Print a document, or save it as a PDF.** **Print or save as PDF…** on a document's menu, `/print`
+  and **Ctrl+P** (**Cmd+P** on a Mac) print the document in front, every block of it whether folded or
+  not, with its pictures, diagrams, maps and drawings. The browser's print dialog opens, where you pick
+  a printer or save a PDF. Wikilinks print as plain words. A drawing also prints from its own tab, and a
+  markdown file from a folder of files. Protected documents cannot be printed.
+- **Deleting a PDF or an EBook takes what you wrote on it, wherever you delete it.** In a folder of
+  files, deleting one from its tab or the file tree now removes its annotations, highlights, form
+  entries, bookmarks and Favourite from the hidden `.etherpk` folder. The question says how many, and a
+  copy of the file elsewhere in the folder keeps them. In a graph, **Scan for orphaned assets** and
+  deleting the last link to a file now do the same, and the dialog for the link says when annotations
+  go.
+- **PDFs on a tablet.** Opening or closing a Sidebar no longer makes the page jump or redraw. A pinch
+  keeps hold of the place between your fingers, though the zoom still moves in small steps. A PDF set to
+  **Fit the width** fits again when the tab's width changes.
+- **Fixes.**
+  - Leaving a folder or a graph right after an edit no longer shows "Where your bookmarks now are was
+    not saved". The bookmarks are saved as it closes.
+  - Publishing a page no longer fails on maths or a wikilink inside an unclosed bracket.
+  - The buttons of the **Delete this file?** dialog no longer overlap on a phone.
+  - A folder left while it is still opening no longer shows its bookmarks in the graph opened next.
+  - A chat or another panel opened in a document before its text has loaded closes if the document is a
+    protected document.
+
 ## 0.48.0 - 2026-11-24
 
 ### Client

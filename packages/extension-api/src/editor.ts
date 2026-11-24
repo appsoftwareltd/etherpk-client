@@ -296,8 +296,8 @@ export interface FenceOptions {
      */
     publish?(fence: PublishFenceRequest): PublishedFence | null | Promise<PublishedFence | null>
     /**
-     * How a read-only quote of the fence shows it, such as a reference in the Backlinks panel: a
-     * picture, drawn in the theme asked for, or a link. Null, or no `quote`, shows what the quote
+     * How a read-only quote of the fence shows it, such as a reference in the Backlinks panel, or a
+     * print of the document (in the light theme): a picture, drawn in the theme asked for, or a link. Null, or no `quote`, shows what the quote
      * shows without the extension: an ordinary fence's text as code, and for an Extension Fence a note
      * naming the extension. The Client never mounts the widget in a quote.
      *

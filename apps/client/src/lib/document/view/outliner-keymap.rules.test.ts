@@ -22,8 +22,9 @@ import { EditorView, keymap, showTooltip, type WidgetType } from '@codemirror/vi
 import { createCommandRegistry, createContributionRegistry, registerCommandMenuItem, setActiveCommandRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
-import { editAsTextSpec, followFenceRegistrations, interactiveFenceAugmentation, widgetEditsChanges } from './augmentations/interactive-fence'
-import { addInlinePanel, inlinePanelsField, panelCaretBlocks, planPanelInsert, removeInlinePanel } from './augmentations/inline-panels'
+import { caretKeptOff, editAsTextSpec, followFenceRegistrations, interactiveFenceAugmentation, widgetEditsChanges } from './augmentations/interactive-fence'
+import { addInlinePanel, inlinePanelsField, inlinePanelWidgets, panelCaretBlocks, planPanelInsert, removeInlinePanel } from './augmentations/inline-panels'
+import { isProtectedDocumentFacet } from './augmentations/protected-document'
 import { endOfDocument, type EndKind, startAfterCaret, startAtEnd, takeBackIfLeft } from './end-of-document'
 import { type InteractiveFence, registerInteractiveFence } from './augmentations/interactive-fence-contract'
 import { pasteAsFence } from './augmentations/paste-to-fence'
@@ -3863,6 +3864,33 @@ describe('the caret beside an inline panel', () => {
         editor.dispatch(editor.state.update({ effects: removeInlinePanel.of(1) }))
         select(editor, editor.state.doc.line(2).to)
         expect(editor.fixture()).toBe('- Garden\n  - |\n- Kitchen')
+    })
+})
+
+// A panel is never held in a Protected Document (Editor Content Rules → Inline panels). An editor
+// shows before its document's text is read, and until the text arrives nothing says the document is
+// protected, so a panel can open in that moment. It goes when the text shows what the document is.
+describe('an inline panel in a document found to be protected', () => {
+    const CIPHER = '---\ntitle: Diary\n---\n```etherpk-cipher\nv1:c2VjcmV0\n```\n'
+
+    it('goes, and gives its line back to the caret, once the text that arrives is a Protected Document’s (EtherPK)', () => {
+        let protectedDocument = false
+        const editor = editorFixture('|', { extensions: [inlinePanelsField, panelCaretBlocks, isProtectedDocumentFacet.of(() => protectedDocument)] })
+        editor.dispatch(editor.state.update({ effects: addInlinePanel.of({ id: 1, lineStart: 0, mode: 'line' }) }))
+        expect(inlinePanelWidgets(editor.state)).toHaveLength(1)
+        // The read lands: the stored text is one encrypted fence, and the document says so from now on.
+        protectedDocument = true
+        editor.dispatch(editor.state.update({ changes: { from: 0, insert: CIPHER } }))
+        expect(editor.state.field(inlinePanelsField)).toEqual([])
+        expect(inlinePanelWidgets(editor.state)).toEqual([])
+        expect(editor.state.facet(caretKeptOff).flatMap((blocks) => blocks(editor.state))).toEqual([])
+    })
+
+    it('stays where the text that arrives is an ordinary document’s (EtherPK)', () => {
+        const editor = editorFixture('|', { extensions: [inlinePanelsField, panelCaretBlocks, isProtectedDocumentFacet.of(() => false)] })
+        editor.dispatch(editor.state.update({ effects: addInlinePanel.of({ id: 1, lineStart: 0, mode: 'line' }) }))
+        editor.dispatch(editor.state.update({ changes: { from: 0, insert: '- Garden\n- Kitchen\n' } }))
+        expect(inlinePanelWidgets(editor.state)).toHaveLength(1)
     })
 })
 

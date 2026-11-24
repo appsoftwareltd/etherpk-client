@@ -36,6 +36,8 @@ export interface PdfPreferences {
 
 export interface RememberedPdf {
     zoom?: number
+    /** The zoom was a fit to the width, which fits again at another width. */
+    fitWidth?: boolean
     crop?: boolean
     place?: ReadingPlace
     /** The reference last clicked to open it, which a saved copy's link can follow. */

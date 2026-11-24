@@ -7,6 +7,7 @@ import { registerEditorCommands } from './editor-commands'
 import { registerJournalCommands } from './journal-commands'
 import { registerFrontmatterCommands } from './frontmatter-commands'
 import { registerLinkCommands } from './link-commands'
+import { registerPrintCommands } from './print-commands'
 import { registerProtectionCommands } from './protection-commands'
 import { registerQuickNotesCommands } from './quick-notes-commands'
 import { registerSpellingCommands } from './spelling-commands'
@@ -31,6 +32,7 @@ function firstPartyRows() {
     registerJournalCommands(commands, contributions)
     registerTemplateCommands(commands, contributions, unused)
     registerBookmarkCommands(commands, contributions, unused)
+    registerPrintCommands(commands, contributions, unused)
     return commandMenuItemsInOrder(contributions)
 }
 
@@ -89,7 +91,7 @@ describe('the Command Menu order', () => {
                 "Move quick notes to today's journal",
                 'Add frontmatter',
             ],
-            'Go to': ['Search', 'Find and replace', 'Go to backlinks', 'Show older entry', 'Toggle bookmark'],
+            'Go to': ['Search', 'Find and replace', 'Go to backlinks', 'Show older entry', 'Toggle bookmark', 'Print or save as PDF…'],
             Settings: [
                 'Lock protected documents',
                 'Unlock protected documents',

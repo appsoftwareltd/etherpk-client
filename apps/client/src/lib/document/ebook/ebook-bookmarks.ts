@@ -103,6 +103,10 @@ export function adoptEbookBookmarks(next: readonly EbookBookmark[]): void {
     notify()
 }
 
+export function getEbookBookmarks(): EbookBookmark[] {
+    return [...list]
+}
+
 export function subscribeEbookBookmarks(listener: (bookmarks: EbookBookmark[]) => void): () => void {
     listeners.add(listener)
     listener([...list])
@@ -142,11 +146,6 @@ export function removeEbookBookmark(id: string): Promise<void> {
 
 export function removeEbookBookmarksAt(ids: readonly string[]): Promise<void> {
     return change([], ids)
-}
-
-/** The EBook is gone: its bookmarks go with it. */
-export function removeEbookBookmarksOf(hash: string): Promise<void> {
-    return change([], list.filter((bookmark) => bookmark.hash === hash).map((bookmark) => bookmark.id))
 }
 
 /** An EBook was opened, or renamed: every bookmark on these bytes opens this tab under this name. */

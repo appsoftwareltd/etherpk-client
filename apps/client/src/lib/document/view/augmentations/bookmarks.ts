@@ -38,6 +38,7 @@ import { showNotice } from '#lib/activity/notices.js'
 import { captureAnchor, normaliseLine, type LineAnchor } from '../../bookmarks/anchor'
 import {
     addBookmark,
+    BookmarksClosedError,
     bookmarksIn,
     removeBookmarks,
     restoreBookmarks,
@@ -416,7 +417,9 @@ export class BookmarkSync {
     /**
      * Store each bookmark's current anchor; the list writes only those that changed (ADR 0160 §4).
      * Never for protected text. A refused write says so once and is not tried again until the
-     * document changes: the positions are still in the editor.
+     * document changes: the positions are still in the editor. A write refused because the graph has
+     * closed is told to the console alone. Nothing is lost, as the line is found again from its
+     * stored text when the document next opens, and the person has nothing to do about it.
      */
     private writeAnchors(): void {
         if (isProtected(this.view.state)) return
@@ -428,12 +431,16 @@ export class BookmarkSync {
         }
         if (updates.length === 0) return
         updateBookmarkAnchors(updates).catch((err: unknown) => {
+            if (err instanceof BookmarksClosedError) {
+                console.warn('[bookmarks] the place of a bookmark was not saved, as its graph had closed', err)
+                return
+            }
             if (this.writeBackRefused) return
             this.writeBackRefused = true
             showNotice({
                 id: BOOKMARK_STATUS_NOTICE_ID,
                 tone: 'error',
-                text: `Where your bookmarks now are was not saved. ${reason(err)} EtherPK tries again after your next edit.`.trim(),
+                text: ['The new line numbers of your bookmarks were not saved.', reason(err), 'Your bookmarks are kept. EtherPK tries again after your next edit to this document.'].filter(Boolean).join(' '),
             })
         })
     }

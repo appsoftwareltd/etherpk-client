@@ -6,7 +6,7 @@ import {
     followPdfRename,
     getPdfBookmarks,
     removePdfBookmark,
-    removePdfBookmarksOf,
+    removePdfBookmarksAt,
     resetPdfBookmarks,
     sanitizePdfBookmarks,
     setPdfBookmarks,
@@ -47,7 +47,7 @@ describe('PDF Bookmarks', () => {
         await addPdfBookmark(guide, 4)
         await addPdfBookmark({ ...guide, hash: 'b'.repeat(64) }, 1)
         await removePdfBookmark(getPdfBookmarks()[0].id)
-        await removePdfBookmarksOf(HASH)
+        await removePdfBookmarksAt(getPdfBookmarks().filter((b) => b.hash === HASH).map((b) => b.id))
         expect(getPdfBookmarks().map((b) => b.hash)).toEqual(['b'.repeat(64)])
     })
 

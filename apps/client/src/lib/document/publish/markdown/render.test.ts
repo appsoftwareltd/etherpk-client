@@ -104,6 +104,21 @@ describe('createDocumentRenderer', () => {
         expect(html).toContain('<a href="404.html" class="wikilink-missing">Nowhere</a>')
     })
 
+    it('renders a line with maths or a wikilink inside an open bracket, which markdown-it looks ahead through', () => {
+        expect(renderer().render('[[$x^2$').html).toContain('math-inline')
+        expect(renderer().render('[see [[Physics]] first](https://example.com)').html).toContain('physics.html')
+        expect(renderer().render('[cost $x$](https://example.com)').html).toContain('math-inline')
+    })
+
+    it('writes wikilinks as words, and HTML as text, where it is asked to', () => {
+        const { html } = renderer({ wikilinksAsText: true, rawHtml: false }).render('- [ ] #P1 see [[Physics]] and <b>this</b> in $x$\n')
+        expect(html).not.toContain('<a ')
+        expect(html).toContain('see Physics and &lt;b&gt;this&lt;/b&gt; in ')
+        expect(html).toContain('<input type="checkbox" disabled>')
+        expect(html).toContain('Priority 1')
+        expect(html).toContain('math-inline')
+    })
+
     it('leaves a wikilink inside code alone', () => {
         const { html } = renderer().render('`[[Physics]]`\n\n```text\n[[Physics]]\n```\n')
         expect(html).not.toContain('<a')

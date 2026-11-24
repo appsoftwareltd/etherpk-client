@@ -169,6 +169,21 @@ describe('where a panel can open', () => {
         expect(inlinePanelWidgets(withPanel('- Garden\n- Kitchen', 0))[0].spaceAbove).toBe(false)
     })
 
+    it('holds no panel in a Protected Document: one opened before the document was known to be protected goes with the next change', () => {
+        let protectedDocument = false
+        let s = EditorState.create({ doc: '', extensions: [editorAnalysis(), inlinePanelsField, isProtectedDocumentFacet.of(() => protectedDocument)] })
+        s = s.update({ effects: addInlinePanel.of({ id: 1, lineStart: 0, mode: 'line' }) }).state
+        expect(s.field(inlinePanelsField)).toHaveLength(1)
+        protectedDocument = true
+        // Any transaction: the text arriving, or the tick a lock or an unlock sends.
+        s = s.update({}).state
+        expect(s.field(inlinePanelsField)).toEqual([])
+        // Nor is one added there, whoever asks.
+        s = s.update({ effects: addInlinePanel.of({ id: 2, lineStart: 0, mode: 'line' }) }).state
+        expect(s.field(inlinePanelsField)).toEqual([])
+        expect(inlinePanelWidgets(s)).toEqual([])
+    })
+
     it('never opens in a Protected Document, nor in the frontmatter', () => {
         expect(panelAnchorFor(state('- Garden', true), 'caret')).toBeNull()
         const front = state('---\ntitle: Garden\n---\n- water').update({ selection: { anchor: 5 } }).state

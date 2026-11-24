@@ -43,7 +43,19 @@ export interface RendererOptions {
      * [[Extension Fence]] with no output is left out, never printed as its data (ADR 0138).
      */
     fenceOutput?(lang: string, code: string): FenceOutputRef | null | undefined
+    /** Write a wikilink as its words, with no link: for a print (ADR 0207). */
+    wikilinksAsText?: boolean
+    /** Whether HTML in the document is markup, as on a site, or the text the editor shows it as. Default: markup. */
+    rawHtml?: boolean
+    /**
+     * The HTML to write in place of what has no picture here, a recording among them. Absent: a site
+     * leaves an Extension Fence and a map out, and has a player for a recording.
+     */
+    omitted?(what: Omitted): string
 }
+
+/** Something a document shows that has no picture to print. */
+export type Omitted = { kind: 'extension'; info: string } | { kind: 'map' } | { kind: 'video' | 'audio'; name: string }
 
 /** A fence an extension published, as a page shows it: its picture, or a link with a picture from the web. */
 export type FenceOutputRef =
@@ -184,13 +196,13 @@ function mediaElement(asset: string | null, target: string, src: string, alt: Pa
 }
 
 export function createDocumentRenderer(options: RendererOptions): DocumentRenderer {
-    const md = new MarkdownIt({ html: true, linkify: true, typographer: false })
+    const md = new MarkdownIt({ html: options.rawHtml ?? true, linkify: true, typographer: false })
     // markdown-it refuses `file:` links as unsafe; the editor renders them (they copy their path,
     // ADR 0079's neighbour `file-link.ts`), and on a static site the link is merely inert.
     const validateLink = md.validateLink
     md.validateLink = (url) => validateLink(url) || /^file:\/\//i.test(url)
     listItemEndRule(md)
-    wikilinkRule(md, options.resolve)
+    wikilinkRule(md, options.resolve, options.wikilinksAsText)
     markRule(md)
     mathRule(md)
     taskRule(md)
@@ -204,6 +216,25 @@ export function createDocumentRenderer(options: RendererOptions): DocumentRender
         if (name === null || href === null) return null
         if (!state.assets.includes(name)) state.assets.push(name)
         return href
+    }
+
+    /** A recording in the graph's files: the browser's player, or what is said in its place where none plays. */
+    function recording(name: string | null, src: string, href: string | null, alt: ParsedAlt): string | null {
+        const media = name === null ? null : mediaKindOfTarget(src)
+        if (name === null || media === null || !options.omitted) return mediaElement(name, src, href ?? src, alt)
+        return options.omitted({ kind: media, name: alt.cleanAlt || name })
+    }
+
+    /** What is written in place of a block with no picture: nothing on a site, which says so in its report. */
+    const omitted = (what: Omitted): string => options.omitted?.(what) ?? ''
+
+    /** A Map Block's picture. */
+    function mapFence(code: string): string {
+        // The publisher stops before rendering a page whose map it could not draw, so a map
+        // without a picture here is one no host was asked for: it is left out, never printed.
+        const picture = options.mapPicture?.(code)
+        if (!picture) return omitted({ kind: 'map' })
+        return `<figure class="map"><img src="${escapeHtml(picture.src)}" alt="${escapeHtml(picture.alt)}" width="${picture.width}" height="${picture.height}" loading="lazy"></figure>\n`
     }
 
     const defaultImage = md.renderer.rules.image
@@ -220,7 +251,7 @@ export function createDocumentRenderer(options: RendererOptions): DocumentRender
         // Image syntax over a recording in the graph's files: the browser's own player, since the
         // editor's is not shipped to a published site. The original target decides, not the
         // rewritten one, so a recording on another site stays the image syntax it was written as.
-        const player = mediaElement(name, src, href ?? src, parsed)
+        const player = recording(name, src, href, parsed)
         if (player !== null) return player
         token.attrSet('alt', parsed.cleanAlt)
         if (parsed.maxWidth !== undefined) {
@@ -267,17 +298,11 @@ export function createDocumentRenderer(options: RendererOptions): DocumentRender
             return `<div class="math math-block">${renderMath(code.replace(/\n$/, ''), true)}</div>\n`
         }
         if (lang === 'etherpk-cipher') return '' // never reached: such a document is excluded before rendering
-        if (lang === MAP_FENCE_INFO) {
-            // The publisher stops before rendering a page whose map it could not draw, so a map
-            // without a picture here is one no host was asked for: it is left out, never printed.
-            const picture = options.mapPicture?.(code)
-            if (!picture) return ''
-            return `<figure class="map"><img src="${escapeHtml(picture.src)}" alt="${escapeHtml(picture.alt)}" width="${picture.width}" height="${picture.height}" loading="lazy"></figure>\n`
-        }
+        if (lang === MAP_FENCE_INFO) return mapFence(code)
         const output = options.fenceOutput?.(lang, code)
         if (output) return fenceOutputHtml(output)
         // Left out, or published by nothing: an Extension Fence is never printed as its data.
-        if (output === null || isExtensionFenceInfo(lang)) return ''
+        if (output === null || isExtensionFenceInfo(lang)) return omitted({ kind: 'extension', info: lang })
         const highlighted = options.highlighted?.(lang, code)
         const cls = lang === '' ? '' : ` class="language-${escapeHtml(lang)}"`
         const inner = highlighted ?? escapeHtml(code)

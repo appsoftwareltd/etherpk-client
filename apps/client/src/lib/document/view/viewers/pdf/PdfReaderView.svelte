@@ -70,6 +70,8 @@
     let deleteOpen = $state(false);
     /** How long the graph keeps a deleted file (ADR 0184), read as the confirmation opens. */
     let deleteKeptDays = $state<number | "unknown" | undefined>(undefined);
+    /** What goes with the file, as the question names it. */
+    let deleteNotes = $state<string | null>(null);
     let deleteBusy = $state(false);
     let deleteMessage = $state("");
     let closeGuardOpen = $state(false);
@@ -526,6 +528,10 @@
     function openDelete() {
         moreOpen = false;
         deleteMessage = "";
+        const held = reader.annotations.length;
+        deleteNotes = held > 0 ? `${held} annotation${held === 1 ? "" : "s"}` : null;
+        // A Plain Folder is asked: a copy of the file keeps what was written on it.
+        void service?.notesGoingWith?.(target).then((notes) => (deleteNotes = notes), () => {});
         deleteOpen = true;
         deleteKeptDays = workspaceService("versions") ? "unknown" : undefined;
         void keptDaysOf(workspaceService("versions")).then((days) => (deleteKeptDays = days));
@@ -833,7 +839,7 @@
         {#if deleteOpen}
             <div class="flex flex-wrap items-center gap-2 border-b border-(--gk-surface-2) bg-(--gk-surface-1) p-2" role="alert" data-testid="pdf-delete-confirm">
                 <p class="min-w-40 flex-1 text-sm text-(--gk-text-default)">
-                    {deleteFileQuestion(displayName, reader.annotations.length > 0 ? `${reader.annotations.length} annotation${reader.annotations.length === 1 ? "" : "s"}` : null, deleteKeptDays)}
+                    {deleteFileQuestion(displayName, deleteNotes, deleteKeptDays)}
                 </p>
                 <button type="button" class="gk-button gk-button--danger gk-button--small" disabled={deleteBusy} onclick={confirmDelete} data-testid="pdf-delete-submit">Delete</button>
                 <button type="button" class="gk-button gk-button--small" onclick={() => (deleteOpen = false)}>Cancel</button>
@@ -1410,21 +1416,5 @@
         background: var(--gk-surface-0);
         color: var(--gk-text-default);
         font-size: 0.875rem;
-    }
-    /* Printing: only the prepared pages show. */
-    :global(.etherpk-pdf-print) {
-        display: none;
-    }
-    @media print {
-        :global(body.etherpk-pdf-printing > *:not(.etherpk-pdf-print)) {
-            display: none !important;
-        }
-        :global(body.etherpk-pdf-printing .etherpk-pdf-print) {
-            display: block;
-        }
-        :global(.etherpk-pdf-print img) {
-            display: block;
-            break-after: page;
-        }
     }
 </style>

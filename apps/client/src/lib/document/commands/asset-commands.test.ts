@@ -250,6 +250,16 @@ describe('asset.delete', () => {
         })
     })
 
+    it('tells the dialog when annotations go with the file, and only when the file goes', async () => {
+        const h = harness({ holdsNotes: async () => true })
+        await h.commands.execute(ASSET_DELETE, target)
+        expect(h.deps.promptDelete).toHaveBeenCalledWith(expect.objectContaining({ takesNotes: true }))
+
+        const unsure = harness({ holdsNotes: async () => Promise.reject(new Error('offline')) })
+        await unsure.commands.execute(ASSET_DELETE, target)
+        expect(unsure.deps.promptDelete).toHaveBeenCalledWith(expect.not.objectContaining({ takesNotes: true }))
+    })
+
     it('does nothing at all when the dialog is cancelled', async () => {
         const h = harness({}, 'cancel')
 

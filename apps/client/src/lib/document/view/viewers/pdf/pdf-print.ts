@@ -1,8 +1,9 @@
 /**
  * Printing a PDF. A frame holding the file is refused (ADR 0055), so this prints the way pdf.js's own
- * viewer does: render each page into an image, in a container only print media shows, with a rule
- * that hides the app, then ask the browser to print the window.
+ * viewer does: render each page into an image, in a container only print media shows, and ask the
+ * browser to print the window (`print-window.ts`).
  */
+import { printContainer, type PrintOutcome } from '#lib/document/print/print-window.js'
 import type { PdfAnnotation } from '#lib/document/pdf/pdf-state.js'
 
 import type { PdfDocument, PdfLib } from './pdf-library'
@@ -49,13 +50,13 @@ async function pageImage(options: PrintOptions, pageNumber: number): Promise<{ u
     return { url: URL.createObjectURL(blob), width: viewport.width / PRINT_SCALE, height: viewport.height / PRINT_SCALE }
 }
 
-/** Print the whole document. Resolves once the browser's dialog has closed. */
-export async function printPdf(options: PrintOptions): Promise<void> {
+/** Print the whole document. Resolves once the browser's dialog has closed, or could not be told of. */
+export async function printPdf(options: PrintOptions): Promise<PrintOutcome> {
     const { pdf, onProgress, signal } = options
     const urls: string[] = []
     const container = document.createElement('div')
     container.className = 'etherpk-pdf-print'
-    const style = document.createElement('style')
+    let styles = ''
     try {
         for (let n = 1; n <= pdf.numPages; n++) {
             signal?.throwIfAborted()
@@ -67,30 +68,12 @@ export async function printPdf(options: PrintOptions): Promise<void> {
             image.style.width = `${width}pt`
             image.style.height = `${height}pt`
             container.append(image)
-            if (n === 1) style.textContent = `@page { size: ${width}pt ${height}pt; margin: 0 }`
+            if (n === 1) styles = `@page { size: ${width}pt ${height}pt; margin: 0 }`
             onProgress?.(n, pdf.numPages)
         }
-        document.head.append(style)
-        document.body.append(container)
-        document.body.classList.add('etherpk-pdf-printing')
-        await Promise.all([...container.querySelectorAll('img')].map((image) => image.decode()))
-        await printAndWait()
+        signal?.throwIfAborted()
+        return await printContainer({ container, styles })
     } finally {
-        document.body.classList.remove('etherpk-pdf-printing')
-        container.remove()
-        style.remove()
         for (const url of urls) URL.revokeObjectURL(url)
     }
-}
-
-/** `window.print()` returns at once in some browsers and blocks in others; `afterprint` is both. */
-function printAndWait(): Promise<void> {
-    return new Promise((resolve) => {
-        const done = () => {
-            window.removeEventListener('afterprint', done)
-            resolve()
-        }
-        window.addEventListener('afterprint', done)
-        window.print()
-    })
 }

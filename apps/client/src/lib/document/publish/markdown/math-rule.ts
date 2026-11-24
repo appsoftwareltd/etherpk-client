@@ -36,9 +36,8 @@ export function mathRule(md: MarkdownIt): void {
         if (end === -1) return false
         const tex = src.slice(pos + 1, end)
         if (tex.trim() === '') return false // `$$` is literal, as in the editor
-        if (silent) return true
-        const token = state.push('html_inline', '', 0)
-        token.content = `<span class="math math-inline">${renderMath(tex, false)}</span>`
+        // Skipped over, not written: markdown-it looks ahead this way, and refuses a rule that stays put.
+        if (!silent) state.push('html_inline', '', 0).content = `<span class="math math-inline">${renderMath(tex, false)}</span>`
         state.pos = end + 1
         return true
     })

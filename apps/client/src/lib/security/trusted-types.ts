@@ -94,6 +94,21 @@ export function sanitizedIconMarkup(svg: string): TrustedMarkup {
     return DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true }, FORBID_ATTR: ['href', 'xlink:href'], RETURN_TRUSTED_TYPE: true }) as unknown as TrustedMarkup
 }
 
+/**
+ * A document's markup for a print (ADR 0207), sanitized by DOMPurify and parsed into a fragment of a
+ * document that is not on the page. Nothing in it loads or runs until its caller has looked it over
+ * and put it there. HTML stays inside `foreignObject`, where a Mermaid diagram puts its labels.
+ */
+export function sanitizedPrintFragment(html: string): DocumentFragment {
+    return DOMPurify.sanitize(html, {
+        ADD_TAGS: ['foreignobject'],
+        ADD_ATTR: ['dominant-baseline'],
+        FORBID_TAGS: ['form', 'button', 'select', 'textarea', 'video', 'audio', 'iframe', 'object', 'embed'],
+        HTML_INTEGRATION_POINTS: { foreignobject: true },
+        RETURN_DOM_FRAGMENT: true,
+    })
+}
+
 /** Put markup a policy made into `element`, replacing what it held. */
 export function setTrustedMarkup(element: Element, markup: TrustedMarkup): void {
     element.innerHTML = markup as unknown as string

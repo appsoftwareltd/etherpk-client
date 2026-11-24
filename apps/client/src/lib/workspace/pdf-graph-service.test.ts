@@ -39,7 +39,7 @@ function setup(usage: AssetUsage | null = { references: 0, documents: [] }) {
         assets: () => ({ renamed }) as never,
         store: () => store as never,
     })
-    return { adapter, service, remove, assetGone, assetRenamed, texts, renamed }
+    return { adapter, context, service, remove, assetGone, assetRenamed, texts, renamed }
 }
 
 describe('deleting a PDF from its tab', () => {
@@ -50,6 +50,16 @@ describe('deleting a PDF from its tab', () => {
         expect(remove).toHaveBeenCalledWith([FILE])
         expect(await adapter.exists('etherpk', `pdf-${HASH}.json`)).toBe(false)
         expect(assetGone).toHaveBeenCalledWith(FILE, HASH)
+    })
+
+    it('keeps its state while another file has the same bytes', async () => {
+        const { adapter, assetGone, context } = setup()
+        await adapter.write('etherpk', `pdf-${HASH}.json`, '{}')
+        const tools = { ...context.tools()!, copyOf: async () => true }
+        const service = createFolderPdfService({ ...context, tools: () => tools, adapter, assets: () => null, store: () => null })
+        expect(await service.deleteAsset(FILE, HASH)).toEqual({ deleted: true, copyLeft: true })
+        expect(await adapter.exists('etherpk', `pdf-${HASH}.json`)).toBe(true)
+        expect(assetGone).toHaveBeenCalledWith(FILE, null)
     })
 
     it('refuses while a Document links to it, and names the Document', async () => {

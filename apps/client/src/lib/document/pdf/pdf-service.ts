@@ -6,7 +6,8 @@
 import type { PdfStateHost } from './pdf-state'
 
 export type AssetDeleteAnswer =
-    | { deleted: true }
+    /** `copyLeft`: another file has the same bytes, and keeps what was written on them. */
+    | { deleted: true; copyLeft?: boolean }
     /** Links still exist, so the bytes stay (ADR 0054). */
     | { deleted: false; reason: 'linked'; documents: string[] }
     /** It cannot be proved safe just now: the index is building, or this device is behind or offline. */
@@ -21,6 +22,11 @@ export interface PdfGraphService {
      * page to export to, no graph to add a copy to and no Favourites, so a reader leaves those out.
      */
     plain?: true
+    /**
+     * Plain Folder only: what the person wrote on the file that deleting it would remove, as the
+     * question names it, or null. A copy of the file elsewhere in the folder keeps it.
+     */
+    notesGoingWith?(target: string): Promise<string | null>
     /** Delete the PDF, when nothing links to it. Its state goes with it. */
     deleteAsset(target: string, hash: string): Promise<AssetDeleteAnswer>
     /** Give the PDF a new name, in its links too. Answers the name and identity it has afterwards. */

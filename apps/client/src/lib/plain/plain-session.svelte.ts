@@ -48,8 +48,10 @@ export interface PlainSession {
     toggleFavourite(path: string): Promise<void>
     /** A move may have broken links between files: find them and offer to mend them. */
     linksMayHaveBroken(from: string, to: string): void
-    /** The tree removed `path`: the tabs showing files there close. */
-    entryRemoved(path: string): void
+    /** What the person wrote on `path` that deleting it would remove, or null: for the question a delete asks. */
+    notesGoingWith(path: string): Promise<string | null>
+    /** Delete `path`: the tabs showing files there close, and what the person wrote on them goes too. */
+    deleteEntry(path: string): Promise<void>
 }
 
 let published = $state.raw<PlainSession | null>(null)

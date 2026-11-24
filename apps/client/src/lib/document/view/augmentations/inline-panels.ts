@@ -18,7 +18,8 @@
  * - **How long it lasts.** For the visit: until it is closed, or its editor closes for good. When the
  *   editor is rebuilt (a Draft promoted, a document protected), the panel moves to the new editor at
  *   the same line (`editor-succession.ts`), unless the new one shows a Protected Document, where it
- *   closes. A panel is never drawn in a Protected Document, unlocked or not.
+ *   closes. A panel is never held in a Protected Document, unlocked or not: one opened before the
+ *   document's text had arrived, when nothing yet said it was protected, closes when the text does.
  * - **What it may write.** A block at its line, as one undoable change: beneath a bullet with text
  *   as the bullet's first child, after its own lines, and elsewhere by the rule `insertBlock`
  *   follows at the caret (block-insert.ts). The panel then moves beneath the block, and a later
@@ -31,7 +32,7 @@
  * suite (tests-client/inline-panel.test.ts, tests-client/agent-chat.test.ts).
  */
 import { type EditorState, type Line, StateEffect, StateField, type Text, type Transaction } from '@codemirror/state'
-import { Decoration, EditorView, runScopeHandlers, ViewPlugin, WidgetType } from '@codemirror/view'
+import { Decoration, EditorView, runScopeHandlers, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 
 import { fencedBlocks, type FencedBlockRange } from '../../fenced-code'
 import { blockBodyEnd, branchRange, bulletContent, contentColumn, firstChildSpot, indentBlock, isBulletLine, lineIndent, nextSiblingRange, parentIndex, prevSiblingRange, taskDone, withoutEdgeBlankLines } from '../../outliner'
@@ -104,6 +105,12 @@ export const inlinePanelsField = StateField.define<readonly InlinePanelSpot[]>({
             else if (effect.is(removeInlinePanel)) next = next.filter((spot) => spot.id !== effect.value)
             else if (effect.is(resizeInlinePanel)) next = next.map((spot) => (spot.id === effect.value.id ? { ...spot, height: effect.value.height } : spot))
         }
+        // Never one in a Protected Document. An editor shows before its document's text is read, and
+        // until the text arrives nothing says the document is protected, so a panel can open in that
+        // moment. It goes with the first transaction after the document says what it is: the text
+        // arriving, or the tick a lock or an unlock sends. `panelLifecycle` then closes it for its
+        // opener. The document's answer is read live, so the start state's facet gives the same one.
+        if (next.length > 0 && tr.startState.facet(isProtectedDocumentFacet)()) next = []
         return next
     },
 })
@@ -742,11 +749,43 @@ const panelLifecycle = ViewPlugin.fromClass(
     class {
         constructor(readonly view: EditorView) {}
 
-        update(update: { docChanged: boolean }) {
+        update(update: ViewUpdate) {
+            if (update.startState.field(inlinePanelsField, false) !== update.state.field(inlinePanelsField, false)) this.closeDropped()
             if (!update.docChanged || this.view.state.doc.length === 0) return
             const waiting = [...entries.values()].filter((entry) => entry.view === this.view && entry.waiting)
             // Out of the update: CodeMirror refuses a dispatch while it is drawing.
             if (waiting.length > 0) queueMicrotask(() => waiting.forEach(place))
+        }
+
+        /**
+         * Close each panel the field no longer holds, as it drops every panel of a document found to
+         * be protected: the content is taken down and the opener told, as when its own cross is
+         * pressed. A panel being closed (`closeEntry` marks it first) or waiting to be placed is not
+         * one of these.
+         *
+         * A panel that had the keyboard gives it to the editor, with the caret left where it was:
+         * the line the panel sat on may be one the caret cannot rest on now. Whether it had the
+         * keyboard is read here, before this update redraws and takes the panel's host out.
+         */
+        closeDropped() {
+            const dropped = this.dropped().map((entry) => ({ entry, hadFocus: entry.host.contains(document.activeElement) }))
+            if (dropped.length === 0) return
+            // Out of the update: a panel's content may dispatch as it is taken down. Asked again
+            // then, so a panel put back in between is left alone.
+            queueMicrotask(() => {
+                const still = new Set(this.dropped())
+                for (const { entry, hadFocus } of dropped) {
+                    if (!still.has(entry)) continue
+                    closeEntry(entry, false)
+                    if (hadFocus) this.view.focus()
+                }
+            })
+        }
+
+        /** This editor's panels that the field holds no spot for. */
+        dropped(): PanelEntry[] {
+            const held = new Set((this.view.state.field(inlinePanelsField, false) ?? []).map((spot) => spot.id))
+            return [...entries.values()].filter((entry) => entry.view === this.view && !entry.closed && !entry.waiting && !held.has(entry.id))
         }
 
         destroy() {
