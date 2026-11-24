@@ -64,6 +64,7 @@ import { isProtectedDocumentFacet } from './protected-document'
 import { lineRevealed, revealInputsChanged, revealedLines } from './reveal-policy'
 import { isBulletImageLine, isImageLine, parseImageLine } from '../../image-line'
 import { analysisFor } from '../analysis/editor-analysis'
+import { keyboardStaysFor } from '../keyboard-hold'
 import { uploadingImagesField } from '../uploading-images'
 
 /**
@@ -146,6 +147,16 @@ const EDIT_AS_TEXT = { command: 'edit-as-text', icon: 'rename', label: 'Edit as 
  * a tap makes.
  */
 const fingerPress = new WeakMap<EditorView, boolean>()
+
+/**
+ * Whether a touch starting on `target` leaves the keyboard as it is: one on a shown picture, its
+ * resize handle or one of its actions. Its tap places no caret. Edit as text does, so that one is
+ * the browser's own.
+ */
+function touchKeepsKeyboard(target: Element): boolean {
+    const widget = target.closest<HTMLElement>('[data-augmentation="image"]')
+    return widget !== null && pictures.has(widget) && target.closest(`[data-image-action="${EDIT_AS_TEXT.command}"]`) === null
+}
 
 /**
  * The document position under a screen point, via the browser's own hit-testing (real DOM
@@ -1276,6 +1287,7 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
         imageField,
         pointer,
         presses,
+        keyboardStaysFor(touchKeepsKeyboard),
         imageLinePointer,
         theme,
         // The overlay's buttons are the asset cluster's. Asked for here too, as an editor with no

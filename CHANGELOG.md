@@ -5,6 +5,17 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.48.0 - 2026-11-24
+
+### Client
+
+- **Fixes.**
+  - On an Android phone, a tap on a picture no longer brings up the keyboard or scrolls the page
+    back to the cursor.
+  - On a phone or a tablet, closing **View larger** leaves the keyboard closed and the picture where
+    it was.
+  - The notice shown where an Agent Chat cannot open is shorter.
+
 ## 0.47.0 - 2026-11-24
 
 ### Client

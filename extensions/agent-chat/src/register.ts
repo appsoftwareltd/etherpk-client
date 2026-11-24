@@ -205,7 +205,7 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
             },
         })
         if (!panel) {
-            context.notify('An Agent Chat opens beneath a line of a document you can write in: not in a protected document, the frontmatter, a code block or a table.')
+            context.notify('Agent opens only where you can edit document content. It is not enabled for protected documents, code blocks or tables.')
             return null
         }
         track()

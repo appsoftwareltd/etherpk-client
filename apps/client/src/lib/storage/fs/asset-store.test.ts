@@ -232,7 +232,9 @@ describe('createAssetStore.save content-only de-duplication', () => {
         ])
 
         expect(second.name).toBe(first.name)
-        expect([first.reused, second.reused]).toEqual([undefined, true])
+        // One save writes the file and the other references it. Which is which goes by whose
+        // bytes are hashed first, and the hash is not done in the order the saves were called.
+        expect([first.reused === true, second.reused === true].sort()).toEqual([false, true])
         expect((await adapter.list('assets')).length).toBe(1)
     })
 
