@@ -8,6 +8,9 @@
  * keyboard and the Command Bar until the first keystroke scrolled to it with a jump. The same holds
  * for any shrink with the editor focused, a pane resized on a desktop included.
  *
+ * A caret in a cell of a table is the same caret: the cell's own editor has the keyboard then
+ * (table-cell-editor.ts), and the document editor says where the cell is.
+ *
  * Only a caret that was in view before the shrink is brought back. One the reader had already
  * scrolled away from stays where it is: the keyboard opening must not pull them back to it.
  *
@@ -18,7 +21,9 @@
 import type { Extension } from '@codemirror/state'
 import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
+import { cellHasKeyboard } from './augmentations/reveal-policy'
 import { editorScroller } from './editor-scroller'
+import { editorHasKeyboard } from './table-cell'
 
 /** A caret's vertical extent, in client px. */
 export interface CaretExtent {
@@ -56,7 +61,9 @@ class CaretKeeper {
     }
 
     update(update: ViewUpdate): void {
-        if (update.focusChanged && this.view.hasFocus) this.watch()
+        // The keyboard arrived, in the editor or in the cell of one of its tables.
+        const arrived = update.focusChanged || cellHasKeyboard(update.startState) !== cellHasKeyboard(update.state)
+        if (arrived && editorHasKeyboard(this.view)) this.watch()
     }
 
     private watch(): void {
@@ -75,7 +82,7 @@ class CaretKeeper {
         const before = this.height
         const after = scroller.clientHeight
         this.height = after
-        if (after >= before || !view.hasFocus) return
+        if (after >= before || !editorHasKeyboard(view)) return
         const head = view.state.selection.main.head
         const caret = view.coordsAtPos(head)
         if (!caret) return

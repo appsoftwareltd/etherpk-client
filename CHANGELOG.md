@@ -5,6 +5,47 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.47.0 - 2026-11-24
+
+### Client
+
+- **Delete table.** The row and column menus of a table, and the command menu, have **Delete table**,
+  which removes the whole table from the document. Undo brings it back.
+- **Task tags count anywhere in a task's line.** A task tag such as `#P1`, `#W` or `#D-2026-07-01`
+  written after a task's words is read as the task's tag by the Tasks view, Kanban boards and
+  Search, where it counted only once the cursor had passed through the task. EtherPK still moves it
+  to after the checkbox: when the cursor leaves the task, when the task's status, priority or dates
+  change, and when a quick note is moved into the journal. Put a `#P1` that is part of a task's
+  words in backticks. The search index is rebuilt once after the update.
+- **Close Primary Sidebar.** The header above a view of the Primary Sidebar has a cross at its
+  right end that collapses the sidebar, on a desktop and in the phone's drawer. The view stays
+  open, and its icon in the Activity Bar brings the sidebar back.
+- **An icon for where a graph is kept.** On the Graphs page, a stack of servers follows the name of
+  a synced graph and a folder follows the name of a folder graph, in place of the **Folder** tag.
+- **Fixes.**
+  - Text says "device" where it said "computer", and "desktop" where a phone is ruled out. A
+    token, key, graph or copy is created. The user doc Running EtherPK On Your Own Computer is now
+    Running EtherPK On Your Own Device, at the same address.
+  - A file attached to a quick note is a bullet nested under the note when the list is moved into
+    the journal, so a task keeps its picture under it.
+  - A tag typed in a task's title in the Task Editor is written once, and shows as a tag, a
+    priority, a lane or a date in the editor.
+  - The outline's guide line runs to the bottom of an audio or video player that ends a branch.
+  - A click on a cell of a table no longer scrolls the page, and Tab, Enter and the arrows scroll
+    only as far as the next cell. The row you type in stays where it is while other cells wrap. On a
+    phone, a cell you tap stays above the keyboard.
+  - A table wider than the pane scrolls sideways by itself, where the whole document scrolled with
+    it, and **Add column** stays in reach.
+  - On a phone, the keyboard resizes the page in Chrome and Firefox on Android, and in other
+    browsers the workspace stays on the screen when the browser moves the page to show the cursor.
+  - The header of the Primary Sidebar no longer shows a cross that did nothing.
+
+### Headless Client
+
+- **Task tags count anywhere in a task's line.** `tasks` and `read_task` read a task tag written
+  after a task's words, and `set_task` moves it to after the checkbox when it changes the task.
+- **Fixes.** The theme tools say a customised theme "creates a copy in the graph".
+
 ## 0.46.0 - 2026-11-23
 
 ### Client
@@ -404,7 +445,7 @@ starts at 0.9.3.
 
 - **Task buttons on a phone.** With the cursor on a task, the command bar shows **Priority**,
   **Status**, **Due date** and **Task menu**, which hold what a right-click on the task offers on a
-  computer, including **Open in task editor** and **Copy agent instruction**.
+  desktop, including **Open in task editor** and **Copy agent instruction**.
 - **The task editor saves a new task when you close it.** Closing a new task with **Esc**, the
   close button or a click outside creates it when it has a title, instead of asking to discard it.
   **Cancel** still asks first.
@@ -465,7 +506,7 @@ starts at 0.9.3.
   under it, paste above or below it, or put the cursor at its start or end. Pressing and holding a
   task's checkbox on a phone opens the task's menu.
 
-- **More room between outline levels.** Each level of an outline steps in further on a computer,
+- **More room between outline levels.** Each level of an outline steps in further on a desktop,
   and the text starts a little further from the left edge to make room for the fold arrow.
 
 - **A protected documents passkey can be replaced or removed.** Settings > Protected Documents
@@ -830,7 +871,7 @@ No changes to the Client or the Headless Client themselves.
 - **Agents settings.** The **Agents** tab has a sub-tab for each way of working with an agent: **MCP Server**,
   for an AI agent on your device, and **Agent Chat**, for asking a language model from inside EtherPK. The Claude
   Code command now reaches a graph from any folder, each graph registers under a name of its own, and VS Code has
-  the `mcp.json` block it reads. The EtherPK skill is marked optional, since only making a new graph folder needs it.
+  the `mcp.json` block it reads. The EtherPK skill is marked optional, since only creating a new graph folder needs it.
 - **Chat instruction.** The **Agent instruction** setting in Agent Chat is now called **Chat instruction**.
   What you wrote there stays as it was.
 - **Protect a page before you type in it.** **Protect…** on a page you have opened but not typed
@@ -1267,21 +1308,21 @@ package were not published, and 0.17.1 publishes the same code under a new numbe
 - **Publish to a GitHub repository.** In Settings → Publish, a publication can publish to a branch
   of a GitHub repository in place of a folder, from any browser, phones included. Each publish is
   one commit, a publish that changes nothing makes no commit, and the host that watches the branch
-  (GitHub Pages, Cloudflare, Netlify) deploys it. You make a GitHub token on GitHub with the
+  (GitHub Pages, Cloudflare, Netlify) deploys it. You create a GitHub token on GitHub with the
   Contents permission and paste it once, in a GitHub section at the top of the tab, and it follows
   you to your other devices through your account. **Save and check** tests the token against the
   repository, and offers **Create branch** when the branch isn't there yet. The first publish to a
   branch that already holds other files lists them and asks first. Alt+Shift+P publishes to the
   repository too.
 - **Install app.** EtherPK offers to install itself as an app from a button in the header (on a
-  computer, while Chrome or Edge offers its install dialog), a row in the phone's header menu, the
+  desktop, while Chrome or Edge offers its install dialog), a row in the phone's header menu, the
   account menu, **Install EtherPK** in the Command Menu and **Settings > Install**. Where the
   browser has no install dialog of its own, the **Install EtherPK** dialog gives the steps for that
   browser: the Share sheet on an iPhone or iPad, Add to Dock in Safari on a Mac, and Add tab to
   taskbar in Firefox on Windows.
 - **Install offers.** EtherPK offers the install once at a few moments where it helps: on an
   iPhone or iPad before you sign in, when the browser has cleared some of EtherPK's data, on the
-  folder access screen on a computer, and in Quick notes on Android and ChromeOS. Each offer is
+  folder access screen on a desktop, and in Quick notes on Android and ChromeOS. Each offer is
   shown at most once on a device, and **Not now** closes it.
 - **Install in Settings.** Installing on this device has its own area, **Install**, after
   **Settings** and **Extensions** at the top of the Settings dialog, in place of the section at
@@ -1368,7 +1409,7 @@ package were not published, and 0.17.1 publishes the same code under a new numbe
 
 - **Agent Chat.** Type `/Agent` on a line, or press Alt+A, to ask a language model about your notes
   in a chat at that line, beside the bullet's dot on an empty bullet. You connect Anthropic, OpenAI,
-  Google Gemini, OpenRouter, a model on your computer (Ollama, LM Studio) or another
+  Google Gemini, OpenRouter, a model on your device (Ollama, LM Studio) or another
   OpenAI-compatible server with your own key, and EtherPK calls the provider from your browser. Each
   chat reads nothing else, the bullet's siblings and ancestors, the document, the document and the
   documents it links to, or the whole graph through search and read tools that the chat lists as the
@@ -1394,12 +1435,12 @@ package were not published, and 0.17.1 publishes the same code under a new numbe
   and on a phone. The order is kept when you reload. Closing a tab in another pane leaves the
   keyboard where you were typing.
 - **Two buttons under the last line of a document** start a new line or a new bullet at its end,
-  with the cursor on it, on a computer and a phone. A new line you leave without typing on is taken
+  with the cursor on it, on a desktop and a phone. A new line you leave without typing on is taken
   out again, and a journal entry or page that has not been created yet is created only once you
   type on it.
 - **Typing a slash command in a new journal entry or page** no longer creates it on its own. It is
   created once the command or your typing adds text, so `/Agent` leaves a new day as it was.
-- **Agent Setup Code.** The one-time code that signs in an agent's computer is called an Agent Setup
+- **Agent Setup Code.** The one-time code that signs in an agent's device is called an Agent Setup
   Code, created with **Create an Agent Setup Code** in the Agents settings, and the sign-in steps
   there are shorter. The settings no longer offer a login command without a code.
 - **A Settings Vault for your settings.** The settings that follow you between devices, such as
@@ -1413,7 +1454,7 @@ package were not published, and 0.17.1 publishes the same code under a new numbe
 - **The slash menu puts a command named what you typed first**, ahead of a command that matches
   as well only through one of its other search words. `/agent` now offers Agent Chat before Copy
   task reference.
-- **EtherPK can reach a model server on your own computer** over plain HTTP at `localhost` or
+- **EtherPK can reach a model server on your own device** over plain HTTP at `localhost` or
   `127.0.0.1`, and nowhere else over plain HTTP.
 - **Extension API (Proposed):** `context.documents` reads the open graph's documents with every
   protected document left out, `context.records` keeps an extension's records for a graph on the
@@ -1793,7 +1834,7 @@ package were not published, and 0.17.1 publishes the same code under a new numbe
 
 - The **Agents** tab in a synced graph's settings makes the one-time setup code that the Headless
   Client's `login` command needs, on Managed Sync. For a custom server it links to the server's
-  **Access tokens** page, which makes the code.
+  **Access tokens** page, which creates the code.
 - **Reset Encryption Keys** on a custom server finishes on the server's own **Reset Encryption
   Keys** page, after a recent sign-in there. The dialog finishes the reset on the device by itself
   once it is done. It also says that the reset signs out every agent.
@@ -1802,7 +1843,7 @@ package were not published, and 0.17.1 publishes the same code under a new numbe
 
 ### Headless Client
 
-- `login --code <setup code>` signs a computer in with a one-time setup code. The computer gets an
+- `login --code <setup code>` signs a device in with a one-time setup code. The device gets an
   agent token of its own, which can do only what the Headless Client needs and stops working after
   30 days without use.
 - A token given to `login --pat` is swapped for an agent token and revoked. A login made by an
@@ -1811,13 +1852,13 @@ package were not published, and 0.17.1 publishes the same code under a new numbe
   through `secret-tool`, where `login` can use one, and in the config file otherwise. The config
   file is replaced whole when it changes, so a crash or a full disk part way through leaves the
   previous file.
-- `logout` revokes the computer's token on the Sync Server.
+- `logout` revokes the device's token on the Sync Server.
 - Several agents can use one graph at once. The first agent's `serve` starts a background process
   that holds the graph, and every other `serve` passes its requests to that process. `running`
   lists these processes and `stop` ends them. `ETHERPK_MCP_HOST_IDLE_SECONDS` sets how long one
   stays after its last agent has gone, five minutes by default.
 - An agent's session starts before a large graph has finished opening, and each tool waits for the
   graph.
-- When a graph cannot be served, for example on a computer that is not logged in, `serve` stays
+- When a graph cannot be served, for example on a device that is not logged in, `serve` stays
   connected and every tool answers with the reason. A later call tries again.
 - `publish` runs in the graph's background process when one is running.

@@ -90,7 +90,7 @@ Every tag is listed on the image's
 [package page](https://github.com/appsoftwareltd/etherpk-client/pkgs/container/etherpk-client).
 
 Open <http://localhost:3000>. With no settings the Client works with graph folders on your
-computer and offers a **Custom server** form for connecting to a Sync Server by its address. The
+device and offers a **Custom server** form for connecting to a Sync Server by its address. The
 settings it reads are listed, with their defaults, in
 [`apps/client/.env.example`](apps/client/.env.example) - pass them with `--env-file`.
 
@@ -109,7 +109,7 @@ HOST=127.0.0.1 PORT=3000 node build
 ```
 
 The full guide, including Windows commands, is
-[Running EtherPK On Your Own Computer](https://docs.etherpk.com/running-etherpk-on-your-own-computer).
+[Running EtherPK On Your Own Device](https://docs.etherpk.com/running-etherpk-on-your-own-computer).
 
 ### Headless Client / MCP Server
 

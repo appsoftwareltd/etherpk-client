@@ -26,8 +26,8 @@
  * - **A task's stray [[Task Tag]]s**: a Task Tag written as its own word later in a task's bullet
  *   line, outside code, links, URLs and inline maths, moves into the leading run, a priority or date
  *   set as the `#` helper sets it but never cleared, and a state tag setting the task's status with
- *   the checkbox to match (`applyStrayTaskTags`, task-tags.ts). The grammar reads only the run as
- *   metadata (ADR 0032), so `#P1` typed at the end of a task would otherwise stay prose. A status
+ *   the checkbox to match (`applyStrayTaskTags`, task-tags.ts). The tag counts where it was typed
+ *   (ADR 0032, amended 2026-11-24); the run is where a task's metadata is looked for. A status
  *   that ticks, archives or unticks the task brings its nested tasks along in the same transaction,
  *   as a status menu or Kanban move does (`task-cascade.ts`).
  * - **Fenced code and [[Frontmatter]]** are never touched, wherever the caret came from.
@@ -52,7 +52,6 @@ import { fencedBlocks, fenceLineInfo } from '../fenced-code'
 import { nestedTaskWrites } from '../task-cascade'
 import { applyStrayTaskTags } from '../task-tags'
 import { blockBodyEnd, branchRange, bulletContent, contentColumn, formOneOpeners, isBulletLine, lineIndent, markerLength, opaqueLineFlags, ownerBulletIndex, trimLineEnd } from '../outliner'
-import { scanInlineMath } from './augmentations/math-inline-core'
 import { collaborative, EXTERNAL } from './cm-document'
 import { minimalReplacement } from './minimal-replacement'
 import { isOwnEditing } from './own-editing'
@@ -108,7 +107,7 @@ export function tidiedBlock(lines: string[], owner: number): { from: number; to:
     if (!isOpaque(0) && bulletContent(out[0]) === '') pullUpLeadingContent(out, isOpaque)
     // A Task Tag written later in a task goes into its leading run, once the line is trimmed and any
     // content pulled up onto it. Only the bullet line is the task: a tag on a soft line is prose.
-    if (!isOpaque(0)) out[0] = applyStrayTaskTags(out[0], scanInlineMath(out[0])) ?? out[0]
+    if (!isOpaque(0)) out[0] = applyStrayTaskTags(out[0]) ?? out[0]
     return out.length === own.length && out.every((l, k) => l === own[k]) ? null : { from: owner, to: end, lines: out }
 }
 

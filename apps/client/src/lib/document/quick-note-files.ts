@@ -2,9 +2,9 @@
  * Files in a [[Quick Note]] (ADR 0186): a photo, a PDF or any other file shared or attached to
  * a note is an [[Asset]], and the note's text holds its [[Asset Reference]] on a line of its own.
  *
- * The reference is the document format's own, so the move to the journal needs no rule for it:
- * the line travels with the text and an image renders there as any image line does. Nothing
- * about the file is a field on the note.
+ * The reference is the document format's own, and nothing about the file is a field on the note.
+ * The move to the journal writes each file's line as a bullet nested under the note
+ * (`quick-notes-journal.ts`), so a picture shows there and a [[Task]] holds its files.
  *
  * Pure over text: what a note's text is once its files are stored, how the Quick Notes View
  * reads a note back as text, pictures and files, and which assets a note references.
@@ -63,6 +63,11 @@ function fileLine(line: string): QuickNotePart | null {
     if (assetNameFromRef(target) === null) return null
     if (bang === '!' && isImageAssetRef(target)) return { kind: 'image', url: target, alt: label }
     return { kind: 'file', url: target, name: displayNameForRef(target) }
+}
+
+/** Whether a line of a note is nothing but one file's reference: what the move nests under the note. */
+export function isNoteFileLine(line: string): boolean {
+    return fileLine(line) !== null
 }
 
 /**

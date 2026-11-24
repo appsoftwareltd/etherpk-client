@@ -1,13 +1,20 @@
 /**
  * The [[Task Tag]] grammar (ADR 0032), as one pure parser.
  *
- * A [[Task]]'s metadata is a **contiguous leading run of hash-tags immediately after the
- * checkbox**, and nothing else on the line is metadata. Parsing therefore stops dead at the
- * first token that is not a tag - which is the whole point of the grammar: `#hashtags` in
- * prose stay prose, so a task can talk about `#P1 incidents` without claiming to be one.
- * The editor does not leave a Task Tag typed later in a task as prose, though: tidy on leave moves
- * it into the run when the caret leaves the task ({@link applyStrayTaskTags}, ADR 0032 amended
- * 2026-11-03), so such words go in backticks there.
+ * A [[Task]]'s metadata is its Task Tags, **wherever they are written in the task's line** (ADR 0032,
+ * amended 2026-11-24). They are written as a **leading run of hash-tags immediately after the
+ * checkbox**, which is where every writer here puts them, and a tag written later in the line, as a
+ * word of its own in prose, counts as well ({@link strayTagsIn}): a quick note, an agent or another
+ * tool writes a task with no caret to leave it, and a tag that silently did nothing gave a person no
+ * way to find out. Such a tag is moved into the run by the editor when the caret leaves the task
+ * ({@link applyStrayTaskTags}, tidy on leave) and by any write to the task's tags
+ * ({@link taskLineWith}, {@link applyTaskTag}). A task that talks about `#P1 incidents` in its words
+ * puts them in backticks: a tag in code, a link, a URL or inline maths is never metadata.
+ *
+ * A reader never changes what the checkbox says. A state tag written later in the line sets its
+ * state as tidy on leave would, but one the checkbox contradicts (`#C` on an unticked task) counts
+ * for nothing, as it does in the run ({@link taskStatus}). Tidy on leave is a write, and ticks the
+ * task to match.
  *
  * A [[Free Tag]] (`#bug`) is a person's own word, written anywhere in the text, which carries no
  * metadata (ADR 0166). One in the leading run is passed over rather than ending it, so
@@ -25,6 +32,7 @@
  *
  * Pure and DOM-free.
  */
+import { scanInlineMath } from './view/augmentations/math-inline-core'
 
 /** Priority is a three-level scale; ADR 0032 dropped the below-normal levels at import. */
 export type TaskPriority = 1 | 2 | 3
@@ -46,8 +54,9 @@ export interface TaskTags {
     /** `#S-` — minted, from Logseq's SCHEDULED. */
     scheduled: string | null
     /**
-     * The text with the leading run's [[Task Tag]]s removed: any [[Free Tag]] in the run first,
-     * then what follows the run. A task list shows it without its Free Tags ({@link withoutFreeTags}).
+     * The text with the task's [[Task Tag]]s removed, those of the leading run and those written
+     * later in the line: any [[Free Tag]] in the run first, then what follows the run. A task list
+     * shows it without its Free Tags ({@link withoutFreeTags}).
      */
     text: string
 }
@@ -168,19 +177,62 @@ function scanRun(label: string): LeadingRun {
 }
 
 /**
- * Parse the leading tag run of a task's text — the label, i.e. the line with its `- [ ]`
- * marker already stripped. {@link parseTaskLine} handles a raw source line instead.
+ * Parse the Task Tags of a task's text — the label, i.e. the line with its `- [ ]` marker already
+ * stripped. {@link parseTaskLine} handles a raw source line instead.
  *
- * **First of a kind wins** (ADR 0032): a second `#P2` after a `#P1` is still a tag, so it
- * does not end the run, but it is ignored. That way a stray duplicate costs the user the
+ * **In the leading run, first of a kind wins** (ADR 0032): a second `#P2` after a `#P1` is still a
+ * tag, so it does not end the run, but it is ignored. That way a stray duplicate costs the user the
  * tag, never the rest of their metadata.
+ *
+ * **A tag written after the run is read as tidy on leave would write it** ({@link applyStrayTaskTags}),
+ * in the order written: a priority or a date replaces the one before it, and a state tag sets its
+ * state in place of the others of its kind ({@link readStrayTag}). So what a task list shows for a
+ * line does not change when the editor later moves the tag into the run.
  */
 export function parseTaskTags(label: string): TaskTags {
     const run = scanRun(label)
+    let rest = label.slice(run.end)
+    // No `#` after the run, no tag there: the common case, and this runs for every task shown.
+    const strays = rest.includes('#') ? strayTagsIn(label, run.end) : []
+    if (strays.length > 0) {
+        rest = withoutSpans(label, strays).slice(run.end)
+        for (const stray of strays) readStrayTag(run.tags, stray.command)
+    }
     // A run of Task Tags alone keeps the text's own spacing; Free Tags in the run lead it.
-    const rest = label.slice(run.end).trimStart()
-    const text = [...run.freeTags, rest].filter((part) => part !== '').join(' ')
+    const text = [...run.freeTags, rest.trimStart()].filter((part) => part !== '').join(' ')
     return { ...run.tags, text }
+}
+
+/** The states an unticked task can be in, and those a ticked one can: {@link taskStatus} reads one group or the other. */
+const UNTICKED_STATES: readonly StateKind[] = ['waiting', 'doing', 'test']
+const TICKED_STATES: readonly StateKind[] = ['cancelled', 'archived']
+
+/**
+ * Record a tag written after the leading run, as a reader takes it: the last of a kind written wins,
+ * where the run's first does, because tidy on leave sets each in the order written.
+ *
+ * A state tag names a [[Task Status]], which is exclusive, so it replaces the other states of its own
+ * kind: `#W water the beans #D` is Doing. The states of the other kind are left as they are, since
+ * only a write changes the checkbox: a ticked task's `#D` waits, counting for nothing, until the task
+ * is unticked ({@link taskStatus}).
+ */
+function readStrayTag(tags: Omit<TaskTags, 'text'>, command: TaskTagCommand): void {
+    if (command.kind === 'priority') tags.priority = command.value
+    else if (isStateCommand(command)) {
+        const group = TICKED_STATES.includes(command.kind) ? TICKED_STATES : UNTICKED_STATES
+        for (const state of group) tags[state] = state === command.kind
+    } else tags[command.kind] = command.value
+}
+
+/** `text` without each span, and without the whitespace before it: how a stray tag leaves a line. */
+function withoutSpans(text: string, spans: readonly LineSpan[]): string {
+    let out = ''
+    let at = 0
+    for (const { from, to } of spans) {
+        out += text.slice(at, from).trimEnd()
+        at = to
+    }
+    return out + text.slice(at)
 }
 
 // ── Free Tags (ADR 0166) ──────────────────────────────────────────────────────────────────
@@ -276,9 +328,14 @@ export function taskDisplay(label: string): { text: string; freeTags: string[] }
     return words === '' ? { text: text || label, freeTags: [] } : { text: words, freeTags: freeTagsIn(text) }
 }
 
-/** The [[Task Tag]]s in a label's leading run, as written and in order, without the Free Tags in it. */
+/**
+ * The [[Task Tag]]s in a label as written: those of its leading run in order, without the Free Tags
+ * in it, then those written later in the line.
+ */
 export function taskTagTokens(label: string): string[] {
-    return label.slice(0, scanRun(label).end).split(/\s+/).filter((token) => readTag(token) !== null)
+    const runEnd = scanRun(label).end
+    const run = label.slice(0, runEnd).split(/\s+/).filter((token) => readTag(token) !== null)
+    return [...run, ...strayTagsIn(label, runEnd).map(({ from, to }) => label.slice(from, to))]
 }
 
 /**
@@ -318,9 +375,25 @@ export function parseTaskLine(line: string): ParsedTaskLine | null {
 }
 
 /**
- * Where a raw source line's tag run sits: the columns from its first tag to the end of its last,
- * or null when the line is not a task or carries no tags. Read off {@link parseTaskTags}, so the
- * run is exactly what the grammar calls metadata: what [[Spell Check]] leaves alone.
+ * A raw source line read by its leading run alone, without any Task Tag written after it: what the
+ * line said before such a tag was applied. The nested tasks of a task follow what its run and
+ * checkbox say (`task-cascade.ts`), so a write that moves a later `#A` into the run of a ticked task
+ * is the write that archives them, although every list read the task as Archived already. Null when
+ * the line is not a task.
+ */
+export function parseTaskLineRun(line: string): ParsedTaskLine | null {
+    const marker = CHECKBOX.exec(line)
+    if (!marker) return null
+    const label = line.slice(marker[0].length)
+    const run = scanRun(label)
+    const text = [...run.freeTags, label.slice(run.end).trimStart()].filter((part) => part !== '').join(' ')
+    return { done: marker[1].toLowerCase() === 'x', ...run.tags, text }
+}
+
+/**
+ * Where a raw source line's leading tag run sits: the columns from its first tag to the end of its
+ * last, or null when the line is not a task or its run is empty. What [[Spell Check]] leaves alone.
+ * A Task Tag written later in the line is not in it, and moves into it on leave.
  */
 export function taskTagRun(line: string): { from: number; to: number } | null {
     const marker = CHECKBOX.exec(line)
@@ -381,6 +454,14 @@ export function serialiseTags(tags: TaskTags): string[] {
  * and a predictable rendering is worth more than preserving an order that carries no meaning.
  */
 export function applyTaskTag(line: string, command: TaskTagCommand): string | null {
+    // A Task Tag written after the run is applied first, as leaving the line applies it
+    // ({@link applyStrayTaskTags}), so the row toggles what the line then says and no tag is left
+    // for a later tidy to apply a second time.
+    return toggleTag(applyStrayTaskTags(line) ?? line, command)
+}
+
+/** {@link applyTaskTag} over a line whose Task Tags are all in its run. */
+function toggleTag(line: string, command: TaskTagCommand): string | null {
     const marker = /^(\s*)(-\s+\[[ xX]\])\s?/.exec(line)
     if (!marker) return null
     const [, indent, checkbox] = marker
@@ -428,6 +509,20 @@ const MARKER = /^(\s*-\s+\[)[ xX](\])\s?/
  * changes nothing reorders nothing either.
  */
 export function taskLineWith(line: string, changes: TaskChanges): string | null {
+    const written = writeTags(line, changes)
+    // Not a task, or already as asked: nothing to write, and a tag after the run stays where it is.
+    if (written === null || written === line) return written
+    // A write applies a Task Tag written after the run first, as leaving the line applies it
+    // ({@link applyStrayTaskTags}): a state tag sets its status with the checkbox to match. Moved
+    // into the run unapplied, a `#C` on an unticked task would count for nothing there, and no
+    // later tidy would find it to cancel the task. Then the change asked for is made, so a status
+    // that is asked for is the status written.
+    const tidied = applyStrayTaskTags(line)
+    return tidied === null ? written : writeTags(tidied, changes)
+}
+
+/** {@link taskLineWith} over the line as it reads, a Task Tag written after the run counted where it is. */
+function writeTags(line: string, changes: TaskChanges): string | null {
     const parsed = parseTaskLine(line)
     const marker = MARKER.exec(line)
     if (!parsed || !marker) return null
@@ -479,7 +574,7 @@ function sameTags(a: TaskTags, b: TaskTags): boolean {
 /** A word of a line: whitespace or the line's edge on both sides. */
 const WORD = /(?<=^|\s)\S+(?=\s|$)/g
 
-/** Columns of a line that hold no prose, such as inline maths, which the caller finds. */
+/** Columns of a line. */
 export interface LineSpan {
     from: number
     to: number
@@ -508,9 +603,9 @@ function commandFor(tag: { kind: TagKind; value: string }): TaskTagCommand {
  * kept rather than cleared by the helper's toggle; a date always replaces, so it is already a set.
  */
 function withStrayTag(line: string, command: TaskTagCommand): string {
-    if (isStateCommand(command)) return taskLineWith(line, { status: command.kind }) ?? line
+    if (isStateCommand(command)) return writeTags(line, { status: command.kind }) ?? line
     if (command.kind === 'priority' && parseTaskLine(line)?.priority === command.value) return line
-    return applyTaskTag(line, command) ?? line
+    return toggleTag(line, command) ?? line
 }
 
 const STATE_KINDS = new Set<string>(STATE_TAGS.map(([kind]) => kind))
@@ -527,20 +622,29 @@ function blanked(text: string, span: LineSpan): string {
     return to <= from ? text : text.slice(0, from) + ' '.repeat(to - from) + text.slice(to)
 }
 
+/** A Task Tag written after a label's leading run: its columns in the label, and the tag as a command. */
+interface StrayTag extends LineSpan {
+    command: TaskTagCommand
+}
+
 /**
- * The Task Tags in a label written after its leading run, each as its own word and in prose: a tag
- * in a code span, a link or an autolink is part of that (blanked as for Free Tags), as is one in a
- * `skip` span (label columns), and one joined to other characters (`#P1,`, `item#P1`, a URL's
- * `/#P1`) is not a word of its own.
+ * The Task Tags in a label written after its leading run (which ends at `runEnd`), each as its own
+ * word and in prose: a tag in a code span, a link or an autolink is part of that (blanked as for
+ * Free Tags), as is one in inline maths, and one joined to other characters (`#P1,`, `item#P1`, a
+ * URL's `/#P1`) is not a word of its own. Only the label's first line is read: the lines after it
+ * continue the task's words, and a tag there is prose.
  */
-function strayTagsIn(label: string, skip: readonly LineSpan[]): { from: number; to: number; command: TaskTagCommand }[] {
-    const runEnd = scanRun(label).end
-    const prose = skip.reduce(
+function strayTagsIn(label: string, runEnd: number): StrayTag[] {
+    const lineEnd = label.indexOf('\n')
+    const line = lineEnd === -1 ? label : label.slice(0, lineEnd)
+    // The cheap test first: this is asked of every task a list shows.
+    if (!line.includes('#', runEnd)) return []
+    const prose = scanInlineMath(line).reduce(
         (text, span) => blanked(text, span),
-        label.replace(NOT_PROSE, (span) => ' '.repeat(span.length)),
+        line.replace(NOT_PROSE, (span) => ' '.repeat(span.length)),
     )
-    const out: { from: number; to: number; command: TaskTagCommand }[] = []
-    for (const match of label.matchAll(WORD)) {
+    const out: StrayTag[] = []
+    for (const match of line.matchAll(WORD)) {
         const from = match.index
         const to = from + match[0].length
         if (from < runEnd || prose.slice(from, to) !== match[0]) continue
@@ -552,9 +656,9 @@ function strayTagsIn(label: string, skip: readonly LineSpan[]): { from: number; 
 
 /**
  * A task line with its stray [[Task Tag]]s moved into the leading run, or null when the line is not
- * a task or has none. A person who types `#P1` at the end of a task means it as metadata, but the
- * grammar reads only the leading run (ADR 0032), so the tag would sit there as prose. A tag already
- * in the run keeps its case: this runs whenever a caret leaves the task, and two devices offline that
+ * a task or has none. A person who types `#P1` at the end of a task means it as metadata, and it is
+ * read as that where it stands ({@link parseTaskTags}); the run is where a task's metadata is looked
+ * for by eye, so the tag is moved there. A tag already in the run keeps its case: this runs whenever a caret leaves the task, and two devices offline that
  * each changed `#p1` to `#P1` would merge to `#PP1`, which is a Free Tag.
  *
  * Each stray word is taken out with the whitespace before it, and its tag set in the order written
@@ -562,28 +666,19 @@ function strayTagsIn(label: string, skip: readonly LineSpan[]): { from: number; 
  * kind, and a state tag sets the task's [[Task Status]], ticking or unticking the checkbox to match,
  * so of several state tags the last written wins. A stray tag never clears: a priority the run
  * already carries stays set, because a typed tag says what the person wants and no menu showed them
- * it was set. [[Free Tag]]s stay where they are written. `skip` holds the line's columns that are not
- * prose beyond what this module can see (inline maths). Tidy on leave (`view/leave-tidy.ts`) calls
+ * it was set. [[Free Tag]]s stay where they are written. Tidy on leave (`view/leave-tidy.ts`) calls
  * this as the caret leaves the task, never while it is being typed in, and brings the nested tasks
- * along when the status it sets ticks, archives or unticks the task (`task-cascade.ts`).
+ * along when the status it sets ticks, archives or unticks the task (`task-cascade.ts`). The move of
+ * a [[Quick Note]] into the journal calls it for a task no caret visits (`quick-notes-journal.ts`).
  */
-export function applyStrayTaskTags(line: string, skip: readonly LineSpan[] = []): string | null {
+export function applyStrayTaskTags(line: string): string | null {
     const marker = CHECKBOX.exec(line)
     if (!marker) return null
     const start = marker[0].length
     const label = line.slice(start)
-    const strays = strayTagsIn(
-        label,
-        skip.map(({ from, to }) => ({ from: from - start, to: to - start })),
-    )
+    const strays = strayTagsIn(label, scanRun(label).end)
     if (strays.length === 0) return null
-    let rest = ''
-    let at = 0
-    for (const { from, to } of strays) {
-        rest += label.slice(at, from).trimEnd()
-        at = to
-    }
-    let out = line.slice(0, start) + rest + label.slice(at)
+    let out = line.slice(0, start) + withoutSpans(label, strays)
     for (const { command } of strays) out = withStrayTag(out, command)
     return out === line ? null : out
 }

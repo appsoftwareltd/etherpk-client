@@ -283,7 +283,7 @@ describe('checkMirrorTakeover', () => {
         })
         expect(holds.kind === 'refuse' && holds.message).toBe(
             '“work/pages” is the folder of your folder graph “My Notes”. Mirroring a synced graph into “work” ' +
-                'would write into that graph’s folder and delete files in it. Choose another folder, ideally an ' +
+                'would write into that graph’s folder and delete files inside. Choose another folder, ideally an ' +
                 'empty one.',
         )
     })

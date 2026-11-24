@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { type Align, type MarkdownTable } from '../markdown-table'
 import { addColumns, addRows, buildTable, removeColumn, removeRow, setColumnAlign } from '../markdown-table-edit'
-import { tableTextChanges } from './table-edit'
+import { tableRemovalRange, tableTextChanges } from './table-edit'
 
 /** `before` with `changes` made, each given in offsets into `before`. */
 function apply(before: string, changes: { from: number; to: number; insert: string }[]): string {
@@ -118,6 +118,55 @@ describe('the changes of a table edit', () => {
                 expect(changes[0].to - changes[0].from).toBe(0)
             }),
             fuzz(200),
+        )
+    })
+})
+
+describe('the range a deleted table takes out of the document', () => {
+    const TABLE = lines('| a | b |', '| - | - |', '| 1 | 2 |')
+    /** `text` without the table that starts at `from` and ends at `to`. */
+    const without = (text: string, from: number, to: number) => {
+        const range = tableRemovalRange(text, from, to)
+        return text.slice(0, range.from) + text.slice(range.to)
+    }
+
+    it('is the table\'s lines whole, with the line break that joined them to the rest', () => {
+        const between = lines('intro', TABLE, 'after')
+        expect(without(between, 6, 6 + TABLE.length)).toBe('intro\nafter')
+        // The last thing in the document: the break before it goes. Alone, nothing is left.
+        expect(without(lines('intro', TABLE), 6, 6 + TABLE.length)).toBe('intro')
+        expect(without(TABLE, 0, TABLE.length)).toBe('')
+        // An empty line on both sides: one of them goes too, and the text is a line apart as it was from the table.
+        const spaced = lines('intro', '', TABLE, '', 'after')
+        expect(without(spaced, 7, 7 + TABLE.length)).toBe('intro\n\nafter')
+        expect(tableRemovalRange(spaced, 7, 7 + TABLE.length).from).toBe(6)
+        // Indented under an outline: the indent in front of its first row goes with it.
+        const indented = lines('- top', '  | a | b |', '  | - | - |', '- next')
+        expect(without(indented, 8, indented.indexOf('\n- next'))).toBe('- top\n- next')
+    })
+
+    it('leaves a bullet its marker when the table was the bullet\'s content', () => {
+        const bullet = lines('- top', '  - | a | b |', '    | - | - |', '- next')
+        expect(without(bullet, bullet.indexOf('| a'), bullet.indexOf('\n- next'))).toBe('- top\n  - \n- next')
+    })
+
+    it('takes out the table and nothing else, wherever it is among other lines', () => {
+        const line = fc.constantFrom('Garden', '', '- water the beans', 'Kitchen notes', '  - a nested bullet')
+        fc.assert(
+            fc.property(fc.array(line, { maxLength: 4 }), fc.array(line, { maxLength: 4 }), fc.constantFrom('', '  ', '    '), fc.boolean(), (before, after, indent, inBullet) => {
+                const rows = TABLE.split('\n')
+                const first = inBullet ? `${indent}- ${rows[0]}` : indent + rows[0]
+                const rest = rows.slice(1).map((row) => (inBullet ? `${indent}  ${row}` : indent + row))
+                const text = [...before, first, ...rest, ...after].join('\n')
+                const start = before.join('\n').length + (before.length > 0 ? 1 : 0)
+                const from = start + (inBullet ? indent.length + 2 : indent.length)
+                const to = start + [first, ...rest].join('\n').length
+                // An empty line on both sides of a table on its own lines: one of the two goes with it.
+                const closes = !inBullet && before.at(-1) === '' && after[0] === ''
+                const expected = inBullet ? [...before, `${indent}- `, ...after] : [...(closes ? before.slice(0, -1) : before), ...after]
+                expect(without(text, from, to)).toBe(expected.join('\n'))
+            }),
+            { numRuns: Number(process.env.DOCUMENT_FUZZ_RUNS ?? 300), seed: process.env.DOCUMENT_FUZZ_SEED === undefined ? 20261124 : Number(process.env.DOCUMENT_FUZZ_SEED) },
         )
     })
 })

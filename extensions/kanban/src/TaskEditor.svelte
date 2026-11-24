@@ -30,7 +30,7 @@
     import { bulletLabel } from "#lib/document/index-derive.js";
     import { openConceptAtLine } from "#lib/document/open-concept.js";
     import { addTaskToJournal } from "#lib/document/task-placement.js";
-    import { assetReferencesIn, newTaskLines, taskLineWithFreeTag, taskLineWithTitle } from "#lib/document/task-structure.js";
+    import { assetReferencesIn, newTaskLines, taskLineWithFreeTag, taskLineWithTitle, titleWords } from "#lib/document/task-structure.js";
     import { type TaskPriority, type TaskStatus } from "#lib/document/task-tags.js";
     import { rewriteTaskLine, taskLineWith } from "#lib/document/task-write.js";
     import DocumentView from "#lib/document/view/DocumentView.svelte";
@@ -288,15 +288,31 @@
         });
     }
 
-    /** Save the title when it has changed: on leaving the field, Enter, or closing. True when it is saved. */
+    /**
+     * Save the title when it has changed: on leaving the field, Enter, or closing. True when it is saved.
+     *
+     * A tag typed in the title is the task's tag (`taskLineWithTitle`), so once the title is written
+     * the fields show the task as it now reads: the title without the tag, and the tag as a pill, a
+     * priority, a lane or a date. Left holding what was typed, the field no longer matched the saved
+     * title, and the next save wrote the tag again. A field the person changed while the write was
+     * on its way keeps what they chose.
+     */
     async function commitTitle(): Promise<boolean> {
         if (!editing || title.trim() === saved.title) return true;
-        if (title.trim() === "") {
+        if (titleWords(title) === "") {
             titleError = "A task needs a title. Type one, or Delete task to remove it.";
             return false;
         }
         titleError = null;
-        return save((line) => taskLineWithTitle(line, title));
+        const typed = title;
+        const before = saved;
+        const written = await save((line) => taskLineWithTitle(line, typed));
+        if (!written) return false;
+        if (title === typed) title = saved.title;
+        if (status === before.status) status = saved.status;
+        if (priority === before.priority) priority = saved.priority;
+        if (dates.due === before.due && dates.scheduled === before.scheduled) dates = { due: saved.due, scheduled: saved.scheduled };
+        return true;
     }
 
     function onStatusChange(): void {
@@ -519,7 +535,8 @@
 
     async function create(): Promise<void> {
         if (editing || creating) return;
-        if (title.trim() === "") {
+        // A title that is only tags says nothing: the task would have no words.
+        if (titleWords(title) === "") {
             titleError = "Give the task a title.";
             titleEl?.focus();
             return;
@@ -612,7 +629,7 @@
                 onclose();
                 return true;
             }
-            if (via === "close" && title.trim() !== "") {
+            if (via === "close" && titleWords(title) !== "") {
                 await create();
                 // Created: what was typed is in the journal. Not created: the form says why, and stays.
                 if (editing) onclose();
@@ -791,7 +808,7 @@
                         aria-invalid={titleError !== null}
                         aria-describedby={titleError ? `${uid}-title-error` : undefined}
                         oninput={() => {
-                            if (titleError && title.trim() !== "") titleError = null;
+                            if (titleError && titleWords(title) !== "") titleError = null;
                         }}
                         onblur={() => void commitTitle()}
                         onkeydown={(event) => {
@@ -1132,7 +1149,7 @@
     {#snippet footer()}
         {#if discardAsked}
             <div role="alert" class="mr-auto flex flex-wrap items-center gap-2 text-sm text-(--gk-text-default)" data-testid="task-editor-discard">
-                <span>{title.trim() === "" ? "A task needs a title to be saved. Discard this one?" : "Discard this new task? Nothing of it has been saved."}</span>
+                <span>{titleWords(title) === "" ? "A task needs a title to be saved. Discard this one?" : "Discard this new task? Nothing of it has been saved."}</span>
                 <button type="button" bind:this={keepEditingEl} class="gk-button" onclick={() => (discardAsked = false)} data-testid="task-editor-keep-editing">
                     Keep editing
                 </button>

@@ -56,10 +56,15 @@ describe('taskLineWith: a priority', () => {
 })
 
 describe('taskLineWith: the rest of the line', () => {
-    it('leaves indentation, other dates and every hash after the text alone', () => {
-        expect(taskLineWith('    - [ ] #S-2026-10-02 #D-2026-10-05 #C-2026-09-01 Text [[Link]] #P1 trailing', { status: 'doing' })).toBe(
-            '    - [ ] #D #S-2026-10-02 #D-2026-10-05 #C-2026-09-01 Text [[Link]] #P1 trailing',
+    it('leaves indentation, other dates and a hash word that is no Task Tag alone', () => {
+        expect(taskLineWith('    - [ ] #S-2026-10-02 #D-2026-10-05 #C-2026-09-01 Text [[Link]] #P4 `#P1` trailing', { status: 'doing' })).toBe(
+            '    - [ ] #D #S-2026-10-02 #D-2026-10-05 #C-2026-09-01 Text [[Link]] #P4 `#P1` trailing',
         )
+    })
+
+    it('brings a Task Tag written after the text into the run it rewrites', () => {
+        // The tag counted where it was (ADR 0032, amended 2026-11-24); a write puts it where it is looked for.
+        expect(taskLineWith('    - [ ] #S-2026-10-02 Text [[Link]] #P1 trailing', { status: 'doing' })).toBe('    - [ ] #P1 #D #S-2026-10-02 Text [[Link]] trailing')
     })
 
     it('writes a changed tag run in the order the # helper writes it', () => {

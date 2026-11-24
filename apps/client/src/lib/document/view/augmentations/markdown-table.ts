@@ -21,7 +21,7 @@
  */
 
 import { EditorState, type Extension, Prec, type Text, type Transaction } from '@codemirror/state'
-import { EditorView, keymap, WidgetType } from '@codemirror/view'
+import { EditorView, keymap, type Rect, WidgetType } from '@codemirror/view'
 
 import { displayNameForRef } from '../../../storage/fs/asset-store'
 import { type InlinePart, inlineParts } from '../../inline-parts'
@@ -37,6 +37,7 @@ import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, blockWidgetIndent } from './co
 import { LINK_SELECTORS } from './link-cursor'
 import { INLINE_MARK_CLASS } from './markdown-format'
 import { revealCellFocus } from './reveal-policy'
+import { gridHeightAt, tableGridHeights } from './table-grid-heights'
 import { CONTROL_ATTRIBUTE, type GridControl, gridControlCell, gridControls, LIVE_CLASS, SCROLL_CLASS } from './table-grid-controls'
 import { CELL_EDITOR_CLASS, type CellEditorOptions, cellEditorAttached, cellEditorHostElement, cellEditorOf, focusCellNext, tableCellEditor } from './table-cell-editor'
 import { refreshWikilinks } from './wikilink'
@@ -149,8 +150,21 @@ function sameCell(a: CellAddress | null, b: CellAddress | null): boolean {
     return a === b || (a !== null && b !== null && a.row === b.row && a.column === b.column)
 }
 
+function sameRoom(a: { from: number; to: number } | null, b: { from: number; to: number } | null): boolean {
+    return a?.from === b?.from && a?.to === b?.to
+}
+
 function sameRect(a: CellRect | null, b: CellRect | null): boolean {
     return a === b || (a !== null && b !== null && a.top === b.top && a.bottom === b.bottom && a.left === b.left && a.right === b.right)
+}
+
+/** Where the cell's editor draws its caret, or null while it cannot say: it is in the middle of a change of its own. */
+function caretBox(nested: EditorView): Rect | null {
+    try {
+        return nested.coordsAtPos(nested.state.selection.main.head)
+    } catch {
+        return null
+    }
 }
 
 /** The widget each grid's element was last drawn from, so the next one changes only what differs. */
@@ -173,8 +187,39 @@ class TableWidget extends WidgetType {
         readonly editable: boolean,
         /** The block of cells selected in this table, which are drawn selected, or null. */
         readonly selected: CellRect | null,
+        /** How tall the table's grid was last drawn, or -1 (table-grid-heights.ts). No part of what the grid shows, so not compared. */
+        readonly height = -1,
+        /** The room of the cell being edited in the table's text, between its dividers, counted from `from`. Null with no cell edited. */
+        readonly caret: { from: number; to: number } | null = null,
     ) {
         super()
+    }
+
+    /**
+     * Where a place in the table's text is in the page, for the editor's own scrolling and
+     * measuring: for a place in the cell being edited, where that cell's editor draws its caret.
+     * The grid stands for every line of the table, so without this a caret in any cell is taken to
+     * be at the grid's top or bottom edge, and a key that moved the caret to the next cell scrolled
+     * a tall table to its end.
+     */
+    coordsAt(dom: HTMLElement, pos: number): Rect | null {
+        if (!this.holdsCaret(pos)) return null
+        const cell = dom.querySelector(`.${EDITING_CLASS}`)
+        if (!cell) return null
+        const view = EditorView.findFromDOM(dom)
+        const nested = view ? cellEditorOf(view) : null
+        // The caret's own line of a cell that wraps. The whole cell until its editor is in it and drawn.
+        return (nested && cell.contains(nested.dom) ? caretBox(nested) : null) ?? cell.getBoundingClientRect()
+    }
+
+    /** Whether `pos`, counted from where the grid starts, is in the room of the cell being edited. */
+    holdsCaret(pos: number): boolean {
+        return this.caret !== null && pos >= this.caret.from && pos <= this.caret.to
+    }
+
+    /** The room the grid takes until it is drawn and measured: what it took when last drawn. */
+    get estimatedHeight(): number {
+        return this.height
     }
 
     eq(other: TableWidget): boolean {
@@ -184,6 +229,8 @@ class TableWidget extends WidgetType {
             this.inline === other.inline &&
             this.editable === other.editable &&
             sameCell(this.active, other.active) &&
+            // Where the caret may be: spaces typed at a cell's end move it and leave the table as it was.
+            sameRoom(this.caret, other.caret) &&
             sameRect(this.selected, other.selected) &&
             sameSet(this.missing, other.missing) &&
             JSON.stringify(this.table) === JSON.stringify(other.table)
@@ -330,7 +377,13 @@ function tableField(options: MarkdownTableOptions) {
             const cell = activeCell(state)
             const active = cell && cell.tableFrom === from ? { row: cell.row, column: cell.column } : null
             const block = active ? cellBlock(state) : null
-            return new TableWidget(t, from, inline ? null : blockWidgetIndent(state, from), inline, missingIn(t, options.isMissing), active, gridEditable(state), block?.rect ?? null)
+            const caret = cell && active ? { from: cell.open - from, to: cell.close - from } : null
+            return new TableWidget(t, from, inline ? null : blockWidgetIndent(state, from), inline, missingIn(t, options.isMissing), active, gridEditable(state), block?.rect ?? null, gridHeightAt(state, from), caret)
+        },
+        // A bullet's grid is beside its hidden text: a place in that text is where the grid draws it.
+        caretBox: (line, offset) => {
+            const grid = line.querySelector<HTMLElement>('.cm-md-table')
+            return (grid && drawn.get(grid)?.coordsAt(grid, offset)) ?? null
         },
         rebuildOn: (tr) => tr.effects.some((effect) => effect.is(refreshWikilinks) || effect.is(editTableAsText) || effect.is(selectCells)),
     })
@@ -551,7 +604,10 @@ const arrows = Prec.high(
 const theme = EditorView.baseTheme({
     // The grid's element is where its border controls are placed from; the table scrolls inside it.
     '.cm-md-table': { position: 'relative' },
-    [`.${SCROLL_CLASS}`]: { overflowX: 'auto' },
+    // The table scrolls sideways in here. `contain` keeps the table's own least width out of the
+    // width of everything round it: without it a table wider than the pane made the editor's text as
+    // wide as the table, the whole document scrolled sideways, and nothing scrolled in here.
+    [`.${SCROLL_CLASS}`]: { overflowX: 'auto', contain: 'inline-size' },
     // The block table's spacing from the lines around it, as padding (BLOCK_WIDGET_SPACING says why). The
     // bullet variant is an inline box inside its line, whose line box already holds its margins (below).
     '.cm-md-table--block': { padding: `${BLOCK_WIDGET_SPACING} 0` },
@@ -654,5 +710,5 @@ const theme = EditorView.baseTheme({
 
 /** The Table Grid augmentation (Dual Mode Editor.md): the grid, the press that edits a cell, and the cell's editor. */
 export function markdownTableAugmentation(options: MarkdownTableOptions = {}): Extension {
-    return [tablesAsTextField, cellBlockField, typedTableStaysText, tableField(options), pressToEdit(options), arrows, tableCellEditor(options.cell), theme]
+    return [tablesAsTextField, cellBlockField, typedTableStaysText, tableGridHeights(), tableField(options), pressToEdit(options), arrows, tableCellEditor(options.cell), theme]
 }

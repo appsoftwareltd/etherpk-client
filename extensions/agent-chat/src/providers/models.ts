@@ -96,6 +96,7 @@ function listAddress(connection: ModelConnection): string {
 }
 
 /** OpenAI models that are not chat models, by a word in their id. */
+// copy-exempt: computer-use is a model's name.
 const OPENAI_NOT_CHAT = /(embedding|tts|whisper|transcribe|audio|realtime|dall-e|image|moderation|instruct|search|babbage|davinci|sora|computer-use)/
 /** OpenAI chat models that take images. */
 const OPENAI_IMAGES = /^(gpt-4o|gpt-4\.1|gpt-4\.5|gpt-5|o1(?!-mini|-preview)|o3|o4|chatgpt-4o)/

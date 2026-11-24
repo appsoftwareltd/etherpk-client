@@ -1109,7 +1109,7 @@
     /** A task deleted from the Task Editor, with everything nested under it: said, with Undo. */
     function taskDeleted(removed: RemovedTask, label: string): void {
         cascade = null;
-        deleted = { text: `Deleted "${label}" and everything nested under it.`, removed };
+        deleted = { text: `Deleted "${label}" and everything nested under that task.`, removed };
         announcement = deleted.text;
     }
 

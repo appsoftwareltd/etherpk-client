@@ -29,13 +29,21 @@ export interface GuideThread {
      * reads the syntax tree: the overlay asks only for the threads it draws.
      */
     toPanel: () => boolean
+    /**
+     * Whether `last` is a media line, which has an audio or video player drawn under it, so the
+     * thread runs on to the bottom of the player instead of stopping at the line's text. The player
+     * is part of the block the line is, and a thread that stopped at the text ended above the last
+     * thing in the tree. Whether the player is drawn (a fold or a part editor may hide the line) is
+     * the overlay's to find, off the page.
+     */
+    toPlayer: () => boolean
 }
 
 /**
  * Every guide thread, from {@link branchEnds}:
  *
  * - one per bullet that parents a sub-bullet, down to its branch's last line, and on to the panel's
- *   bottom when that line ends a quote;
+ *   bottom when that line ends a quote, or to the bottom of the player under a media line;
  * - one for a bullet with no parent bullet and no child bullet whose block (its own line and its
  *   soft lines) ends in a quote, when it is the last bullet of its group. It has no parent thread to
  *   extend, so its own runs from its dot down beside the panel. Not when a sibling follows: the
@@ -53,6 +61,8 @@ export function guideThreads(
     ends: readonly number[],
     outline: readonly OutlineLine[],
     quoteEndsAt: (line: number) => boolean,
+    /** Whether a 0-based line is a media line (`EditorAnalysis.mediaLines`). */
+    isMediaLine: (line: number) => boolean,
     within: { from: number; to: number } = { from: 0, to: lines.length - 1 },
 ): GuideThread[] {
     const threads: GuideThread[] = []
@@ -63,7 +73,7 @@ export function guideThreads(
         const end = ends[i]
         if (end > i) {
             covered = Math.max(covered, end)
-            if (reaches(i, end)) threads.push({ parent: i, last: end, toPanel: () => quoteEndsAt(end) })
+            if (reaches(i, end)) threads.push({ parent: i, last: end, toPanel: () => quoteEndsAt(end), toPlayer: () => isMediaLine(end) })
             continue
         }
         // A childless bullet (`end === i`; prose, fence and frontmatter lines are -1) with no parent.
@@ -78,7 +88,7 @@ export function guideThreads(
         }
         // A bullet right below the block is a sibling in the same group.
         if (next < lines.length && ends[next] >= 0) continue
-        if (reaches(i, last) && quoteEndsAt(last)) threads.push({ parent: i, last, toPanel: () => true })
+        if (reaches(i, last) && quoteEndsAt(last)) threads.push({ parent: i, last, toPanel: () => true, toPlayer: () => false })
     }
     return threads
 }

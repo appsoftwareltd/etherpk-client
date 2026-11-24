@@ -176,7 +176,8 @@ describe('toCard', () => {
         expect(shown.label).toBe('Fix the gate')
         expect(shown.freeTags).toEqual(['bug', 'needs-oil'])
         expect(shown.freeTag).toBe('bug')
-        expect(shown.parent).toBe('Paint the shed #P1')
+        // The parent's label is read as any task's: a Task Tag written after its words is a tag, not a word.
+        expect(shown.parent).toBe('Paint the shed')
     })
 
     it('shows a task that is only Free Tags as its tags, with no pills', () => {
@@ -189,7 +190,7 @@ describe('toCard', () => {
 
     it('names the concept the task sits in, and the parent task instead when it has one: never both (ADR 0174)', () => {
         expect(toCard(hit('Fix the gate', { parentTask: null, ancestorConcept: 'Acme' }), '2026-11-02')).toMatchObject({ parent: null, inConcept: 'Acme' })
-        expect(toCard(hit('Fix the gate', { ancestorConcept: 'Acme' }), '2026-11-02')).toMatchObject({ parent: 'Paint the shed #P1', inConcept: null })
+        expect(toCard(hit('Fix the gate', { ancestorConcept: 'Acme' }), '2026-11-02')).toMatchObject({ parent: 'Paint the shed', inConcept: null })
     })
 
     it('carries the scheduled date, which a card shows beside its due date', () => {

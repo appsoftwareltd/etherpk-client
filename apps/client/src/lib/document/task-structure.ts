@@ -25,7 +25,7 @@
 import { fencedBlocks, type FencedBlockRange, linesInFencedBlocks } from './fenced-code'
 import { INDENT } from './indent-unit'
 import { branchRange, bulletContent, isBulletLine, lineIndent, taskDone } from './outliner'
-import { freeTagsIn, isTaskDate, parseTaskLine, parseTaskTags, serialiseTags, type TaskPriority, taskLineWith, taskStatus, type TaskStatus, withoutFreeTags } from './task-tags'
+import { applyStrayTaskTags, applyTaskTag, freeTagsIn, isTaskDate, parseTaskLine, parseTaskTags, serialiseTags, type TaskChanges, type TaskPriority, taskLineWith, taskStatus, type TaskStatus, withoutFreeTags } from './task-tags'
 import type { TextChange } from './types'
 
 /** The words of the bullet that holds a task's [[Task Comment]]s. */
@@ -165,18 +165,80 @@ export function taskComments(lines: readonly string[], task: TaskStructure): str
 /** The task line's checkbox and what is after it, or null when the line is not a task. */
 const CHECKBOX = /^(\s*-\s+\[[ xX]\])\s?(.*)$/
 
+/** What a typed title says once its tags are taken out: empty for a title that is only tags. */
+export function titleWords(title: string): string {
+    return withoutFreeTags(parseTaskTags(title.trim()).text)
+}
+
+/**
+ * A title as typed, read as a document reads a task's line: its words with the Free Tags where
+ * they were typed, and the status, priority and dates its Task Tags give. The title is read as the
+ * line of a new open task and tidied as leaving that line would tidy it, so the first of a kind
+ * wins among the tags at its start, a tag after its words replaces one before it, and a state tag
+ * sets the status it names. A title with no tag changes nothing.
+ */
+function readTitle(title: string): { text: string; freeTags: string[]; changes: TaskChanges; completion: string | null } {
+    const probe = `- [ ] ${title.trim()}`
+    const { done, text, priority, due, scheduled, completion, ...states } = parseTaskLine(applyStrayTaskTags(probe) ?? probe)!
+    const status = taskStatus(done, states)
+    const changes: TaskChanges = {
+        ...(status === 'open' ? {} : { status }),
+        ...(priority === null ? {} : { priority }),
+        ...(due === null ? {} : { due }),
+        ...(scheduled === null ? {} : { scheduled }),
+    }
+    return { text, freeTags: freeTagsIn(text), changes, completion }
+}
+
+/**
+ * A task line made of `start` (its checkbox and tag run), a typed title and the task's other Free
+ * Tags. A tag typed in the title is the task's tag, as it is typed in a document ({@link readTitle}):
+ * a Free Tag stays among the words, and a Task Tag is written into the run, where it replaces the
+ * run's priority or date and sets the status it names. A Free Tag the title holds is left out of
+ * `others`, so no tag is written twice.
+ */
+function lineWithTitle(start: string, title: string, others: readonly string[]): string {
+    const typed = readTitle(title)
+    const has = new Set(typed.freeTags.map((tag) => tag.toLowerCase()))
+    const kept = others.filter((tag) => !has.has(tag.toLowerCase())).map((tag) => `#${tag}`)
+    const line = [start, typed.text, ...kept].filter((part) => part !== '').join(' ')
+    const written = taskLineWith(line, typed.changes) ?? line
+    return typed.completion === null ? written : (applyTaskTag(written, { kind: 'completion', value: typed.completion }) ?? written)
+}
+
+/** What a line says of its task, for telling whether a rewrite would change anything a person reads. */
+function reading(line: string): string {
+    const task = parseTaskLine(line)
+    if (!task) return line
+    const { done, text, priority, due, scheduled, completion, ...states } = task
+    const freeTags = freeTagsIn(text)
+        .map((tag) => tag.toLowerCase())
+        .sort()
+    return JSON.stringify([taskStatus(done, states), priority, due, scheduled, completion, withoutFreeTags(text), freeTags])
+}
+
+/** `line`, a task's, with its words made the typed `title`. */
+function retitled(line: string, title: string): string {
+    const marker = CHECKBOX.exec(line)!
+    const tags = parseTaskTags(marker[2])
+    return lineWithTitle([marker[1], ...serialiseTags(tags)].join(' '), title, freeTagsIn(tags.text))
+}
+
 /**
  * `line` with its title made `title`: the tag run written as the task grammar writes it, then the
- * title, then the Free Tags, wherever they were written before. A title already as asked leaves the
- * line alone, so Free Tags written among the words stay there. Null when the line is not a task.
+ * title, then the Free Tags, wherever they were written before. A tag typed in the title is the
+ * task's tag ({@link lineWithTitle}). A title that changes nothing the line says (the same words,
+ * and no tag the task has not got) leaves the line alone, so Free Tags written among the words stay
+ * there, and a title saved twice writes its tags once. A line that is rewritten has a Task Tag
+ * written after its words applied first, as any write to a task does (`taskLineWith`). Null when
+ * the line is not a task.
  */
 export function taskLineWithTitle(line: string, title: string): string | null {
-    const marker = CHECKBOX.exec(line)
-    if (!marker) return null
-    const tags = parseTaskTags(marker[2])
-    if (withoutFreeTags(tags.text) === title.trim()) return line
-    const freeTags = freeTagsIn(tags.text).map((tag) => `#${tag}`)
-    return [marker[1], ...serialiseTags(tags), title.trim(), ...freeTags].filter((part) => part !== '').join(' ')
+    if (!CHECKBOX.test(line)) return null
+    const next = retitled(line, title)
+    if (reading(next) === reading(line)) return line
+    const tidied = applyStrayTaskTags(line)
+    return tidied === null ? next : retitled(tidied, title)
 }
 
 /**
@@ -213,15 +275,15 @@ const EMPTY_LINE = /^\s*(?:-\s*)?$/
 
 /**
  * A new task's lines at the left margin: its line, with the tag run the task grammar writes for its
- * status, priority and dates, then its title and Free Tags; then `description`, written at the left margin,
- * nested one level under it. Blank lines are dropped (a flush blank line would end the task's
+ * status, priority and dates, then its title and Free Tags, a tag typed in the title counting as the
+ * task's ({@link lineWithTitle}); then `description`, written at the left margin, nested one level under it. Blank lines are dropped (a flush blank line would end the task's
  * branch), and so are bare bullets at the description's end, where an untouched one is left over.
  */
 export function newTaskLines(task: NewTask, description: string): string[] {
     // A date that is no whole `YYYY-MM-DD` is written as none: the grammar would read it as words.
     const date = (value: string | null | undefined) => (value && isTaskDate(value) ? value : null)
     const checkbox = taskLineWith('- [ ] ', { status: task.status, priority: task.priority, due: date(task.due), scheduled: date(task.scheduled) })!.trimEnd()
-    const line = [checkbox, task.title.trim(), ...task.freeTags.map((tag) => `#${tag}`)].filter((part) => part !== '').join(' ')
+    const line = lineWithTitle(checkbox, task.title, task.freeTags)
     const nested = description.split('\n').filter((text) => text.trim() !== '')
     while (nested.length > 0 && EMPTY_LINE.test(nested[nested.length - 1])) nested.pop()
     return [line, ...nested.map((text) => INDENT + text)]

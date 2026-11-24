@@ -66,7 +66,7 @@ export function taskEditorNotices(deps: TaskEditorNoticeDeps) {
                           : `Could not undo: the lines around "${label}" changed since it was deleted. Its text is still in the document's history.`,
                 )
             })
-            deps.notify(`Deleted "${label}" and everything nested under it.`, { action: { label: 'Undo', run: undo } })
+            deps.notify(`Deleted "${label}" and everything nested under that task.`, { action: { label: 'Undo', run: undo } })
         },
     }
 }

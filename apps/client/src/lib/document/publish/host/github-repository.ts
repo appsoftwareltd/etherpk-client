@@ -121,7 +121,7 @@ export function describeGitHubError(error: unknown, repo: GitHubRepository, opti
         case 'offline':
             return 'GitHub could not be reached. Check the connection and try again.'
         case 'bad-token':
-            return `GitHub refused the token. It has expired, been revoked or was mistyped. ${options.replaceToken ?? 'Make a new one and replace it under GitHub above.'}`
+            return `GitHub refused the token. It has expired, been revoked or was mistyped. ${options.replaceToken ?? 'Create a new token and replace the old one under GitHub above.'}`
         case 'no-access':
             return `GitHub found no repository ${where} for this token. Check the name, and that the token's Repository access includes it.`
         case 'read-only':

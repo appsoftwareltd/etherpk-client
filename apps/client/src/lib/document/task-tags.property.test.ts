@@ -78,6 +78,9 @@ const dateCommand: fc.Arbitrary<TaskTagCommand> = fc
     .tuple(fc.constantFrom('due', 'scheduled', 'completion'), date)
     .map(([kind, value]) => ({ kind, value }) as TaskTagCommand)
 
+/** A task with no Task Tag at all. */
+const NO_TAGS = { priority: null, waiting: false, doing: false, test: false, cancelled: false, archived: false, due: null, completion: null, scheduled: null }
+
 const STATUSES: TaskStatus[] = ['open', 'doing', 'waiting', 'test', 'done', 'cancelled', 'archived']
 
 /** Whether a whitespace-separated token is a Task Tag the grammar reads. */
@@ -155,6 +158,66 @@ describe('a tick changes the checkbox and nothing else', () => {
                 // `X` is read as ticked but written as `x`, so only a line in the written spelling comes back exactly.
                 const restored = toggleTaskLine(toggled, was)!
                 if (!line.includes('[X]')) expect(restored).toBe(line)
+            }),
+            fuzz(500),
+        )
+    })
+})
+
+describe('a Task Tag written after the run is read as tidy on leave writes it', () => {
+    /** What a list shows for a line, with the states as the one status the checkbox makes of them. */
+    const shown = (line: string) => {
+        const { done, priority, due, scheduled, completion, text, ...states } = parseTaskLine(line)!
+        return { done, status: taskStatus(done, states), priority, due, scheduled, completion, text }
+    }
+
+    it('reads a line and the line tidy on leave makes of it alike, but for a status the checkbox contradicts', () => {
+        fc.assert(
+            fc.property(taskLine, (line) => {
+                const tidied = applyStrayTaskTags(line) ?? line
+                const read = shown(line)
+                const written = shown(tidied)
+                // A reader never changes the checkbox: it is the character in the line.
+                expect(read.done).toBe(/\[[xX]\]/.test(line))
+                const { done: _readDone, status: readStatus, ...readRest } = read
+                const { done: _writtenDone, status: writtenStatus, ...writtenRest } = written
+                expect(readRest).toEqual(writtenRest)
+                // Tidy on leave ticks or unticks the task for a state tag that asks it to. Where it
+                // did not, the two read as one status.
+                if (read.done === written.done) expect(readStatus).toBe(writtenStatus)
+            }),
+            fuzz(1000),
+        )
+    })
+
+    it('writes a status, a priority or a toggle over a line as it does over the line tidy on leave makes of it', () => {
+        fc.assert(
+            fc.property(taskLine, fc.constantFrom(...STATUSES), fc.option(fc.constantFrom(1, 2, 3) as fc.Arbitrary<1 | 2 | 3>, { nil: null }), toggleCommand, (line, status, priority, toggle) => {
+                const tidied = applyStrayTaskTags(line) ?? line
+                for (const changes of [{ status }, { priority }, { status, priority }]) {
+                    const written = taskLineWith(line, changes)!
+                    // Left alone when it is as asked already; otherwise the tag after the run is applied first.
+                    if (written !== line) expect(written).toBe(taskLineWith(tidied, changes))
+                    // No write leaves a Task Tag after the run for a later tidy to apply again.
+                    if (written !== line) expect(applyStrayTaskTags(written)).toBeNull()
+                }
+                const toggled = applyTaskTag(line, toggle)!
+                expect(toggled).toBe(applyTaskTag(tidied, toggle))
+                expect(applyStrayTaskTags(toggled)).toBeNull()
+            }),
+            fuzz(1000),
+        )
+    })
+
+    it('reads no tag out of code, a link, a URL or inline maths, or one joined to other characters', () => {
+        const wrapped = fc
+            .tuple(fc.constantFrom(...TAG_TOKENS), fc.constantFrom('`%`', '[[Garden %]]', '[the % notes](https://example.com)', '<https://example.com/%>', 'https://example.com/%', '%,', 'item%', '$a % b$'))
+            .map(([tag, shape]) => shape.replace('%', tag))
+        const label = fc.array(fc.oneof(fc.constantFrom(...WORDS), wrapped), { minLength: 1, maxLength: 6 }).map((words) => words.join(' '))
+        fc.assert(
+            fc.property(label, (words) => {
+                expect(parseTaskTags(words)).toEqual({ ...NO_TAGS, text: words })
+                expect(taskTagTokens(words)).toEqual([])
             }),
             fuzz(500),
         )

@@ -134,7 +134,7 @@ export async function unlockByDeviceApproval(api: SyncApi, io: LoginIo): Promise
     // on any terminal narrower or wider than the break.
     io.say(
         `To approve this device, ${where} on any other device where your Encryption Keys are unlocked. Any page will do. ` +
-            'Each of those devices shows a prompt: choose Show the code on one of them, and this terminal shows the same code.',
+            'Each of those devices shows a prompt: choose Show the code on any of them, and this terminal shows the same code.',
     )
     io.say('')
     io.say('Waiting (up to ten minutes)…')

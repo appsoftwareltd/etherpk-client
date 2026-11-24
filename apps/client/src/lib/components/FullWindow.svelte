@@ -56,8 +56,14 @@
     const titleId = $props.id();
 
     let keyboardInset = $state(0);
+    /** How far the browser moved the page up under the keyboard: the window starts that far down, on the screen. */
+    let viewportTop = $state(0);
     $effect(() => {
-        if (endsAboveKeyboard) return watchKeyboardInset((inset) => (keyboardInset = inset));
+        if (!endsAboveKeyboard) return;
+        return watchKeyboardInset((inset, top) => {
+            keyboardInset = inset;
+            viewportTop = top;
+        });
     });
 
     /**
@@ -129,7 +135,7 @@
 </script>
 
 {#snippet shell()}
-    <div class={["full-window", dialog && "full-window--dialog", keyboardInset > 0 && "full-window--above-keyboard"]} style:bottom={keyboardInset > 0 ? `${keyboardInset}px` : undefined} role="dialog" aria-modal="true" aria-labelledby={titleId} tabindex="-1" {onkeydown} data-testid={testId}>
+    <div class={["full-window", dialog && "full-window--dialog", keyboardInset > 0 && "full-window--above-keyboard"]} style:bottom={keyboardInset > 0 ? `${keyboardInset}px` : undefined} style:top={viewportTop > 0 && !dialog ? `${viewportTop}px` : undefined} role="dialog" aria-modal="true" aria-labelledby={titleId} tabindex="-1" {onkeydown} data-testid={testId}>
         <header class="flex shrink-0 items-center justify-between gap-3 border-b border-(--gk-border-soft) px-4 py-2">
             <h2 id={titleId} class="m-0 truncate text-sm font-semibold text-(--gk-text-default)">{title}</h2>
             <button type="button" class="gk-icon-button" onclick={close} aria-label="Close" data-tooltip="Close" data-testid="{testId}-return" {@attach focusOnOpen}><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg></button>

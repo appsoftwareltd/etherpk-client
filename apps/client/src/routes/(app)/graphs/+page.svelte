@@ -1060,7 +1060,7 @@
         const scope = readSyncAccount(origin);
         if (!scope)
             throw new Error(
-                `Sign in to ${serverHost(origin)} before adding a synced graph from it.`,
+                `Sign in to ${serverHost(origin)} before adding a synced graph from that server.`,
             );
         return scope;
     }
@@ -1073,7 +1073,7 @@
     function noSyncConnectionMessage(): string {
         if (signsInToManagedSync()) {
             return supported
-                ? "Synced graphs need an EtherPK account with Sync+. Sign in to create one, or open a folder on this computer instead."
+                ? "Synced graphs need an EtherPK account with Sync+. Sign in to create one, or open a folder on this device instead."
                 : "Synced graphs need an EtherPK account with Sync+. Sign in to create one.";
         }
         return "Connect this device to a Sync Server first: add its address and an access token in Sync settings.";
@@ -2033,7 +2033,7 @@
             url: !url
                 ? "Enter the Sync Server's address."
                 : !/^https?:\/\//i.test(url)
-                  ? "Start the address with https://, or http:// for a server on this computer."
+                  ? "Start the address with https://, or http:// for a server on this device."
                   : null,
             token: pat
                 ? null
@@ -4019,7 +4019,7 @@
         }
         for (const shared of result.sharedGraphs) {
             items.push(
-                `${nameOf(shared.graphId)}: ask ${shared.ownerEmail ?? "its owner"} to compare your new security fingerprint, then select Rotate key on it.`,
+                `${nameOf(shared.graphId)}: ask ${shared.ownerEmail ?? "its owner"} to compare your new security fingerprint, then select Rotate key on that graph.`,
             );
         }
         const managed = server.connection.kind === "managed";
@@ -4501,7 +4501,7 @@
         data-testid="sync-token-help"
     >
         {#if customServerOrigin}
-            Make a token on the server's <a
+            Create a token on the server's <a
                 href="{customServerOrigin}/account/tokens"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -4516,7 +4516,7 @@
                 >create an account</a
             > there first.
         {:else}
-            Make a token on the Sync Server's
+            Create a token on the Sync Server's
             Access tokens page.
         {/if}
         A token lets this device sync, but can never
@@ -4867,8 +4867,8 @@
                                         It had not uploaded anything.
                                     {:else}
                                         The folder "{item.folderName ??
-                                            "you chose"}" holds part of it:
-                                        empty it before importing into it again,
+                                            "you chose"}" holds part of the import:
+                                        empty the folder before importing into it again,
                                         or choose another folder.
                                     {/if}
                                 </p>
@@ -5970,7 +5970,7 @@
                     data-testid="delete-local-note"
                 >
                     The synced copy in this browser, and its search index, are
-                    deleted with it. Files you mirrored to a local folder are
+                    deleted with the graph. Files you mirrored to a local folder are
                     not deleted.
                 </p>
             {:else}
@@ -5986,7 +5986,7 @@
                 class="text-sm text-neutral-600 dark:text-neutral-400"
                 data-testid="delete-agent-note"
             >
-                Computers running the Headless Client for this graph drop their
+                Devices running the Headless Client for this graph drop their
                 copy the next time it starts.
             </p>
             <div>
@@ -6468,7 +6468,7 @@
                     >? You lose access until the owner invites you again. The
                     graph itself, and the other members, are untouched. The copy
                     in this browser, and its search index, are deleted.
-                    Computers running the Headless Client for this graph drop
+                    Devices running the Headless Client for this graph drop
                     their copy the next time it starts.
                 </p>
                 {@render lockedGraphDetailsNote(leavingServer, leaving)}

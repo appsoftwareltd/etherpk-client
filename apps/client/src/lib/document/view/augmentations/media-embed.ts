@@ -275,6 +275,17 @@ export function mediaLineOfPlayer(state: EditorState, pos: number, url: string):
     return null
 }
 
+/**
+ * The bottom (viewport px) of the player drawn under a rendered `.cm-line`, or null when the line
+ * has none: the player's own box, not the widget's, which is as wide as the column. The outline
+ * guides run their threads down to it, as they run to the bottom of a quote's panel.
+ */
+export function mediaPlayerBottom(line: Element): number | null {
+    const widget = line.nextElementSibling
+    if (!(widget instanceof HTMLElement) || !widget.classList.contains('cm-md-media')) return null
+    return (widget.firstElementChild ?? widget).getBoundingClientRect().bottom
+}
+
 function buildDecorations(state: EditorState, options: MediaEmbedOptions, redraw: number): DecorationSet {
     const { lines, mediaLines } = analysisFor(state)
     if (mediaLines.length === 0) return Decoration.none

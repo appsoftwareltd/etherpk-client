@@ -184,7 +184,7 @@
                 {/each}
             </select>
             <p class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
-                Contents leave the screen the instant you switch away either way. This is how long
+                Contents leave the screen the instant you switch away either way. This setting is how long
                 before the key itself is discarded, so coming back needs your passphrase again.
             </p>
         </div>

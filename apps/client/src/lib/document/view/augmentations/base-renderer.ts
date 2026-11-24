@@ -19,7 +19,7 @@
 
 import { syntaxTree } from '@codemirror/language'
 import { type EditorState, type Extension, type Line, type Range, StateField, type Transaction } from '@codemirror/state'
-import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
+import { Decoration, type DecorationSet, EditorView, type Rect, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 
 import { contentStart } from '../../outliner'
 import { visibleFencedBlocks } from '../outliner-context'
@@ -64,8 +64,16 @@ export const hiddenSyntax = Decoration.replace({})
 
 /** An element that takes no room and holds a zero-width space, for {@link hiddenText}. */
 class HiddenTextWidget extends WidgetType {
-    eq(): boolean {
-        return true
+    constructor(private readonly caretBox?: CaretBox) {
+        super()
+    }
+    eq(other: HiddenTextWidget): boolean {
+        return other.caretBox === this.caretBox
+    }
+    /** Where a place in the hidden text is in the page: where the widget beside it shows it, when it says. */
+    coordsAt(dom: HTMLElement, pos: number): Rect | null {
+        const line = dom.closest<HTMLElement>('.cm-line')
+        return (line && this.caretBox?.(line, pos)) ?? null
     }
     toDOM(): HTMLElement {
         const span = document.createElement('span')
@@ -84,7 +92,14 @@ class HiddenTextWidget extends WidgetType {
  * the place the widget is at, the end of the hidden text: a caret on a bullet in front of its table
  * became a caret in the table's last cell as the editor took the keyboard.
  */
-const hiddenText = Decoration.replace({ widget: new HiddenTextWidget() })
+const hiddenTextBeside = (caretBox?: CaretBox) => Decoration.replace({ widget: new HiddenTextWidget(caretBox) })
+
+/**
+ * Where a place in a block's hidden text is shown in the page, for a widget that draws the caret
+ * itself: `within` is the line the block is drawn in and `offset` the place, counted from the
+ * start of the hidden text. Null for a place the widget does not show.
+ */
+export type CaretBox = (within: HTMLElement, offset: number) => Rect | null
 
 /** Whether `decoration` is text hidden beside the widget that stands in for it ({@link hiddenText}), and not that widget. */
 export function isHiddenText(decoration: Decoration): boolean {
@@ -239,6 +254,12 @@ export interface BlockWidgetSpec<T> {
      */
     besideHiddenText?: boolean
     /**
+     * Where the widget beside hidden text shows a place in that text ({@link CaretBox}). Without it
+     * the editor takes every place in the hidden text to be at the text's start, the top of the
+     * line, and scrolls there for a caret the widget shows further down.
+     */
+    caretBox?: CaretBox
+    /**
      * Any extra reason to rebuild beyond an edit, a selection change or a pin (a theme tick, a
      * render completing). The reveal inputs are always included.
      */
@@ -252,6 +273,8 @@ export interface BlockWidgetSpec<T> {
  * the widget covers the block's lines whole, or from past a bullet marker (`markerLength`).
  */
 export function blockWidgetField<T>(spec: BlockWidgetSpec<T>): StateField<DecorationSet> {
+    // One decoration for the field, so the hidden text of a block drawn again is the same as before.
+    const hiddenText = hiddenTextBeside(spec.caretBox)
     function build(state: EditorState): DecorationSet {
         const active = revealedLines(state)
         const decos: Range<Decoration>[] = []

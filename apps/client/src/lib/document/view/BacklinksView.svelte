@@ -188,7 +188,7 @@
     {/if}
 
     {#if !concept}
-        <p class="hint" data-testid="backlinks-idle">Open a document to see what links to it.</p>
+        <p class="hint" data-testid="backlinks-idle">Open a document to see its backlinks.</p>
     {:else if backlinks.status === "loading"}
         <!-- Shown a moment after the fetch starts, so an answer that comes straight back never
              flashes it (the style below delays it). -->

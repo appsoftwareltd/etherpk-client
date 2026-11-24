@@ -54,7 +54,7 @@ export const USAGE_CATALOGUE: readonly CatalogueEntry[] = [
         pattern: /^graph_opened$/,
         when: 'Each time a graph opens.',
         properties: {
-            kind: { rule: GRAPH_KINDS, meaning: 'synced, a folder on the computer, or kept in the browser' },
+            kind: { rule: GRAPH_KINDS, meaning: 'synced, a folder on the device, or kept in the browser' },
             pages: { rule: PAGE_COUNT_BUCKETS, meaning: 'roughly how many pages it has' },
             openTime: { rule: OPEN_TIME_BUCKETS, meaning: 'roughly how long it took to open' },
         },

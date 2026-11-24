@@ -178,7 +178,7 @@ export async function setupSemantic(io: SemanticSetupIo): Promise<SemanticSetupS
     io.say('Semantic search is set up.')
     io.say('')
     io.say(
-        'Next, serve embeds the passages of each graph it serves, in the background. This can take a few minutes on a large graph. ' +
+        'Next, serve embeds the passages of each graph it serves, in the background. Embedding can take a few minutes on a large graph. ' +
             'A serve that is already running starts within half a minute, otherwise the next serve starts it. ' +
             'Until it finishes, a semantic search answers from the passages embedded so far and marks its results incomplete. ' +
             `To see progress, run: ${io.command ?? 'etherpk-mcp'} semantic status`,

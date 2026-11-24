@@ -16,6 +16,7 @@
     import type { MobileRenderer } from './mobile-renderer.svelte'
     import SidebarToggleIcon from './SidebarToggleIcon.svelte'
     import { NO_PAGE_OPEN } from './no-page-open'
+    import { CLOSE_PRIMARY_SIDEBAR } from './primary-sidebar-close'
     import { markIcon, tabTitleWidth, type TabMark } from './tab-renderer'
     import { iconSvg } from '#lib/surface/icons.js'
     import { unavailableViewMessage } from './unavailable-view'
@@ -134,6 +135,19 @@
         else controller.toggleSidebar(side)
         if (opening) controller.toggleSidebar(side === 'left' ? 'right' : 'left', false)
     }
+    /** The top bar's drawer toggles, for the keyboard to return to when a drawer's own close button is pressed. */
+    const toggleEls = $state<{ left?: HTMLButtonElement; right?: HTMLButtonElement }>({})
+
+    /**
+     * The Primary Sidebar's close button, in its drawer's title row (ADR 0198, amended 2026-11-24):
+     * the drawer closes with its Views left open, and the keyboard goes to the toggle that opens it
+     * again, since the button went with the drawer.
+     */
+    function closePrimaryDrawer(side: 'left' | 'right') {
+        controller.toggleSidebar(side, false)
+        toggleEls[side]?.focus()
+    }
+
     /**
      * A Sidebar that is COVERING the content dismisses itself when the user opens something
      * into the main region.
@@ -348,12 +362,21 @@
     const helpFor = createControlHelp(workspaceService('keybindings'))
 
     // --- Ride above the soft keyboard --------------------------------------------
-    // The soft keyboard overlays the layout viewport (it does not shrink it), so a
-    // bottom-pinned Command Bar would sit behind the keyboard. We track the visual
-    // viewport and shrink the whole mobile surface to it via `--keyboard-inset`, so
-    // the content reflows and the bottom Command Bar lands just above the keyboard.
+    // Where the browser can, the keyboard resizes the page and this surface with it (app.html),
+    // and both numbers here stay 0. Elsewhere the keyboard lies over a window that keeps its
+    // height, so a bottom-pinned Command Bar would sit behind it, and the browser may move the
+    // page up under what is left, taking the top bar off the screen. We track the visual viewport
+    // (keyboard-inset.ts) and fit the whole mobile surface to it: `--keyboard-inset` off its
+    // bottom and `--viewport-top` down from the window's top. The content reflows, the Command
+    // Bar lands just above the keyboard and the top bar stays on the screen.
     let keyboardInset = $state(0)
-    $effect(() => watchKeyboardInset((inset) => (keyboardInset = inset)))
+    let viewportTop = $state(0)
+    $effect(() =>
+        watchKeyboardInset((inset, top) => {
+            keyboardInset = inset
+            viewportTop = top
+        }),
+    )
 
     // --- Over a dialog -------------------------------------------------------------
     // A modal dialog covers the workspace's Command Bar. While an editor inside one has the
@@ -454,7 +477,22 @@
         />
         <div class="primary-view">
             {#if inst}
-                <h2 class="drawer-title" data-testid="mobile-drawer-title">{renderer.title(inst.view)}</h2>
+                <!-- The View's title, and at the row's right end the drawer's close button (ADR 0198,
+                     amended 2026-11-24), as the desktop Sidebar's title row has. -->
+                <div class="drawer-heading">
+                    <h2 class="drawer-title" data-testid="mobile-drawer-title">{renderer.title(inst.view)}</h2>
+                    <button
+                        type="button"
+                        class="gk-icon-button drawer-close"
+                        aria-label={CLOSE_PRIMARY_SIDEBAR}
+                        data-tooltip={CLOSE_PRIMARY_SIDEBAR}
+                        data-testid="primary-sidebar-close"
+                        onclick={() => closePrimaryDrawer(bar.side)}
+                    >
+                        <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
+                        {@html iconSvg('close', { size: 16 })}
+                    </button>
+                </div>
             {/if}
             {@render drawerBody(inst)}
         </div>
@@ -493,13 +531,14 @@
     {/if}
 {/snippet}
 
-<div class="mobile" data-testid="mobile-presenter" style="--keyboard-inset: {keyboardInset}px; --top-bar-over: {overView ? topBarHeight : 0}px">
+<div class="mobile" data-testid="mobile-presenter" style="--keyboard-inset: {keyboardInset}px; --viewport-top: {viewportTop}px; --top-bar-over: {overView ? topBarHeight : 0}px">
     <!-- The drawer toggles, and between them the button to Search, the control naming the
          document in front and the button to today's journal -->
     <div class="topbar" class:over={overView} data-gone={overView?.hidden || undefined} bind:offsetHeight={topBarHeight} {@attach noticesBelow} onpointerdowncapture={pressedBar} data-testid="mobile-topbar">
         <button
             class="toggle"
             data-testid="mobile-toggle-left"
+            bind:this={toggleEls.left}
             aria-label={sidebars?.toggleLabel('left') ?? 'Toggle document tree'}
             aria-expanded={leftOpen}
             onclick={() => toggleSidebarExclusive('left')}
@@ -576,6 +615,7 @@
         <button
             class="toggle"
             data-testid="mobile-toggle-right"
+            bind:this={toggleEls.right}
             aria-label={sidebars?.toggleLabel('right') ?? 'Toggle backlinks'}
             aria-expanded={rightOpen}
             onclick={() => toggleSidebarExclusive('right')}
@@ -730,10 +770,12 @@
 
     .mobile {
         position: absolute;
-        /* Shrink the surface to the visual viewport when the soft keyboard is open
-           (--keyboard-inset > 0), so the content reflows and the bottom Command Bar
-           lands just above the keyboard rather than behind it. */
-        inset: 0 0 var(--keyboard-inset, 0px) 0;
+        /* Fit the surface to the visual viewport when the soft keyboard is open over a window
+           that keeps its height, so the content reflows and the bottom Command Bar lands just
+           above the keyboard rather than behind it. The top comes down by as much as the
+           browser moved the page up, less what is above the workspace (`--workspace-top`, the
+           app header where it shows), which goes off the screen first. */
+        inset: max(0px, calc(var(--viewport-top, 0px) - var(--workspace-top, 0px))) 0 var(--keyboard-inset, 0px) 0;
         display: grid;
         /* Rows: the top bar, the content area, then the Command Bar. */
         grid-template-rows: auto 1fr auto;
@@ -1221,12 +1263,32 @@
         min-height: 0;
     }
     /* The row naming the View in front, where the strip of tabs would be: the tab's own text. */
-    .drawer-title {
+    .drawer-heading {
+        display: flex;
         flex: none;
+        align-items: center;
+        gap: 0.25rem;
+        padding-right: 0.25rem;
+        border-bottom: 1px solid var(--gk-border-soft);
+    }
+    /* The dense-row size (28px), as on the desktop row, and 44px under a finger, the icon
+       button's own size there. */
+    .drawer-close {
+        width: 1.75rem;
+        height: 1.75rem;
+    }
+    @media (pointer: coarse) {
+        .drawer-close {
+            width: 2.75rem;
+            height: 2.75rem;
+        }
+    }
+    .drawer-title {
+        flex: 1;
+        min-width: 0;
         margin: 0;
         padding: 0.5rem 0.75rem;
         overflow: hidden;
-        border-bottom: 1px solid var(--gk-border-soft);
         color: var(--gk-text-strong);
         font-size: 0.875rem;
         font-weight: 600;

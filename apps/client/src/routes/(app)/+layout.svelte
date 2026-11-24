@@ -52,7 +52,8 @@
     <meta name="robots" content="noindex" />
 </svelte:head>
 
-<div class="flex min-h-screen flex-col">
+<!-- dvh: the part of the screen a phone browser leaves under its bars, where `vh` is the screen without them. -->
+<div class="flex min-h-dvh flex-col">
     {#snippet headerActions()}
         <ImportToSyncPlusEntry placement="header" />
         <InstallEntry placement="header" />

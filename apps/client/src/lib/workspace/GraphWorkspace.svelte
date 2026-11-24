@@ -5869,6 +5869,12 @@
                 // A tab dragged to another group: the group it left brings forward the model's
                 // choice, not dockview's (ADR 0150).
                 onViewMoved: () => controller?.noteRendererChanged(),
+                // The Primary Sidebar's close button collapses it. The button goes with the
+                // Sidebar, so the keyboard moves to the Activity Bar's icon that brings it back.
+                onSidebarCloseRequested: () => {
+                    sidebars.closePrimary();
+                    document.querySelector<HTMLElement>('[data-testid="activity-bar"] [role="tab"][tabindex="0"]')?.focus();
+                },
             });
         }
         controller = createLayoutController({

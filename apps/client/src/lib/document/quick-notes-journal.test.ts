@@ -81,6 +81,69 @@ describe('quick notes as journal blocks', () => {
         )
     })
 
+    it('nests each file of a note under the note, so a task keeps its picture', () => {
+        // A file's reference is a line of its own in the note's text (ADR 0186). As a continuation line
+        // it was not a block under the task, so the task's detail did not hold it.
+        const text = quickNotesAsJournalBlocks(
+            [note('1', '[ ] water the beans\nby the shed\n![beans|400](../assets/beans.aaa.webp)\n[plan.pdf](../assets/plan.bbb.pdf)', '2026-09-17', 1)],
+            dayOf,
+        )
+        expect(text).toBe(
+            [
+                '- [[2026-09-17]]',
+                '  - [ ] water the beans',
+                '    by the shed',
+                '    - ![beans|400](../assets/beans.aaa.webp)',
+                '    - [plan.pdf](../assets/plan.bbb.pdf)',
+                '',
+            ].join('\n'),
+        )
+    })
+
+    it('nests the files under the words even when a file was written between them', () => {
+        const text = quickNotesAsJournalBlocks([note('1', 'first\n![beans](../assets/beans.aaa.webp)\nsecond', '2026-09-17', 1)], dayOf)
+        expect(text).toBe(['- [[2026-09-17]]', '  - first', '    second', '    - ![beans](../assets/beans.aaa.webp)', ''].join('\n'))
+    })
+
+    it('makes each file of a note with no words a bullet of its own', () => {
+        const text = quickNotesAsJournalBlocks([note('1', '![beans](../assets/beans.aaa.webp)\n![shed](../assets/shed.bbb.webp)', '2026-09-17', 1)], dayOf)
+        expect(text).toBe(['- [[2026-09-17]]', '  - ![beans](../assets/beans.aaa.webp)', '  - ![shed](../assets/shed.bbb.webp)', ''].join('\n'))
+    })
+
+    it('nests a filed note\'s files one level deeper again', () => {
+        const filed = { ...note('1', 'beans\n![beans](../assets/beans.aaa.webp)', '2026-09-17', 1), under: 'Shopping' }
+        expect(quickNotesAsJournalBlocks([filed], dayOf)).toBe(
+            ['- [[2026-09-17]]', '  - [[Shopping]]', '    - beans', '      - ![beans](../assets/beans.aaa.webp)', ''].join('\n'),
+        )
+    })
+
+    it('leaves a line that only links a web page, or names a file among other words, as the note\'s own text', () => {
+        const text = quickNotesAsJournalBlocks([note('1', 'read this\n[Garden](https://example.com/garden)\nsee [plan.pdf](../assets/plan.bbb.pdf) first', '2026-09-17', 1)], dayOf)
+        expect(text).toBe(
+            ['- [[2026-09-17]]', '  - read this', '    [Garden](https://example.com/garden)', '    see [plan.pdf](../assets/plan.bbb.pdf) first', ''].join('\n'),
+        )
+    })
+
+    it('leaves a file\'s reference inside a code block where it is: it is code there', () => {
+        const text = quickNotesAsJournalBlocks([note('1', 'how to embed\n```md\n![beans](../assets/beans.aaa.webp)\n```\ndone', '2026-09-17', 1)], dayOf)
+        expect(text).toBe(['- [[2026-09-17]]', '  - how to embed', '    ```md', '    ![beans](../assets/beans.aaa.webp)', '    ```', '    done', ''].join('\n'))
+    })
+
+    it('puts a task\'s words on the line of its checkbox when the note had them on the next', () => {
+        const text = quickNotesAsJournalBlocks([note('1', '[ ]\nwater the beans #P1\nby the shed', '2026-09-17', 1)], dayOf)
+        expect(text).toBe(['- [[2026-09-17]]', '  - [ ] #P1 water the beans', '    by the shed', ''].join('\n'))
+    })
+
+    it('moves a task\'s Task Tags to the start of its line, wherever the note had them', () => {
+        const text = quickNotesAsJournalBlocks([note('1', '[ ] water the beans #p1 #bug #D-2026-09-20', '2026-09-17', 1)], dayOf)
+        expect(text).toBe(['- [[2026-09-17]]', '  - [ ] #P1 #D-2026-09-20 water the beans #bug', ''].join('\n'))
+    })
+
+    it('leaves a tag in a note that is no task where it was written', () => {
+        const text = quickNotesAsJournalBlocks([note('1', 'water the beans #P1', '2026-09-17', 1)], dayOf)
+        expect(text).toBe(['- [[2026-09-17]]', '  - water the beans #P1', ''].join('\n'))
+    })
+
     it('writes nothing for no notes', () => {
         expect(quickNotesAsJournalBlocks([], dayOf)).toBe('')
     })

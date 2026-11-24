@@ -164,8 +164,9 @@
 /* ── The Primary Sidebar's title row (ADR 0198) ──────────────────────────────
    The Primary Sidebar's Views are chosen from the Activity Bar, so its group has no strip of
    tabs. Its header draws one row: the title of the View in front, which is that View's own tab
-   with the other tabs, the icon the bar already shows and the close button left out. The row
-   takes no pointer, so it is not dragged, clicked or given a tab's menu. */
+   with the other tabs, the icon the bar already shows and the tab's close cross left out. The
+   row takes no pointer, so it is not dragged, clicked or given a tab's menu. The one control in
+   it is the Sidebar's own close button, at its right end (amended 2026-11-24). */
 .dockview-theme-compass .gk-primary-sidebar .dv-tabs-and-actions-container {
     pointer-events: none;
     align-items: center;
@@ -174,12 +175,33 @@
     /* A heading's rule, drawn across the whole row: no tab's edge joins it to what is below. */
     box-shadow: inset 0 -1px 0 var(--gk-border-soft);
 }
+/* The tab's cross is named by its whole chain: dockview's own rule for it,
+   `.dv-tab .dv-default-tab .dv-default-tab-action`, is three classes, and a production build
+   links dockview's sheet after this one, so a three-class rule here lost to it and the cross was
+   drawn in the row, where it took no pointer. See compass-theme.test.ts. */
 .dockview-theme-compass .gk-primary-sidebar .dv-tab.dv-inactive-tab,
-.dockview-theme-compass .gk-primary-sidebar .dv-default-tab-action,
+.dockview-theme-compass .gk-primary-sidebar .dv-tab .dv-default-tab .dv-default-tab-action,
 .dockview-theme-compass .gk-primary-sidebar .gk-tab-icon,
 .dockview-theme-compass .gk-primary-sidebar .dv-tabs-overflow-dropdown-root,
 .dockview-theme-compass .gk-primary-sidebar .dv-right-actions-container {
     display: none;
+}
+/* The Sidebar's close button: an icon button at the dense-row size (28px), the one thing in the
+   row that takes the pointer. Under a finger its box stays 28px, so the row keeps its height, and
+   the area that takes a press is 44px. */
+.dockview-theme-compass .gk-primary-sidebar .dv-tabs-and-actions-container .gk-primary-sidebar-close {
+    position: relative;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin-left: 0.25rem;
+    pointer-events: auto;
+}
+@media (pointer: coarse) {
+    .dockview-theme-compass .gk-primary-sidebar .dv-tabs-and-actions-container .gk-primary-sidebar-close::after {
+        content: "";
+        position: absolute;
+        inset: -0.5rem;
+    }
 }
 .dockview-theme-compass .gk-primary-sidebar .dv-tab.dv-active-tab {
     margin: 0;

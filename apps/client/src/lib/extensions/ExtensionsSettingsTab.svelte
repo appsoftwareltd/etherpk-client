@@ -151,7 +151,7 @@
         if (report.failure) return `It couldn't be installed on this device: ${report.failure}`;
         if (report.unlisted) return "It is no longer in the Extension Directory, so it can't run.";
         if (report.waiting) {
-            const needs = `Version ${report.waiting.version} needs EtherPK ${report.waiting.needs} or later. This is ${directory?.clientVersion}.`;
+            const needs = `Version ${report.waiting.version} needs EtherPK ${report.waiting.needs} or later. This EtherPK is ${directory?.clientVersion}.`;
             return report.withdrawn ? `The release on this device was taken out of the Extension Directory, so it stopped. ${needs}` : needs;
         }
         return null;
@@ -374,7 +374,7 @@
                     {/if}
                     {#if row.report.waiting}
                         <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400" data-testid="extension-waiting">
-                            Version {row.report.waiting.version} needs EtherPK {row.report.waiting.needs} or later. This is {directory?.clientVersion}.
+                            Version {row.report.waiting.version} needs EtherPK {row.report.waiting.needs} or later. This EtherPK is {directory?.clientVersion}.
                         </p>
                     {/if}
                     {#if row.report.failure}

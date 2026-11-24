@@ -24,6 +24,10 @@
 
 import { mount, unmount } from 'svelte'
 
+import { setTrustedMarkup } from '#lib/security/trusted-types.js'
+import { iconSvg } from '#lib/surface/icons.js'
+
+import { CLOSE_PRIMARY_SIDEBAR } from './primary-sidebar-close'
 import { createTabRenderer, refreshTabIndicators, type TabMark } from './tab-renderer'
 
 import {
@@ -169,6 +173,12 @@ export interface DockviewRendererOptions {
      * dockview's own (ADR 0150).
      */
     onViewMoved?: () => void
+    /**
+     * Called when the Primary Sidebar's close button is pressed (ADR 0198, amended 2026-11-24), so
+     * the collapse goes through the LayoutController as the Sidebar's toggle does. Absent ⇒ the
+     * title row draws no close button.
+     */
+    onSidebarCloseRequested?: (region: SidebarRegion) => void
 }
 
 export interface DockviewRenderer extends LayoutRenderer {
@@ -543,10 +553,34 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
     }
 
     /**
+     * The Primary Sidebar's close button, at the right end of its title row (ADR 0198, amended
+     * 2026-11-24). It collapses the Sidebar, as choosing the icon of the View showing does: the
+     * View stays open and its icon brings the Sidebar back. A real button, since the tab's own
+     * cross is neither focusable nor named, and one for the Sidebar, not one for each tab: it is
+     * moved into whichever group is the Primary Sidebar's.
+     */
+    let sidebarClose: HTMLButtonElement | null = null
+    function sidebarCloseButton(): HTMLButtonElement {
+        if (sidebarClose) return sidebarClose
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'gk-icon-button gk-primary-sidebar-close'
+        button.setAttribute('aria-label', CLOSE_PRIMARY_SIDEBAR)
+        button.dataset.tooltip = CLOSE_PRIMARY_SIDEBAR
+        button.dataset.testid = 'primary-sidebar-close'
+        setTrustedMarkup(button, iconSvg('close', { size: 16 }))
+        button.addEventListener('click', () => {
+            if (primarySidebar !== null && isSidebar(primarySidebar)) options.onSidebarCloseRequested?.(primarySidebar)
+        })
+        return (sidebarClose = button)
+    }
+
+    /**
      * Mark the Primary Sidebar's group, and unmark the other (ADR 0198). The theme draws a marked
      * group's header as one row naming the View in front, since its Views are chosen from the
-     * Activity Bar: the other tabs and the close button are not drawn, and the row takes no
-     * pointer, so it cannot be dragged, clicked or given a tab's menu.
+     * Activity Bar: the other tabs and the tab's own close cross are not drawn, and the row takes
+     * no pointer, so it cannot be dragged, clicked or given a tab's menu. The one control in the
+     * row is the Sidebar's close button, which the marked group's header holds.
      */
     function markPrimarySidebar(): void {
         for (const region of SIDEBARS) {
@@ -556,7 +590,19 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
             element.classList.toggle('gk-primary-sidebar', region === primarySidebar)
             // Which side the Sidebar is on, for a stylesheet or a spec that must tell the two apart.
             element.dataset.sidebar = region === 'left-sidebar' ? 'left' : 'right'
+            if (region === primarySidebar) placeSidebarClose(element)
         }
+        // No Primary Sidebar (a Layout with none): the button is in no row.
+        if (primarySidebar === null) sidebarClose?.remove()
+    }
+
+    /** Put the close button at the right end of the title row of the Primary Sidebar's group, `element`. */
+    function placeSidebarClose(element: HTMLElement): void {
+        if (!options.onSidebarCloseRequested) return
+        const header = element.querySelector('.dv-tabs-and-actions-container')
+        const button = sidebarCloseButton()
+        // Last in the row, which is its right end. Appending moves it from a group it was in.
+        if (header && button.parentElement !== header) header.append(button)
     }
 
     /**

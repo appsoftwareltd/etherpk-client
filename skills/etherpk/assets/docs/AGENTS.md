@@ -197,7 +197,7 @@ recognised). A mark stays on one line in practice and is never recognised inside
 since a browser page cannot open a local file - nothing checks that the file exists.
 
 **Tasks.** A bullet with a checkbox: `- [ ] open` or `- [x] done`. Task metadata is carried by
-**task tags**, recognised only in the run of tokens immediately after the checkbox:
+**task tags**, written in the run of tokens immediately after the checkbox:
 
 - priority: `#P1` `#P2` `#P3`
 - state: `#W` (waiting), `#D` (doing), `#T` (test), `#C` (cancelled), `#A` (archived)
@@ -210,7 +210,9 @@ and `#C` and `#A` on a ticked one; a state the checkbox contradicts means nothin
 `#bug` or `#needs-review`: letters, digits and single hyphens with at least one letter, anywhere
 in a task's text but not in code or links. EtherPK shows free tags as labels and groups a Kanban
 board's cards by the first one; they carry no state. Write task tags first: a free tag in the run
-does not end it. Any other `#` text in the line is plain text.
+does not end it. A task tag written later in the task's line, as a word of its own, counts too, and
+EtherPK moves it into the run when the task is next edited, so put a `#P1` that is part of the
+task's words in backticks. Any other `#` text in the line is plain text.
 Example: `- [ ] #P1 #D-2026-07-01 Ship the release [[Acme]] #launch`. A task is *about* every
 concept linked on its own line, on any ancestor block or heading, and the document it is in,
 the scopes in that document's name included: the tasks on `[[Acme]] Website` are about Acme too.

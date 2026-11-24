@@ -2,8 +2,8 @@
  * The text a set of [[Quick Note]]s becomes in a [[Journal Entry]] (ADR 0078).
  *
  * One `- [[YYYY-MM-DD]]` [[Block]] per day the notes were written, oldest day first, and each
- * note nested under its day as one bullet, oldest first. A note filed under a concept is one
- * level deeper, under that concept's bullet (ADR 0186). The journal is read top to bottom,
+ * note nested under its day as one bullet, oldest first, with its files as bullets nested under
+ * it. A note filed under a concept is one level deeper, under that concept's bullet (ADR 0186). The journal is read top to bottom,
  * so it reads chronologically even though the View shows newest first. Notes written today
  * still nest under today's wikilink inside today's entry: one rule, no exception to explain.
  *
@@ -12,24 +12,56 @@
  */
 
 import { conceptKey } from './backlinks/backlink-index'
+import { fencedBlocks, linesInFencedBlocks } from './fenced-code'
 import { INDENT_UNIT } from './indent-unit'
+import { isNoteFileLine } from './quick-note-files'
 import type { QuickNote } from './quick-notes'
+import { applyStrayTaskTags } from './task-tags'
 
 const CHILD_INDENT = ' '.repeat(INDENT_UNIT)
+
+/** A note's line that is a checkbox and nothing else, open or done. */
+const CHECKBOX_ALONE = /^\[[ xX]\]$/
+
+/** A line that opens or closes a code block. */
+const FENCE_LINE = /^(?:`{3,}|~{3,})/
 
 /**
  * A note as one bullet at `indent`. Inner blank lines are dropped: a flush blank line would end
  * the outliner group, and a blank continuation line says nothing. Later lines are indented to
  * the bullet's content column, which is what makes them [[Continuation Line]]s of that one
  * block rather than bullets of their own.
+ *
+ * A line that is nothing but a file's reference (ADR 0186) is a bullet nested under the note,
+ * after its words, wherever it was written among them. As a continuation line it was a line of
+ * the note's own block: a [[Task]] made from the note had its picture among its own lines, and not
+ * as a block nested under it, which is how the Task Editor attaches a file to a task. A note of
+ * files alone has no words to nest them under, so each file is a bullet of its own. A reference
+ * written inside a code block is code, and stays there.
+ *
+ * A task's first line has its [[Task Tag]]s moved to the start, as the editor moves them when the
+ * caret leaves a task (`applyStrayTaskTags`): no caret visits a moved note.
  */
 function noteLines(text: string, indent: string): string[] {
     const lines = text
         .split('\n')
         .map((l) => l.trim())
         .filter((l) => l !== '')
-    if (lines.length === 0) return []
-    return [`${indent}- ${lines[0]}`, ...lines.slice(1).map((l) => `${indent}  ${l}`)]
+    // A reference inside a code block is code the note shows, and stays in its block.
+    const inFence = linesInFencedBlocks(fencedBlocks(lines))
+    const isFile = (line: string, at: number) => !inFence.has(at) && isNoteFileLine(line)
+    const words = lines.filter((line, at) => !isFile(line, at))
+    const files = lines.filter(isFile)
+    if (words.length === 0) return files.map((file) => `${indent}- ${file}`)
+    // A checkbox alone on its line (`quickNoteTask` reads one) takes the next line as the task's
+    // words, so the task has its words, and its tags, on its own line.
+    if (words.length > 1 && CHECKBOX_ALONE.test(words[0]) && !FENCE_LINE.test(words[1])) words.splice(0, 2, `${words[0]} ${words[1]}`)
+    const first = `${indent}- ${words[0]}`
+    return [
+        applyStrayTaskTags(first) ?? first,
+        ...words.slice(1).map((l) => `${indent}  ${l}`),
+        ...files.map((file) => `${indent}${CHILD_INDENT}- ${file}`),
+    ]
 }
 
 /**

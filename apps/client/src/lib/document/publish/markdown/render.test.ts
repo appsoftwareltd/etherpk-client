@@ -139,9 +139,15 @@ describe('createDocumentRenderer', () => {
         expect(html).toContain('<li class="task done"><input type="checkbox" disabled checked> <span class="task-tag archived">Archived</span> Water the beans')
     })
 
-    it('a `#` mid-sentence is text, not a tag', () => {
-        const { html } = renderer().render('- [ ] Ship #P1 later\n')
-        expect(html).toContain('Ship #P1 later')
+    it('reads a Task Tag written after the task\'s words, as the editor does', () => {
+        const { html } = renderer().render('- [ ] Ship later #P1\n')
+        expect(html).toContain('<span class="task-tag priority-1">Priority 1</span> Ship later')
+        expect(html).not.toContain('#P1')
+    })
+
+    it('a `#` mid-sentence that is no Task Tag is text', () => {
+        const { html } = renderer().render('- [ ] Ship item#1 and #P4 later, see `#P1`\n')
+        expect(html).toContain('Ship item#1 and #P4 later, see <code>#P1</code>')
         expect(html).not.toContain('task-tag')
     })
 

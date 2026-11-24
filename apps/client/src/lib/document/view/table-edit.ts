@@ -143,3 +143,34 @@ export function editTableAtCaret(
     )
     return true
 }
+
+/**
+ * The range that takes a table out of `text`: the table runs from `from`, where its first row
+ * starts, to `to`, the end of its last row. A table on lines of its own goes with those lines
+ * whole: the indent in front of its first row, and the line break that joined it to the rest, the
+ * one after it or, when it ends the text, the one before. Where an empty line stood on both sides
+ * of it, the one before goes too: the text round the table is left a line apart, as it was from
+ * the table, with the range starting on the empty line that stays. A table that is a bullet's
+ * content (`- | a | b |`) leaves the bullet its marker, and the bullet is empty.
+ */
+export function tableRemovalRange(text: string, from: number, to: number): { from: number; to: number } {
+    const lineStart = text.lastIndexOf('\n', from - 1) + 1
+    if (text.slice(lineStart, from).trim() !== '') return { from, to }
+    if (to === text.length) return { from: Math.max(lineStart - 1, 0), to }
+    const emptyBefore = lineStart > 0 && (lineStart === 1 || text[lineStart - 2] === '\n')
+    const emptyAfter = text[to + 1] === '\n' || to + 1 === text.length
+    return { from: emptyBefore && emptyAfter ? lineStart - 1 : lineStart, to: to + 1 }
+}
+
+/**
+ * Delete the table at the caret from the document, and leave the caret where it was: at the start
+ * of the line that followed it, or after the marker of the bullet it was the content of. One
+ * change, so one undo brings the table back. False with the caret in no table.
+ */
+export function deleteTableAtCaret(target: Parameters<StateCommand>[0]): boolean {
+    const hit = tableAtCaret(target.state)
+    if (!hit) return false
+    const range = tableRemovalRange(target.state.doc.toString(), hit.from, hit.to)
+    target.dispatch(target.state.update({ changes: range, selection: { anchor: range.from }, userEvent: 'delete' }))
+    return true
+}

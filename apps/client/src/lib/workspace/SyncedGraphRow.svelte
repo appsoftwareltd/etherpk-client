@@ -16,6 +16,7 @@
     import { formatBytes } from '@appsoftwareltd/etherpk-shared'
     import { inkFor } from '#lib/contrast-ink.js'
     import GraphGrip, { type GraphGripProps } from './GraphGrip.svelte'
+    import GraphKindIcon from './GraphKindIcon.svelte'
     import { tick } from 'svelte'
     import { BADGE_ON_COLOUR, CARD_ICONS, CARD_WORDS, GRAPH_CARD, GRAPH_CARD_UNCLIPPED, ICON_ON_COLOUR, OPEN_ON_COLOUR } from './graph-card'
     import type { SyncedMember } from './graph-picker-helpers'
@@ -201,7 +202,10 @@
      member list, which a locked row does not have. `coloured`: on the band in the graph's toolbar
      colour, which a locked row does not draw. -->
 {#snippet badges(coloured: boolean)}
-    <span data-testid="graph-card-name" class="truncate text-sm font-medium {coloured ? '' : 'text-neutral-950 dark:text-white'}">{name}</span>
+    <span class="flex min-w-0 items-center gap-1.5">
+        <span data-testid="graph-card-name" class="truncate text-sm font-medium {coloured ? '' : 'text-neutral-950 dark:text-white'}">{name}</span>
+        <GraphKindIcon kind="synced" {coloured} />
+    </span>
     {#if role && (locked || !owner)}
         <span
             data-testid="synced-role"
@@ -524,7 +528,7 @@
                 <!-- A new key for everyone in the graph; nothing to confirm, since nobody loses anything. -->
                 <button
                     data-testid="graphs-rotate-key"
-                    data-tooltip="Make a new key for this graph. Its members receive it automatically." aria-description="Make a new key for this graph. Its members receive it automatically."
+                    data-tooltip="Create a new key for this graph. Its members receive it automatically." aria-description="Create a new key for this graph. Its members receive it automatically."
                     disabled={rotating}
                     aria-busy={rotating}
                     onclick={onrotate}

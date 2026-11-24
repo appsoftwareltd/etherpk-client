@@ -130,10 +130,10 @@
 
 </script>
 
-<Dialog {open} title="Save an additional copy" {onclose} {busy} busyReason="Making the copy…" testId="pdf-save-dialog" onsubmit={submit}>
+<Dialog {open} title="Save an additional copy" {onclose} {busy} busyReason="Creating the copy…" testId="pdf-save-dialog" onsubmit={submit}>
     {#snippet body()}
         <div class="flex flex-col gap-4">
-            <p class="text-sm text-(--gk-text-muted)">Your annotations and form values are already saved with this PDF. This makes a separate PDF with them, and any signature you placed, written in. The PDF in your graph stays as it is.</p>
+            <p class="text-sm text-(--gk-text-muted)">Your annotations and form values are already saved with this PDF. Saving a copy creates a separate PDF with them, and any signature you placed, written in. The PDF in your graph stays as it is.</p>
             <label class="flex flex-col gap-1 text-sm font-medium text-(--gk-text-default)">
                 Name
                 <input type="text" class="gk-input" value={fileName} oninput={(event) => (typedName = event.currentTarget.value)} data-testid="pdf-save-name" />

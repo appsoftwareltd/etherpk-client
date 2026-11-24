@@ -302,7 +302,7 @@
                 <div class="mt-1.5 space-y-1.5">
                     <p>
                         If another of your devices still has its Encryption Keys unlocked, approve this one from
-                        it, then make a new code there with <strong>Regenerate Recovery Code</strong>.
+                        that device, then create a new code there with <strong>Regenerate Recovery Code</strong>.
                         Nothing is lost.
                     </p>
                     <p>

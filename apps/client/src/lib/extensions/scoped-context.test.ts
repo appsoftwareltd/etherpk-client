@@ -115,16 +115,16 @@ describe('an extension context', () => {
         expect(services.notify).toHaveBeenNthCalledWith(2, 'Saved.', undefined)
     })
 
-    it('adds Graph Sidebar buttons under its id, with its own icons named under it, and takes them back when disposed', () => {
+    it('adds Explorer buttons under its id, with its own icons named under it, and takes them back when disposed', () => {
         const { scoped, context, contributions } = setUp()
         context.graphSidebar.register({ id: 'graph-view.openWhole', title: 'Graph View', command: 'graph-view.openWhole', icon: 'graph-view' })
         expect(graphSidebarButtons(contributions).map((button) => [button.id, button.title, button.icon])).toEqual([['graph-view.openWhole', 'Graph View', 'graph-view.graph-view']])
-        expect(() => context.graphSidebar.register({ id: 'open', title: 'Open', command: 'graph-view.openWhole' })).toThrow('Graph Sidebar button "open" must start with "graph-view."')
+        expect(() => context.graphSidebar.register({ id: 'open', title: 'Open', command: 'graph-view.openWhole' })).toThrow('Explorer button "open" must start with "graph-view."')
         scoped.dispose()
         expect(graphSidebarButtons(contributions)).toEqual([])
     })
 
-    it('passes a Graph Sidebar button’s help text and its when through to the Sidebar', () => {
+    it('passes a Explorer button’s help text and its when through to the Sidebar', () => {
         const { context, contributions } = setUp()
         let desktop = true
         context.graphSidebar.register({
@@ -373,8 +373,8 @@ describe('an extension from the Extension Directory', () => {
     })
 
     // Made Stable in 0.11.0, for the first extension that needed them from the directory (ADR 0120,
-    // amended 2026-10-12): a Graph Sidebar button, opening a day's Journal Entry, and the theme.
-    it('adds Graph Sidebar buttons, opens documents, and follows the theme', () => {
+    // amended 2026-10-12): a Explorer button, opening a day's Journal Entry, and the theme.
+    it('adds Explorer buttons, opens documents, and follows the theme', () => {
         const { context, contributions, events, services } = setUp({ installed: true })
         context.graphSidebar.register({ id: 'graph-view.openWhole', title: 'Graph View', command: 'graph-view.openWhole' })
         expect(graphSidebarButtons(contributions).map((button) => button.id)).toEqual(['graph-view.openWhole'])
@@ -476,7 +476,7 @@ describe('an extension from the Extension Directory', () => {
         expect(() => context.commandMenu.register({ id: 'graph-view.toggle', title: 'Toggle', command: 'layout.toggleSidebar' })).toThrow(
             'Command Menu row "graph-view.toggle" runs "layout.toggleSidebar"',
         )
-        expect(() => context.graphSidebar.register({ id: 'graph-view.toggle', title: 'Toggle', command: 'layout.toggleSidebar' })).toThrow(/Graph Sidebar button/)
+        expect(() => context.graphSidebar.register({ id: 'graph-view.toggle', title: 'Toggle', command: 'layout.toggleSidebar' })).toThrow(/Explorer button/)
         expect(() => context.contextMenu.register({ id: 'graph-view.toggle', label: 'Toggle', command: 'layout.toggleSidebar' })).toThrow(/Context Menu row/)
         expect(() => context.commandBar.register({ id: 'graph-view.toggle', title: 'Toggle', icon: 'close', command: 'layout.toggleSidebar' })).toThrow(/Command Bar button/)
         expect(commandMenuItemsInOrder(contributions)).toEqual([])

@@ -175,9 +175,10 @@ export interface SqlDb {
  * `tasks.test` and `tasks.archived`, the `#T` and `#A` states (ADR 0167). 20 adds
  * `tasks.parent_task_local_id`, a task's [[Parent Task]] (ADR 0174). 21 adds `tasks.title_key`, what
  * a [[Board Filter]] searches. 22 adds `tasks.tags_key`, the tags a [[Task Text Filter]] searches.
- * 23 reads a [[Task Tag]] in any case (ADR 0032, amended 2026-11-05).
+ * 23 reads a [[Task Tag]] in any case (ADR 0032, amended 2026-11-05). 24 reads a Task Tag written
+ * anywhere in a task's line (ADR 0032, amended 2026-11-24).
  */
-export const INDEX_SCHEMA_VERSION = 23
+export const INDEX_SCHEMA_VERSION = 24
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS index_metadata (

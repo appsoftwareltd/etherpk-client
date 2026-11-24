@@ -160,7 +160,7 @@ export async function readTheme(graph: HeadlessGraph, args: ReadThemeArgs) {
         folder,
         files: written,
         manifest: manifestSummary({ files }),
-        ...(source !== 'graph' ? { note: 'A bundled or url theme cannot be edited in place: create_theme (or customise_publication_theme) makes a copy in the graph that can.' } : {}),
+        ...(source !== 'graph' ? { note: 'A bundled or url theme cannot be edited in place: create_theme (or customise_publication_theme) creates a copy in the graph that can.' } : {}),
     }
 }
 
@@ -255,7 +255,7 @@ export async function customisePublicationTheme(graph: HeadlessGraph, args: Cust
 async function requireEditable(graph: HeadlessGraph, id: string): Promise<GraphTheme> {
     const own = await graph.themes.get(id)
     if (own) return own
-    if (bundledTheme(id)) throw new ToolError('theme_not_editable', `"${id}" is a bundled theme and cannot be edited in place. create_theme (or customise_publication_theme for the publication that uses it) makes a copy in the graph that can be.`)
+    if (bundledTheme(id)) throw new ToolError('theme_not_editable', `"${id}" is a bundled theme and cannot be edited in place. create_theme (or customise_publication_theme for the publication that uses it) creates a copy in the graph that can be.`)
     throw new ToolError('theme_not_found', `No theme in this graph is called "${id}" - list_themes shows them.`)
 }
 

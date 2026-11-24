@@ -52,7 +52,7 @@ describe('a task deleted from the Task Editor outside a board', () => {
         const deleted = await deleteTask(store, { concept: 'Garden', line: 0, expected: '- [ ] #P1 Build the shed' })
         if (!deleted.ok) throw new Error('not deleted')
         notices.deleted(deleted.removed, 'Build the shed')
-        expect(said[0]).toMatchObject({ text: 'Deleted "Build the shed" and everything nested under it.', options: { action: { label: 'Undo' } } })
+        expect(said[0]).toMatchObject({ text: 'Deleted "Build the shed" and everything nested under that task.', options: { action: { label: 'Undo' } } })
         await undo()
         expect(store.open('Garden').getText()).toBe(SHED)
         expect(said.at(-1)!.text).toBe('Undone: "Build the shed" is back where it was.')

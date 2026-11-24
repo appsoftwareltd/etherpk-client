@@ -4,11 +4,11 @@
 
 An [MCP](https://modelcontextprotocol.io) server that gives an AI agent (Claude Code, Codex, Cursor
 and others) one of your [EtherPK](https://etherpk.com) knowledge graphs. It runs on the agent's
-computer. The agent can search your notes by words or by meaning, follow links, list tasks, and
+device. The agent can search your notes by words or by meaning, follow links, list tasks, and
 read and edit documents without breaking EtherPK's format.
 
 This package is EtherPK's **Headless Client**, EtherPK without an editor. It serves a graph folder
-on your computer or a graph synced through a Sync Server, with the same tools for both. Protected
+on your device or a graph synced through a Sync Server, with the same tools for both. Protected
 documents are never shown to the agent, not even by name; `graph_info` only counts them.
 
 Needs Node.js 24 or later.
@@ -19,7 +19,7 @@ Needs Node.js 24 or later.
 
 In EtherPK, open the graph's **Settings → Agents** and select **Create an Agent Setup Code**. The tab shows
 two commands with your server, the code and the graph filled in. On your own Sync Server, the tab
-links to the server's **Access tokens** page, which makes the code.
+links to the server's **Access tokens** page, which creates the code.
 
 ```sh
 # Once per computer. When this terminal and EtherPK, on a device where your Encryption Keys are
@@ -68,7 +68,7 @@ onto its name is refused.
 | Publishing | `list_publications`, `create_publication`, `update_publication`, `publish` | `publish` writes to the folder set with the `publish` command. The agent can't choose one, and it never publishes to a GitHub repository, which only the `publish` command commits to. |
 | Themes | `list_themes`, `read_theme`, `read_theme_file`, `create_theme`, `customise_publication_theme`, `write_theme_file`, `delete_theme_file`, `import_theme_folder`, `delete_theme`, `preview_theme` | Bundled themes are read-only, and customising one copies it into the graph. `preview_theme` renders a site, with screenshots when a browser is set up. |
 
-A synced graph's tools answer from this computer's copy. While that copy cannot reach the Sync Server,
+A synced graph's tools answer from this device's copy. While that copy cannot reach the Sync Server,
 every answer ends with a note saying since when, and `graph_info` reports `connection`. Edits made
 elsewhere since then are not in the answer.
 
@@ -97,7 +97,7 @@ copy of the graph in memory and one index on disk.
 ## Search by meaning
 
 `search` matches words. After one setup step it also matches meaning, so "when do I pay my taxes"
-finds the note that says "due 31 January". A small embedding model runs on this computer. Nothing
+finds the note that says "due 31 January". A small embedding model runs on this device. Nothing
 is sent anywhere, and protected documents are never embedded.
 
 ```sh
@@ -105,7 +105,7 @@ npx @appsoftwareltd/etherpk-mcp semantic setup
 ```
 
 Setup installs a native runtime of about 300 MB (through your npm) and a 23 MB model into the cache
-directory, once per computer.
+directory, once per device.
 
 - **No restart.** A graph's background process checks every 30 seconds and starts embedding once
   setup has run. Until then a search by meaning is refused, and the message names the setup command.
@@ -127,12 +127,12 @@ directory, once per computer.
 
 ### Signing in
 
-`login` makes this computer a device of your account.
+`login` adds this device to your account.
 
 - **The token.** `--code` trades an Agent Setup Code for an Agent Token. Create the code in
   EtherPK's Agents settings (the Graphs page's **Agents** tab, or a synced graph's **Settings →
   Agents**), or on the Sync Server's **Access tokens** page, where the token is then listed as
-  "Agent on <computer name>". An agent token can read and write your graphs. It
+  "Agent on <device name>". An agent token can read and write your graphs. It
   cannot reset or replace your Encryption Keys, make tokens, invite people or delete graphs. It
   stops working after 30 days unused, when you revoke it, and when you reset your Encryption Keys.
 - **For a script**, `--pat` or `ETHERPK_PAT` gives an account-wide access token instead. `login`
@@ -169,7 +169,7 @@ can be left out while only one server is signed in.
 
 ## Publishing a site
 
-`publish` renders one publication of a graph into a folder on this computer and prints the report:
+`publish` renders one publication of a graph into a folder on this device and prints the report:
 
 ```sh
 npx @appsoftwareltd/etherpk-mcp publish --graph <id or name> --publication <id> --out <dir>
@@ -188,9 +188,9 @@ npx @appsoftwareltd/etherpk-mcp publish --graph <id or name> --publication <id> 
 - Mermaid diagrams, maps and Excalidraw drawings need a browser. A map is published as a picture of
   the map, drawn over EtherPK's map host unless `ETHERPK_MAP_STYLE_URL` names another style, and a
   drawing as a picture with its fonts inside it. `diagrams setup` installs a Chromium of about 170 MB
-  into the cache directory, once per computer, and a publish whose pages hold any of them refuses
+  into the cache directory, once per device, and a publish whose pages hold any of them refuses
   until then. `ETHERPK_CHROMIUM` names a Chromium already on the
-  computer instead, which NixOS needs.
+  device instead, which NixOS needs.
 - `list_publications`, or **Settings → Publish** in EtherPK, shows the publication ids.
 
 To publish straight to a branch of a GitHub repository, as one commit that the host watching the
@@ -229,11 +229,11 @@ install the package globally once with `npm install -g @appsoftwareltd/etherpk-m
 
 | Command | What it does |
 | --- | --- |
-| `login --sync-server <url> [--code <Agent Setup Code>] [--recovery-code]` | Sign this computer in as a device of your account, unlock your Encryption Keys, and list the graphs the account can reach. |
+| `login --sync-server <url> [--code <Agent Setup Code>] [--recovery-code]` | Sign this device in to your account, unlock your Encryption Keys, and list the graphs the account can reach. |
 | `graphs [--sync-server <url>]` | List the synced graphs each signed-in account can reach, with name, id and your role. |
 | `serve --graph <id or name> [--sync-server <url>] [--no-semantic]` | Serve one synced graph to the agent over stdio. |
 | `serve --folder <path> [--no-semantic]` | Serve a graph folder the same way. |
-| `running` | List the graphs served on this computer, with each one's background process, agents and log. |
+| `running` | List the graphs served on this device, with each one's background process, agents and log. |
 | `stop [--graph <id or name> [--sync-server <url>] \| --folder <path> \| --all]` | Save a graph and end its background process, or every graph's when none is named. |
 | `logout [--sync-server <url> \| --all]` | Revoke that server's token, forget it and the Encryption Keys, stop its graphs' background processes and delete its cached graphs. `--all` does this for every server and clears the whole cache, the semantic runtime and model included. |
 | `semantic setup` | Install the embedding runtime and model into the cache directory. |
@@ -278,12 +278,12 @@ because the agent starts `serve` with its own environment.
 | `ETHERPK_GITHUB_API_URL` | GitHub Enterprise Server's API (`https://<host>/api/v3`) in place of github.com's. |
 | `ETHERPK_MCP_SEMANTIC_THREADS` | Threads for the embedding model. Default a quarter of the cores, at most four. |
 | `ETHERPK_MCP_HOST_IDLE_SECONDS` | How long a graph's background process stays after its last agent has gone. Default 300. |
-| `ETHERPK_CHROMIUM` | A Chromium on this computer for drawing diagrams, maps and drawings, instead of the one `diagrams setup` installs. |
+| `ETHERPK_CHROMIUM` | A Chromium on this device for drawing diagrams, maps and drawings, instead of the one `diagrams setup` installs. |
 | `ETHERPK_MAP_STYLE_URL` | The MapLibre style a published map's picture is drawn over. Default EtherPK's map host; empty draws maps on a plain background. |
-| `PLAYWRIGHT_BROWSERS_PATH` | Where `diagrams setup` installs Chromium and a publish looks for it. Default `browsers/` in the cache directory. |
+| `PLAYWRIGHT_BROWSERS_PATH` | Where `diagrams setup` installs Chromium and a publish looks for the installed instance. Default `browsers/` in the cache directory. |
 | `ETHERPK_MCP_DEBUG_MEMORY` | `1` logs the process's memory use every 10 seconds and with every progress line. |
 
-## What stays on your computer
+## What stays on your device
 
 - **The agent token and your Encryption Keys.** They go in the system keychain where `login` can
   use one: the macOS Keychain, or a Linux desktop's keyring through `secret-tool` (the
@@ -307,7 +307,7 @@ On Windows the login file and the cache are under `C:\Users\<you>\.config\etherp
 `C:\Users\<you>\.cache\etherpk\`.
 
 To cut an agent off, revoke its agent token on the Sync Server's **Access tokens** page. `logout`
-revokes the token itself and deletes the keys and cached graphs on this computer. If the computer
+revokes the token itself and deletes the keys and cached graphs on this device. If the device
 or its login file may have been copied, also select **Replace Encryption Keys and lock out other
 devices** in EtherPK, so the keys saved there no longer open your account.
 

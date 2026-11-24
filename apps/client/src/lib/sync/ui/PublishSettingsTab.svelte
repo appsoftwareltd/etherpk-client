@@ -742,7 +742,7 @@
                     </form>
                 {/if}
                 <details class="text-sm" data-testid="publish-github-steps">
-                    <summary class="cursor-pointer font-medium text-neutral-700 dark:text-neutral-300">How to make a token</summary>
+                    <summary class="cursor-pointer font-medium text-neutral-700 dark:text-neutral-300">How to create a token</summary>
                     <ol class="mt-2 list-decimal space-y-1 pl-5 text-neutral-600 dark:text-neutral-400">
                         <li>On GitHub, open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" class="gk-link">Settings → Developer settings → Fine-grained tokens → Generate new token</a>.</li>
                         <li>Give it a name and an expiry date. When it expires, make a new one and replace it here.</li>
@@ -1206,7 +1206,7 @@
                             </div>
                             {#if !savedRepository}
                                 <p class="text-sm text-neutral-500 dark:text-neutral-400">
-                                    Save a repository to publish to it. It is remembered on this device{folder ? `, in place of the folder ${folder.folder}` : ""}.
+                                    Save a repository to publish to GitHub. The repository is remembered on this device{folder ? `, in place of the folder ${folder.folder}` : ""}.
                                 </p>
                             {/if}
                         {/if}

@@ -273,7 +273,7 @@
                             {connecting ? "Waiting for OpenRouter…" : "Connect with OpenRouter"}
                         </button>
                         {#if connecting}<button type="button" class={button} onclick={() => connecting?.abort()}>Cancel</button>{/if}
-                        <span class={help}>Opens OpenRouter to make a key for EtherPK, which you can limit and revoke there.</span>
+                        <span class={help}>Opens OpenRouter to create a key for EtherPK, which you can limit and revoke there.</span>
                     </div>
                 {/if}
             </div>

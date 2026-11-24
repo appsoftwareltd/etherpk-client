@@ -37,6 +37,7 @@ import { editorDefaultKeymap } from '../editor-default-keymap'
 import { editorHistory, redoCommand, undoCommand } from '../editor-history'
 import { isFindReplace, isFindSelect } from '../../find/find-edit'
 import { minimalReplacement } from '../minimal-replacement'
+import { RowHold, revealCell } from '../table-cell-scroll'
 import { type ActiveCell, activeCell, cellBlock, cellEditorHost, cellEditorRange, fromCell, gridInputsChanged } from '../table-cell'
 import {
     allCellsSelected,
@@ -124,6 +125,10 @@ class CellEditor {
     private ownShift = 0
     /** When a press last landed on the document's own text, outside every grid. */
     private pressedOutside = 0
+    /** A press put the caret in the cell that takes the keyboard next: the page is not scrolled to a cell that was pressed. */
+    private byPress = false
+    /** Keeps the row being edited where it is in the page while its table is laid out again (table-cell-scroll.ts). */
+    private readonly still = new RowHold()
     private destroyed = false
 
     constructor(
@@ -139,7 +144,9 @@ class CellEditor {
     }
 
     update(update: ViewUpdate): void {
-        if (update.docChanged || update.selectionSet || update.transactions.some(gridInputsChanged)) this.adopt(update.state, update)
+        if (!(update.docChanged || update.selectionSet || update.transactions.some(gridInputsChanged))) return
+        this.holdRow(update)
+        this.adopt(update.state, update)
     }
 
     destroy(): void {
@@ -156,6 +163,47 @@ class CellEditor {
     /** Ask for the keyboard to go to the cell the caret is put in next: a press on a cell asked for it. */
     focusNext(): void {
         this.wantFocus = true
+        this.byPress = true
+    }
+
+    // ── The page stays where it is ────────────────────────────────────────────────────────
+
+    /**
+     * Before `update` is drawn: remember where the row the caret is going to is in the page. The
+     * update may be the caret moving to another cell, an edit to the table made through the
+     * document (undo, a Format Toggle, another member typing in a cell above), or an edit elsewhere
+     * that moves the table: the empty line the caret left being tidied away above it.
+     */
+    private holdRow(update: ViewUpdate): void {
+        const next = activeCell(update.state)
+        if (!next || !(this.wantFocus || this.nested?.hasFocus)) return
+        this.still.hold(this.view, this.gridBefore(update, next.tableFrom)?.querySelector(`[data-row="${next.row}"][data-col="${next.column}"]`) ?? null)
+    }
+
+    /** The grid in the page, as drawn before `update`, of the table that starts at `from` after it. */
+    private gridBefore(update: ViewUpdate, from: number): Element | null {
+        const before = update.changes.invertedDesc
+        // Text put in where the table starts is the table's own or a line above it: one of the two is where it started.
+        for (const start of new Set([before.mapPos(from, 1), before.mapPos(from, -1)])) {
+            const grid = this.view.contentDOM.querySelector(`.cm-md-table[data-table-from="${start}"]`)
+            if (grid) return grid
+        }
+        return null
+    }
+
+    /**
+     * The browser is about to put what was typed into the cell, which lays the table out before
+     * the cell's editor hears of it: remember where the row is now. Let go at the next frame, by
+     * when the change has been drawn, or nothing came of it.
+     */
+    private holdTyped(): void {
+        this.still.hold(this.view, this.host)
+        requestAnimationFrame(() => this.settleRow(false))
+    }
+
+    /** The change is drawn: the row held goes back to where it was in the page. `reveals`: the change asked for the caret to be shown. */
+    private settleRow(reveals: boolean): void {
+        if (!this.destroyed) this.still.settle(this.view, reveals)
     }
 
     // ── Following the document ────────────────────────────────────────────────────────────
@@ -244,6 +292,7 @@ class CellEditor {
         this.cell = null
         this.range = null
         this.wantFocus = false
+        this.byPress = false
     }
 
     /** Give the cell's editor the document's text and selection, where they differ. */
@@ -280,11 +329,19 @@ class CellEditor {
      * filters have the last word, and what they leave is what the cell is then given back.
      */
     private sendOn(transactions: readonly Transaction[], nested: EditorView): void {
+        // Before the cell's editor draws an edit a key made: that alone lays the table out again.
+        const typed = !this.syncing && transactions.some((tr) => tr.docChanged)
+        if (typed) this.still.hold(this.view, this.host)
         nested.update(transactions)
         if (this.syncing || this.destroyed || nested !== this.nested || !this.range) return
         const sent = cellChanges(transactions)
-        if (!sent) return
-        this.view.dispatch(this.documentSpec(sent, nested, this.range))
+        if (sent) this.sendToDocument(sent, nested, this.range)
+        // A change the document did not take, or took and dropped, is drawn in the cell all the same.
+        if (typed) this.settleRow(false)
+    }
+
+    private sendToDocument(sent: CellChanges, nested: EditorView, range: Range): void {
+        this.view.dispatch(this.documentSpec(sent, nested, range))
         this.ownShift = 0
         // A transaction the document dropped whole leaves no update behind it: the cell is put right here.
         if (nested === this.nested && this.range && this.view.state.sliceDoc(this.range.from, this.range.to) !== nested.state.doc.toString()) this.adopt(this.view.state, null)
@@ -326,7 +383,8 @@ class CellEditor {
     // ── The keyboard ──────────────────────────────────────────────────────────────────────
 
     /** After the document editor has drawn: hand the keyboard to whichever editor is to have it. */
-    afterUpdate(): void {
+    afterUpdate(update: ViewUpdate): void {
+        this.settleRow(update.transactions.some((tr) => tr.scrollIntoView))
         if (this.returnFocus) {
             this.returnFocus = false
             if (!this.nested) this.view.focus()
@@ -356,9 +414,12 @@ class CellEditor {
     private takeFocus(): void {
         if (this.destroyed || !this.wantFocus || !this.nested || !this.host.isConnected) return
         this.wantFocus = false
+        const byPress = this.byPress
+        this.byPress = false
         if (this.nested.hasFocus) return
         this.nested.focus()
-        this.host.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+        // A cell reached by a key is brought into view. One that was pressed is where the pointer is.
+        if (!byPress) revealCell(this.view, this.host.parentElement ?? this.host)
     }
 
     /**
@@ -440,6 +501,7 @@ class CellEditor {
             EditorView.domEventHandlers({
                 focus: () => (this.cellFocusChanged(), false),
                 blur: () => (this.cellFocusChanged(), false),
+                beforeinput: () => (this.holdTyped(), false),
             }),
             cellClipboard(this.view),
             // A cell that wraps onto another row of text makes its table taller: the document editor measures again.
@@ -644,5 +706,5 @@ function cellClipboard(main: EditorView): Extension {
 
 /** The editor of the cell being edited (Table Grid). `options` come from the document editor's View. */
 export function tableCellEditor(options: CellEditorOptions = {}): Extension {
-    return [cellEditorOptions.of(options), cellFocusField, plugin, EditorView.updateListener.of((update) => update.view.plugin(plugin)?.afterUpdate())]
+    return [cellEditorOptions.of(options), cellFocusField, plugin, EditorView.updateListener.of((update) => update.view.plugin(plugin)?.afterUpdate(update))]
 }

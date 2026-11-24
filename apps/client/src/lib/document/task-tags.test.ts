@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyStrayTaskTags, applyTaskTag, freeTagsIn, parseTaskLine, parseTaskTags, taskDisplay, taskStatus, taskTagRun, taskTagTokens, toggleTaskLine, withoutFreeTags } from './task-tags'
+import { applyStrayTaskTags, applyTaskTag, freeTagsIn, parseTaskLine, parseTaskTags, taskDisplay, taskLineWith, taskStatus, taskTagRun, taskTagTokens, toggleTaskLine, withoutFreeTags } from './task-tags'
+
+/** The state flags switched off: for comparing two readings by what {@link taskStatus} makes of them instead. */
+const STATES_OFF = { waiting: false, doing: false, test: false, cancelled: false, archived: false }
 
 describe('parseTaskTags', () => {
     it('reads the full minted tag set from the leading run', () => {
@@ -19,12 +22,12 @@ describe('parseTaskTags', () => {
         })
     })
 
-    it('stops at the first non-tag token, so hash text in prose is never metadata', () => {
+    it('ends the run at the first token that is not a tag, and reads a Task Tag written after it too', () => {
         const tags = parseTaskTags('#P1 triage the #P2 backlog #W')
-        expect(tags.priority).toBe(1)
-        // The trailing #W came AFTER prose, so it is prose.
-        expect(tags.waiting).toBe(false)
-        expect(tags.text).toBe('triage the #P2 backlog #W')
+        // Read as tidy on leave would write them: the later priority replaces the run's.
+        expect(tags.priority).toBe(2)
+        expect(tags.waiting).toBe(true)
+        expect(tags.text).toBe('triage the backlog')
     })
 
     it('reads a tag in any case', () => {
@@ -103,15 +106,17 @@ describe('a Free Tag in the leading run', () => {
         expect(applyTaskTag('- [ ] #P1 Fix the gate #bug', { kind: 'doing' })).toBe('- [ ] #P1 #D Fix the gate #bug')
     })
 
-    it('lists the Task Tags in the run as written, without the Free Tags', () => {
-        expect(taskTagTokens('#bug #P1 #D-2026-11-02 Fix the gate #W')).toEqual(['#P1', '#D-2026-11-02'])
+    it('lists the Task Tags as written, the run\'s and then those after it, without the Free Tags', () => {
+        expect(taskTagTokens('#bug #P1 #D-2026-11-02 Fix the gate #W')).toEqual(['#P1', '#D-2026-11-02', '#W'])
         expect(taskTagTokens('#bug #p1 #d-2026-11-02 Fix the gate')).toEqual(['#p1', '#d-2026-11-02'])
+        expect(taskTagTokens('Fix the `#P1` gate, see https://example.com/#W')).toEqual([])
     })
 
     it('does not make a hash word that is not a Free Tag part of the run', () => {
-        const tags = parseTaskTags('#my_tag #P1 Fix the gate')
-        expect(tags.priority).toBeNull()
-        expect(tags.text).toBe('#my_tag #P1 Fix the gate')
+        const tags = parseTaskTags('#my_tag #bug Fix the gate')
+        // `#my_tag` ended the run, so the Free Tag after it stays where it is written.
+        expect(tags.text).toBe('#my_tag #bug Fix the gate')
+        expect(taskTagRun('- [ ] #my_tag #P1 Fix the gate')).toBeNull()
     })
 })
 
@@ -374,9 +379,11 @@ describe('applyStrayTaskTags', () => {
         expect(applyStrayTaskTags('- [ ] read #P1, then water')).toBeNull()
         expect(applyStrayTaskTags('- [ ] read item#P1 now')).toBeNull()
         expect(applyStrayTaskTags('- [ ] read #p4 and #P4 now')).toBeNull()
-        // Columns the caller knows are not prose (inline maths) are skipped too.
-        expect(applyStrayTaskTags('- [ ] read $a #P1 b$ now', [{ from: 11, to: 20 }])).toBeNull()
-        expect(applyStrayTaskTags('- [ ] read $a #P1 b$ now #P2', [{ from: 11, to: 20 }])).toBe('- [ ] #P2 read $a #P1 b$ now')
+        // Inline maths is not prose either.
+        expect(applyStrayTaskTags('- [ ] read $a #P1 b$ now')).toBeNull()
+        expect(applyStrayTaskTags('- [ ] read $a #P1 b$ now #P2')).toBe('- [ ] #P2 read $a #P1 b$ now')
+        // A dollar sign with no partner is money, and the tag after it is a tag.
+        expect(applyStrayTaskTags('- [ ] pay $5 #P1')).toBe('- [ ] #P1 pay $5')
         // The code span stays as written while a stray tag beside it moves.
         expect(applyStrayTaskTags('- [ ] read `#P1` notes #P2')).toBe('- [ ] #P2 read `#P1` notes')
     })
@@ -399,6 +406,98 @@ describe('applyStrayTaskTags', () => {
         expect(applyStrayTaskTags('- [ ] water the beans')).toBeNull()
         expect(applyStrayTaskTags('- water the beans #P1')).toBeNull()
         expect(applyStrayTaskTags('water the beans #P1')).toBeNull()
+    })
+})
+
+describe('a Task Tag written after the leading run', () => {
+    it('counts where it is written, and leaves the text', () => {
+        expect(parseTaskTags('water the beans #P1')).toMatchObject({ priority: 1, text: 'water the beans' })
+        expect(parseTaskTags('water #D-2026-09-15 the beans #s-2026-09-10')).toMatchObject({
+            due: '2026-09-15',
+            scheduled: '2026-09-10',
+            text: 'water the beans',
+        })
+        expect(parseTaskTags('water the beans #w')).toMatchObject({ waiting: true, text: 'water the beans' })
+    })
+
+    it('reads as the line tidy on leave would write, so moving the tag changes nothing a list shows', () => {
+        for (const line of [
+            '- [ ] water the beans #P1',
+            '- [ ] #P1 water the beans #P2 #bug',
+            '- [ ] #W water the beans #D',
+            '- [ ] #kitchen water #D-2026-09-15 the beans #T',
+            '- [x] #C water the beans #A #P3',
+            '  - [ ] #D-2026-01-01 water `#P1` the beans #D-2026-09-15',
+        ]) {
+            const tidied = applyStrayTaskTags(line)!
+            const { done, ...read } = parseTaskLine(line)!
+            const { done: tidiedDone, ...written } = parseTaskLine(tidied)!
+            expect(done).toBe(tidiedDone)
+            expect(taskStatus(done, read)).toBe(taskStatus(tidiedDone, written))
+            expect({ ...read, ...STATES_OFF }).toEqual({ ...written, ...STATES_OFF })
+        }
+    })
+
+    it('lets the last of a kind written after the run win, where the run\'s first does', () => {
+        expect(parseTaskTags('#P1 #P2 water the beans').priority).toBe(1)
+        expect(parseTaskTags('#P1 water #P2 the beans #P3').priority).toBe(3)
+        expect(parseTaskTags('#D-2026-01-01 water the beans #D-2026-09-15').due).toBe('2026-09-15')
+    })
+
+    it('sets a state in place of the others of its kind, as a status is one thing', () => {
+        const waitingThenDoing = parseTaskLine('- [ ] #W water the beans #D')!
+        expect(taskStatus(waitingThenDoing.done, waitingThenDoing)).toBe('doing')
+        const archivedThenCancelled = parseTaskLine('- [x] #A water the beans #C')!
+        expect(taskStatus(archivedThenCancelled.done, archivedThenCancelled)).toBe('cancelled')
+    })
+
+    it('never changes what the checkbox says: a state the checkbox contradicts counts for nothing', () => {
+        // Tidy on leave is a write, and ticks the task; a reader leaves it open.
+        const cancelledUnticked = parseTaskLine('- [ ] #D water the beans #C')!
+        expect(cancelledUnticked.done).toBe(false)
+        expect(taskStatus(cancelledUnticked.done, cancelledUnticked)).toBe('doing')
+        const doingTicked = parseTaskLine('- [x] water the beans #D')!
+        expect(doingTicked.done).toBe(true)
+        expect(taskStatus(doingTicked.done, doingTicked)).toBe('done')
+    })
+
+    it('is not a tag in code, a link, a URL or inline maths, or joined to other characters', () => {
+        for (const label of [
+            'read `#P1` notes',
+            'read [[Garden #P1]] notes',
+            'read [the #P1 notes](https://example.com) now',
+            'read <https://example.com/#P1> now',
+            'read https://example.com/#P1 now',
+            'read #P1, then water',
+            'read item#P1 now',
+            'read #p4 and #P4 now',
+            'read $a #P1 b$ now',
+        ]) {
+            expect(parseTaskTags(label)).toMatchObject({ priority: null, text: label })
+        }
+    })
+
+    it('is read on the task\'s own line only, never on the lines that continue it', () => {
+        expect(parseTaskTags('water the beans\nand the #P1 peas')).toMatchObject({ priority: null, text: 'water the beans\nand the #P1 peas' })
+    })
+
+    it('is applied as tidy on leave applies it by a write to the task\'s tags, a state the checkbox contradicts included', () => {
+        // Moved into the run unapplied, `#C` would sit there counting for nothing, and leaving the
+        // line could no longer cancel the task.
+        expect(taskLineWith('- [ ] water the beans #C', { priority: 1 })).toBe('- [x] #P1 #C water the beans')
+        expect(applyTaskTag('- [ ] water the beans #C', { kind: 'priority', value: 1 })).toBe('- [x] #P1 #C water the beans')
+        expect(taskLineWith('- [x] water the beans #D', { priority: 1 })).toBe('- [ ] #P1 #D water the beans')
+        // A status that is asked for is the status written.
+        expect(taskLineWith('- [ ] water the beans #C', { status: 'doing' })).toBe('- [ ] #D water the beans')
+        // And a write that asks for what the line says already leaves it alone.
+        expect(taskLineWith('- [ ] water the beans #C', { priority: null })).toBe('- [ ] water the beans #C')
+    })
+
+    it('is moved into the run by any write to the task\'s tags', () => {
+        expect(taskLineWith('- [ ] water the beans #P1', { status: 'doing' })).toBe('- [ ] #P1 #D water the beans')
+        expect(applyTaskTag('- [ ] water the beans #P1', { kind: 'waiting' })).toBe('- [ ] #P1 #W water the beans')
+        // A write that changes nothing leaves the line as it is.
+        expect(taskLineWith('- [ ] water the beans #P1', { priority: 1 })).toBe('- [ ] water the beans #P1')
     })
 })
 

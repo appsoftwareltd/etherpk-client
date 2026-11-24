@@ -84,8 +84,8 @@ export function taskFreeTags(label: string): string[] {
 }
 
 /**
- * A task's tags as a [[Task Text Filter]] matches them: every [[Task Tag]] in its leading run and
- * every [[Free Tag]] on its line, lower-cased, each with a space either side. No tag holds a space,
+ * A task's tags as a [[Task Text Filter]] matches them: every [[Task Tag]] and every [[Free Tag]]
+ * on its line, lower-cased, each with a space either side. No tag holds a space,
  * so {@link taskTagNeedle} finds a tag whole, and `#bug` is not found in `#bugfix`.
  */
 export function taskTagsKey(label: string): string {

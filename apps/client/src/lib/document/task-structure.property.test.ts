@@ -1,8 +1,8 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
-import { type NewTask, asCommentBullet, commentChange, emptyCommentsRemoval, newTaskLines, readTaskStructure, taskComments, taskLineWithFreeTag, taskRemoval } from './task-structure'
-import type { TaskStatus } from './task-tags'
+import { type NewTask, asCommentBullet, commentChange, emptyCommentsRemoval, newTaskLines, readTaskStructure, taskComments, taskLineWithFreeTag, taskLineWithTitle, taskRemoval } from './task-structure'
+import { freeTagsIn, parseTaskLine, type TaskStatus } from './task-tags'
 
 /**
  * The Task Editor reads a task as a structure over its lines and writes it back as text (ADR 0170),
@@ -114,6 +114,67 @@ describe('a task’s structure reads back what the Task Editor writes', () => {
                     }
                     expect(at).toBe(task.end)
                 }
+            }),
+            fuzz(500),
+        )
+    })
+})
+
+describe('a title typed with tags in it', () => {
+    const FREE = ['#bug', '#Bug', '#needs-oil', '#garden2']
+    const TASK_TAGS = ['#P1', '#p2', '#W', '#d', '#T', '#c', '#A', '#D-2026-11-05', '#s-2026-01-31']
+    /** A task line as any writer leaves one: a run, words, Free Tags and Task Tags written among them. */
+    const taskLine = fc
+        .record({
+            box: fc.constantFrom(' ', 'x'),
+            run: fc.array(fc.constantFrom(...TASK_TAGS, ...FREE), { maxLength: 3 }),
+            rest: fc.array(fc.constantFrom(...WORDS, ...FREE, ...TASK_TAGS), { minLength: 1, maxLength: 5 }),
+        })
+        .map(({ box, run, rest }) => [`  - [${box}]`, ...run, ...rest].join(' '))
+    /** A title as a person may type one in the Task Editor: words, with tags anywhere among them. */
+    const typedTitle = fc
+        .tuple(words, fc.array(fc.constantFrom(...WORDS, ...FREE, ...TASK_TAGS), { maxLength: 5 }), fc.array(fc.constantFrom(...FREE, ...TASK_TAGS), { maxLength: 2 }))
+        .map(([first, rest, before]) => [...before, first, ...rest].join(' '))
+
+    /** How often each Free Tag is written in a line, by its lower-case spelling. */
+    const tagCounts = (line: string) => {
+        const counts = new Map<string, number>()
+        for (const token of line.split(/\s+/)) if (FREE.includes(token)) counts.set(token.toLowerCase(), (counts.get(token.toLowerCase()) ?? 0) + 1)
+        return counts
+    }
+
+    it('saves the same line however often the title is saved, and writes no Free Tag more often than it was typed', () => {
+        fc.assert(
+            fc.property(taskLine, typedTitle, (line, title) => {
+                const once = taskLineWithTitle(line, title)!
+                // The field holds what was typed until the task is read again: a second save is the first.
+                expect(taskLineWithTitle(once, title)).toBe(once)
+                // And saving the title the field then shows changes nothing.
+                const shown = readTaskStructure([once], 0)!
+                expect(taskLineWithTitle(once, shown.title)).toBe(once)
+                // A rewrite writes a tag as often as the person typed it in the title, or once. A line
+                // left alone keeps what it had, a tag another writer wrote twice included.
+                const typed = tagCounts(title)
+                const had = once === line ? tagCounts(line) : new Map<string, number>()
+                for (const [tag, count] of tagCounts(once)) expect(count).toBeLessThanOrEqual(Math.max(1, typed.get(tag) ?? 0, had.get(tag) ?? 0))
+                // Every Free Tag the line or the title had is still the task's.
+                const all = new Set([...freeTagsIn(parseTaskLine(line)!.text), ...freeTagsIn(title)].map((tag) => tag.toLowerCase()))
+                expect(new Set(shown.freeTags.map((tag) => tag.toLowerCase()))).toEqual(all)
+            }),
+            fuzz(500),
+        )
+    })
+
+    it('makes a new task whose line says the same whether a tag was typed in the title or chosen in a field', () => {
+        fc.assert(
+            fc.property(newTask, typedTitle, (task, title) => {
+                const [line] = newTaskLines({ ...task, title }, '')
+                const read = readTaskStructure([line], 0)!
+                // No Free Tag twice, whether it came from the title, the tag field or both.
+                const typed = tagCounts(title)
+                for (const [tag, count] of tagCounts(line)) expect(count).toBeLessThanOrEqual(Math.max(1, typed.get(tag) ?? 0))
+                // The line holds nothing left to tidy: every Task Tag is in the run.
+                expect(taskLineWithTitle(line, read.title)).toBe(line)
             }),
             fuzz(500),
         )

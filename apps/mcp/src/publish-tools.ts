@@ -271,7 +271,7 @@ export interface PublishArgs {
 /** A GitHub refusal or a refused branch, as this host words it: the token is an environment variable here. */
 function repositoryRefusal(error: unknown, repo: GitHubRepository): unknown {
     if (error instanceof GitHubError) {
-        return new ToolError('github_refused', `${describeGitHubError(error, repo, { replaceToken: 'Make a new one and set ETHERPK_GITHUB_TOKEN to it.' })} Nothing was published.`)
+        return new ToolError('github_refused', `${describeGitHubError(error, repo, { replaceToken: 'Create a new token and put it in ETHERPK_GITHUB_TOKEN.' })} Nothing was published.`)
     }
     if (error instanceof Error && /knowledge graph/.test(error.message)) return new ToolError('repository_holds_graph', `${error.message} Nothing was published.`)
     return error

@@ -49,9 +49,22 @@ html.dark {
 }
 
 body {
+    /* As tall as the part of the screen the browser leaves. `100vh` on a phone is the screen with
+       the browser's bars hidden, which is taller than what shows and leaves the page room to scroll. */
     min-height: 100vh;
+    min-height: 100dvh;
     background: transparent;
     color: inherit;
+}
+
+/* A workspace fills the window and scrolls inside itself, so on a phone the document behind it
+   does not scroll. With something to scroll there, a browser scrolls it to show the caret when the
+   keyboard opens, and the page moves under the workspace. Below the presenter breakpoint
+   (LAYOUT_BREAKPOINT_PX, breakpoint.ts), as the phone presenter is. */
+@media not all and (min-width: 1024px) {
+    html:has(.workspace-host) {
+        overflow: hidden;
+    }
 }
 
 button:not(:disabled),

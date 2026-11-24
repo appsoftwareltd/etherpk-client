@@ -62,6 +62,7 @@ import { anchorLine, lineAnchor } from './line-anchor'
 import { type ShownRangeEdge } from './edit-refused'
 import { shownRange, shownRangeIn, showsPart } from './shown-range'
 import { requestReveal, revealCellFocus, revealFocus, revealOnlyWhileFocused } from './augmentations/reveal-policy'
+import { deleteTableAtCaret } from './table-edit'
 import { activeCell, cellBlock, editTableAsText, fromCell } from './table-cell'
 import {
     allCellsSelected,
@@ -719,6 +720,27 @@ describe('a table is edited in its grid', () => {
 
     // A block of cells: from the caret's cell, the anchor, to another. The caret stays in the anchor,
     // so typing goes there and ends the block.
+    describe('Delete table takes the table out of the document (Google Docs, Notion)', () => {
+        it('a table on lines of its own goes with them, and the caret is left where it was', () => {
+            const editor = grid(TABLE.replace('Beans', 'Beans¦'))
+            expect(deleteTableAtCaret(editor)).toBe(true)
+            expect(editor.fixture()).toBe('intro\n¦after')
+            expect(grids(editor.state)).toEqual([])
+        })
+
+        it('a table that is a bullet\'s content leaves the bullet, empty', () => {
+            const editor = grid(['- Kitchen', '  - | Jar | Shelf |', '    | --- | --- |', '    | Rice¦ | top |', '- next'].join('\n'))
+            deleteTableAtCaret(editor)
+            expect(editor.fixture()).toBe('- Kitchen\n  - ¦\n- next')
+        })
+
+        it('it is one change, and does nothing with the caret in no table', () => {
+            const editor = grid(TABLE.replace('intro', 'intro¦'))
+            expect(deleteTableAtCaret(editor)).toBe(false)
+            expect(editor.fixture()).toBe(TABLE.replace('intro', 'intro¦'))
+        })
+    })
+
     describe('a block of cells is selected from the caret\'s cell (EtherPK, as a spreadsheet)', () => {
         const WIDE = ['| Crop | Sow | Rows |', '| --- | --- | --- |', '| Beans | April | 2 |', '| Kale | May | 1 |', 'after'].join('\n')
         const rect = (editor: HeadlessEditor) => cellBlock(editor.state)?.rect ?? null
@@ -1086,12 +1108,34 @@ presentationTable('a code block the editor shows takes no inline formatting from
 
 /**
  * The guide threads for a document, as `parent→last`, 0-based lines, with ` panel` where the thread
- * runs on to the bottom of a quote's panel rather than stopping at the text of its last line.
+ * runs on to the bottom of a quote's panel rather than stopping at the text of its last line, and
+ * ` player` where it runs on to the bottom of the audio or video player under that line.
  */
 function guides(fixture: string): string[] {
     const { state } = editorFixture(fixture, { extensions: [markdownWithCodeHighlight()] })
-    return guideThreadsFor(state).map((thread) => `${thread.parent}→${thread.last}${thread.toPanel() ? ' panel' : ''}`)
+    return guideThreadsFor(state).map((thread) => `${thread.parent}→${thread.last}${thread.toPanel() ? ' panel' : ''}${thread.toPlayer() ? ' player' : ''}`)
 }
+
+describe('a guide thread reaches the bottom of a player that ends its tree', () => {
+    const AUDIO = '![clip](../assets/clip.a1b2c3d4.m4a)'
+    const VIDEO = '![clip](../assets/clip.a1b2c3d4.webm)'
+    const rows: { rule: string; precedent: Rule['precedent']; before: string; threads: string[] }[] = [
+        { rule: 'a tree ending in an audio recording runs its threads to the bottom of the player', precedent: 'EtherPK', before: `- Test\n  - Test\n    - ${AUDIO}|`, threads: ['0→2 player', '1→2 player'] },
+        { rule: 'a video too', precedent: 'EtherPK', before: `- Test\n  - ${VIDEO}|`, threads: ['0→1 player'] },
+        { rule: 'a recording in the last child’s soft lines too', precedent: 'EtherPK', before: `- a\n  - b\n    ${AUDIO}|`, threads: ['0→2 player'] },
+        { rule: 'a task that is a recording too', precedent: 'EtherPK', before: `- a\n  - [ ] ${AUDIO}|`, threads: ['0→1 player'] },
+        { rule: 'a recording in the middle of a tree changes nothing', precedent: 'Logseq', before: `- Test\n  - ${AUDIO}\n  - Test|`, threads: ['0→2'] },
+        { rule: 'a picture is drawn in its own row, so the thread stops at that row as before', precedent: 'Logseq', before: '- Test\n  - ![pic](../assets/pic.a1b2c3d4.png)|', threads: ['0→1'] },
+        { rule: 'a link to a recording among other words has no player', precedent: 'EtherPK', before: `- Test\n  - hear ${AUDIO} now|`, threads: ['0→1'] },
+        { rule: 'a recording written in a code block is code', precedent: 'EtherPK', before: `- Test\n  - code\n    \`\`\`\n    ${AUDIO}\n    \`\`\`|`, threads: ['0→4'] },
+        { rule: 'a top-level recording has no parent thread, and gets none of its own', precedent: 'EtherPK', before: `- Test\n- ${AUDIO}|`, threads: [] },
+    ]
+    for (const row of rows) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            expect(guides(row.before)).toEqual(row.threads)
+        })
+    }
+})
 
 describe('a guide thread reaches the bottom of a quote that ends its tree', () => {
     const rows: { rule: string; precedent: Rule['precedent']; before: string; threads: string[] }[] = [
@@ -2526,6 +2570,9 @@ describe('a Task Tag written later in a task moves into its run as the caret lea
         { rule: 'a state tag keeps the priority and dates in the run', precedent: 'EtherPK', before: '- [ ] #P1 #D-2026-09-15 water the beans #C|\n- b', leave: 'down', after: '- [x] #P1 #C #D-2026-09-15 water the beans\n- b|' },
         // The tasks nested under it come along as a status menu or Kanban move brings them (task-cascade.ts).
         { rule: 'a state tag #A archives the nested tasks too', precedent: 'EtherPK', before: '- [ ] water the beans #A|\n  - [ ] weed the bed\n  - [x] dig\n- b', leave: 'down', after: '- [x] #A water the beans\n  - [x] #A weed the bed|\n  - [x] #A dig\n- b' },
+        // A task list reads the tag where it was typed, so the ticked task read Archived before the caret left. Its nested tasks had not followed yet.
+        { rule: 'a state tag #A on a ticked task archives the nested tasks too', precedent: 'EtherPK', before: '- [x] water the beans #A|\n  - [ ] weed the bed\n  - [x] dig\n- b', leave: 'down', after: '- [x] #A water the beans\n  - [x] #A weed the bed|\n  - [x] #A dig\n- b' },
+        { rule: 'a state tag #A on a cancelled task archives the nested tasks too', precedent: 'EtherPK', before: '- [x] #C water the beans #A|\n  - [ ] weed the bed\n- b', leave: 'down', after: '- [x] #A water the beans\n  - [x] #A weed the bed|\n- b' },
         { rule: 'a state tag that unticks a task unticks the nested tasks, a cancelled one excepted', precedent: 'EtherPK', before: '- [x] water the beans #W|\n  - [x] weed the bed\n  - [x] #C dig\n- b', leave: 'down', after: '- [ ] #W water the beans\n  - [ ] weed the bed|\n  - [x] #C dig\n- b' },
         { rule: 'a state tag #C leaves the nested tasks as they are, as Mark as Cancelled does', precedent: 'EtherPK', before: '- [ ] water the beans #C|\n  - [ ] weed the bed\n- b', leave: 'down', after: '- [x] #C water the beans\n  - [ ] weed the bed|\n- b' },
         { rule: 'a state tag rewrites the run in its fixed order, a Free Tag in it after the Task Tags, as a Kanban move does', precedent: 'EtherPK', before: '- [ ] #garden #P1 water #W|\n- b', leave: 'down', after: '- [ ] #P1 #W #garden water\n- b|' },

@@ -250,7 +250,7 @@
         <p class="text-sm text-neutral-950 dark:text-neutral-100">
             To hand the agent a task or a Kanban lane, use
             <span class="font-medium">Copy agent instruction</span>
-            on it and paste the text into the agent's chat.
+            on the task or lane and paste the text into the agent's chat.
         </p>
         {#if agents.folderPath}
             <!-- The same Headless Client that serves a synced graph serves a folder, with no

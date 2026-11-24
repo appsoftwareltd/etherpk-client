@@ -737,10 +737,12 @@ describe('registerEditorCommands \u2014 the Table Grid', () => {
     it('a column\u2019s menu adds beside it, aligns it with the one it has ticked, shows the text and removes it', () => {
         const { rows, teardown } = menus()
         const found = rows(column)
-        expect(found.map((item) => item.label)).toEqual(['Add column left', 'Add column right', 'Align left', 'Align centre', 'Align right', 'Edit table as text', 'Remove column'])
+        expect(found.map((item) => item.label)).toEqual(['Add column left', 'Add column right', 'Align left', 'Align centre', 'Align right', 'Edit table as text', 'Remove column', 'Delete table'])
         expect(found.filter((item) => item.checked).map((item) => item.label)).toEqual(['Align right'])
         expect(found.filter((item) => item.separatorBefore).map((item) => item.label)).toEqual(['Align left', 'Edit table as text', 'Remove column'])
-        expect(found.at(-1)).toMatchObject({ command: 'table.removeColumn', danger: true })
+        expect(found.at(-2)).toMatchObject({ command: 'table.removeColumn', danger: true })
+        // The table itself goes from either menu, last, in the danger colour with the removal above it.
+        expect(found.at(-1)).toMatchObject({ command: 'table.delete', danger: true, icon: 'trash', separatorBefore: false })
         // The last column a table has is not removed.
         expect(rows({ ...column, columns: 1 }).map((item) => item.label)).not.toContain('Remove column')
         teardown()
@@ -748,13 +750,36 @@ describe('registerEditorCommands \u2014 the Table Grid', () => {
 
     it('a row\u2019s menu adds above and below, shows the text and removes it, and the header\u2019s only adds below', () => {
         const { rows, teardown } = menus()
-        expect(rows(row).map((item) => item.label)).toEqual(['Add row above', 'Add row below', 'Edit table as text', 'Remove row'])
-        expect(rows({ ...row, header: true }).map((item) => item.label)).toEqual(['Add row below', 'Edit table as text'])
+        expect(rows(row).map((item) => item.label)).toEqual(['Add row above', 'Add row below', 'Edit table as text', 'Remove row', 'Delete table'])
+        // The header's menu has no removal above it, so Delete table heads the group.
+        expect(rows({ ...row, header: true }).map((item) => item.label)).toEqual(['Add row below', 'Edit table as text', 'Delete table'])
+        expect(rows({ ...row, header: true }).at(-1)).toMatchObject({ separatorBefore: true })
         // With a block of cells selected the removal names how many rows or columns it takes.
-        expect(rows({ ...row, selectedRows: 3 }).at(-1)?.label).toBe('Remove 3 rows')
-        expect(rows({ ...column, columns: 4, selectedColumns: 2 }).at(-1)?.label).toBe('Remove 2 columns')
+        expect(rows({ ...row, selectedRows: 3 }).at(-2)?.label).toBe('Remove 3 rows')
+        expect(rows({ ...column, columns: 4, selectedColumns: 2 }).at(-2)?.label).toBe('Remove 2 columns')
         expect(rows({ ...column, columns: 2, selectedColumns: 2 }).map((item) => item.command)).not.toContain('table.removeColumn')
         teardown()
+    })
+
+    it('Delete table takes the table out of the document, with its lines, and leaves a bullet its marker', async () => {
+        const run = async (doc: string) => {
+            const commands = createCommandRegistry()
+            const teardown = registerEditorCommands(commands, createContributionRegistry())
+            const ed = editorFixture(doc, { caret: '^', extensions: [markdownTableAugmentation()] })
+            const deactivate = activate(ed)
+            await commands.execute('table.delete')
+            const out = ed.fixture()
+            deactivate()
+            teardown()
+            return out
+        }
+        // The caret is left where the table was: at the start of the line that followed it.
+        expect(await run('intro\n| a | b |\n| - | - |\n| 1^ | 2 |\nafter')).toBe('intro\n^after')
+        expect(await run('intro\n| a^ | b |\n| - | - |')).toBe('intro^')
+        expect(await run('| a | b |\n| - | - |\n| 1 | 2^ |')).toBe('^')
+        expect(await run('- top\n  - | a | b |\n    | - | - |\n    | 1^ | 2 |\n- next')).toBe('- top\n  - ^\n- next')
+        // With the caret in no table there is nothing to delete.
+        expect(await run('intro^\n| a | b |\n| - | - |')).toBe('intro^\n| a | b |\n| - | - |')
     })
 
     it('every row of both menus runs a registered Command and draws an icon the table has, a choice its tick or none', () => {
@@ -1024,6 +1049,7 @@ describe('registerEditorCommands — what the Command Bar and Command Menu offer
             'table.removeRowsBelow',
             'table.removeColumnsRight',
             'table.removeColumnsLeft',
+            'table.delete',
         ])
         expect(tableRows(false)).toEqual([])
         teardown()

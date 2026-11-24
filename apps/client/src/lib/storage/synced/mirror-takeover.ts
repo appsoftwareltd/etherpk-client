@@ -303,7 +303,7 @@ export function takeoverRefusal(folder: string, owner: FolderOwner): MirrorTakeo
                     ]
                   : [
                         'This folder holds a folder graph’s folder',
-                        `${held} is the folder of your folder graph ${name}. Mirroring a synced graph into “${folder}” would write into that graph’s folder and delete files in it.`,
+                        `${held} is the folder of your folder graph ${name}. Mirroring a synced graph into “${folder}” would write into that graph’s folder and delete files inside.`,
                     ]
         return { kind: 'refuse', title, message: `${what} Choose another folder, ideally an empty one.` }
     }
@@ -320,7 +320,7 @@ export function takeoverRefusal(folder: string, owner: FolderOwner): MirrorTakeo
                 ]
               : [
                     'This folder holds another graph’s mirror',
-                    `${held} is where ${name} is mirrored on this device. Mirroring into “${folder}” would write into that mirror’s folder and delete files in it.`,
+                    `${held} is where ${name} is mirrored on this device. Mirroring into “${folder}” would write into that mirror’s folder and delete files inside.`,
                 ]
     return {
         kind: 'refuse',

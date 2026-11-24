@@ -66,7 +66,7 @@ import { cellInputView } from '../view/augmentations/table-cell-editor'
 import { bodyWritable } from '../view/body-writable'
 import { redoCommand, undoCommand } from '../view/editor-history'
 import { type TableCaret, tableAtCaret, tableInsertable } from '../view/table-context'
-import { type CaretCell, editTableAtCaret } from '../view/table-edit'
+import { type CaretCell, deleteTableAtCaret, editTableAtCaret } from '../view/table-edit'
 import { toggleBold, toggleHighlight, toggleItalic, wikilinkButtonSpec } from '../view/wrap-selection'
 
 /** Insert `text` at the caret and place the cursor after it. */
@@ -268,6 +268,8 @@ export function registerEditorCommands(
             else editTableAtCaret(view, (h) => removeColumn(h.table, h.column))
         }),
     )
+    // The whole table, out of the document. Undo brings it back, so it asks nothing first.
+    command('table.delete', withWritableView((view) => void deleteTableAtCaret(view)))
     // The caret's row becomes the first when everything above it goes; its column the first when
     // everything left of it goes. The other edits keep the caret in its own cell (clamped).
     command('table.removeRowsAbove', tableEdit((h) => removeRowsAbove(h.table, Math.max(h.bodyRow, 0)), (h) => ({ bodyRow: h.bodyRow < 0 ? h.bodyRow : 0, column: h.column })))
@@ -417,6 +419,7 @@ export function registerEditorCommands(
     item({ id: 'table.removeRowsBelow', title: 'Table: Remove rows below', detail: 'Remove rows below', icon: 'table-remove-row', group: 'Insert', order: 12, when: inTable, command: 'table.removeRowsBelow', actsOnText: true })
     item({ id: 'table.removeColumnsRight', title: 'Table: Remove columns right', detail: 'Remove columns to the right', icon: 'table-remove-column', group: 'Insert', order: 12, when: inTable, command: 'table.removeColumnsRight', actsOnText: true })
     item({ id: 'table.removeColumnsLeft', title: 'Table: Remove columns left', detail: 'Remove columns to the left', icon: 'table-remove-column', group: 'Insert', order: 12, when: inTable, command: 'table.removeColumnsLeft', actsOnText: true })
+    item({ id: 'table.delete', title: 'Table: Delete table', detail: 'Remove this table', icon: 'trash', group: 'Insert', order: 12, keywords: ['remove'], when: inTable, command: 'table.delete', actsOnText: true })
 
     // ── The Table Grid's row and column menus (ADR 0205) ──────────────────────
     // Raised by the handles on the grid (markdown-table.ts). The press that raises one has put the
@@ -432,8 +435,13 @@ export function registerEditorCommands(
     menuRow({ id: 'table.alignCenter', label: 'Align centre', order: 21, command: 'table.alignCenter', when: onColumn, checked: aligned('center') })
     menuRow({ id: 'table.alignRight', label: 'Align right', order: 22, command: 'table.alignRight', when: onColumn, checked: aligned('right') })
     menuRow({ id: 'table.editAsText', label: 'Edit table as text', icon: 'code', order: 30, command: 'table.editAsText', separatorBefore: true, when: isTableTarget })
-    menuRow({ id: 'table.removeRow', label: (target) => (isTableTarget(target) && target.selectedRows > 1 ? `Remove ${target.selectedRows} rows` : 'Remove row'), icon: 'table-remove-row', order: 40, command: 'table.removeRow', separatorBefore: true, danger: true, when: (target) => isTableTarget(target) && onRow(target) && !target.header })
-    menuRow({ id: 'table.removeColumn', label: (target) => (isTableTarget(target) && target.selectedColumns > 1 ? `Remove ${target.selectedColumns} columns` : 'Remove column'), icon: 'table-remove-column', order: 40, command: 'table.removeColumn', separatorBefore: true, danger: true, when: (target) => isTableTarget(target) && onColumn(target) && target.columns > target.selectedColumns })
+    // A row or a column is removed from its own menu, where the table has another to keep: the header stays, and so does the last column.
+    const rowRemovable = (target: Parameters<NonNullable<ContextMenuItem['when']>>[0]) => isTableTarget(target) && onRow(target) && !target.header
+    const columnRemovable = (target: Parameters<NonNullable<ContextMenuItem['when']>>[0]) => isTableTarget(target) && onColumn(target) && target.columns > target.selectedColumns
+    menuRow({ id: 'table.removeRow', label: (target) => (isTableTarget(target) && target.selectedRows > 1 ? `Remove ${target.selectedRows} rows` : 'Remove row'), icon: 'table-remove-row', order: 40, command: 'table.removeRow', separatorBefore: true, danger: true, when: rowRemovable })
+    menuRow({ id: 'table.removeColumn', label: (target) => (isTableTarget(target) && target.selectedColumns > 1 ? `Remove ${target.selectedColumns} columns` : 'Remove column'), icon: 'table-remove-column', order: 40, command: 'table.removeColumn', separatorBefore: true, danger: true, when: columnRemovable })
+    // The table itself goes from either menu, under the removal where the menu has one, and heading the group where it has none.
+    menuRow({ id: 'table.delete', label: 'Delete table', icon: 'trash', order: 41, command: 'table.delete', separatorBefore: (target) => !rowRemovable(target) && !columnRemovable(target), danger: true, when: isTableTarget })
 
     return () => offs.forEach((off) => off())
 }

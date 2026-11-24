@@ -206,7 +206,7 @@
      */
     const webWays = $derived.by<Way[]>(() => {
         const web = {
-            runsIn: "A browser, or installed from it",
+            runsIn: "A browser, or installed via the browser",
             folder: { text: "In some browsers", tone: "note", note: 1 },
             quickShare: { text: "When installed on Android or ChromeOS", tone: "note" },
             status: "Available",

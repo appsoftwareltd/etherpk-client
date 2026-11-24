@@ -497,7 +497,7 @@
                         </div>
                     {:else if status === "no-document"}
                         <p class="m-0 max-w-xs text-center text-sm text-(--gk-text-muted)">
-                            Open a document to see what it links to and what links to it.
+                            Open a document to see what it links to and what links back.
                         </p>
                     {:else if status === "not-indexed"}
                         <p class="m-0 max-w-xs text-center text-sm text-(--gk-text-muted)">

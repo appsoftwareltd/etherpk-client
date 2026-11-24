@@ -13,7 +13,8 @@
  * so a parent with no children draws nothing. Which threads exist, and which end on a quote,
  * is {@link guideThreads}: a thread whose tree ends in a quote runs on to the bottom of the quote's
  * panel, measured off the panel itself, and a top-level quote bullet that is last in its group gets
- * a thread of its own down the panel.
+ * a thread of its own down the panel. A thread whose tree ends in a media line runs on to the bottom
+ * of the player drawn under it, measured off the player.
  *
  * A branch can be taller than the rendered viewport, so either end of a thread may lie outside the
  * DOM CodeMirror has built: `coordsAtPos` is null there. Those ends are placed from
@@ -52,6 +53,7 @@ import { allFolds, foldedBulletLines } from './outline-folds'
 import { quoteEndsAt } from './blockquote-core'
 import { bulletDotOffset, proseMetricsField } from './content-clamp'
 import { quotePanelBottom } from './markdown-format'
+import { mediaPlayerBottom } from './media-embed'
 import { GUIDE_WIDTH_PX, type GuideThread, guideThreads } from './outline-guides-core'
 
 interface Thread {
@@ -106,7 +108,8 @@ function measureMarker(view: EditorView, line: { from: number; text: string }): 
 export function guideThreadsFor(state: EditorState, within?: { from: number; to: number }): GuideThread[] {
     const analysis = analysisFor(state)
     const tree = syntaxTree(state)
-    const threads = guideThreads(analysis.lines, analysis.branchEnds, analysis.outline, (line) => quoteEndsAt(tree, state.doc, line), within)
+    const media = new Set(analysis.mediaLines)
+    const threads = guideThreads(analysis.lines, analysis.branchEnds, analysis.outline, (line) => quoteEndsAt(tree, state.doc, line), (line) => media.has(line + 1), within)
     const shown = outlineBaseIn(state)?.shown
     const inPart = shown ? threads.filter((thread) => thread.parent >= shown.first && thread.parent <= shown.last) : threads
     // A folded bullet hangs no thread, and a bullet its fold hides draws nothing (outline-folds.ts).
@@ -127,17 +130,35 @@ function outermostFoldOver(folds: readonly { from: number; to: number }[], pos: 
     return outer
 }
 
-/** The bottom (viewport px) of the quote panel on the rendered line starting at `lineFrom`, or null. */
-function panelBottom(view: EditorView, lineFrom: number): number | null {
-    const { node } = view.domAtPos(lineFrom)
-    const line = (node instanceof HTMLElement ? node : node.parentElement)?.closest('.cm-line')
-    return line ? quotePanelBottom(line) : null
+/** The rendered `.cm-line` holding `pos`, or null. */
+function lineElementAt(view: EditorView, pos: number): Element | null {
+    const { node } = view.domAtPos(pos)
+    return (node instanceof HTMLElement ? node : node.parentElement)?.closest('.cm-line') ?? null
+}
+
+/**
+ * The bottom (viewport px) of what is drawn below the text of a thread's last row and belongs to
+ * it, or null when the row ends at its text: a quote's panel, which pads its last line, or the
+ * audio or video player under a media line.
+ *
+ * `lastPos` is in the row the thread ends on: its last line, or the folded bullet that hides that
+ * line. A hidden media line has no player and a folded bullet that is itself one keeps its own,
+ * after the fold (media-embed.ts), so under a fold the page is asked whether a player follows the
+ * row, and no line's kind is. A fold's row never ends a panel: the quote is inside the fold.
+ */
+function belowRowBottom(view: EditorView, thread: GuideThread, folded: boolean, lastPos: number): number | null {
+    const row = lineElementAt(view, view.state.doc.lineAt(lastPos).from)
+    if (!row) return null
+    const panel = !folded && thread.toPanel() ? quotePanelBottom(row) : null
+    if (panel !== null) return panel
+    return folded || thread.toPlayer() ? mediaPlayerBottom(row) : null
 }
 
 /**
  * Where a thread ends: the bottom of its branch's last row (Logseq-style, the thread spans the whole
  * subtree), a soft line with nothing on it yet included, or, where that line ends a quote, the
- * bottom of the quote's panel. `viewport` is that in viewport px, or null below the rendered range
+ * bottom of the quote's panel, or, where an audio or video player is drawn under that line, the
+ * bottom of the player. `viewport` is that in viewport px, or null below the rendered range
  * and inside a block widget, where `block` (the line block's bottom, from the document's top) stands
  * in. `unmeasured` says a rendered position gave no coordinates: layout is not ready.
  *
@@ -158,8 +179,9 @@ function threadBottom(
     const lastPos = fold ? fold.from : lastLine.to
     const block = view.lineBlockAt(lastPos).bottom
     if (!rendered(lastPos)) return { viewport: null, block, unmeasured: false }
-    const panel = !fold && thread.toPanel() ? panelBottom(view, lastLine.from) : null
-    if (panel !== null) return { viewport: panel, block, unmeasured: false }
+    // A panel or a player is below the row's text, which the row's own coordinates stop short of.
+    const below = belowRowBottom(view, thread, fold !== undefined, lastPos)
+    if (below !== null) return { viewport: below, block, unmeasured: false }
     const last = view.coordsAtPos(lastPos, fold ? -1 : 1)
     return { viewport: last ? last.bottom : null, block, unmeasured: !last }
 }

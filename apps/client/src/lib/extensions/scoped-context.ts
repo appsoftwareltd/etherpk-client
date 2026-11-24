@@ -240,8 +240,8 @@ export function createScopedContext(
         },
         graphSidebar: {
             register(button: GraphSidebarButton) {
-                own('Graph Sidebar button', button.id)
-                runs(`Graph Sidebar button "${button.id}"`, button.command)
+                own('Explorer button', button.id)
+                runs(`Explorer button "${button.id}"`, button.command)
                 if (disposed) return noop
                 return keep(registerGraphSidebarButton(graph.contributions, { ...button, icon: icon(button.icon), bundled }))
             },

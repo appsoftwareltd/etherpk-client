@@ -595,9 +595,9 @@ function reportAddresses(
         // A document that asked for an address and did not get it is worth a warning; a derived
         // collision is the normal suffix rule and only information.
         if (c.explicit) {
-            warnings.push({ level: 'warning', code: 'slug-taken', message: `"${c.concept}" asks for the address ${c.wanted}.html in its frontmatter, but another document has it - it is at ${c.slug}.html.`, concept: c.concept })
+            warnings.push({ level: 'warning', code: 'slug-taken', message: `"${c.concept}" asks for the address ${c.wanted}.html in its frontmatter, but another document has that address. "${c.concept}" is at ${c.slug}.html.`, concept: c.concept })
         } else {
-            info.push({ level: 'info', code: 'slug-collision', message: `"${c.concept}" wanted the address ${c.wanted}.html, which another document has - it is at ${c.slug}.html.`, concept: c.concept })
+            info.push({ level: 'info', code: 'slug-collision', message: `"${c.concept}" wanted the address ${c.wanted}.html, which another document has. "${c.concept}" is at ${c.slug}.html.`, concept: c.concept })
         }
     }
     for (const ignoredSlug of allocation.ignored) {

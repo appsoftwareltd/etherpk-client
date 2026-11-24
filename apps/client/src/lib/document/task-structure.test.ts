@@ -11,6 +11,7 @@ import {
     taskLineWithTitle,
     taskRemoval,
     taskTitle,
+    titleWords,
 } from './task-structure'
 
 const lines = (text: string) => text.split('\n')
@@ -144,6 +145,53 @@ describe('taskLineWithTitle', () => {
     it('is null on a line that is no task', () => {
         expect(taskLineWithTitle('- water the beans', 'x')).toBeNull()
     })
+
+    it('takes a Free Tag typed in the title as the task\'s tag, written once however often the title is saved', () => {
+        const once = taskLineWithTitle('- [ ] Fix the gate', 'Fix the gate #paint')!
+        expect(once).toBe('- [ ] Fix the gate #paint')
+        // The title field still holds what was typed when it is saved again, on leaving it or closing.
+        expect(taskLineWithTitle(once, 'Fix the gate #paint')).toBe(once)
+        expect(taskLineWithTitle(once, 'Fix the gate #PAINT')).toBe(once)
+        expect(readTaskStructure([once], 0)).toMatchObject({ title: 'Fix the gate', freeTags: ['paint'] })
+    })
+
+    it('keeps the task\'s other Free Tags after a title that holds one', () => {
+        expect(taskLineWithTitle('- [ ] #P1 Fix the gate #bug', 'Mend the gate #paint')).toBe('- [ ] #P1 Mend the gate #paint #bug')
+        expect(taskLineWithTitle('- [ ] Fix the gate #bug #paint', 'Mend #Bug the gate')).toBe('- [ ] Mend #Bug the gate #paint')
+    })
+
+    it('takes a Task Tag typed in the title as the task\'s tag, in the run', () => {
+        expect(taskLineWithTitle('- [ ] Fix the gate', 'Fix the gate #p1')).toBe('- [ ] #P1 Fix the gate')
+        expect(taskLineWithTitle('- [ ] #P1 #W Fix the gate #bug', '#P2 Fix the gate #D-2026-09-15')).toBe('- [ ] #P2 #W #D-2026-09-15 Fix the gate #bug')
+        // A state tag sets the status, with the checkbox to match, as it does typed in a document.
+        expect(taskLineWithTitle('- [ ] #D Fix the gate', 'Fix the gate #C')).toBe('- [x] #C Fix the gate')
+    })
+
+    it('reads the tags typed in the title as a document reads them: the first of a kind at its start, a later one after its words', () => {
+        expect(taskLineWithTitle('- [ ] #P2 water', '#P1 #P3 water')).toBe('- [ ] #P1 water')
+        expect(taskLineWithTitle('- [ ] water', '#W #D water the beans')).toBe('- [ ] #W water the beans')
+        expect(taskLineWithTitle('- [ ] #P2 water', '#P1 water #P3')).toBe('- [ ] #P3 water')
+        // A title that is only tags writes no tag twice. The Task Editor refuses one, as having no words.
+        expect(taskLineWithTitle('- [ ] #P2 water', '#P1')).toBe('- [ ] #P1')
+    })
+
+    it('applies a tag written after the task\'s words before it rewrites them', () => {
+        expect(taskLineWithTitle('- [ ] water #C', 'water now')).toBe('- [x] #C water now')
+        // The same title leaves the line as it is.
+        expect(taskLineWithTitle('- [ ] water #C', 'water')).toBe('- [ ] water #C')
+    })
+
+    it('leaves a line alone when the title\'s words are the same and its tags are all there', () => {
+        expect(taskLineWithTitle('- [ ] #P1 Fix #bug the gate', 'Fix the gate #bug #P1')).toBe('- [ ] #P1 Fix #bug the gate')
+    })
+})
+
+describe('titleWords', () => {
+    it('is what a typed title says once its tags are taken out', () => {
+        expect(titleWords('  Fix the gate #paint #P1 ')).toBe('Fix the gate')
+        expect(titleWords('#P1 #paint')).toBe('')
+        expect(titleWords('read `#P1` notes')).toBe('read `#P1` notes')
+    })
 })
 
 describe('taskLineWithFreeTag', () => {
@@ -175,6 +223,11 @@ describe('newTaskLines', () => {
 
     it('writes no date that is not a whole YYYY-MM-DD date', () => {
         expect(newTaskLines({ status: 'open', priority: null, title: 'Fix the gate', freeTags: [], due: '', scheduled: '2026-11' }, '')).toEqual(['- [ ] Fix the gate'])
+    })
+
+    it('takes the tags typed in the title as the task\'s tags, each written once', () => {
+        expect(newTaskLines({ status: 'open', priority: 2, title: 'Fix the gate #paint #P1', freeTags: ['paint', 'bug'] }, '')).toEqual(['- [ ] #P1 Fix the gate #paint #bug'])
+        expect(newTaskLines({ status: 'open', priority: null, title: '#D-2026-09-15 Fix the gate #w', freeTags: [] }, '')).toEqual(['- [ ] #W #D-2026-09-15 Fix the gate'])
     })
 
     it('writes a Done task ticked, and drops an empty description', () => {

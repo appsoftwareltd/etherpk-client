@@ -466,7 +466,7 @@
                     This browser has nowhere to put an imported graph yet
                 </h3>
                 <p class="text-sm text-neutral-600 dark:text-neutral-300">
-                    An import makes a new graph, as a synced graph or in a local folder.
+                    An import creates a new graph, as a synced graph or in a local folder.
                 </p>
                 <ul class="list-disc space-y-1.5 pl-5 text-sm text-neutral-700 dark:text-neutral-200">
                     <li>{destinations.none.synced}</li>

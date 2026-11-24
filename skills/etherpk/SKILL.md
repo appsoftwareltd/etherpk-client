@@ -36,7 +36,7 @@ Then stop until they have restarted the agent with the tools connected.
 
 **Check:** you know the route, and on the MCP route the `etherpk` tools answer `graph_info`.
 
-## 2. Make a new graph folder
+## 2. Create a new graph folder
 
 1. Choose the folder: the one the user named, otherwise `docs/`, `blog/` or `wiki/` at the
    project root. It is new or empty, and outside any other graph folder.
@@ -153,7 +153,7 @@ wants.
 
 Tell the user how to open and publish the folder:
 
-- **Open it in EtherPK.** In Chrome or Edge on the same computer, go to
+- **Open it in EtherPK.** In Chrome or Edge on the same device, go to
   <https://app.etherpk.com> (or their own EtherPK), select **Open folder** on the
   Graphs page and pick the folder. Their edits and yours show up in each other.
   <https://docs.etherpk.com/folder-graphs>

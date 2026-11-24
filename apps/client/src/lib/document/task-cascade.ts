@@ -39,7 +39,7 @@
 
 import { fencedBlocks, type FencedBlockRange, linesInFencedBlocks } from './fenced-code'
 import { branchRange } from './outliner'
-import { parseTaskLine, taskLineWith, toggleTaskLine } from './task-tags'
+import { type ParsedTaskLine, parseTaskLine, parseTaskLineRun, taskLineWith, toggleTaskLine } from './task-tags'
 import type { TextChange } from './types'
 import { minimalReplacement } from './view/minimal-replacement'
 
@@ -52,9 +52,8 @@ export interface LineWrite {
 
 type Checkbox = 'open' | 'done' | 'cancelled' | 'archived'
 
-/** Where a line's checkbox leaves its Task Status, as far as the cascade cares; null for a non-task. */
-function checkboxOf(line: string): Checkbox | null {
-    const task = parseTaskLine(line)
+/** Where a parsed line's checkbox leaves its Task Status, as far as the cascade cares; null for a non-task. */
+function checkboxOf(task: ParsedTaskLine | null): Checkbox | null {
     if (!task) return null
     return task.done ? (task.archived ? 'archived' : task.cancelled ? 'cancelled' : 'done') : 'open'
 }
@@ -84,7 +83,11 @@ function moves(way: Direction, checkbox: Checkbox | null): boolean {
  * unticks it, and when no nested task needs changing.
  */
 export function nestedTaskWrites(lines: readonly string[], index: number, next: string, blocks?: readonly FencedBlockRange[]): LineWrite[] {
-    const way = direction(checkboxOf(lines[index]), checkboxOf(next))
+    // The task as its run and checkbox had it (`parseTaskLineRun`): a Task Tag written after the run
+    // is read by every list, but the nested tasks follow only once a write applies it, and this is
+    // that write. A ticked task left with `#A` typed after its words reads Archived before and
+    // after, and its nested tasks are archived here.
+    const way = direction(checkboxOf(parseTaskLineRun(lines[index])), checkboxOf(parseTaskLine(next)))
     if (way === null) return []
     // Read the fences only once a write moves something: tidy on leave asks after every tidy.
     const fences = blocks ?? fencedBlocks(lines)
@@ -92,7 +95,7 @@ export function nestedTaskWrites(lines: readonly string[], index: number, next: 
     const { end } = branchRange(lines as string[], index, fences as FencedBlockRange[])
     const writes: LineWrite[] = []
     for (let i = index + 1; i <= end; i++) {
-        if (inFence.has(i) || !moves(way, checkboxOf(lines[i]))) continue
+        if (inFence.has(i) || !moves(way, checkboxOf(parseTaskLine(lines[i])))) continue
         const after = way === 'archive' ? taskLineWith(lines[i], { status: 'archived' })! : toggleTaskLine(lines[i], way === 'tick')!
         writes.push({ index: i, before: lines[i], after })
     }

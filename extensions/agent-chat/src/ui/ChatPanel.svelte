@@ -360,7 +360,7 @@
         try {
             const target = where === "inline" && panel?.isOpen ? panel : ((await saveTarget?.()) ?? null);
             if (!target) {
-                notice = `Could not open ${into} to save into it. Open it, then save again.`;
+                notice = `Could not open ${into}, so nothing was saved. Open ${into}, then save again.`;
                 return;
             }
             const saving = [...ticked];

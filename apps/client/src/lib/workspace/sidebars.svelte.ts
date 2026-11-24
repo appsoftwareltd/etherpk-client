@@ -62,6 +62,8 @@ export interface Sidebars {
     toggleLabel(side: SidebarSide): string
     /** An icon was chosen: show its View, or collapse the Sidebar when it is the one showing. */
     choose(item: ActivityItem): void
+    /** The Primary Sidebar's close button: collapse it, leaving its Views open (ADR 0198, amended 2026-11-24). */
+    closePrimary(): void
     /** A shortcut was pressed. */
     runShortcut(shortcut: ActivityShortcut): void
     reorder(item: ActivityItem, index: number): void
@@ -158,6 +160,10 @@ export function createSidebars(options: SidebarsOptions): Sidebars {
         toggleLabel(side) {
             void rev
             return binding.roleOf(regionOfSide(side)) === 'primary' ? 'Toggle Primary Sidebar' : 'Toggle Secondary Sidebar'
+        },
+
+        closePrimary() {
+            options.controller()?.toggleSidebar(binding.sideOf('primary'), false)
         },
 
         choose(item) {

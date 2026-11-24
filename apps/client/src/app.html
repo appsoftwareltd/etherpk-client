@@ -8,7 +8,10 @@
         <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
         <meta name="theme-color" content="#0f0f0f" media="(prefers-color-scheme: dark)" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <!-- interactive-widget: a phone's keyboard resizes the page, where the browser can (Chrome and
+             Firefox on Android), so the workspace gets shorter with it and the browser has no reason to
+             move the page under the keyboard. Elsewhere see lib/layout/keyboard-inset.ts. -->
+        <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
         <script>
             (() => {
                 const cookieName = 'etherpk-theme';
