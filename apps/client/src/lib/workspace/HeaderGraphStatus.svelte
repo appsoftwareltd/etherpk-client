@@ -1,8 +1,14 @@
 <script lang="ts">
     /**
-     * The open graph's status dot in the app's header, to the right of the logo: where a phone
-     * shows it, since the workspace has no toolbar there (graph-status-host.svelte.ts). Pressing it
-     * opens the same dialog as the toolbar's dot on a desktop.
+     * The open graph's status dot in the app's header, to the right of the logo, in the desktop
+     * and the phone layout alike (graph-status-host.svelte.ts).
+     *
+     * The dot is a synced graph's one answer to "is my work safe?": sync and the [[Local Mirror]]
+     * together (graph-status.ts). It is green only when every part that applies is working, and
+     * pressing it opens a dialog with a section for each. A mirror writes to a folder nothing on
+     * screen shows, and after a browser restart it usually needs its permission back, so a stopped
+     * one must show here. When sync stops in a way the person should hear about, a notice hangs
+     * under the dot until they close it. A folder graph has no dot.
      */
     import { headerGraphStatus } from './graph-status-host.svelte.js'
     import StatusCallout from './StatusCallout.svelte'
@@ -21,13 +27,15 @@
             data-mirror-state={host.status.mirror?.state ?? 'none'}
             data-unsent={host.status.sync?.unsent ?? 0}
             aria-label={`Sync status. ${host.status.title}`}
+            aria-description={host.status.title}
+            data-tooltip={host.status.title}
             aria-haspopup="dialog"
             onclick={host.open}
         >
             <span class="dot"></span>
         </button>
         {#if host.callout}
-            <StatusCallout callout={host.callout} align="start" ondismiss={host.dismissCallout} />
+            <StatusCallout callout={host.callout} ondismiss={host.dismissCallout} />
         {/if}
     </span>
 {/if}

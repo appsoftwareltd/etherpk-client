@@ -3,7 +3,7 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
 import { editorAnalysis } from '../analysis/editor-analysis'
-import { addInlinePanel, inlinePanelsField, inlinePanelWidgets, removeInlinePanel } from './inline-panels'
+import { addInlinePanel, inlinePanelsField, inlinePanelWidgets, panelAnchorFor, panelCloseReason, removeInlinePanel } from './inline-panels'
 import { isProtectedDocumentFacet } from './protected-document'
 
 /**
@@ -62,6 +62,43 @@ describe('inline panels, over any order of events', () => {
                         expect(state.field(inlinePanelsField)).toEqual([])
                         expect(inlinePanelWidgets(state)).toEqual([])
                     }
+                }
+            }),
+            fuzz(300),
+        )
+    })
+
+    it('drop a panel nobody closed only where its opener is told that no panel can be there', () => {
+        fc.assert(
+            fc.property(fc.constantFrom('', '- Garden\n- Kitchen\n'), fc.array(step, { maxLength: 30 }), (doc, steps) => {
+                let protectedDocument = false
+                let state = EditorState.create({ doc, extensions: [editorAnalysis(), inlinePanelsField, isProtectedDocumentFacet.of(() => protectedDocument)] })
+                const held = () => new Set(state.field(inlinePanelsField).map((spot) => spot.id))
+                for (const next of steps) {
+                    if (next.kind === 'protect') {
+                        protectedDocument = next.on
+                        continue
+                    }
+                    const before = held()
+                    const length = state.doc.length
+                    if (next.kind === 'open') {
+                        const lineStart = next.end ? state.doc.lineAt(length).from : state.doc.lineAt(Math.min(next.at, length)).from
+                        state = state.update({ effects: addInlinePanel.of({ id: next.id, lineStart, mode: next.end ? 'end' : 'line' }) }).state
+                    } else if (next.kind === 'close') {
+                        state = state.update({ effects: removeInlinePanel.of(next.id) }).state
+                        before.delete(next.id)
+                    } else if (next.kind === 'insert') state = state.update({ changes: { from: Math.min(next.at, length), insert: next.text } }).state
+                    else if (next.kind === 'remove') {
+                        const from = Math.min(next.from, length)
+                        state = state.update({ changes: { from, to: Math.min(from + next.length, length) } }).state
+                    } else state = state.update({}).state
+                    // The editor took these out itself: what `closeDropped` closes, with the reason this state gives.
+                    const after = held()
+                    const dropped = [...before].filter((id) => !after.has(id))
+                    if (dropped.length > 0) expect(panelCloseReason(state)).toBe('unavailable')
+                    // And where a panel is told so, none could be opened: under the last line is the
+                    // one place a panel opens wherever the caret is.
+                    if (panelCloseReason(state) === 'unavailable') expect(panelAnchorFor(state, 'end')).toBeNull()
                 }
             }),
             fuzz(300),

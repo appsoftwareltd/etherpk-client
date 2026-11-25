@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { outlineLines } from '../../indent-unit'
 import { editorAnalysis } from '../analysis/editor-analysis'
-import { addInlinePanel, inlinePanelLine, inlinePanelsField, inlinePanelWidgets, panelAnchorAt, panelAnchorFor, panelLineText, panelOutline, panelReturnLine, planPanelInsert, removeInlinePanel, resizeInlinePanel } from './inline-panels'
+import { addInlinePanel, inlinePanelLine, inlinePanelsField, inlinePanelWidgets, panelAnchorAt, panelAnchorFor, panelCloseReason, panelLineText, panelOutline, panelReturnLine, planPanelInsert, removeInlinePanel, resizeInlinePanel } from './inline-panels'
 import { isProtectedDocumentFacet } from './protected-document'
 
 // An inline panel (ADR 0147): a block the editor draws beneath one line that is not part of the
@@ -182,6 +182,16 @@ describe('where a panel can open', () => {
         s = s.update({ effects: addInlinePanel.of({ id: 2, lineStart: 0, mode: 'line' }) }).state
         expect(s.field(inlinePanelsField)).toEqual([])
         expect(inlinePanelWidgets(s)).toEqual([])
+    })
+
+    it('tells the opener of a panel the Client closes why: unavailable where no panel can open now, closed anywhere else', () => {
+        expect(panelCloseReason(state('- Garden'))).toBe('closed')
+        expect(panelCloseReason(state('- Garden', true))).toBe('unavailable')
+        const readOnly = EditorState.create({ doc: '- Garden', extensions: [editorAnalysis(), inlinePanelsField, EditorState.readOnly.of(true)] })
+        expect(panelCloseReason(readOnly)).toBe('unavailable')
+        // The caret's place does not come into it: a panel already open in the frontmatter's document stays.
+        const front = state('---\ntitle: Garden\n---\n- water').update({ selection: { anchor: 5 } }).state
+        expect(panelCloseReason(front)).toBe('closed')
     })
 
     it('never opens in a Protected Document, nor in the frontmatter', () => {

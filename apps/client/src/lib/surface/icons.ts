@@ -26,6 +26,19 @@
 
 import { sanitizedIconMarkup, trustedIconMarkup, type TrustedMarkup } from '#lib/security/trusted-types.js'
 
+/**
+ * The Sidebar toggle's glyph: a panel with a filled rail on one side, on a 20-unit grid. One
+ * drawing for the toggles themselves (`SidebarToggleIcon.svelte`) and for the table's
+ * `sidebar-left` and `sidebar-right`, so a menu row that moves a Sidebar shows the toggle's picture.
+ */
+export const SIDEBAR_GLYPH = {
+    left: 'M3 4.5A1.5 1.5 0 0 1 4.5 3h11A1.5 1.5 0 0 1 17 4.5v11A1.5 1.5 0 0 1 15.5 17h-11A1.5 1.5 0 0 1 3 15.5v-11ZM8 4.5v11H15.5v-11H8Z',
+    right: 'M17 4.5A1.5 1.5 0 0 0 15.5 3h-11A1.5 1.5 0 0 0 3 4.5v11A1.5 1.5 0 0 0 4.5 17h11A1.5 1.5 0 0 0 17 15.5v-11ZM12 4.5v11H4.5v-11H12Z',
+} as const
+
+/** The toggle's glyph on the table's 16-unit grid: filled, as the toggle draws it. */
+const sidebarGlyph = (side: 'left' | 'right') => `<g transform="scale(0.8)" fill="currentColor" stroke="none"><path d="${SIDEBAR_GLYPH[side]}"/></g>`
+
 /** Inner markup for each named icon; `default` is the fallback for an unknown name. */
 export const ICON_PATHS: Record<string, string> = {
     // Command Bar
@@ -200,8 +213,27 @@ export const ICON_PATHS: Record<string, string> = {
     check: '<path d="M3.5 8.5 6.5 11.5 12.5 5"/>',
 
     // Sidebar
-    /** Three linked nodes: a knowledge graph. Leads the Explorer's tab, before the graph's name. */
+    /**
+     * Three linked nodes: a knowledge graph. After the name of what is open on the workspace
+     * toolbar, and after a graph's name on its Graphs page card (`KindIcons.svelte`), where it
+     * says "this is a graph" beside the icon that says where the graph is kept.
+     */
     graph: '<circle cx="4" cy="4.5" r="1.8"/><circle cx="12" cy="5.5" r="1.8"/><circle cx="7.5" cy="12" r="1.8"/><path d="M5.8 4.7 10.2 5.3M5 6.1l1.7 4.3M8.6 10.6l2.6-3.6"/>',
+    /**
+     * A compass: the Explorer, the View a person finds their way round a graph from (its calendar,
+     * favourites and recent documents). On the Explorer's icon in the Activity Bar.
+     */
+    compass: '<circle cx="8" cy="8" r="5.6"/><path d="M10.4 5.6 9.2 9.2 5.6 10.4 6.8 6.8z"/>',
+    /** A panel with its rail on the left, as the left Sidebar's toggle draws it: a Sidebar on the left. */
+    'sidebar-left': sidebarGlyph('left'),
+    /** The same panel with its rail on the right: a Sidebar on the right. */
+    'sidebar-right': sidebarGlyph('right'),
+    /**
+     * A keyboard: the Keyboard shortcuts card. The picture the workspace toolbar's button had, on
+     * this grid.
+     */
+    keyboard:
+        '<rect x="1.5" y="3.5" width="13" height="9" rx="1.35"/><path d="M4 6h.01M6.33 6h.01M8.67 6h.01M11 6h.01M4 8h.01M6.33 8h.01M8.67 8h.01M11 8h.01M12 6h.01M12 8h.01M5.33 10h5.34"/>',
     /** Three dots in a row: a menu of further actions. */
     more: [3.5, 8, 12.5].map((x) => `<circle cx="${x}" cy="8" r="1.15" fill="currentColor" stroke="none"/>`).join(''),
     /** A pencil: rename. */
@@ -266,6 +298,12 @@ const HEROICON_PATHS: Record<string, string> = {
      */
     'view-larger':
         '<path d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/>',
+    /**
+     * heroicons/outline `cog-6-tooth`, a gear: the workspace's settings. On the Settings row of
+     * the Activity Bar's menu, and the Explorer's Settings row on a phone draws the same picture.
+     */
+    settings:
+        '<path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281Z"/><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>',
     'todays-journal':
         '<path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0V11.25A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"/>',
 }

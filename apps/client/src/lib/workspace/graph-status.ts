@@ -7,7 +7,7 @@
  * one is set up. Pressing it opens a dialog with a section for each.
  *
  * A module rather than types inside the components, as `mirror-indicator.ts` is: the workspace,
- * the toolbar, the app's header and the dialog all name these shapes.
+ * the app's header and the dialog all name these shapes.
  */
 import { TURNED_AWAY_NOTICE, type SyncIndicator, type SyncIndicatorState, type SyncStatusAction } from '#lib/sync/sync-indicator.js'
 

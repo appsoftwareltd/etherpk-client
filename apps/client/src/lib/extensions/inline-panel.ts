@@ -35,7 +35,7 @@ export function openExtensionPanel(view: EditorView | null, options: InlinePanel
             handle ??= opened
             return options.mount(host, panel)
         },
-        onClose: () => options.onClose?.(),
+        onClose: (reason) => options.onClose?.(reason),
     })
     return handle ? panel : null
 }

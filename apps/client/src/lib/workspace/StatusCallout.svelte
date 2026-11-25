@@ -5,25 +5,23 @@
      * dot with a pointer to it, and stays until closed or until the state passes.
      *
      * The parent positions it: this is absolutely placed under the nearest positioned ancestor,
-     * which wraps the dot. `align` says which edge of that wrapper it lines up with, so it stays
-     * inside the viewport from a dot at either end of a bar.
+     * which wraps the dot, and lines up with that wrapper's left edge. The dot is near the left
+     * end of the app's header, so the notice stays inside the viewport.
      */
     import type { StatusCallout } from './graph-status'
 
     let {
         callout,
-        align = 'end',
         ondismiss,
     }: {
         callout: StatusCallout
-        align?: 'start' | 'end'
         ondismiss: () => void
     } = $props()
 </script>
 
 <!-- A live region, so a screen reader hears the notice when the state arrives: this is the one
      announcement, and the states it covers are rare. -->
-<div class="callout" data-align={align} data-testid="graph-status-callout" data-callout={callout.id} role="status">
+<div class="callout" data-testid="graph-status-callout" data-callout={callout.id} role="status">
     <p>{callout.text}</p>
     <button type="button" class="close" aria-label="Close this notice" data-testid="graph-status-callout-close" onclick={ondismiss}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -36,6 +34,7 @@
     .callout {
         position: absolute;
         top: calc(100% + 10px);
+        left: -4px;
         z-index: 40;
         display: flex;
         align-items: flex-start;
@@ -54,29 +53,18 @@
         text-align: left;
         animation: callout-in 160ms ease-out;
     }
-    .callout[data-align='end'] {
-        right: -4px;
-    }
-    .callout[data-align='start'] {
-        left: -4px;
-    }
     /* The pointer: a square turned on its corner, sharing the bubble's border on its two upper sides. */
     .callout::before {
         content: '';
         position: absolute;
         top: -6px;
+        left: 14px;
         width: 10px;
         height: 10px;
         border-left: 1px solid var(--gk-border-soft);
         border-top: 1px solid var(--gk-border-soft);
         background: inherit;
         transform: rotate(45deg);
-    }
-    .callout[data-align='end']::before {
-        right: 14px;
-    }
-    .callout[data-align='start']::before {
-        left: 14px;
     }
     p {
         margin: 0;

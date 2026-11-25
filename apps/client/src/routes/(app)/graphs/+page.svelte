@@ -219,6 +219,8 @@
     import { iconSvg } from "#lib/surface/icons.js";
     import GraphOrderList from "#lib/workspace/GraphOrderList.svelte";
     import GraphPickerRow from "#lib/workspace/GraphPickerRow.svelte";
+    import KindIcons from "#lib/workspace/KindIcons.svelte";
+    import { KINDS } from "#lib/workspace/workspace-heading.js";
     import { graphOrderOf, saveGraphOrder } from "#lib/workspace/graph-order-state.js";
     import InstallOffer from "#lib/install/InstallOffer.svelte";
     import SyncServerGroup, {
@@ -5064,20 +5066,7 @@
                                 class="flex items-center gap-2 text-lg font-semibold text-neutral-950 dark:text-white"
                             >
                                 Synced graphs
-                                <svg
-                                    class="h-5 w-5 shrink-0 text-neutral-500 dark:text-neutral-400"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="1.5"
-                                    aria-hidden="true"
-                                >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d={SYNC_ICON}
-                                    />
-                                </svg>
+                                <KindIcons kind={KINDS.synced} decorative />
                             </h2>
                             <p
                                 class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
@@ -5125,20 +5114,7 @@
                                 class="flex items-center gap-2 text-lg font-semibold text-neutral-950 dark:text-white"
                             >
                                 Folder graphs
-                                <svg
-                                    class="h-5 w-5 shrink-0 text-neutral-500 dark:text-neutral-400"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="1.5"
-                                    aria-hidden="true"
-                                >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d={FOLDER_GRAPHS_ICON}
-                                    />
-                                </svg>
+                                <KindIcons kind={KINDS.folder} decorative />
                                 <!-- Said on both groups that EtherPK does not sync, this one and Plain Folders below. -->
                                 <span class={NOT_SYNCED_NOTE}>(not synced)</span>
                             </h2>

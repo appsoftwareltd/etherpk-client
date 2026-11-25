@@ -616,12 +616,15 @@ export interface InlinePanel {
 }
 
 // @public
+export type InlinePanelCloseReason = 'closed' | 'unavailable';
+
+// @public
 export interface InlinePanelOptions {
     height?: number;
     mount(host: HTMLElement, panel: InlinePanel): {
         destroy(): void;
     };
-    onClose?(): void;
+    onClose?(reason: InlinePanelCloseReason): void;
 }
 
 // @public

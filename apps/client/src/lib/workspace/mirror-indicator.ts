@@ -2,7 +2,7 @@
  * What the [[Local Mirror]] contributes to a graph's status dot and its dialog (ADR 0008).
  *
  * A module rather than a type inside the component, for the same reason as `sync/ui/mirror-tab.ts`:
- * both the toolbar and the workspace that fills it name the shape, and a Svelte instance script
+ * both the status dialog and the workspace that fills it name the shape, and a Svelte instance script
  * cannot export a type.
  *
  * Four states, and the two that matter are the quiet ones. `current` is the answer to "is my copy

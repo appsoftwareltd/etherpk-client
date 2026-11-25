@@ -8,7 +8,8 @@
     import { isDemoGraph } from '#lib/demo/demo-graph.js'
     import type { GraphRecord } from '#lib/storage/index.js'
     import GraphGrip, { type GraphGripProps } from './GraphGrip.svelte'
-    import GraphKindIcon from './GraphKindIcon.svelte'
+    import KindIcons from './KindIcons.svelte'
+    import { KINDS } from './workspace-heading'
     import { BADGE_ON_COLOUR, CARD_ICONS, CARD_WORDS, GRAPH_CARD, ICON_ON_COLOUR, OPEN_ON_COLOUR } from './graph-card'
     import { OPEN_ICON, RESET_ICON } from './graphs-page-icons'
 
@@ -69,11 +70,11 @@
     {#if grip}<GraphGrip {grip} coloured={accent !== null} />{/if}
     <div class={CARD_WORDS}>
         <span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
-            <!-- The name, then where the graph is kept, as an icon (GraphKindIcon). The demo is
+            <!-- The name, then that it is a graph and where it is kept, as two icons (KindIcons). The demo is
                  kept in neither a folder nor a Sync Server, and keeps its tag. -->
             <span class="flex min-w-0 items-center gap-1.5">
                 <span data-testid="graph-card-name" class="truncate text-sm font-medium {accent ? '' : 'text-neutral-950 dark:text-white'}">{graph.name}</span>
-                {#if !demo}<GraphKindIcon kind={graph.backend === 'server' ? 'synced' : 'folder'} coloured={accent !== null} />{/if}
+                {#if !demo}<KindIcons kind={graph.backend === 'server' ? KINDS.synced : KINDS.folder} coloured={accent !== null} />{/if}
             </span>
             {#if demo}
                 <span class={accent ? BADGE_ON_COLOUR : 'rounded-full bg-neutral-100 px-2 py-0.5 text-sm text-neutral-600 dark:bg-white/10 dark:text-neutral-400'} data-testid="graphs-backend-tag">Demo</span>

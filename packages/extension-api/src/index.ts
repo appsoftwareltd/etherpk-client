@@ -56,6 +56,7 @@ export type {
     FencePresentation,
     FenceWidget,
     InlinePanel,
+    InlinePanelCloseReason,
     InlinePanelOptions,
     MountedFence,
     PublishedFence,

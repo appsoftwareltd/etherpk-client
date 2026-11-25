@@ -79,7 +79,7 @@
     {/snippet}
 
 
-<!-- An open synced graph's status dot, on a phone: beside the logo, as the workspace has no toolbar there. -->
+<!-- An open synced graph's status dot, beside the logo. -->
 {#snippet graphStatusDot()}
     <HeaderGraphStatus />
 {/snippet}

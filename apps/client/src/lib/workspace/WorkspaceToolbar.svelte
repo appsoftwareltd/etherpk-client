@@ -1,99 +1,67 @@
 <script lang="ts">
     /**
-     * The desktop workspace toolbar: the two Sidebar toggles, Keyboard Shortcuts, the
-     * Settings cog and Tasks.
+     * The desktop workspace toolbar: the two Sidebar toggles, and after the left one a heading
+     * that says what is open: its name, then two icons for what kind of thing it is and where it
+     * is kept (workspace-heading.ts, KindIcons.svelte).
      *
-     * Rendered by the desktop presenter only. The mobile presenter carries its own chrome, and
-     * the Sidebar offers Settings from the drawer there (`graph.settings.open`).
+     * Rendered by the desktop presenter only. The mobile presenter carries its own chrome.
      *
-     * The status dot is a synced graph's one answer to "is my work safe?": sync and the
-     * [[Local Mirror]] together (graph-status.ts). It is green only when every part that applies
-     * is working, and opens a dialog with a section for each. A mirror writes to a folder nothing
-     * on screen shows, and after a browser restart it usually needs its permission back, so a
-     * stopped one must show here. When sync stops in a way the person should hear about, a notice
-     * hangs under the dot until they close it. A folder graph has no dot.
+     * The toggles are drawn as the Activity Bar's icons are: an icon alone, with no border or fill,
+     * each in the column of the Activity Bar's icons when the bar is under it. With nothing but
+     * the two of them to press, a border round each only added weight.
      *
-     * Reset workspace has no button here: an icon alone does not say what it does, and a circle
-     * of arrows reads as "reload". It is a named row at the foot of the Explorer, beside
-     * Settings, and a Command.
+     * It holds nothing else to press. Settings and Keyboard shortcuts are rows of the Activity
+     * Bar's menu (sidebar-commands.ts), Tasks is an icon of the Activity Bar, and a synced
+     * graph's status dot is in the app's header, beside the logo, as it is on a phone
+     * (HeaderGraphStatus.svelte).
      *
-     * The indexing icon is a status light too, and not a control: it shows while the search index
+     * The indexing icon is a status light, and not a control: it shows while the search index
      * takes in a change a person may be waiting on, such as a rename, so that a link or Quick
-     * Find not following yet reads as "still working" rather than as a fault. It sits first after
-     * the spacer, so its coming and going moves no button.
+     * Find not following yet reads as "still working" rather than as a fault. It sits after the
+     * spacer, so its coming and going moves neither toggle.
      */
 
-    import type { Snippet } from 'svelte'
-
-    import { withChord } from '#lib/surface/control-help.js'
     import SidebarToggleIcon from '#lib/layout/renderers/SidebarToggleIcon.svelte'
 
-    import type { GraphStatus, StatusCallout as Callout } from './graph-status'
-    import StatusCallout from './StatusCallout.svelte'
+    import KindIcons from './KindIcons.svelte'
+    import { headingText, type WorkspaceHeading } from './workspace-heading'
 
     let {
         ontoggleleft,
         ontoggleright,
-        onshortcuts,
-        onsettings,
-        ontasks,
-        status = { shown: false },
-        callout = null,
-        onstatus,
-        ondismisscallout,
+        heading,
         indexing = false,
         leftLabel = 'Toggle document tree',
-        settingsLabel = 'Graph name and settings',
         rightLabel = 'Toggle backlinks',
-        lead,
-        chord = () => null,
     }: {
         ontoggleleft: () => void
         ontoggleright: () => void
-        onshortcuts: () => void
-        /** Open the settings. Without it the cog is not drawn. */
-        onsettings?: () => void
-        /** Open Tasks. Without it the button is not drawn: a [[Plain Folder]] has no Tasks View. */
-        ontasks?: () => void
-        /** Sync and the Local Mirror together; not shown on a graph that has neither. */
-        status?: GraphStatus
-        /** The notice under the dot, already less whatever the person closed. */
-        callout?: Callout | null
-        /** Open the status dialog. */
-        onstatus?: () => void
-        ondismisscallout?: () => void
+        /** What is open: its name once that is known, and its kind. */
+        heading: WorkspaceHeading
         /** The search index is busy with work worth showing (workspace/indexing-indicator.ts). */
         indexing?: boolean
         /** What the left toggle shows and hides, where it is not the graph's document tree. */
         leftLabel?: string
-        /** What the cog opens, where it is not a graph's settings. */
-        settingsLabel?: string
         /** What the right toggle shows and hides, where it is not Backlinks. */
         rightLabel?: string
-        /** What is open, after the left toggle: a [[Plain Folder]]'s name and what it is. A graph draws none. */
-        lead?: Snippet
-        /** The shortcut a tooltip names for a Command, or null. */
-        chord?: (command: string) => string | null
     } = $props()
-
-    /** The shortcut for a screen reader, which the tooltip says after the name. */
-    const described = (command: string) => {
-        const named = chord(command)
-        return named === null ? undefined : `Shortcut: ${named}`
-    }
 </script>
 
 <div class="toolbar" data-testid="ws-toolbar">
     <button
         type="button"
-        class="gk-icon-button gk-button--raised"
+        class="gk-icon-button toggle"
         data-testid="ws-toggle-left"
         onclick={ontoggleleft}
         aria-label={leftLabel}
     >
         <SidebarToggleIcon side="left" />
     </button>
-    {#if lead}{@render lead()}{/if}
+    <!-- The name on one line, clipped where the window is too narrow for it. The whole of it is
+         the heading's text, so a screen reader and a search of the page have the name in full.
+         While the name is not known the heading is the kind in words. The icons are never clipped. -->
+    <h1 class="heading" data-testid="ws-heading" data-named={heading.name !== null}>{headingText(heading)}</h1>
+    <span class="kind"><KindIcons kind={heading.kind} coloured /></span>
     <span class="spacer"></span>
     {#if indexing}
         <!-- Not a live region: indexing comes and goes with every rename, and announcing each
@@ -111,79 +79,9 @@
             </svg>
         </span>
     {/if}
-    {#if status.shown}
-        <!-- The wrapper is what the notice hangs from. -->
-        <span class="status-wrap">
-            <button
-                class="gk-icon-button gk-button--raised status"
-                data-tooltip={status.title} aria-description={status.title}
-                aria-label={`Sync status. ${status.title}`}
-                aria-haspopup="dialog"
-                data-testid="graph-status"
-                data-state={status.tone}
-                data-sync-state={status.sync?.state ?? 'pending'}
-                data-mirror-state={status.mirror?.state ?? 'none'}
-                data-unsent={status.sync?.unsent ?? 0}
-                onclick={onstatus}
-            >
-                <span class="dot"></span>
-            </button>
-            {#if callout && ondismisscallout}
-                <StatusCallout {callout} align="end" ondismiss={ondismisscallout} />
-            {/if}
-        </span>
-    {/if}
-    <!-- The keyboard-shortcuts card. Beside the cog because that is where a user looks for
-         "how does this thing work", but its own button: it is a reference, not a setting. -->
     <button
         type="button"
-        class="gk-icon-button gk-button--raised"
-        data-tooltip={withChord("Keyboard shortcuts", chord('help.openShortcuts'))}
-        aria-description={described('help.openShortcuts')}
-        aria-label="Keyboard shortcuts"
-        data-testid="ws-keyboard-shortcuts"
-        onclick={onshortcuts}
-    >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-            <rect x="2.25" y="5.25" width="19.5" height="13.5" rx="2" />
-            <path stroke-linecap="round" d="M6 9h.01M9.5 9h.01M13 9h.01M16.5 9h.01M6 12h.01M9.5 12h.01M13 12h.01M16.5 12h.01M18 9h.01M18 12h.01M8 15h8" />
-        </svg>
-    </button>
-    {#if onsettings}
-    <button
-        type="button"
-        class="gk-icon-button gk-button--raised"
-        data-tooltip={settingsLabel}
-        aria-label={settingsLabel}
-        data-testid="ws-graph-settings"
-        onclick={onsettings}
-    >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281Z" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-        </svg>
-    </button>
-    {/if}
-    <!-- heroicons/outline clipboard-document-check. Sits immediately before the Sidebar
-         toggle: it opens a View INTO that Sidebar, so the two read as a pair. -->
-    {#if ontasks}
-    <button
-        type="button"
-        class="gk-icon-button gk-button--raised"
-        data-tooltip={withChord("Tasks", chord('tasks.open'))}
-        aria-description={described('tasks.open')}
-        aria-label="Tasks"
-        data-testid="ws-tasks"
-        onclick={ontasks}
-    >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m8.9-4.414c.376.023.75.05 1.124.08 1.131.094 1.976 1.057 1.976 2.192V16.5A2.25 2.25 0 0 1 18 18.75h-2.25m-7.5-10.5H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V18.75m-7.5-10.5h6.375c.621 0 1.125.504 1.125 1.125v9.375m-8.25-3 1.5 1.5 3-3.75" />
-        </svg>
-    </button>
-    {/if}
-    <button
-        type="button"
-        class="gk-icon-button gk-button--raised"
+        class="gk-icon-button toggle"
         data-testid="ws-toggle-right"
         onclick={ontoggleright}
         aria-label={rightLabel}
@@ -193,40 +91,34 @@
 </div>
 
 <style>
-    /* The button is one of the toolbar's own, the same box as the four beside it. What differs
-       is only what sits inside: a dot, because this one reports rather than invites. */
-    .status .dot {
-        width: 1.1rem;
-        height: 1.1rem;
-        display: block;
-        border-radius: 9999px;
-        background: currentColor;
-        /* Inset so the dot reads as a status light within the button, not as a filled button. */
-        transform: scale(0.5);
-    }
-    .status[data-state='ok'] {
-        color: var(--gk-mirror-ok, #16a34a);
-    }
-    /* Amber, not blue: busy is a transient "not settled yet", and blue read as an informational badge.
-       It does not pulse: the colour is enough, and a light that moves only distracts (Style Guide, Motion). */
-    .status[data-state='busy'] {
-        color: var(--gk-mirror-busy, #d97706);
-    }
-    .status[data-state='stopped'] {
-        color: var(--gk-mirror-stopped, #dc2626);
-    }
-    .status[data-state='idle'] {
-        color: var(--gk-mirror-idle, #a3a3a3);
-    }
-    .status-wrap {
-        position: relative;
-        display: inline-flex;
+    /* It has no surface of its own, so it takes the ink that reads on the graph's toolbar colour
+       when one is set (toolbar-accent.ts), and otherwise the theme's strong text. It gives way
+       before the buttons do: a long name is clipped, and the toggles keep their place. */
+    .heading {
+        flex: 0 1 auto;
+        min-width: 0;
+        margin: 0;
+        overflow: hidden;
+        color: var(--gk-toolbar-ink, var(--gk-text-strong));
+        font-size: 0.875rem;
+        font-weight: 600;
+        line-height: 1.25rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     /* The same box as a button beside it, without the border and fill that invite a click. It has no
        surface of its own, so it is drawn in the ink that reads on the graph's toolbar colour when one
        is set (toolbar-accent.ts), and otherwise in the theme's muted grey: grey on a light toolbar,
        light on a dark one. */
+    /* The icons sit 6px after the name, as they do on a Graphs page card: the toolbar's 8px gap,
+       less 2. They take the heading's ink a step quieter, where the theme has a quieter one. */
+    .kind {
+        display: inline-flex;
+        flex: none;
+        margin-left: -0.125rem;
+        color: var(--gk-toolbar-ink, var(--gk-text-muted));
+    }
     .indexing {
         display: inline-flex;
         justify-content: center;
@@ -260,16 +152,26 @@
         padding: 0.25rem 0.5rem;
         border-bottom: 1px solid var(--gk-border-soft);
         /* The graph's own colour when one is set (Graph Settings → Toolbar colour, ADR 0071),
-           set as a custom property on the workspace root; the theme surface otherwise. The
-           buttons keep their own surface, so their icons stay legible whatever is picked. */
+           set as a custom property on the workspace root; the theme surface otherwise. What is
+           drawn on it has no surface of its own, and takes the ink that reads on the colour. */
         background: var(--gk-toolbar-accent, var(--gk-surface-0));
     }
     .spacer {
         flex: 1;
     }
-    /* The buttons are raised icon buttons ([[Style Guide]], "Icon buttons"): a border, the theme's
-       surface and a small shadow, so their icons read over a graph's toolbar colour. An icon that
-       stands away from text is 20px. */
+    /* A Sidebar toggle is an icon button with no border or fill, as an icon of the Activity Bar is:
+       a 32px square, 8px in from the toolbar's end, so it stands in the column of the bar's icons.
+       Its icon is muted until the pointer is over it. On a graph's toolbar colour it takes the ink
+       that reads on that colour, and the pointer lights it with a wash of the same ink. */
+    .toolbar > .toggle {
+        flex: none;
+        color: var(--gk-toolbar-ink, var(--gk-text-muted));
+    }
+    .toolbar > .toggle:hover {
+        background: var(--gk-toolbar-hover, var(--gk-menu-hover));
+        color: var(--gk-toolbar-ink, var(--gk-text-strong));
+    }
+    /* An icon that stands away from text is 20px, the size of the Activity Bar's icons. */
     .toolbar :global(.gk-icon-button > svg) {
         width: 1.25rem;
         height: 1.25rem;

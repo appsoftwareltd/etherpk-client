@@ -674,7 +674,8 @@ const theme = EditorView.baseTheme({
     '.cm-md-table--inline .cm-md-table__control--row': { transform: 'translate(-50%, -50%)' },
     '.cm-md-table__control--add-row, .cm-md-table__control--add-column': { width: '18px', height: '18px', borderRadius: '50%' },
     // Mostly outside the right border: a table is as wide as its content, so the last column's text
-    // reaches the cell's padding, which a disc centred on the border would cover.
+    // reaches the cell's padding, which a disc centred on the border would cover. On a table as wide
+    // as the text it is moved left by what would pass the pane's edge (`overreach`, table-grid-controls.ts).
     '.cm-md-table__control--add-column': { transform: 'translate(-25%, -50%)' },
     '@media (pointer: coarse)': {
         '.cm-md-table__control--column': { width: '40px', height: '16px', borderRadius: '8px' },

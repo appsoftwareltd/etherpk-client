@@ -23,7 +23,7 @@ import { createCommandRegistry, createContributionRegistry, registerCommandMenuI
 
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
 import { caretKeptOff, editAsTextSpec, followFenceRegistrations, interactiveFenceAugmentation, widgetEditsChanges } from './augmentations/interactive-fence'
-import { addInlinePanel, inlinePanelsField, inlinePanelWidgets, panelCaretBlocks, planPanelInsert, removeInlinePanel } from './augmentations/inline-panels'
+import { addInlinePanel, inlinePanelsField, inlinePanelWidgets, panelCaretBlocks, panelCloseReason, planPanelInsert, removeInlinePanel } from './augmentations/inline-panels'
 import { isProtectedDocumentFacet } from './augmentations/protected-document'
 import { endOfDocument, type EndKind, startAfterCaret, startAtEnd, takeBackIfLeft } from './end-of-document'
 import { type InteractiveFence, registerInteractiveFence } from './augmentations/interactive-fence-contract'
@@ -3957,6 +3957,20 @@ describe('an inline panel in a document found to be protected', () => {
         editor.dispatch(editor.state.update({ effects: addInlinePanel.of({ id: 1, lineStart: 0, mode: 'line' }) }))
         editor.dispatch(editor.state.update({ changes: { from: 0, insert: '- Garden\n- Kitchen\n' } }))
         expect(inlinePanelWidgets(editor.state)).toHaveLength(1)
+    })
+
+    it('goes for a reason its opener is given, that no panel can be there, so the opener can say so (EtherPK)', () => {
+        let protectedDocument = false
+        const editor = editorFixture('|', { extensions: [inlinePanelsField, panelCaretBlocks, isProtectedDocumentFacet.of(() => protectedDocument)] })
+        editor.dispatch(editor.state.update({ effects: addInlinePanel.of({ id: 1, lineStart: 0, mode: 'line' }) }))
+        // While the document holds the panel, closing it would be the person's or the opener's doing.
+        expect(editor.state.field(inlinePanelsField)).toHaveLength(1)
+        expect(panelCloseReason(editor.state)).toBe('closed')
+        protectedDocument = true
+        editor.dispatch(editor.state.update({ changes: { from: 0, insert: CIPHER } }))
+        // The state that dropped the panel is the one that gives the reason.
+        expect(editor.state.field(inlinePanelsField)).toEqual([])
+        expect(panelCloseReason(editor.state)).toBe('unavailable')
     })
 })
 

@@ -8,7 +8,7 @@
  */
 import { portableFileStem } from '#lib/document/wikilink/index.js'
 
-import { knownGraphName } from './explorer-title'
+import { knownGraphName } from './workspace-heading'
 
 export function graphExportStem(name: string, graphId: string): string {
     return portableFileStem(knownGraphName(name, graphId) ?? 'Graph')

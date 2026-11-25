@@ -399,6 +399,19 @@ export interface InlinePanel {
 }
 
 /**
+ * Why an inline panel closed.
+ *
+ * - `closed`: its `close` was called, or its editor went for good, as when its tab closes.
+ * - `unavailable`: the Client closed it because its document can hold no panel now, where
+ *   {@link ExtensionEditor.openPanel} answers null. That is a document found to be a Protected
+ *   Document once its text had loaded, or one protected while the panel was open. Say why to the
+ *   person, as where a panel will not open.
+ *
+ * @public
+ */
+export type InlinePanelCloseReason = 'closed' | 'unavailable'
+
+/**
  * What an inline panel is drawn with.
  *
  * @public
@@ -417,8 +430,11 @@ export interface InlinePanelOptions {
      * outside a text field undo and redo in the document.
      */
     mount(host: HTMLElement, panel: InlinePanel): { destroy(): void }
-    /** Told once, when the panel closes for any reason. */
-    onClose?(): void
+    /**
+     * Told once, when the panel closes for any reason, and why. A Client from before the reason was
+     * added passes none: read a missing one as `closed`.
+     */
+    onClose?(reason: InlinePanelCloseReason): void
 }
 
 /**

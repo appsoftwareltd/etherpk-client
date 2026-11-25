@@ -609,9 +609,9 @@
                 </span>
             </button>
         {/if}
-        <!-- No Tasks button here, unlike the desktop toolbar: the top bar is kept to the drawer
-             toggles, Search, the document control and Today's journal, and Tasks is a resident
-             tab of the right drawer. -->
+        <!-- No Tasks button here: the top bar is kept to the drawer toggles, Search, the document
+             control and Today's journal, and Tasks is an icon of the Activity Bar, in the Primary
+             Sidebar's drawer. -->
         <button
             class="toggle"
             data-testid="mobile-toggle-right"

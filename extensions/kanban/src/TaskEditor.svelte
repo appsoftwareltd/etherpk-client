@@ -13,9 +13,9 @@
      *
      * - **New** (a lane's "+"): a form. Nothing is written until Create task (or Ctrl/Cmd+Enter); the
      *   description is written in a document held in memory, and creating the task writes the task
-     *   line and the description into today's journal entry as one change. Then the editor carries on
-     *   over the task it wrote. Comments come once the task exists. Closing a form with anything in
-     *   it asks first.
+     *   line and the description into today's journal entry as one change, and closes the editor:
+     *   the board shows the new card, and a comment is added by opening it. A form closed any other
+     *   way creates its task when it has a title, and asks first when it has none.
      * - **Editing** (a card): each field is saved as it changes, with an honest "Saving…" and
      *   "Saved". A task line changed elsewhere since it was read is never written over: the editor
      *   says so, keeps what was typed, and offers to read the task again.
@@ -93,10 +93,9 @@
 
     /** The task as last read or written, which every write starts from; null while it is new. */
     let task = $state.raw<ReadTask | null>(null);
-    /** Editing an existing task (or one just created); false while the form is new. */
+    /** Editing an existing task; false on a new task's form, which closes once its task is created. */
     // svelte-ignore state_referenced_locally
-    let editing = $state(start.kind === "edit");
-    // svelte-ignore state_referenced_locally
+    const editing = start.kind === "edit";
     let loading = $state(editing);
     let loadError = $state<string | null>(null);
 
@@ -533,40 +532,37 @@
 
     // ── Creating, archiving, deleting, closing ────────────────────────────
 
-    async function create(): Promise<void> {
-        if (editing || creating) return;
+    /**
+     * Write the new task into today's journal entry, then close the editor: the task is done with,
+     * and the board behind shows its card. A task that could not be written keeps the editor open
+     * with everything typed and says why. True when the task was created.
+     */
+    async function create(): Promise<boolean> {
+        if (editing || creating) return false;
         // A title that is only tags says nothing: the task would have no words.
         if (titleWords(title) === "") {
             titleError = "Give the task a title.";
             titleEl?.focus();
-            return;
+            return false;
         }
         const at = store();
-        if (!at) return;
+        if (!at) return false;
         titleError = null;
         createError = null;
         creating = true;
-        let created = false;
         try {
             const lines = newTaskLines({ status, priority, title, freeTags, due: dates.due, scheduled: dates.scheduled }, held.getText());
             // Today is read now, not when the board opened: a board is left open for days.
-            const added = await addTaskToJournal(at, { day: todayISO(), concept, sameConcept: concept === null ? () => false : sameConcept(concept), lines });
-            task = { concept: added.document, line: added.line, expected: added.text };
-            editing = true;
-            saveState = "saved";
-            await load();
-            created = true;
+            await addTaskToJournal(at, { day: todayISO(), concept, sameConcept: concept === null ? () => false : sameConcept(concept), lines });
         } catch (error) {
             // Everything typed stays in the form for another try.
             createError = `The task was not created: ${error instanceof Error ? error.message : "the journal entry could not be written"}. Try again.`;
+            return false;
         } finally {
             creating = false;
         }
-        if (!created) return;
-        // Create task has gone with the new task's form, so the keyboard goes to the title. Only once
-        // `creating` is over: the dialog is busy until then and takes no focus.
-        await tick();
-        titleEl?.focus();
+        onclose();
+        return true;
     }
 
     async function archive(): Promise<void> {
@@ -629,12 +625,9 @@
                 onclose();
                 return true;
             }
-            if (via === "close" && titleWords(title) !== "") {
-                await create();
-                // Created: what was typed is in the journal. Not created: the form says why, and stays.
-                if (editing) onclose();
-                return editing;
-            }
+            // Created: what was typed is in the journal, and the editor has closed. Not created: the
+            // form says why, and stays.
+            if (via === "close" && titleWords(title) !== "") return create();
             discardAsked = true;
             await tick();
             keepEditingEl?.focus();

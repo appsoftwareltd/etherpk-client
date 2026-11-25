@@ -959,10 +959,9 @@
         </button>
         {#if hasSettingsCommand}
             <!--
-                Below the layout breakpoint only (`lg`, the same 1024px the presenters swap at):
-                the desktop toolbar carries the cog, and the mobile presenter's own chrome has no
-                room for one, so on a phone the drawer is where Settings is reached. The glyph is
-                the toolbar's, so the two read as the same door.
+                Below the layout breakpoint only (`lg`, the same 1024px the presenters swap at).
+                Settings is a row of the Activity Bar's menu in both layouts; on a phone this row
+                is a second way in, in the drawer a person has open already, under its own name.
             -->
             <button
                 type="button"

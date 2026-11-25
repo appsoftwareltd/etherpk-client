@@ -52,12 +52,11 @@
     import SyncPlusOffer from "@appsoftwareltd/etherpk-shared/sync-plus-offer";
     import GraphOrderList from "./GraphOrderList.svelte";
     import SyncedGraphRow from "./SyncedGraphRow.svelte";
+    import KindIcons from './KindIcons.svelte'
+    import { KINDS } from './workspace-heading'
     import { saveGraphOrder } from "./graph-order-state";
     import { serverKeysLocked, syncedGroupRows } from "./sync-server-rows";
     import { keyCopyNotice, syncedRowName } from "./graph-picker-helpers";
-    import {
-        SYNC_ICON,
-    } from "./graphs-page-icons";
     import type { SyncServerView } from "./sync-server-view.svelte";
 
     let {
@@ -172,20 +171,7 @@
             <span class="min-w-0 truncate"
                 >Synced graphs on {server.host}</span
             >
-            <svg
-                class="h-5 w-5 shrink-0 text-neutral-500 dark:text-neutral-400"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                aria-hidden="true"
-            >
-                <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d={SYNC_ICON}
-                />
-            </svg>
+            <KindIcons kind={KINDS.synced} decorative />
         </h2>
         <p
             class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"

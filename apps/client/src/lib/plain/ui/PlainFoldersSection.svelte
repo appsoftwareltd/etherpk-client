@@ -10,6 +10,8 @@
     import ConfirmDialog from '@appsoftwareltd/etherpk-shared/confirm-dialog'
 
     import { CARD_ICONS, CARD_WORDS, GRAPH_CARD, NOT_SYNCED_NOTE } from '#lib/workspace/graph-card.js'
+    import KindIcons from '#lib/workspace/KindIcons.svelte'
+    import { KINDS } from '#lib/workspace/workspace-heading.js'
 
     import type { PlainFolderRecord } from '../plain-folder-registry'
     import { type PlainFoldersListing, plainFoldersSection } from '../plain-folders-section'
@@ -51,6 +53,7 @@
         <div>
             <h2 id="plain-folders-heading" class="flex items-center gap-2 text-lg font-semibold text-neutral-950 dark:text-white">
                 Plain Folders
+                <KindIcons kind={KINDS.plain} decorative />
                 <span class={NOT_SYNCED_NOTE}>(not synced)</span>
             </h2>
             <p class="text-sm text-neutral-600 dark:text-neutral-400">
@@ -63,9 +66,11 @@
                     <li data-testid="plain-folder-card" data-folder-id={folder.id} class={GRAPH_CARD}>
                         <div class="flex flex-wrap items-center gap-2 px-4 py-3">
                             <div class={CARD_WORDS}>
-                                <span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
+                                <!-- The name, then that it is a folder and that it is kept on this device, as
+                                     two icons (KindIcons), as a graph's card has. -->
+                                <span class="flex min-w-0 items-center gap-1.5">
                                     <span data-testid="plain-folder-name" class="truncate text-sm font-medium text-neutral-950 dark:text-white">{folder.name}</span>
-                                    <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-sm text-neutral-600 dark:bg-white/10 dark:text-neutral-400">Plain Folder</span>
+                                    <KindIcons kind={KINDS.plain} />
                                 </span>
                             </div>
                             <button type="button" data-testid="plain-folder-open" aria-label={`Open ${folder.name}`} class="gk-button gk-button--primary shrink-0" onclick={() => onopen(folder)}>

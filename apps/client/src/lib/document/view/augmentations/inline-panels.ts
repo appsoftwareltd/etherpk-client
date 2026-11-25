@@ -20,6 +20,7 @@
  *   the same line (`editor-succession.ts`), unless the new one shows a Protected Document, where it
  *   closes. A panel is never held in a Protected Document, unlocked or not: one opened before the
  *   document's text had arrived, when nothing yet said it was protected, closes when the text does.
+ *   Its opener is told why it closed (`PanelCloseReason`), so it can say so to the person.
  * - **What it may write.** A block at its line, as one undoable change: beneath a bullet with text
  *   as the bullet's first child, after its own lines, and elsewhere by the rule `insertBlock`
  *   follows at the caret (block-insert.ts). The panel then moves beneath the block, and a later
@@ -351,6 +352,21 @@ function panelsAllowed(state: EditorState): boolean {
 }
 
 /**
+ * Why a panel closed, as its opener is told (`onClose`).
+ *
+ * - `closed`: its own `close` was called, or its editor went for good, as when its tab closes.
+ * - `unavailable`: the editor closed it because its document can hold no panel now, where opening
+ *   one answers null: a document found to be protected once its text arrived, or one protected
+ *   while the panel was open. The opener can then say so, as it does where a panel will not open.
+ */
+export type PanelCloseReason = 'closed' | 'unavailable'
+
+/** Why the editor closes a panel of this document itself: `unavailable` where none could open now. */
+export function panelCloseReason(state: EditorState): PanelCloseReason {
+    return panelsAllowed(state) ? 'closed' : 'unavailable'
+}
+
+/**
  * Where a panel opens: at the caret's line, where a block could go at the caret, or under the last
  * line. Null in a Protected Document, a document that cannot be written, or a caret in the
  * frontmatter, a fenced block or a table.
@@ -518,7 +534,7 @@ interface PanelEntry {
     readonly host: HTMLElement
     content: { destroy(): void } | null
     mount(host: HTMLElement): { destroy(): void }
-    onClose(): void
+    onClose(reason: PanelCloseReason): void
     closed: boolean
     /** Set while the panel waits to be placed in the editor that replaced its own. */
     waiting: WaitingSpot | null
@@ -646,11 +662,11 @@ const panelDecorations = EditorView.decorations.compute(['doc', inlinePanelsFiel
 )
 
 /**
- * Close a panel: out of its editor, its content taken down, and its opener told, once. A panel that
- * had the keyboard gives it back to the editor, on the line the panel sat beneath, so typing goes on
- * where it was.
+ * Close a panel: out of its editor, its content taken down, and its opener told why, once. A panel
+ * that had the keyboard gives it back to the editor, on the line the panel sat beneath, so typing
+ * goes on where it was. Every caller says why, so a new way of closing cannot pass as the person's own.
  */
-function closeEntry(entry: PanelEntry, dispatch = true): void {
+function closeEntry(entry: PanelEntry, dispatch: boolean, reason: PanelCloseReason): void {
     if (entry.closed) return
     entry.closed = true
     entries.delete(entry.id)
@@ -677,7 +693,7 @@ function closeEntry(entry: PanelEntry, dispatch = true): void {
     entry.content = null
     entry.host.remove()
     try {
-        entry.onClose()
+        entry.onClose(reason)
     } catch (error) {
         console.error('[inline-panels] a panel failed to close', error)
     }
@@ -700,7 +716,8 @@ function carryOrClose(view: EditorView): void {
         if (!entry.waiting) {
             const spot = spots.find((candidate) => candidate.id === entry.id)
             if (!spot) {
-                closeEntry(entry, false)
+                // A panel the field has dropped, its editor going before `closeDropped` took it down.
+                closeEntry(entry, false, panelCloseReason(view.state))
                 continue
             }
             entry.waiting = { spot, from: view, hadText: view.state.doc.length > 0, expired: false, timer: null }
@@ -708,6 +725,16 @@ function carryOrClose(view: EditorView): void {
         going.push(entry)
     }
     if (going.length > 0) queueMicrotask(() => going.forEach(place))
+}
+
+/**
+ * Why a waiting panel cannot go into the editor now showing its document, or null when it can:
+ * `closed` when there is no such editor (the tab closed), and `unavailable` when that editor's
+ * document can hold no panel, as a document just protected.
+ */
+function placeRefused(live: ReturnType<typeof liveEditorView>, from: EditorView): PanelCloseReason | null {
+    if (!live.alive || live.view === from || live.view.state.field(inlinePanelsField, false) === undefined) return 'closed'
+    return panelCloseReason(live.view.state) === 'unavailable' ? 'unavailable' : null
 }
 
 /**
@@ -721,8 +748,9 @@ function place(entry: PanelEntry): void {
     if (!waiting || entry.closed) return
     const live = liveEditorView(waiting.from)
     const next = live.view
-    if (!live.alive || next === waiting.from || next.state.field(inlinePanelsField, false) === undefined || !panelsAllowed(next.state)) {
-        closeEntry(entry, false)
+    const refused = placeRefused(live, waiting.from)
+    if (refused) {
+        closeEntry(entry, false, refused)
         return
     }
     entry.view = next
@@ -741,7 +769,8 @@ function place(entry: PanelEntry): void {
     try {
         next.dispatch({ effects: addInlinePanel.of(carried) })
     } catch {
-        closeEntry(entry, false)
+        // The editor went as the panel was put in.
+        closeEntry(entry, false, 'closed')
     }
 }
 
@@ -759,9 +788,9 @@ const panelLifecycle = ViewPlugin.fromClass(
 
         /**
          * Close each panel the field no longer holds, as it drops every panel of a document found to
-         * be protected: the content is taken down and the opener told, as when its own cross is
-         * pressed. A panel being closed (`closeEntry` marks it first) or waiting to be placed is not
-         * one of these.
+         * be protected: the content is taken down and the opener told, with the reason
+         * (`panelCloseReason`), so it can tell the person why what they opened has gone. A panel
+         * being closed (`closeEntry` marks it first) or waiting to be placed is not one of these.
          *
          * A panel that had the keyboard gives it to the editor, with the caret left where it was:
          * the line the panel sat on may be one the caret cannot rest on now. Whether it had the
@@ -776,7 +805,7 @@ const panelLifecycle = ViewPlugin.fromClass(
                 const still = new Set(this.dropped())
                 for (const { entry, hadFocus } of dropped) {
                     if (!still.has(entry)) continue
-                    closeEntry(entry, false)
+                    closeEntry(entry, false, panelCloseReason(this.view.state))
                     if (hadFocus) this.view.focus()
                 }
             })
@@ -842,7 +871,7 @@ export interface InlinePanelHandle {
  */
 export function openInlinePanel(
     view: EditorView,
-    options: { at: 'caret' | 'end' | 'caret-or-end'; height?: number; mount(host: HTMLElement, handle: InlinePanelHandle): { destroy(): void }; onClose?(): void },
+    options: { at: 'caret' | 'end' | 'caret-or-end'; height?: number; mount(host: HTMLElement, handle: InlinePanelHandle): { destroy(): void }; onClose?(reason: PanelCloseReason): void },
 ): InlinePanelHandle | null {
     if (view.state.field(inlinePanelsField, false) === undefined) return null
     const anchor = panelAnchorAt(view.state, options.at, view.hasFocus)
@@ -894,7 +923,7 @@ export function openInlinePanel(
         },
         outline: () => (entry.closed || entry.waiting ? null : panelOutline(entry.view.state, id)),
         lineText: () => lineText,
-        close: () => closeEntry(entry),
+        close: () => closeEntry(entry, true, 'closed'),
     }
     const entry: PanelEntry = {
         id,
@@ -902,7 +931,7 @@ export function openInlinePanel(
         host,
         content: null,
         mount: (into) => options.mount(into, handle),
-        onClose: () => options.onClose?.(),
+        onClose: (reason) => options.onClose?.(reason),
         closed: false,
         waiting: null,
     }

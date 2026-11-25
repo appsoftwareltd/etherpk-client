@@ -40,7 +40,8 @@
      * It is a vertical tab list: one View shows at a time, and the arrows move between the icons.
      * An icon is reordered by dragging it with a mouse or pen, by Alt+Up and Alt+Down, or from its
      * menu, which every device has. The button at the foot opens the bar's own menu: the hidden
-     * Views, the side the bar is on, and Reset workspace.
+     * Views, the workspace's settings, Keyboard shortcuts, the side the bar is on, and Reset
+     * workspace.
      *
      * Under a rule below the Views are the Explorer's own buttons again (Search, Today and those
      * extensions add), as icons: shortcuts to what opens in a pane or a dialog, in reach whichever
@@ -321,7 +322,7 @@
     }
 
     /* A tab drawn as an icon button is drawn: 32px square, 8px corners, the icon muted until it
-       is hovered or its View is showing. The marker for the View that is showing is a 2px bar on
+       is hovered or its View is showing. The marker for the View that is showing is a 4px bar on
        the bar's outer edge, in the accent, which is the colour of an active state. */
     .tab {
         position: relative;
@@ -358,8 +359,9 @@
         position: absolute;
         top: 0.25rem;
         bottom: 0.25rem;
-        width: 2px;
-        border-radius: 1px;
+        /* 4px, so the View showing is found at a glance in a column of outlines. */
+        width: 4px;
+        border-radius: 2px;
         background: var(--gk-accent);
     }
     .bar[data-side='left'] .tab[aria-selected='true']::before {

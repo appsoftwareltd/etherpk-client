@@ -65,6 +65,7 @@
     import ContextMenu from '#lib/surface/ui/ContextMenu.svelte'
     import KeyboardShortcutsDialog from '#lib/workspace/KeyboardShortcutsDialog.svelte'
     import WorkspaceToolbar from '#lib/workspace/WorkspaceToolbar.svelte'
+    import { plainHeading } from '#lib/workspace/workspace-heading.js'
     import { chosenGraphState } from '#lib/workspace/chosen-graph.js'
     import { openChosenFolder } from '#lib/workspace/open-chosen-folder.js'
     import { graphUrl } from '#lib/navigation/document-url.js'
@@ -966,7 +967,14 @@
                     ),
                     registerBlockCommands(commands, contributions),
                     registerTabCommands(commands, contributions, { controller: () => controller, confirmClose: sidebars.confirmClose }),
-                    registerSidebarCommands(commands, contributions, { binding: sidebars.binding, controller: () => controller, name: (view) => registry.name(view), confirmHide: sidebars.confirmHide }),
+                    registerSidebarCommands(commands, contributions, {
+                        binding: sidebars.binding,
+                        controller: () => controller,
+                        name: (view) => registry.name(view),
+                        icon: (view) => registry.icon(view),
+                        confirmHide: sidebars.confirmHide,
+                        settingsRow: { label: 'Folder settings', command: 'plain.settings' },
+                    }),
                     registerSpellingCommands(commands, contributions),
                     registerFileEditorCommands(commands, contributions, { editors: fileEditors, activePath: () => activePath }),
                     registerBookmarkCommands(commands, contributions, {
@@ -1064,20 +1072,12 @@
     {/if}
     {#if !useMobile}
         <WorkspaceToolbar
-            {chord}
             ontoggleleft={() => void commands.execute('layout.toggleSidebar')}
             ontoggleright={() => void commands.execute('layout.toggleBacklinks')}
-            onshortcuts={() => void commands.execute('help.openShortcuts')}
-            onsettings={() => (settingsOpen = true)}
-            settingsLabel="Folder settings"
             leftLabel={sidebars.toggleLabel('left')}
             rightLabel={sidebars.toggleLabel('right')}
-        >
-            {#snippet lead()}
-                <span class="folder-name" data-testid="plain-folder-name">{folderName}</span>
-                <span class="kind">{onlyFile ? 'File' : 'Plain Folder'}</span>
-            {/snippet}
-        </WorkspaceToolbar>
+            heading={plainHeading(folderName, Boolean(onlyFile))}
+        />
         <div class={['layout-row', { 'primary-right': activityBar?.side === 'right' }]}>
             {#if activityBar}
                 <ActivityBar
@@ -1198,15 +1198,6 @@
     .layout-row.primary-right {
         flex-direction: row-reverse;
     }
-    /* What is open, beside the left toggle: the folder's name, and a badge as the Graphs page draws a kind. */
-    .folder-name {
-        overflow: hidden;
-        color: var(--gk-text-strong);
-        font-size: 0.875rem;
-        font-weight: 500;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
     .alone {
         display: flex;
         flex: none;
@@ -1223,16 +1214,6 @@
     .alone p {
         flex: 1 1 18rem;
         margin: 0;
-    }
-    .kind {
-        flex: none;
-        padding: 0.125rem 0.5rem;
-        border-radius: 9999px;
-        background: var(--gk-surface-2);
-        color: var(--gk-text-muted);
-        font-size: 0.875rem;
-        line-height: 1.25rem;
-        white-space: nowrap;
     }
     .notice {
         position: fixed;

@@ -604,6 +604,10 @@
     import Dialog from "@appsoftwareltd/etherpk-shared/dialog";
     import WorkspaceOpenState from "./WorkspaceOpenState.svelte";
     import WorkspaceToolbar from "./WorkspaceToolbar.svelte";
+    import { graphHeading } from "./workspace-heading";
+
+    /** What the Explorer is called: on its icon in the Activity Bar and in the row that titles it. */
+    const EXPLORER_NAME = "Explorer";
     import KeyboardShortcutsDialog from "./KeyboardShortcutsDialog.svelte";
     import { APP_KEYBINDINGS, type ShortcutBinding } from "./keyboard-shortcuts";
     import {
@@ -754,7 +758,6 @@
         setGraphAccent,
     } from "./graph-accent.svelte";
     import { graphExportStem } from "./export-stem";
-    import { EXPLORER_NAME, EXPLORER_TITLE_PREFIX, explorerTitle } from "./explorer-title";
 
     /** Dev/e2e Server Backend gate (Phase 3): injected relay + raw graph key. */
     interface ServerGate {
@@ -1424,25 +1427,6 @@
     let contentWidth = $state<number | null>(maxContentWidthOf({}));
     const workspaceStyle = $derived(toolbarStyle + contentWidthStyle(contentWidth));
     /**
-     * Title the Explorer's dockview tab from the current name. The tab is titled once, when
-     * its panel is created, and two things make that stale: a restored Layout carries the title
-     * it was saved with (dockview's `fromJSON` keeps it, so a graph opened under an older build
-     * or before its name was known says "Graph" forever), and a synced graph's name arrives
-     * later with the root doc's meta, as a rename does. So this runs after every mount, once
-     * the Layout is restored, and again whenever the name changes. The phone presenter reads
-     * the registry title live and has no `setTitleForKind`, so it is a no-op there.
-     */
-    function retitleSidebar() {
-        // The title is read BEFORE the renderer is consulted: the effect below only depends on
-        // what it actually read, and with no renderer yet the optional chain would skip the
-        // name, leaving an effect that never re-runs when the name changes.
-        const title = explorerTitle(graphDisplayName, graphId);
-        renderer?.setTitleForKind?.("document-tree", title);
-    }
-    $effect(() => {
-        retitleSidebar();
-    });
-    /**
      * The graph folder's leaf name (its directory handle's), the one part of its path the
      * browser knows. Set only for a folder on disk: undefined on a Server graph and on a graph
      * in browser-private storage (an OPFS dev-gate graph, the demo graph), which has no path a
@@ -1509,6 +1493,14 @@
         | undefined;
     // Graph Name + shared settings (root-doc meta map, ADR 0031) — server graphs only.
     let graphDisplayName = $state("");
+    /**
+     * What the desktop toolbar says is open, after its left toggle: the graph's name, and the kind
+     * its two icons draw (workspace-heading.ts). A graph in the browser's own storage is the Demo
+     * Graph, or one a developer opened.
+     */
+    const toolbarHeading = $derived(
+        graphHeading(isServerStore ? "synced" : fsFolderName !== undefined ? "folder" : isDemoGraph(graphId) ? "demo" : "browser", graphDisplayName, graphId),
+    );
     /** This is a folder graph with a registry record: the header then offers Import to Sync+. */
     let folderGraphRegistered = $state(false);
     // Told to the app header, which cannot see the workspace. Not for the Demo Graph, a throwaway.
@@ -3397,13 +3389,11 @@
         kind: "document-tree",
         component: GraphSidebarView,
         naturalRegion: "left-sidebar",
-        // The graph's name, so the sidebar says which graph is open where the eye already
-        // rests; "Graph" until the name is known. The phone strip reads this live; the desktop
-        // tab is titled once at creation and retitled by the effect beside `toolbarStyle`.
-        title: () => explorerTitle(graphDisplayName, graphId),
+        // The View's name alone. The graph's name is on the workspace toolbar, with the icon
+        // that says it is a graph, so the Explorer has an icon of its own: a compass.
+        title: () => EXPLORER_NAME,
         name: () => EXPLORER_NAME,
-        titlePrefix: EXPLORER_TITLE_PREFIX,
-        icon: "graph",
+        icon: "compass",
     });
     // All Documents lives in the MAIN region, not the sidebar: at real scale (2838 documents
     // on the graph this was built against) a browse-everything list needs the room, which is
@@ -5207,7 +5197,7 @@
         // Registered so a keybinding or a menu row can reach it later; today it is offered from
         // Graph Settings → Storage, beside the orphaned-asset scan it belongs with.
         commandRegistry.register("index.rebuild", () => void rebuildIndex());
-        // The Keyboard Shortcuts card: the toolbar button and its own chord both come here.
+        // The Keyboard Shortcuts card: the Activity Bar's menu and its own chord both come here.
         commandRegistry.register("help.openShortcuts", () => {
             shortcutsDialogOpen = true;
         });
@@ -5493,13 +5483,16 @@
                 confirmClose: sidebars.confirmClose,
             },
         );
-        // The Sidebars' rows: hide, reorder and move a View, the hidden Views, the Primary
-        // Sidebar's side, Reset workspace (ADR 0198).
+        // The Sidebars' rows: hide, reorder and move a View, the hidden Views, Settings, Keyboard
+        // shortcuts, the Primary Sidebar's side, Reset workspace (ADR 0198).
         const detachSidebarRows = registerSidebarCommands(commandRegistry, contributions, {
             binding: sidebars.binding,
             controller: () => controller,
             name: (view) => registry.name(view),
+            icon: (view) => registry.icon(view),
             confirmHide: sidebars.confirmHide,
+            // The Explorer's own name for the row, where a phone has it too.
+            settingsRow: { label: "Settings", command: "graph.settings.open" },
         });
         detachTabCommands = () => {
             detachTabRows();
@@ -5998,8 +5991,9 @@
         suppressSave = true;
         suppressNav = true;
         controller.restore(initial);
-        // A restored Layout brings the title its tab was saved with; the name is the truth.
-        retitleSidebar();
+        // A restored Layout brings the title its tab was saved with, and one saved before the
+        // toolbar named the graph says "Explorer: " and the graph's name. The View's name is the truth.
+        renderer?.setTitleForKind?.("document-tree", EXPLORER_NAME);
         followRenamesObserved();
         // The Sidebars' Views are the person's arrangement of them (ADR 0199), not what the Layout
         // was saved with: each is opened, moved, reordered or closed to match, here and from now
@@ -8152,12 +8146,12 @@
         if (status.shown && status.callout) dismissedCallout = status.callout.id;
     }
 
-    // On a phone the dot sits in the app's header, which the route layout draws, so what it needs
-    // is published to it (graph-status-host.svelte.ts). An effect, because the header is outside
+    // The dot sits in the app's header, which the route layout draws, so what it needs is
+    // published to it (graph-status-host.svelte.ts). An effect, because the header is outside
     // this component.
     $effect(() => {
         headerGraphStatus.set(
-            useMobile && phase === "ready" && status.shown
+            phase === "ready" && status.shown
                 ? { status, callout: statusCallout, open: openStatusDialog, dismissCallout: dismissStatusCallout }
                 : null,
         );
@@ -8973,19 +8967,11 @@
 <div class="workspace" class:hidden={phase !== "ready"} style={workspaceStyle}>
     {#if !useMobile}
         <WorkspaceToolbar
-            {chord}
             ontoggleleft={() => toggleSidebar("left")}
             ontoggleright={() => toggleSidebar("right")}
             leftLabel={sidebars.toggleLabel("left")}
             rightLabel={sidebars.toggleLabel("right")}
-            onshortcuts={() =>
-                void commandRegistry?.execute("help.openShortcuts")}
-            onsettings={() => openGraphSettings()}
-            ontasks={() => void commandRegistry?.execute("tasks.open")}
-            {status}
-            callout={statusCallout}
-            onstatus={openStatusDialog}
-            ondismisscallout={dismissStatusCallout}
+            heading={toolbarHeading}
             indexing={indexingIconShown}
         />
         <!-- The Activity Bar stands beside the Layout, on the Primary Sidebar's side, and stays

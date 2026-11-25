@@ -83,7 +83,7 @@ export interface SidebarViewContextMenuTarget {
     panelId: string
 }
 
-/** The [[Activity Bar]] itself, from the button at its foot: the hidden Views, its side, Reset workspace. */
+/** The [[Activity Bar]] itself, from the button at its foot: the hidden Views, the workspace's settings, Keyboard shortcuts, its side, Reset workspace. */
 export interface ActivityBarContextMenuTarget {
     kind: 'activity-bar'
 }
@@ -406,9 +406,11 @@ export interface ContextMenuItem {
     command: string
     /**
      * An icon from the app's table (`icons.ts`), drawn left of the label. A menu with any icon
-     * keeps the icon's column on every row, so the labels stay in line.
+     * keeps the icon's column on every row, so the labels stay in line. A function when the
+     * picture follows the target, as the label can: the row that moves the Primary Sidebar shows
+     * the side it would move to.
      */
-    icon?: string
+    icon?: string | ((target: ContextMenuTarget) => string | undefined)
     /**
      * Rendered with a separator above it — groups destructive or unrelated actions. A function
      * when which row heads its group depends on the target, as with a Kanban card's "Move to"
@@ -433,7 +435,10 @@ export function registerContextMenuItem(registry: ContributionRegistry, item: Co
 
 /** A row's icon, and for a row that is a choice, whether it is the one in force, which its tick shows. */
 function rowIcon(item: ContextMenuItem, target: ContextMenuTarget): { icon?: string; checked?: boolean } {
-    if (!item.checked) return item.icon === undefined ? {} : { icon: item.icon }
+    if (!item.checked) {
+        const icon = typeof item.icon === 'function' ? item.icon(target) : item.icon
+        return icon === undefined ? {} : { icon }
+    }
     const checked = item.checked(target)
     return checked ? { icon: 'check', checked } : { checked }
 }

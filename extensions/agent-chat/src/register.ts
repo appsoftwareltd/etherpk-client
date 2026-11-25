@@ -36,6 +36,12 @@ export const OPEN_COMMAND = 'agent-chat.open'
 /** The workspace's Command that opens a graph's settings at the Agents tab. */
 export const AGENTS_SETTINGS_COMMAND = 'agents.settings'
 
+/**
+ * What the person is told wherever a chat cannot be: where one is asked for and will not open, and
+ * when the Client closes one because its document turned out to be such a place.
+ */
+const NOT_AVAILABLE = 'Agent opens only where you can edit document content. It is not enabled for protected documents, code blocks or tables.'
+
 /** What one `/Agent` opening is drawn with. */
 export interface OpeningProps {
     chats: AgentChats
@@ -197,15 +203,18 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
                 prompt = ''
                 return opening
             },
-            onClose: () => {
+            onClose: (reason) => {
                 for (const [chatId, open] of chats.inline) if (open === panel) chats.inline.delete(chatId)
                 window?.close()
                 // A chat closed with nothing asked in it is not kept.
                 if (session.chatId) chats.discardIfEmpty(session.chatId)
+                // Closed by the Client, not the person: its document can hold no chat now, as one
+                // found to be protected after the chat opened. Say why, or the chat is simply gone.
+                if (reason === 'unavailable') context.notify(NOT_AVAILABLE)
             },
         })
         if (!panel) {
-            context.notify('Agent opens only where you can edit document content. It is not enabled for protected documents, code blocks or tables.')
+            context.notify(NOT_AVAILABLE)
             return null
         }
         track()

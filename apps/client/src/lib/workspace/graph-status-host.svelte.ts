@@ -1,10 +1,10 @@
 /**
  * The open graph's status, for the app's header.
  *
- * On a phone the workspace has no toolbar of its own, so its status dot sits in the app's header,
- * to the right of the logo. The header belongs to the route layout and the status to the workspace
- * beneath it, so the workspace publishes what the dot needs here and the layout draws it. Null on a
- * desktop (the workspace toolbar carries the dot there), and whenever no synced graph is open.
+ * A synced graph's status dot sits in the app's header, to the right of the logo, in the desktop
+ * and the phone layout alike. The header belongs to the route layout and the status to the
+ * workspace beneath it, so the workspace publishes what the dot needs here and the layout draws
+ * it. Null whenever no synced graph is open.
  */
 import type { GraphStatus, StatusCallout } from './graph-status'
 

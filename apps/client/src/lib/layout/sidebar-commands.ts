@@ -1,7 +1,8 @@
 /**
  * The [[Command]]s and [[Context Menu]] rows of the two Sidebars (ADR 0198): hide a View, bring a
  * hidden one back, reorder an icon, move a View between the Primary and the Secondary Sidebar,
- * move the Primary Sidebar to the other side, and the workspace's own Reset workspace.
+ * move the Primary Sidebar to the other side, and the workspace's own settings, Keyboard shortcuts
+ * and Reset workspace.
  *
  * Rows over the registry, as the tab rows are (`tab-commands.ts`). Each acts on the person's
  * [[Sidebar Arrangement]] through the binding, which rearranges the Layout to match.
@@ -25,6 +26,11 @@ export const SIDEBAR_SWAP = 'sidebar.swapSides'
  * Bar's menu offers it, so it is in reach with the Explorer or the file tree hidden.
  */
 export const WORKSPACE_RESET = 'workspace.reset'
+/**
+ * Keyboard shortcuts: the card that lists every shortcut. Registered by the workspace, a graph's or
+ * a Plain Folder's. The Activity Bar's menu offers it, with the workspace's settings.
+ */
+export const HELP_SHORTCUTS = 'help.openShortcuts'
 
 export interface SidebarCommandDeps {
     binding: SidebarArrangementBinding
@@ -32,8 +38,16 @@ export interface SidebarCommandDeps {
     controller: () => LayoutController | undefined
     /** The name a View goes by (the View registry's `name`). */
     name: (view: ViewRef) => string
+    /** A View's icon (the View registry's `icon`), which its **Show** row draws. Without it, or for a View with none, the row has no picture. */
+    icon?: (view: ViewRef) => string | undefined
     /** Ask before these Views are hidden, then run `proceed`. Without it they are hidden at once. */
     confirmHide?: (kinds: readonly string[], proceed: () => void) => void
+    /**
+     * The row of the Activity Bar's menu that opens the workspace's settings: what it is called
+     * ("Settings", "Folder settings") and the workspace's own Command for it. Without it the menu
+     * has no such row.
+     */
+    settingsRow?: { label: string; command: string }
 }
 
 /** The kind of the arranged View a row acts on: an icon of the Activity Bar, or a tab of the Secondary Sidebar. */
@@ -91,6 +105,38 @@ export function registerSidebarCommands(commands: CommandRegistry, contributions
         commands.register(SIDEBAR_SWAP, () => binding.swapSides()),
     )
 
+    // The settings and the Keyboard shortcuts card, above the bar's own rows. Each is the workspace's
+    // Command, so its row is offered only while the workspace has registered it: a dev harness
+    // with no settings dialog has no row for one.
+    const onBar = (command: string) => (target: ContextMenuTarget) => target.kind === 'activity-bar' && commands.has(command)
+    const settingsRow = deps.settingsRow
+    const settingsOffered = () => settingsRow !== undefined && commands.has(settingsRow.command)
+    if (settingsRow) {
+        disposers.push(
+            registerContextMenuItem(contributions, {
+                id: 'sidebar.settings',
+                label: settingsRow.label,
+                icon: 'settings',
+                command: settingsRow.command,
+                order: 180,
+                separatorBefore: true,
+                when: onBar(settingsRow.command),
+            }),
+        )
+    }
+    disposers.push(
+        registerContextMenuItem(contributions, {
+            id: 'sidebar.keyboardShortcuts',
+            label: 'Keyboard shortcuts',
+            icon: 'keyboard',
+            command: HELP_SHORTCUTS,
+            order: 190,
+            // The rule is above whichever of the two rows comes first.
+            separatorBefore: () => !settingsOffered(),
+            when: onBar(HELP_SHORTCUTS),
+        }),
+    )
+
     disposers.push(
         registerContextMenuItem(contributions, {
             id: SIDEBAR_MOVE_UP,
@@ -136,9 +182,12 @@ export function registerSidebarCommands(commands: CommandRegistry, contributions
         registerContextMenuItem(contributions, {
             id: SIDEBAR_SWAP,
             label: () => (binding.sideOf('primary') === 'left' ? 'Move Primary Sidebar to the right' : 'Move Primary Sidebar to the left'),
+            // The Sidebar toggle's picture, with its rail on the side the Sidebar would move to.
+            icon: () => (binding.sideOf('primary') === 'left' ? 'sidebar-right' : 'sidebar-left'),
             command: SIDEBAR_SWAP,
             order: 200,
-            separatorBefore: () => binding.hidden().length > 0,
+            // Under the hidden Views, or the settings and Keyboard shortcuts. The menu draws no rule above its first row.
+            separatorBefore: true,
             when: (target) => target.kind === 'activity-bar',
         }),
         registerContextMenuItem(contributions, {
@@ -164,6 +213,11 @@ export function registerSidebarCommands(commands: CommandRegistry, contributions
                 label: () => {
                     const resident = binding.resident(hidden)
                     return `Show ${resident ? deps.name(resident.fallback()) : hidden}`
+                },
+                // The icon the View has in the Activity Bar, so the row is known by the picture that went.
+                icon: () => {
+                    const resident = binding.resident(hidden)
+                    return resident ? deps.icon?.(resident.fallback()) : undefined
                 },
                 command,
                 order: 100 + showRows.size,

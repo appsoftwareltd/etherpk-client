@@ -5,7 +5,7 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.50.0 - 2026-11-25
 
 ### Client
 
@@ -14,10 +14,24 @@ starts at 0.9.3.
   and its line of Markdown stays hidden. Double-click a picture to edit its Markdown straight away.
   While a picture is selected, Enter edits it as text, Tab moves to its actions and Escape goes back to
   the cursor. Taps on a touch screen work as before.
+- **The toolbar names what is open.** On a desktop, the toolbar shows the name of the graph or folder,
+  then two icons: three linked dots for a graph or a folder for a Plain Folder, and a stack of servers
+  for a synced graph or a screen for one kept on this device. The Graphs page shows the same two icons
+  after each name. The Explorer's header says **Explorer** alone, and its icon in the Activity Bar is a
+  compass.
+- **Settings, Keyboard shortcuts and Tasks are in the Activity Bar.** **Settings** and **Keyboard
+  shortcuts** are in **Sidebar views**, the menu at the foot of the Activity Bar, on a desktop and on a
+  phone. Tasks opens from its icon in the Activity Bar or with **Alt+T**. A synced graph's status dot is
+  beside the logo in the header, as it is on a phone. The toolbar keeps the two sidebar buttons, now
+  icons with no border, and the bar that marks the view showing is wider.
 - **Usage statistics have no notice.** On a deployment that sends usage statistics, they are on from the
   first start until you turn them off at the bottom of **Settings** > **General**. If you turned them
   off before, they stay off.
+- **Extension API.** An inline panel's `onClose` is told why the panel closed: `closed`, or
+  `unavailable` when EtherPK closed it because its document can hold no panel. An extension can name
+  five more icons: `compass`, `keyboard`, `settings`, `sidebar-left` and `sidebar-right`.
 - **Fixes.**
+  - An Agent Chat that closes because its document is a protected document now says why in a notice.
   - The button on the Sync tab that replaces your Encryption Keys and locks out your other devices is
     now **Replace Encryption Keys**, which fits on a phone. The buttons that save a new Recovery Code and
     two long buttons in Settings fit too.
@@ -25,11 +39,15 @@ starts at 0.9.3.
     in the light theme.
   - Enter and Space press the action buttons of a picture or a file link.
   - The fields that change a graph's protection passphrase have labels.
+  - A table as wide as the page, or wider, no longer gives the page a sideways scrollbar while its
+    controls show, and the scrollbar no longer flickers when you point at the bottom of the page.
   - Pinching a PDF zooms smoothly, where it moved in small steps. The text sharpens when you lift your
     fingers.
   - The gap between a PDF's pages zooms with them, where it stayed one size.
   - A PDF zoomed in on a tablet glides after a flick, where it stopped at once. Zoomed in, the text you
     scroll to sharpens when the page comes to rest.
+  - **Create task** closes the task editor, where it stayed open on the new task until you selected
+    **Done**.
 
 ## 0.49.0 - 2026-11-24
 

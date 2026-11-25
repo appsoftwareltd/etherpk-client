@@ -16,7 +16,8 @@
     import { formatBytes } from '@appsoftwareltd/etherpk-shared'
     import { inkFor } from '#lib/contrast-ink.js'
     import GraphGrip, { type GraphGripProps } from './GraphGrip.svelte'
-    import GraphKindIcon from './GraphKindIcon.svelte'
+    import KindIcons from './KindIcons.svelte'
+    import { KINDS } from './workspace-heading'
     import { tick } from 'svelte'
     import { BADGE_ON_COLOUR, CARD_ICONS, CARD_WORDS, GRAPH_CARD, GRAPH_CARD_UNCLIPPED, ICON_ON_COLOUR, OPEN_ON_COLOUR } from './graph-card'
     import type { SyncedMember } from './graph-picker-helpers'
@@ -204,7 +205,7 @@
 {#snippet badges(coloured: boolean)}
     <span class="flex min-w-0 items-center gap-1.5">
         <span data-testid="graph-card-name" class="truncate text-sm font-medium {coloured ? '' : 'text-neutral-950 dark:text-white'}">{name}</span>
-        <GraphKindIcon kind="synced" {coloured} />
+        <KindIcons kind={KINDS.synced} {coloured} />
     </span>
     {#if role && (locked || !owner)}
         <span
