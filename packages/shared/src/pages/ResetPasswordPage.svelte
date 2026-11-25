@@ -170,7 +170,7 @@
 
             <div>
                 <label for="confirmPassword" class="gk-label block mb-1.5">Confirm new password</label>
-                <input id="confirmPassword" onblur={() => blurField("confirm")} oninput={() => inputField("confirm")} type="password" bind:value={confirmPassword} autocomplete="new-password" placeholder="Repeat new password" aria-invalid={!!fieldErrors.confirm} aria-describedby={fieldErrors.confirm ? "confirm-error" : undefined} class="gk-input" />
+                <input id="confirmPassword" onblur={() => blurField("confirm")} oninput={() => inputField("confirm")} type="password" bind:value={confirmPassword} autocomplete="new-password" aria-invalid={!!fieldErrors.confirm} aria-describedby={fieldErrors.confirm ? "confirm-error" : undefined} class="gk-input" />
                 {#if fieldErrors.confirm}
                     <p id="confirm-error" class="mt-1 text-sm text-red-600">{fieldErrors.confirm}</p>
                 {/if}

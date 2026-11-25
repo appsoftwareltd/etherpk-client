@@ -4,9 +4,8 @@
  * clipboard.
  *
  * Commands rather than inline click handlers, for the reason the document Commands are: the
- * three surfaces that offer them — the hover overlay on a rendered image, the trailing icon
- * cluster on a link, and the [[Context Menu]] (which is how they reach touch, where there is no
- * hover) — stay *presentation* over one registry. One implementation, one set of tests, and a
+ * three surfaces that offer them — the overlay on a selected image, the trailing icon
+ * cluster on a link, and the [[Context Menu]] — stay *presentation* over one registry. One implementation, one set of tests, and a
  * keybinding or a [[Command Menu]] row can reach them later without touching any of the three.
  *
  * Each takes an {@link AssetContextMenuTarget}, because these act on a target rather than on
@@ -267,7 +266,7 @@ export function registerAssetCommands(
             // Ahead of download: the lighter of the two ways to take a picture out of a note.
             order: 5,
             // Only for a picture, and only where the clipboard takes one - the same rule the
-            // button clusters apply, so the touch route offers exactly what hover does.
+            // button clusters apply, so the menu offers exactly what they do.
             when: (target) => isAssetTarget(target) && deps.canCopyImage(target.ref),
         }),
         registerContextMenuItem(contributions, {

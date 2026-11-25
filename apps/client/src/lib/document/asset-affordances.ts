@@ -3,8 +3,8 @@
  * in the [[Lightbox]] and **copy** it to the clipboard when it is an image, **download** it, **open** it in a tab where a viewer is
  * registered, and **delete** it.
  *
- * Three surfaces show this set — the trailing icon cluster on a link and the hover overlay on a
- * rendered image (both in the editor's augmentations), and the references [[View]], which renders
+ * Three surfaces show this set — the trailing icon cluster on a link and the overlay on a
+ * selected image (both in the editor's augmentations), and the references [[View]], which renders
  * lines out of other documents with no CodeMirror anywhere near it. The list and the dispatch live
  * here, above all three, so what one offers cannot drift from what another does. The [[Context
  * Menu]] rows come off the same [[Command]]s (`commands/asset-commands.ts`), which is what keeps

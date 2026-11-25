@@ -1282,6 +1282,11 @@
     .etherpk-pdf-scroller :global(.pdfViewer .page) {
         box-shadow: var(--gk-shadow, 0 1px 4px rgb(0 0 0 / 0.25));
     }
+    /* pdf.js keeps the gap between pages at one size, so it grew and shrank beside them as they zoomed, and a pinch,
+       which draws it scaled, moved them as they were laid out. */
+    .etherpk-pdf-scroller :global(.pdfViewer .page) {
+        margin-block: 0 calc(10px * var(--scale-factor, 1));
+    }
     /* pdf.js numbers a form's fields upward in the page's stacking order, so a stacking context of
        their own keeps the later ones under what the person drew or placed. */
     .etherpk-pdf-scroller :global(.annotationLayer) {

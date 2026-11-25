@@ -308,8 +308,8 @@ On Windows the login file and the cache are under `C:\Users\<you>\.config\etherp
 
 To cut an agent off, revoke its agent token on the Sync Server's **Access tokens** page. `logout`
 revokes the token itself and deletes the keys and cached graphs on this device. If the device
-or its login file may have been copied, also select **Replace Encryption Keys and lock out other
-devices** in EtherPK, so the keys saved there no longer open your account.
+or its login file may have been copied, also select **Replace Encryption Keys** in
+EtherPK, so the keys saved there no longer open your account.
 
 ## Build from source
 

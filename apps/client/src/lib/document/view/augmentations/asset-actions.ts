@@ -1,6 +1,6 @@
 /**
  * The **action cluster** an [[Asset Reference]] carries **inside the editor**: trailing icons
- * after a link (`asset-link.ts`) and a hover overlay on a rendered image (`image-embed.ts`).
+ * after a link (`asset-link.ts`) and an overlay on a selected image (`image-embed.ts`).
  *
  * Which actions those are is not decided here — `asset-affordances.ts` owns the list, because the
  * references [[View]] shows the same set with no CodeMirror anywhere near it — and neither is how
@@ -99,8 +99,8 @@ export function buildAssetActions(
 
 
 /**
- * Raise the [[Context Menu]] on an asset: right-click anywhere, or a long press on touch, where
- * hover does not exist and a picture's overlay waits for a tap. Mirrors `attachContextMenu`, which cannot
+ * Raise the [[Context Menu]] on an asset: right-click anywhere, or a long press on touch.
+ * Mirrors `attachContextMenu`, which cannot
  * be used directly here because the element it would bind to is rebuilt by CodeMirror on every
  * decoration change.
  */

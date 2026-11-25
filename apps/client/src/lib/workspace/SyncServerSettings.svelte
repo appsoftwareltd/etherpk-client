@@ -610,7 +610,7 @@
                         data-testid="replace-keys"
                         onclick={() => (confirmingReplace = true)}
                         class="mt-2 {SECONDARY_BUTTON}"
-                        >Replace Encryption Keys and lock out other devices</button
+                        >Replace Encryption Keys</button
                     >
                 {/if}
             </div>

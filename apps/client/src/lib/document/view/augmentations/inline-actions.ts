@@ -17,9 +17,13 @@ import { setTrustedMarkup } from '#lib/security/trusted-types.js'
 import { iconSvg } from '#lib/surface/icons.js'
 
 import type { InlineAction } from '../../inline-action'
+import { ignoreHeldKey } from './held-key'
 
 /** How long an action's confirmation (the tick after a copy) stands in for its icon. */
 const CONFIRM_MS = 1500
+
+/** How long after a press ran on its mousedown a click with no pointer is still that press. */
+const SAME_PRESS_MS = 500
 
 export interface ActionClusterOptions<T> {
     /** Class on the container, for the surface's own styling. */
@@ -69,16 +73,32 @@ export function buildActionCluster<T>(view: EditorView, options: ActionClusterOp
         // The icon markup is in-repo constant text (surface/icons.ts), never document content.
         setTrustedMarkup(button, iconSvg(action.icon, { size: options.size }))
         painted.set(button, { action, name: options.name, size: options.size, buttonClass: options.buttonClass })
-        // mousedown, not click: the editor's own handlers act on mousedown, and letting one
-        // through would place the caret (or reveal the image's markdown) behind the dialog.
-        button.addEventListener('mousedown', (event) => {
-            event.preventDefault()
-            event.stopPropagation()
+        const press = () => {
             const target = options.resolveTarget()
             if (!target) return
             view.focus()
             const run = options.run(action.command, target)
             if (action.confirm) void run.then((done) => done && showConfirmation(button))
+        }
+        // When a press last ran on its mousedown.
+        let ranAt = Number.NEGATIVE_INFINITY
+        // mousedown, not click: the editor's own handlers act on mousedown, and letting one
+        // through would place the caret (or select the picture) behind the dialog.
+        button.addEventListener('mousedown', (event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            ranAt = event.timeStamp
+            press()
+        })
+        // Enter or Space on the focused button, or a screen reader's press: a click with no pointer
+        // behind it (`detail` 0). A pointer's has already run on its mousedown, as has that of a
+        // screen reader that sends one before its click. Enter clicks as it goes down, and the press
+        // gives the keyboard to the text, which must not hear its repeats.
+        button.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') ignoreHeldKey(view.dom.ownerDocument, event)
+        })
+        button.addEventListener('click', (event) => {
+            if (event.detail === 0 && event.timeStamp - ranAt > SAME_PRESS_MS) press()
         })
     }
     return wrap

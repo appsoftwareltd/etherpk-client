@@ -295,7 +295,7 @@
         rows="3"
         spellcheck="false"
         class={[
-            "block w-full resize-none overflow-y-auto border-0 bg-transparent text-(--gk-field-text) field-sizing-content placeholder:text-(--gk-text-muted) focus:outline-none",
+            "block w-full resize-none overflow-y-auto border-0 bg-transparent text-(--gk-field-text) field-sizing-content placeholder:text-(--gk-field-placeholder) focus:outline-none",
             roomy ? "max-h-72 min-h-24 px-4 py-3" : "max-h-60 min-h-18 px-3 py-2",
         ]}
         style:font-size="max(0.875rem, var(--editor-font-size, 1rem))"

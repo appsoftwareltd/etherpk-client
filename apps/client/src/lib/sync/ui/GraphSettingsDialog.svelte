@@ -892,7 +892,7 @@
                             type="button"
                             onclick={mirror.onenable}
                             data-testid="mirror-enable"
-                            class="gk-button gk-button--primary"
+                            class="gk-button gk-button--primary max-w-full whitespace-normal"
                             >Choose a folder and start mirroring…</button
                         >
                     {/if}

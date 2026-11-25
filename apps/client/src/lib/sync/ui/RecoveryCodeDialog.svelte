@@ -193,24 +193,28 @@
     {#snippet footer()}
         <!-- The disabled confirm's reason is the checkbox label directly above it, which is
              persistent text a keyboard user reaches; a second hint here squashed the buttons. -->
-        {#if oncancel}
+        <!-- Both labels say what they do to the keys, so together they are wider than the dialog:
+             the buttons stack, and on a narrow phone the confirm's label takes a second line. -->
+        <div class="flex min-w-0 flex-wrap justify-end gap-2">
+            {#if oncancel}
+                <button
+                    type="button"
+                    onclick={cancel}
+                    data-testid="recovery-cancel"
+                    class="gk-button max-w-full whitespace-normal"
+                >
+                    {cancelLabel}
+                </button>
+            {/if}
             <button
                 type="button"
-                onclick={cancel}
-                data-testid="recovery-cancel"
-                class="gk-button"
+                onclick={() => { open = false; onconfirm(); }}
+                disabled={!acknowledged}
+                data-testid="recovery-confirm"
+                class="gk-button gk-button--primary max-w-full whitespace-normal"
             >
-                {cancelLabel}
+                {confirmLabel}
             </button>
-        {/if}
-        <button
-            type="button"
-            onclick={() => { open = false; onconfirm(); }}
-            disabled={!acknowledged}
-            data-testid="recovery-confirm"
-            class="gk-button gk-button--primary"
-        >
-            {confirmLabel}
-        </button>
+        </div>
     {/snippet}
 </Modal>

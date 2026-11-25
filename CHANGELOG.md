@@ -5,6 +5,32 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **A picture's actions show when you click the picture.** With a mouse, nothing shows over a picture
+  until you click the picture. Its actions and its resize handle then show, with **Edit as text** first,
+  and its line of Markdown stays hidden. Double-click a picture to edit its Markdown straight away.
+  While a picture is selected, Enter edits it as text, Tab moves to its actions and Escape goes back to
+  the cursor. Taps on a touch screen work as before.
+- **Usage statistics have no notice.** On a deployment that sends usage statistics, they are on from the
+  first start until you turn them off at the bottom of **Settings** > **General**. If you turned them
+  off before, they stay off.
+- **Fixes.**
+  - The button on the Sync tab that replaces your Encryption Keys and locks out your other devices is
+    now **Replace Encryption Keys**, which fits on a phone. The buttons that save a new Recovery Code and
+    two long buttons in Settings fit too.
+  - Password and passphrase fields are empty until you type, and examples in other fields are fainter
+    in the light theme.
+  - Enter and Space press the action buttons of a picture or a file link.
+  - The fields that change a graph's protection passphrase have labels.
+  - Pinching a PDF zooms smoothly, where it moved in small steps. The text sharpens when you lift your
+    fingers.
+  - The gap between a PDF's pages zooms with them, where it stayed one size.
+  - A PDF zoomed in on a tablet glides after a flick, where it stopped at once. Zoomed in, the text you
+    scroll to sharpens when the page comes to rest.
+
 ## 0.49.0 - 2026-11-24
 
 ### Client

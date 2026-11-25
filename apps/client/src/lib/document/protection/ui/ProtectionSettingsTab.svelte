@@ -324,34 +324,40 @@
                     Your passphrase has been changed.
                 </p>
             {:else if changing}
-                <div class="mt-2 space-y-2">
-                    <input
-                        type="password"
-                        bind:value={currentPassphrase}
-                        placeholder="Current passphrase"
-                        aria-label="Current passphrase"
-                        autocomplete="current-password"
-                        data-testid="protection-change-current"
-                        class="gk-input"
-                    />
-                    <input
-                        type="password"
-                        bind:value={nextPassphrase}
-                        placeholder="New passphrase"
-                        aria-label="New passphrase"
-                        autocomplete="new-password"
-                        data-testid="protection-change-next"
-                        class="gk-input"
-                    />
-                    <input
-                        type="password"
-                        bind:value={confirmPassphrase}
-                        placeholder="New passphrase, again"
-                        aria-label="Confirm new passphrase"
-                        autocomplete="new-password"
-                        data-testid="protection-change-confirm"
-                        class="gk-input"
-                    />
+                <div class="mt-2 space-y-3">
+                    <div>
+                        <label for="protection-change-current" class="gk-label mb-1.5 block">Current passphrase</label>
+                        <input
+                            id="protection-change-current"
+                            type="password"
+                            bind:value={currentPassphrase}
+                            autocomplete="current-password"
+                            data-testid="protection-change-current"
+                            class="gk-input"
+                        />
+                    </div>
+                    <div>
+                        <label for="protection-change-next" class="gk-label mb-1.5 block">New passphrase</label>
+                        <input
+                            id="protection-change-next"
+                            type="password"
+                            bind:value={nextPassphrase}
+                            autocomplete="new-password"
+                            data-testid="protection-change-next"
+                            class="gk-input"
+                        />
+                    </div>
+                    <div>
+                        <label for="protection-change-confirm" class="gk-label mb-1.5 block">Confirm new passphrase</label>
+                        <input
+                            id="protection-change-confirm"
+                            type="password"
+                            bind:value={confirmPassphrase}
+                            autocomplete="new-password"
+                            data-testid="protection-change-confirm"
+                            class="gk-input"
+                        />
+                    </div>
                     {#if changeError}
                         <p role="alert" class="text-sm text-red-600" data-testid="protection-change-error">{changeError}</p>
                     {/if}

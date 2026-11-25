@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import type { NoticeInput } from '#lib/activity/notices.js'
-import { createPersonSettings } from '#lib/person-settings/person-settings.js'
+import { createPersonSettings, type PersonSettings } from '#lib/person-settings/person-settings.js'
 
 import type { TelemetryTarget } from './usage-events'
-import { createUsageStatistics, USAGE_STATISTICS_NOTICE_SEEN_KEY, USAGE_STATISTICS_SETTING } from './usage-statistics'
+import { createUsageStatistics, USAGE_STATISTICS_SETTING } from './usage-statistics'
 
 const target: TelemetryTarget = { url: 'https://stats.example.com/api/batch', websiteId: '0b5f6c1e-3a52-4c1f-9a44-1c2d3e4f5a6b' }
 
@@ -22,27 +21,15 @@ function memoryStorage(initial: Record<string, string> = {}): Storage {
     }
 }
 
-/** A storage that refuses everything, as a private window with blocked site data does. */
-const blockedStorage = (): Storage => {
-    const refuse = () => {
-        throw new Error('blocked')
-    }
-    return { getItem: refuse, setItem: refuse, removeItem: refuse, clear: refuse, key: refuse, length: 0 }
-}
-
-function harness(options: { target?: TelemetryTarget | null; storage?: Storage; privacySignal?: boolean } = {}) {
-    const storage = options.storage ?? memoryStorage()
-    const settings = createPersonSettings(() => memoryStorage())
-    const notices: NoticeInput[] = []
+function harness(options: { target?: TelemetryTarget | null; settings?: PersonSettings; privacySignal?: boolean } = {}) {
+    const settings = options.settings ?? createPersonSettings(() => memoryStorage())
     const sent: string[] = []
     let paused = false
     const statistics = createUsageStatistics({
         target: options.target === undefined ? target : options.target,
         settings,
-        storage: () => storage,
         privacySignal: () => options.privacySignal ?? false,
         paused: () => paused,
-        showNotice: (notice) => notices.push(notice),
         now: () => 0,
         context: () => ({ version: '1.2.3', install: 'browser', deployment: 'self-hosted', layout: 'desktop', theme: 'light' }),
         send: (_url, body) => sent.push(...(JSON.parse(body) as { payload: { name: string } }[]).map((event) => event.payload.name)),
@@ -52,46 +39,33 @@ function harness(options: { target?: TelemetryTarget | null; storage?: Storage; 
         statistics.flush()
         return sent
     }
-    return { statistics, storage, settings, notices, delivered, pause: (value: boolean) => (paused = value) }
+    return { statistics, settings, delivered, pause: (value: boolean) => (paused = value) }
 }
 
-const seen = () => memoryStorage({ [USAGE_STATISTICS_NOTICE_SEEN_KEY]: '1' })
-
 describe('usage statistics', () => {
-    it('says so before it sends anything: the first start shows the notice and sends nothing', () => {
-        const { statistics, notices, delivered, storage } = harness()
+    it('sends from the first start: the open, and each use after it', () => {
+        const { statistics, delivered } = harness()
         statistics.start()
         statistics.record({ name: 'command.tasks.open' })
-        expect(notices).toHaveLength(1)
-        expect(notices[0].dismissal).toBe('manual')
-        expect(delivered()).toEqual([])
-        expect(storage.getItem(USAGE_STATISTICS_NOTICE_SEEN_KEY)).not.toBeNull()
-    })
-
-    it('sends from the start after the one that showed the notice, with no second notice', () => {
-        const { statistics, notices, delivered } = harness({ storage: seen() })
-        statistics.start()
-        statistics.record({ name: 'command.tasks.open' })
-        expect(notices).toEqual([])
         expect(delivered()).toEqual(['app_opened', 'command.tasks.open'])
     })
 
     it('starts once, however often it is asked', () => {
-        const { statistics, delivered } = harness({ storage: seen() })
+        const { statistics, delivered } = harness()
         statistics.start()
         statistics.start()
         expect(delivered()).toEqual(['app_opened'])
     })
 
     it('records nothing before it is started', () => {
-        const { statistics, delivered } = harness({ storage: seen() })
+        const { statistics, delivered } = harness()
         statistics.record({ name: 'command.tasks.open' })
         statistics.start()
         expect(delivered()).toEqual(['app_opened'])
     })
 
     it('records nothing while paused, as in the demo', () => {
-        const { statistics, delivered, pause } = harness({ storage: seen() })
+        const { statistics, delivered, pause } = harness()
         statistics.start()
         pause(true)
         statistics.record({ name: 'command.tasks.open' })
@@ -100,19 +74,8 @@ describe('usage statistics', () => {
         expect(delivered()).toEqual(['app_opened', 'command.search.open'])
     })
 
-    it('turns off from the notice, and says where to turn it on again', () => {
-        const { statistics, notices, settings } = harness()
-        statistics.start()
-        void notices[0].actions?.[0].run()
-        expect(statistics.state()).toBe('off')
-        expect(settings.get(USAGE_STATISTICS_SETTING)).toBe('off')
-        expect(notices).toHaveLength(2)
-        expect(notices[1].id).toBe(notices[0].id)
-        expect(notices[1].text).toMatch(/Settings/)
-    })
-
     it('stops sending the moment the person turns it off, queued events included, and starts again when they turn it on', () => {
-        const { statistics, delivered } = harness({ storage: seen() })
+        const { statistics, delivered } = harness()
         statistics.start()
         statistics.record({ name: 'command.tasks.open' })
         statistics.setEnabled(false)
@@ -124,38 +87,45 @@ describe('usage statistics', () => {
         expect(delivered()).toEqual(['command.search.open'])
     })
 
-    it('shows no notice to someone who has it off already, and still owes them one', () => {
-        const { statistics, notices, delivered, settings, storage } = harness()
+    it('sends nothing for someone who turned it off before this start', () => {
+        const { statistics, delivered, settings } = harness()
         settings.set(USAGE_STATISTICS_SETTING, 'off')
         statistics.start()
-        expect(notices).toEqual([])
+        statistics.record({ name: 'command.tasks.open' })
         expect(delivered()).toEqual([])
-        expect(storage.getItem(USAGE_STATISTICS_NOTICE_SEEN_KEY)).toBeNull()
+    })
+
+    it('drops what is queued when the setting the person made on another device arrives', () => {
+        const { statistics, delivered, settings } = harness()
+        statistics.start()
+        statistics.record({ name: 'command.tasks.open' })
+        settings.set(USAGE_STATISTICS_SETTING, 'off')
+        expect(delivered()).toEqual([])
+    })
+
+    it('sends on a device that refuses storage, which holds no setting', () => {
+        const refuse = () => {
+            throw new Error('blocked')
+        }
+        const blocked: Storage = { getItem: refuse, setItem: refuse, removeItem: refuse, clear: refuse, key: refuse, length: 0 }
+        const { statistics, delivered } = harness({ settings: createPersonSettings(() => blocked) })
+        statistics.start()
+        expect(delivered()).toEqual(['app_opened'])
     })
 
     it('sends nothing while the browser sends Global Privacy Control, whatever the setting says', () => {
-        const { statistics, notices, delivered } = harness({ storage: seen(), privacySignal: true })
+        const { statistics, delivered } = harness({ privacySignal: true })
         statistics.start()
         statistics.record({ name: 'command.tasks.open' })
         expect(statistics.state()).toBe('browser-signal')
-        expect(notices).toEqual([])
-        expect(delivered()).toEqual([])
-    })
-
-    it('sends nothing and shows nothing where the device cannot remember the notice was shown', () => {
-        const { statistics, notices, delivered } = harness({ storage: blockedStorage() })
-        statistics.start()
-        statistics.record({ name: 'command.tasks.open' })
-        expect(notices).toEqual([])
         expect(delivered()).toEqual([])
     })
 
     it('does nothing in a deployment with no collector', () => {
-        const { statistics, notices, delivered } = harness({ target: null })
+        const { statistics, delivered } = harness({ target: null })
         statistics.start()
         statistics.record({ name: 'command.tasks.open' })
         expect(statistics.available).toBe(false)
-        expect(notices).toEqual([])
         expect(delivered()).toEqual([])
     })
 

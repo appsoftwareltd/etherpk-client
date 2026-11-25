@@ -1,13 +1,12 @@
 /**
  * Usage statistics as the browser runs them (ADR 0187): the deployment's Umami server from
- * `PUBLIC_TELEMETRY_URL` and `PUBLIC_TELEMETRY_WEBSITE_ID`, the person's setting, this device's
- * storage, a timer that sends the queue every minute, and a `fetch` that nothing waits for.
+ * `PUBLIC_TELEMETRY_URL` and `PUBLIC_TELEMETRY_WEBSITE_ID`, the person's setting, a timer that sends
+ * the queue every minute, and a `fetch` that nothing waits for.
  */
 
 import { dev } from '$app/env'
 import * as env from '$app/env/public'
 
-import { showNotice } from '#lib/activity/notices.js'
 import { DESKTOP_MEDIA_QUERY } from '#lib/layout/breakpoint.js'
 import { personSettings } from '#lib/person-settings/person-settings.js'
 import { RELEASE_VERSION } from '#lib/release.js'
@@ -30,7 +29,7 @@ interface DevTarget extends TelemetryTarget {
 
 /**
  * Dev and e2e only: a spec names a collector before the page loads, so it can watch what is sent
- * without every other spec meeting the notice. Absent from a production build.
+ * while every other spec sends nothing. Absent from a production build.
  */
 function devTarget(): DevTarget | undefined {
     return dev ? (globalThis as { __etherpkTelemetryTarget?: DevTarget }).__etherpkTelemetryTarget : undefined
@@ -64,10 +63,8 @@ export function usageStatistics(): UsageStatistics {
     shared ??= createUsageStatistics({
         target: typeof window === 'undefined' ? null : deploymentTarget(),
         settings: personSettings(),
-        storage: () => (typeof localStorage === 'undefined' ? null : localStorage),
         privacySignal: () => (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true,
         paused: () => isDemoPath(location.pathname),
-        showNotice,
         now: () => Date.now(),
         context: () => ({
             version: RELEASE_VERSION,
@@ -84,8 +81,8 @@ export function usageStatistics(): UsageStatistics {
 let running = false
 
 /**
- * Start usage statistics for this page: the notice or the open, the timer, the time on screen,
- * and errors nothing else caught. Runs once.
+ * Start usage statistics for this page: the open, the timer, the time on screen, and errors nothing
+ * else caught. Runs once.
  */
 export function startUsageStatistics(): void {
     const statistics = usageStatistics()

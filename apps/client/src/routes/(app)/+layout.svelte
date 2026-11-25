@@ -28,10 +28,9 @@
     // The person's settings follow them through their account (ADR 0134) while the Client runs.
     $effect(() => startPersonSettingsSync());
 
-    // Usage statistics (ADR 0187) start with the app: the notice the first time, the open after
-    // that. Not on the demo, which a visitor from the home page opens before they have an app to
-    // be told about: it starts when they leave the demo for a page of the app, and nothing is
-    // counted while they are back in it.
+    // Usage statistics (ADR 0187) start with the app. Not on the demo, which is not counted: they
+    // start when a visitor leaves the demo for a page of the app, and nothing is counted while they
+    // are back in it.
     $effect(() => {
         if (!isDemoPath(page.url.pathname)) startUsageStatistics();
     });

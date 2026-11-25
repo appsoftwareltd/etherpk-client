@@ -743,7 +743,6 @@
         oninput={() => {
             if (mfaFieldError && mfaPassword) mfaFieldError = null;
         }}
-        placeholder="Current password"
         autocomplete="current-password"
         aria-invalid={mfaFieldError !== null}
         aria-describedby={mfaFieldError ? `${id}-error` : undefined}
@@ -1299,7 +1298,7 @@
                 <form onsubmit={handleChangePassword} novalidate class="space-y-3">
                     <div>
                         <label for="pw-current" class="gk-label block mb-1">Current password</label>
-                        <input id="pw-current" type="password" bind:value={pwCurrent} autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" aria-invalid={!!pwFieldErrors.current} aria-describedby={pwFieldErrors.current ? "pw-current-error" : undefined} class="gk-input" />
+                        <input id="pw-current" type="password" bind:value={pwCurrent} autocomplete="current-password" aria-invalid={!!pwFieldErrors.current} aria-describedby={pwFieldErrors.current ? "pw-current-error" : undefined} class="gk-input" />
                         {#if pwFieldErrors.current}
                             <p id="pw-current-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.current}</p>
                         {/if}
@@ -1316,7 +1315,7 @@
 
                     <div>
                         <label for="pw-confirm" class="gk-label block mb-1">Confirm new password</label>
-                        <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" placeholder="Repeat new password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class="gk-input" />
+                        <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class="gk-input" />
                         {#if pwFieldErrors.confirm}
                             <p id="pw-confirm-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.confirm}</p>
                         {/if}
@@ -1344,7 +1343,7 @@
 
                     <div>
                         <label for="pw-confirm" class="gk-label block mb-1">Confirm password</label>
-                        <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" placeholder="Repeat password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class="gk-input" />
+                        <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class="gk-input" />
                         {#if pwFieldErrors.confirm}
                             <p id="pw-confirm-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.confirm}</p>
                         {/if}

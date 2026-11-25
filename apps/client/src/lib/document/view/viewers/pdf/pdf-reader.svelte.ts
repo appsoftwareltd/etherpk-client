@@ -15,7 +15,9 @@ import { SAVE_ENTRY_PREFIX } from '#lib/document/pdf/save-entries.js'
 
 import { loadPdfLibrary, openPdf, pdfHash, type PdfDocument, type PdfLib, type PdfLoadingTask, type PdfWeb } from './pdf-library'
 import { pdfL10n } from './pdf-l10n'
+import { holdSharpPartWhileMoving, type SharpHold, type SharpPage } from './pdf-sharp-hold'
 import { listenForPinch, type PinchChange, wheelZoomFactor } from './pdf-pinch'
+import { type ScreenBox, type PinchPlacement, type PinchStart, placePinch } from './pinch-transform'
 import { listenForTextDrag } from './pdf-text-drag'
 import { dropSignatures, heldSignatures, holdSignatures, signaturesKey, type HeldSignatures } from './held-signatures.svelte'
 import { listenForHandPan } from './pdf-hand-pan'
@@ -89,10 +91,55 @@ export function isTouchFirst(): boolean {
     return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
 }
 
+function boxOf(element: Element): ScreenBox {
+    const { left, top, width, height } = element.getBoundingClientRect()
+    return { left, top, width, height }
+}
+
 /** The zoom to open at, as pdf.js takes it: a fit to the width fits the width the tab has now. */
 function rememberedZoom({ fitWidth, zoom }: RememberedPdf): string {
     if (fitWidth) return 'page-width'
     return zoom ? String(zoom) : 'auto'
+}
+
+/** The page at a point of the screen, or the nearest one when the point is in a gap. */
+function nearestPage(pages: HTMLElement[], [x, y]: readonly [number, number]): HTMLElement | null {
+    let nearest: HTMLElement | null = null
+    let least = Infinity
+    for (const page of pages) {
+        const { left, top, width, height } = boxOf(page)
+        const away = Math.hypot(Math.max(left - x, 0, x - left - width), Math.max(top - y, 0, y - top - height))
+        if (away < least) [nearest, least] = [page, away]
+    }
+    return nearest
+}
+
+/** What pdf.js is drawing: a page, or the part of one in view drawn again at full size. */
+interface DrawnPage {
+    div: HTMLElement
+    canvas: HTMLCanvasElement | null
+    /** The page, where this is a part of it. */
+    pageView?: { viewport: { width: number; height: number } }
+}
+
+/**
+ * Line the part of a page drawn at full size up with the page under it. pdf.js lays a page out a few pixels
+ * smaller than its zoom, to whole pixels of its canvas, and places the part by shares of the size before that.
+ * The two are then drawn at different sizes, which shows as a double edge when a pinch zooms out.
+ */
+function alignDetail({ div, canvas, pageView }: DrawnPage): void {
+    if (!pageView || !canvas) return
+    // The page's own pixels, which a transform does not change.
+    const laid = getComputedStyle(div)
+    const scale = { x: pageView.viewport.width / parseFloat(laid.width), y: pageView.viewport.height / parseFloat(laid.height) }
+    if (!Number.isFinite(scale.x) || !Number.isFinite(scale.y)) return
+    const { style } = canvas
+    style.width = `${parseFloat(style.width) * scale.x}%`
+    style.left = `${parseFloat(style.left) * scale.x}%`
+    style.height = `${parseFloat(style.height) * scale.y}%`
+    style.top = `${parseFloat(style.top) * scale.y}%`
+    // Not quite opaque, or the browser leaves out the page behind it and its edge shows as a light line.
+    style.opacity = '0.999'
 }
 
 export class PdfReader {
@@ -331,6 +378,7 @@ export class PdfReader {
         } as ConstructorParameters<PdfWeb['PDFViewer']>[0])
         linkService.setViewer(viewer)
         this.viewer = viewer
+        this.sharp = holdSharpPartWhileMoving(container, viewer, this.controller.signal)
         this.eventBus = eventBus
         this.linkService = linkService
         this.listenToViewer(eventBus)
@@ -352,6 +400,7 @@ export class PdfReader {
             if (this.crop) this.applyCropToPages()
         })
         eventBus.on('updateviewarea', ({ location }: { location: { pageNumber: number; top: number } }) => this.onViewArea(location))
+        eventBus.on('pagerender', ({ source }: { source: DrawnPage }) => alignDetail(source))
         eventBus.on('pagerendered', ({ source }: { source: OverlayPage }) => this.onPageRendered(source))
         eventBus.on('updatefindmatchescount', ({ matchesCount }: { matchesCount: { current: number; total: number } }) => {
             this.find = { ...this.find, current: matchesCount.current, total: matchesCount.total }
@@ -361,9 +410,15 @@ export class PdfReader {
         })
     }
 
+    /** Each page a viewer makes, as it makes them: a document set again makes new ones. */
+    private holdSharpParts(viewer: InstanceType<PdfWeb['PDFViewer']>): void {
+        for (let i = 0; i < viewer.pagesCount; i++) this.sharp?.hold(viewer.getPageView(i) as unknown as SharpPage)
+    }
+
     private onPagesInit(): void {
         const viewer = this.viewer
         if (!viewer || !this.hash) return
+        this.holdSharpParts(viewer)
         // Here, not as the viewer starts: it has no pages to show one of until now, and it goes back to
         // scrolling each time it is given the document again.
         if (this.preferences.pageByPage && this.web) viewer.scrollMode = this.web.ScrollMode.PAGE
@@ -521,12 +576,9 @@ export class PdfReader {
         listenForPinch(
             container,
             {
-                onStart: () => {
-                    this.overlays.cancelStroke()
-                    this.pinchFrom = this.viewer?.currentScale ?? 1
-                },
+                onStart: () => this.overlays.cancelStroke(),
                 onMove: (change) => this.onPinch(change),
-                onEnd: () => this.rememberZoom(),
+                onEnd: () => this.onPinchEnd(),
             },
             signal,
         )
@@ -572,20 +624,84 @@ export class PdfReader {
         container.addEventListener('mouseup', () => this.clearIdleSelecting(), { signal })
     }
 
-    /** The zoom as two fingers took hold of the page. */
-    private pinchFrom = 1
+    /** Holds the part of a zoomed page drawn sharply while the PDF moves (`pdf-sharp-hold.ts`). */
+    private sharp: SharpHold | null = null
+
+    /** The pages held by two fingers, from the zoom beginning to the fingers lifting. */
+    private pinch: { start: PinchStart; placed: PinchPlacement; hold: HTMLElement; at: [number, number] } | null = null
+
+    /** A pan alone scrolls, as a zoom of one would be taken for a chosen zoom and end a fit to the width. */
+    private onPinch({ origin, pan, zoom }: PinchChange): void {
+        if (!this.pinch) {
+            if (zoom === 1) return this.viewer?.panBy(pan[0], pan[1])
+            this.pinch = this.holdPages([origin[0] - pan[0], origin[1] - pan[1]])
+        }
+        const { pinch, viewerElement } = this
+        if (!pinch || !viewerElement) return
+        pinch.at = origin
+        pinch.placed = placePinch(pinch.start, origin, zoom)
+        const { x, y, zoom: held } = pinch.placed
+        viewerElement.style.transform = `translate(${x}px, ${y}px) scale(${held})`
+        this.scale = pinch.start.scale * held
+    }
+
+    /** Draw the pages as a picture until the fingers lift, held at `origin`. */
+    private holdPages(origin: [number, number]): NonNullable<PdfReader['pinch']> | null {
+        const { container, viewer, viewerElement } = this
+        if (!container || !viewer || !viewerElement) return null
+        // The scroller keeps its whole range, or a page drawn smaller would scroll it. A layer of its own under the pages,
+        // in the scroller's colour: WebKit on an iPad leaves what the scroller had painted there as the pages move into
+        // theirs, and it shows around a page zoomed out.
+        const hold = document.createElement('div')
+        hold.setAttribute('data-pinch-cover', '')
+        hold.style.cssText = `position: absolute; top: 0; left: 0; width: ${container.scrollWidth}px; height: ${container.scrollHeight}px; background: inherit; will-change: transform; pointer-events: none`
+        const pages = [...viewerElement.querySelectorAll<HTMLElement>('.page')]
+        const page = nearestPage(pages, origin)
+        if (!page) return null
+        const start: PinchStart = {
+            origin,
+            // Without a scroll bar, where a screen has one.
+            view: { ...boxOf(container), width: container.clientWidth, height: container.clientHeight },
+            pages: boxOf(viewerElement),
+            page: boxOf(page),
+            // A crop draws a page outside the scroller's edges on purpose.
+            holdSides: !this.crop,
+            scale: viewer.currentScale,
+        }
+        viewerElement.before(hold)
+        viewerElement.style.transformOrigin = '0 0'
+        viewerElement.style.willChange = 'transform'
+        return { start, placed: { x: 0, y: 0, zoom: 1 }, hold, at: origin }
+    }
 
     /**
-     * The pan goes to pdf.js with the zoom: a zoom puts the page back where pdf.js last measured it, so
-     * a scroll of our own beside it would be undone. The zoom is the gesture's whole zoom, because
-     * pdf.js rounds each one to a hundredth.
+     * The fingers lifted: the pages are laid out once, at the zoom and the place they were drawn at. The
+     * place is put back here and not by pdf.js's `origin` and `pan`: it scrolls to the zoomed corner of the
+     * view first, which stops at the ends of what can scroll, and measures the fingers from where it stopped.
      */
-    private onPinch({ origin, pan, zoom }: PinchChange): void {
-        const viewer = this.viewer
-        if (!viewer) return
-        // A pan alone is no zoom: pdf.js would take it for a chosen one, and the fit would be lost.
-        if (zoom === 1) return viewer.panBy(pan[0], pan[1])
-        viewer.updateScale({ drawingDelay: 400, scaleFactor: (this.pinchFrom * zoom) / viewer.currentScale, origin: this.zoomOrigin(origin[0], origin[1]), pan })
+    private onPinchEnd(): void {
+        const { pinch, viewer, viewerElement, container } = this
+        this.pinch = null
+        // By the page nearest the fingers now: each page between it and another is laid out to whole pixels.
+        const page = pinch && viewerElement ? nearestPage([...viewerElement.querySelectorAll<HTMLElement>('.page')], pinch.at) : null
+        if (pinch && page && viewer && viewerElement && container) {
+            const drawn = boxOf(page)
+            const [x, y] = pinch.at
+            const place = { across: (x - drawn.left) / drawn.width, down: (y - drawn.top) / drawn.height }
+            for (const property of ['transform', 'transform-origin', 'will-change']) viewerElement.style.removeProperty(property)
+            pinch.hold.remove()
+            // At once: what is on screen is a stretched picture of the pages.
+            viewer.updateScale({ drawingDelay: 0, scaleFactor: pinch.placed.zoom })
+            const laid = boxOf(page)
+            container.scrollLeft += laid.left + place.across * laid.width - x
+            container.scrollTop += laid.top + place.down * laid.height - y
+            this.scale = viewer.currentScale
+        }
+        // pdf.js notes the place in view as a scroll reaches it. A pan at the end of the pages scrolls nothing, and
+        // the next zoom would then measure the old place in the new layout, pages away from it. The sharp part
+        // is drawn with it, though a finger may still be down: what is drawn is of the zoom before.
+        this.sharp?.drawNow()
+        this.rememberZoom()
     }
 
     /**

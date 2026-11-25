@@ -70,6 +70,7 @@ export const RETIRED_TERMS: readonly { pattern: RegExp; now: string }[] = [
     { pattern: /\bcopy task reference\b/gi, now: 'Copy agent instruction' },
     { pattern: /\bgraph sidebar\b/gi, now: 'Explorer' },
     { pattern: /(?<![a-z])book bookmarks\b/gi, now: 'EBook Bookmarks' },
+    { pattern: /\bReplace Encryption Keys and lock out other\s+devices\b/gi, now: 'Replace Encryption Keys' },
 ]
 
 const RESOURCES = 'tokens?|keys?|codes?|graphs?|pages?|documents?|folders?|accounts?|cop(?:y|ies)|tasks?'

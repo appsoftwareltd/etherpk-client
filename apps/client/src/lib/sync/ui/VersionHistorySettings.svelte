@@ -121,7 +121,7 @@
         {:else}
             <button
                 type="button"
-                class="gk-button"
+                class="gk-button max-w-full whitespace-normal"
                 onclick={() => {
                     armed = true;
                     outcome = null;

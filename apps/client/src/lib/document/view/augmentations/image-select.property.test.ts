@@ -1,18 +1,19 @@
 /**
  * Property tests over the selected image (image-select.ts): the one rendered image whose controls
- * a tap has raised. Random documents of bullets, prose and image lines take random taps, clicks,
- * caret moves, typing and edits made elsewhere (a peer's, with no selection of their own: text
+ * a tap or a click has raised. Random documents of bullets, prose and image lines take random taps,
+ * clicks, Edits as text, caret moves, typing and edits made elsewhere (a peer's, with no selection of their own: text
  * written and deleted, whole lines deleted, lines indented and outdented), and
- * after every step the rules of Editor Content Rules.md → "A tap on a rendered image shows its
- * actions" must hold:
+ * after every step the rules of Editor Content Rules.md → "A click or a tap on a rendered image shows
+ * its actions" must hold:
  *
  * - The selected line, when there is one, is drawn as its picture: never a line that was deleted,
  *   written into something else, or revealed.
  * - Exactly that picture's widget is the selected one, and no other.
- * - A tap selects the picture tapped, or deselects it when it was the selected one, and never moves
- *   the caret.
- * - Nothing but a tap selects a picture: after any other step the selected picture is the one that
- *   was selected before it, or none.
+ * - A tap selects the picture tapped, or deselects it when it was the selected one, and a click
+ *   selects the picture clicked, however often. Neither moves the caret.
+ * - Nothing else selects a picture: after any other step the selected picture is the one that was
+ *   selected before it, or none.
+ * - The picture holds the keyboard exactly when a click was the last to select it.
  */
 
 import type { EditorState } from '@codemirror/state'
@@ -22,7 +23,7 @@ import { describe, expect, it } from 'vitest'
 
 import { editorFixture, type HeadlessEditor } from '../testing/editor-state-fixture'
 import { imageClickSpec, imageEmbedAugmentation } from './image-embed'
-import { imageTapSpec, selectedImageLine } from './image-select'
+import { imagePressSpec, imageTapSpec, selectedImageHoldsKeyboard, selectedImageLine } from './image-select'
 
 /**
  * A fixed seed keeps the suite deterministic in CI. To hunt for new counterexamples, run with
@@ -54,6 +55,7 @@ const line = fc.constantFrom(
 type Step =
     | { kind: 'tap'; picture: number }
     | { kind: 'click'; picture: number }
+    | { kind: 'edit'; picture: number }
     | { kind: 'caret'; at: number }
     | { kind: 'type'; text: string }
     | { kind: 'peer-insert'; at: number; text: string }
@@ -63,7 +65,8 @@ type Step =
 
 const step: fc.Arbitrary<Step> = fc.oneof(
     { weight: 4, arbitrary: fc.record({ kind: fc.constant('tap' as const), picture: fc.nat(20) }) },
-    fc.record({ kind: fc.constant('click' as const), picture: fc.nat(20) }),
+    { weight: 4, arbitrary: fc.record({ kind: fc.constant('click' as const), picture: fc.nat(20) }) },
+    fc.record({ kind: fc.constant('edit' as const), picture: fc.nat(20) }),
     fc.record({ kind: fc.constant('caret' as const), at: fc.nat(400) }),
     fc.record({ kind: fc.constant('type' as const), text: fc.constantFrom('s', ' ', '!', '\n') }),
     fc.record({ kind: fc.constant('peer-insert' as const), at: fc.nat(400), text: fc.constantFrom('- peas\n', 'x', '\n', '```\n', ' and more') }),
@@ -92,10 +95,12 @@ function pictures(state: EditorState): { line: number; selected: boolean }[] {
     return found
 }
 
-/** What a step may leave selected: exactly `tapped` after a tap, and `carried` or nothing after any other step. */
+/** What a step may leave selected: exactly `pressed` after a tap or a click, and `carried` or nothing after any other step. */
 interface Outcome {
-    /** The line a tap must leave selected, or null when it deselects. */
-    tapped?: number | null
+    /** The line a tap or a click must leave selected, or null when a tap deselects. */
+    pressed?: number | null
+    /** Whether the picture a tap or a click selected holds the keyboard. */
+    keyboard?: boolean
     /** Where the picture selected before the step is now, or null when there was none or it is gone. */
     carried: number | null
 }
@@ -121,19 +126,23 @@ function run(editor: HeadlessEditor, s: Step): Outcome {
     const { state } = editor
     const length = state.doc.length
     const selected = selectedImageLine(state)
-    if (s.kind === 'tap' || s.kind === 'click') {
-        // Only a drawn picture can be tapped or clicked: the gesture lands on its widget.
+    if (s.kind === 'tap' || s.kind === 'click' || s.kind === 'edit') {
+        // Only a drawn picture can be pressed: the gesture lands on its widget.
         const drawn = pictures(state)
         if (drawn.length === 0) return { carried: selected }
         const target = drawn[s.picture % drawn.length].line
         const from = state.doc.line(target).from
-        if (s.kind === 'click') {
-            // The caret goes onto the clicked line, which puts any picture's controls away.
+        if (s.kind === 'edit') {
+            // The caret goes onto the picture's line, which puts any picture's controls away.
             editor.dispatch(state.update(imageClickSpec(state, from)))
             return { carried: null }
         }
+        if (s.kind === 'click') {
+            editor.dispatch(state.update(imagePressSpec(state, from)))
+            return { pressed: target, keyboard: true, carried: null }
+        }
         editor.dispatch(state.update(imageTapSpec(state, from)))
-        return { tapped: selected === target ? null : target, carried: null }
+        return { pressed: selected === target ? null : target, keyboard: false, carried: null }
     }
     if (s.kind === 'caret') {
         // The caret may be held off the place asked for (a bullet's marker): what counts is whether it moved.
@@ -160,21 +169,24 @@ function run(editor: HeadlessEditor, s: Step): Outcome {
 }
 
 describe('the selected image', () => {
-    it('is always one drawn picture or none, and only a tap selects one, without moving the caret', () => {
+    it('is always one drawn picture or none, and only a tap or a click selects one, without moving the caret', () => {
         fc.assert(
             fc.property(fc.array(line, { minLength: 1, maxLength: 8 }), fc.array(step, { maxLength: 25 }), (lines, steps) => {
                 const editor = editorFixture(`${lines.join('\n')}\n- Last line§`, { caret: '§', extensions })
+                let keyboard = false
                 for (const s of steps) {
                     const caret = editor.head()
                     const outcome = run(editor, s)
                     const selected = selectedImageLine(editor.state)
-                    if (outcome.tapped !== undefined) {
-                        expect(selected).toBe(outcome.tapped)
+                    if (outcome.pressed !== undefined) {
+                        expect(selected).toBe(outcome.pressed)
+                        keyboard = outcome.keyboard ?? false
                         expect(editor.head()).toBe(caret)
                     } else if (selected !== null) {
                         // Carried along with its line, never moved to another picture.
                         expect(selected).toBe(outcome.carried)
                     }
+                    expect(selectedImageHoldsKeyboard(editor.state)).toBe(selected !== null && keyboard)
                     // The selected line is drawn as its picture, and its widget alone is the selected one.
                     const drawn = pictures(editor.state)
                     expect(drawn.filter((picture) => picture.selected).map((picture) => picture.line)).toEqual(selected === null ? [] : [selected])
