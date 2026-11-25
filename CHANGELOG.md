@@ -5,6 +5,14 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Fixes.**
+  - On a touch screen, a button of the Activity Bar no longer stays outlined or filled after a tap. The
+    bar that marks the view showing stays.
+
 ## 0.51.0 - 2026-11-25
 
 ### Client

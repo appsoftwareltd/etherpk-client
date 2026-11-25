@@ -112,9 +112,13 @@ export class TooltipController<T> {
         }, BRIEF_MS)
     }
 
-    /** A control reached with the keyboard. */
+    /**
+     * A control reached with the keyboard. A tap focuses its control too, and a browser may count that
+     * focus as the keyboard's: the tap's own words are showing by then, and keep their moment.
+     */
     focus(target: T): void {
         this.#cancelWaiting()
+        if (this.#shown?.target === target && this.#shown.mode === 'brief') return
         this.#show(target, 'focus')
     }
 

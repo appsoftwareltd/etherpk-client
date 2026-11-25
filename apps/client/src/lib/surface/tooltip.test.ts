@@ -170,6 +170,21 @@ describe('TooltipController', () => {
         expect(log).toEqual(['show settings focus', 'hide'])
     })
 
+    it('keeps a tap\'s moment when the tap focuses the control as the keyboard would', () => {
+        const { tips, advance, log } = setup()
+        tips.press('touch')
+        tips.tap('indent', 'touch')
+        tips.focus('indent')
+        expect(tips.current).toEqual({ target: 'indent', mode: 'brief' })
+        advance(BRIEF_MS)
+        expect(tips.current).toBeNull()
+        expect(log).toEqual(['show indent brief', 'hide'])
+        // Reached by keyboard afterwards, it is shown as ever. Another control's focus is not the tap's.
+        tips.tap('indent', 'touch')
+        tips.focus('outdent')
+        expect(tips.current).toEqual({ target: 'outdent', mode: 'focus' })
+    })
+
     it('keeps a focused control\'s tooltip while the mouse passes over it', () => {
         const { tips } = setup()
         tips.focus('settings')

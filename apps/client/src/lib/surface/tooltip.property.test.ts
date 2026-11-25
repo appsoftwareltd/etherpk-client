@@ -126,6 +126,7 @@ describe('TooltipController', () => {
                 )
 
                 for (const s of steps) {
+                    const before = host.shown
                     if (s.op === 'wait') wait(s.ms)
                     else if (s.op === 'press') tips.press(s.kind)
                     else if (s.op === 'dismiss') tips.dismiss()
@@ -143,6 +144,7 @@ describe('TooltipController', () => {
                         expect(timers.size, 'dismiss leaves no timer behind').toBe(0)
                     }
                     if (shown?.mode === 'brief') expect(time - shown.at).toBeLessThan(BRIEF_MS)
+                    if (s.op === 'focus' && before?.mode === 'brief' && before.target === s.target) expect(shown, 'the focus a tap brings leaves the tap its moment').toBe(before)
                     if (shown?.mode === 'hover') expect(timers.size, 'a hover tooltip waits on no timer').toBe(0)
                 }
                 // Left alone, a tap's tooltip goes and a hover's waits for the pointer to leave.

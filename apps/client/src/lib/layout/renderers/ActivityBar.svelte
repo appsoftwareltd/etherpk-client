@@ -176,6 +176,25 @@
         if (event.key === 'Escape' && drag) endDrag(false)
     }
 
+    // --- A tap lets go of the keyboard -----------------------------------------------
+    // A browser focuses a button that is tapped, and may draw the focus ring on it there and then
+    // or later: at the next key pressed, or as the person comes back to the app. A finger has no use
+    // for the focus, so a tap gives it up, before the press acts: a menu or a dialog the press opens
+    // then has no button to give the focus back to. A mouse and the keyboard keep it.
+    /** What the last press on the bar was made with. */
+    let pressedWith = ''
+
+    function onpresscapture(event: PointerEvent) {
+        pressedWith = event.pointerType
+    }
+
+    function onclickcapture(event: MouseEvent) {
+        // Enter and Space click too, with no press before them (`detail` 0).
+        if (event.detail === 0 || (pressedWith !== 'touch' && pressedWith !== 'pen')) return
+        const focused = document.activeElement
+        if (focused instanceof HTMLElement && event.currentTarget instanceof Node && event.currentTarget.contains(focused)) focused.blur()
+    }
+
     /** Right-click and long press on an icon, raising its menu. */
     function iconMenu(item: ActivityItem) {
         return (node: HTMLElement) => attachContextMenu(node, () => menuTarget(item))
@@ -190,7 +209,8 @@
 
 <svelte:window onkeydown={onwindowkeydown} />
 
-<nav class="bar" data-side={side} data-testid="activity-bar" aria-label="Primary Sidebar views">
+<!-- The captured events watch the buttons inside and add no action of the bar's own. -->
+<nav class="bar" data-side={side} data-testid="activity-bar" aria-label="Primary Sidebar views" onpointerdowncapture={onpresscapture} {onclickcapture}>
     <div class="icons">
         <div class="tabs" role="tablist" aria-orientation="vertical" bind:this={list}>
             {#each items as item (item.panelId)}
@@ -343,7 +363,8 @@
         user-select: none;
         -webkit-user-select: none;
     }
-    .tab:hover {
+    .tab:hover,
+    .tab:active {
         background: var(--gk-menu-hover);
         color: var(--gk-text-strong);
     }
@@ -398,6 +419,19 @@
         border-radius: 1px;
         background: var(--gk-accent);
         pointer-events: none;
+    }
+
+    /* A touch screen leaves what was tapped last hovered until the next tap, so a fill on hover
+       sticks. There a button is filled only while the finger is on it. */
+    @media (hover: none) {
+        .tab:hover:not(:active),
+        .bar .gk-icon-button:hover:not(:active) {
+            background: transparent;
+        }
+        .tab:hover:not(:active):not([aria-selected='true']),
+        .bar .gk-icon-button:hover:not(:active) {
+            color: var(--gk-text-muted);
+        }
     }
 
     /* Under a finger every icon is 44px, as every other control is. */
