@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { type SiteFolder, writeSite, writeSiteToDirectory } from './site-writer'
+import { type SiteFolder, isOwnedPath, writeSite, writeSiteToDirectory } from './site-writer'
 
 /** A memory File System Access directory: the subset the site writer uses. */
 interface MemFile {
@@ -122,6 +122,13 @@ describe('writeSiteToDirectory', () => {
         expect(fileText(root, 'CNAME')).toBe('example.com')
         expect(fileText(root, 'notes.txt')).toBe('user notes')
         expect(fileText(root, 'AGENTS.md')).toBe('# Mine\n<!-- s -->new<!-- e -->\nkeep')
+    })
+
+    // A site that loses its address stops getting these, and the ones in the folder still name the
+    // old address, so they are the publisher's to delete. A host's own files are never its to touch.
+    it('owns the files it derives from the pages, and no file a host or a person adds', () => {
+        for (const path of ['search.json', 'search-index.js', 'sitemap.xml', 'feed.xml', 'llms.txt', 'garden.html']) expect(isOwnedPath(path), path).toBe(true)
+        for (const path of ['CNAME', 'robots.txt', 'notes.txt', 'docs/llms.txt', '.github/workflows/pages.yaml']) expect(isOwnedPath(path), path).toBe(false)
     })
 
     it('deletes map and extension pictures that no page uses any more', async () => {

@@ -1,0 +1,45 @@
+{
+    "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+    "name": "io.github.appsoftwareltd/etherpk",
+    "title": "EtherPK",
+    "description": "Read, search and edit an EtherPK knowledge graph of Markdown notes, synced or in a folder.",
+    "websiteUrl": "https://docs.etherpk.com/using-ai-agents-with-your-notes",
+    "repository": {
+        "url": "https://github.com/appsoftwareltd/etherpk-client",
+        "source": "github",
+        "subfolder": "apps/mcp"
+    },
+    "version": "0.0.0",
+    "packages": [
+        {
+            "registryType": "npm",
+            "identifier": "@appsoftwareltd/etherpk-mcp",
+            "version": "0.0.0",
+            "runtimeHint": "npx",
+            "transport": {
+                "type": "stdio"
+            },
+            "packageArguments": [
+                {
+                    "type": "positional",
+                    "value": "serve"
+                },
+                {
+                    "type": "named",
+                    "name": "--graph",
+                    "description": "The id or name of a synced graph. Sign in first with the login command."
+                },
+                {
+                    "type": "named",
+                    "name": "--sync-server",
+                    "description": "The Sync Server that holds the graph, when more than one is signed in."
+                },
+                {
+                    "type": "named",
+                    "name": "--folder",
+                    "description": "The path of a graph folder, in place of --graph. Needs no sign-in."
+                }
+            ]
+        }
+    ]
+}

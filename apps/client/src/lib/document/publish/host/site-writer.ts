@@ -7,8 +7,8 @@
  * `DirectoryAdapter` is deliberately flat over a graph's four subdirectories.
  *
  * The folder's rules: **owned** paths - every file the publisher produced, and anything under
- * `assets/`, `theme/`, `maps/` and `pictures/`, top-level `.html`, `search.json`, `sitemap.xml`
- * and `feed.xml` - are rewritten and their strays deleted; **seeded** files are written when absent and
+ * `assets/`, `theme/`, `maps/` and `pictures/`, top-level `.html`, `search.json`, `sitemap.xml`,
+ * `feed.xml` and `llms.txt` - are rewritten and their strays deleted; **seeded** files are written when absent and
  * never touched again; `AGENTS.md` has its managed section rewritten and the user's text kept;
  * everything else (`CNAME`, `robots.txt`, `.git/`, a file the user added) is never written or
  * deleted. Only what changed is written, so a publish that changes one page moves one mtime.
@@ -62,7 +62,7 @@ const OWNED_FOLDERS = ['assets/', 'theme/', 'maps/', 'pictures/']
 export function isOwnedPath(path: string): boolean {
     if (OWNED_FOLDERS.some((folder) => path.startsWith(folder))) return true
     if (path.includes('/')) return false
-    return /\.html$/.test(path) || ['search.json', 'search-index.js', 'sitemap.xml', 'feed.xml', '.nojekyll'].includes(path)
+    return /\.html$/.test(path) || ['search.json', 'search-index.js', 'sitemap.xml', 'feed.xml', 'llms.txt', '.nojekyll'].includes(path)
 }
 
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {

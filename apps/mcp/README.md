@@ -334,6 +334,8 @@ npx -y @appsoftwareltd/etherpk-mcp@<version> --version
 ## Documentation and licence
 
 The full guide is [Using AI agents with your notes](https://docs.etherpk.com/using-ai-agents-with-your-notes).
+The documents are in the [EtherPK Format](https://docs.etherpk.com/etherpk-format), which that page
+specifies for anyone writing a program that reads or writes them.
 What changed in each release is in the
 [changelog](https://github.com/appsoftwareltd/etherpk-client/blob/main/CHANGELOG.md), which covers
 this package and the EtherPK Client, released together under one version.

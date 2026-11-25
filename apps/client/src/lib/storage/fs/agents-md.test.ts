@@ -85,6 +85,12 @@ describe('the managed section', () => {
         expect(section).toContain('https://docs.etherpk.com/folder-graphs')
     })
 
+    // The name and the address are what an agent, or the person asking it, can look up elsewhere.
+    it('names the EtherPK Format, its version and where its specification is', () => {
+        expect(section).toMatch(/\*\*EtherPK Format\*\*, version \d+\./)
+        expect(section).toContain('https://docs.etherpk.com/etherpk-format')
+    })
+
     it('tells a reader nested inside a larger project to point that project here', () => {
         expect(section).toMatch(/larger project/i)
     })

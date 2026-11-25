@@ -1,0 +1,137 @@
+{
+    "format": 1,
+    "documents": {
+        "journals/2026-06-02.md": {
+            "kind": "journal",
+            "name": "2026-06-02",
+            "aliases": [],
+            "scopes": [],
+            "links": ["garden", "kitchen"],
+            "tasks": [
+                {
+                    "text": "#P1 #D #D-2026-06-09 Water the beans [[Garden]] #outdoors",
+                    "status": "doing",
+                    "priority": 1,
+                    "due": "2026-06-09",
+                    "scheduled": null,
+                    "completed": null,
+                    "freeTags": ["outdoors"],
+                    "subtaskOf": null,
+                    "about": ["2026-06-02", "garden"]
+                },
+                {
+                    "text": "Fill the can",
+                    "status": "open",
+                    "priority": null,
+                    "due": null,
+                    "scheduled": null,
+                    "completed": null,
+                    "freeTags": [],
+                    "subtaskOf": 0,
+                    "about": ["2026-06-02", "garden"]
+                },
+                {
+                    "text": "Find the hose",
+                    "status": "done",
+                    "priority": null,
+                    "due": null,
+                    "scheduled": null,
+                    "completed": null,
+                    "freeTags": [],
+                    "subtaskOf": 0,
+                    "about": ["2026-06-02", "garden"]
+                },
+                {
+                    "text": "#C Order more seed",
+                    "status": "cancelled",
+                    "priority": null,
+                    "due": null,
+                    "scheduled": null,
+                    "completed": null,
+                    "freeTags": [],
+                    "subtaskOf": null,
+                    "about": ["2026-06-02"]
+                },
+                {
+                    "text": "#C Mend the fence",
+                    "status": "open",
+                    "priority": null,
+                    "due": null,
+                    "scheduled": null,
+                    "completed": null,
+                    "freeTags": [],
+                    "subtaskOf": null,
+                    "about": ["2026-06-02"]
+                }
+            ]
+        },
+        "pages/Garden.md": {
+            "kind": "page",
+            "name": "Garden",
+            "aliases": ["Allotment"],
+            "scopes": [],
+            "links": ["[[garden]] tools", "garden"],
+            "tasks": [
+                {
+                    "text": "#P2 #S-2026-06-05 Sow the carrots",
+                    "status": "open",
+                    "priority": 2,
+                    "due": null,
+                    "scheduled": "2026-06-05",
+                    "completed": null,
+                    "freeTags": [],
+                    "subtaskOf": null,
+                    "about": ["garden"]
+                }
+            ]
+        },
+        "pages/Soup_Stew.md": {
+            "kind": "page",
+            "name": "Soup/Stew",
+            "aliases": ["Broth"],
+            "scopes": [],
+            "links": ["allotment", "kitchen"],
+            "tasks": [
+                {
+                    "text": "#A #C-2026-05-30 Buy a stock pot",
+                    "status": "archived",
+                    "priority": null,
+                    "due": null,
+                    "scheduled": null,
+                    "completed": "2026-05-30",
+                    "freeTags": [],
+                    "subtaskOf": null,
+                    "about": ["soup/stew"]
+                }
+            ]
+        },
+        "pages/[[Garden]] Tools.md": {
+            "kind": "page",
+            "name": "[[Garden]] Tools",
+            "aliases": [],
+            "scopes": ["garden"],
+            "links": [],
+            "tasks": [
+                {
+                    "text": "#W Sharpen the hoe",
+                    "status": "waiting",
+                    "priority": null,
+                    "due": null,
+                    "scheduled": null,
+                    "completed": null,
+                    "freeTags": [],
+                    "subtaskOf": null,
+                    "about": ["[[garden]] tools", "garden"]
+                }
+            ]
+        },
+        "pages/kitchen.md": {
+            "kind": "page",
+            "name": "kitchen",
+            "aliases": [],
+            "scopes": [],
+            "links": ["garden"],
+            "tasks": []
+        }
+    }
+}

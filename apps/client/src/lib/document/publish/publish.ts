@@ -17,7 +17,7 @@ import { extensionOfFence, isExtensionFenceInfo } from '../extension-fence'
 import { checkedFenceAnswer } from '../fence-answer'
 import { MAP_FENCE_INFO, mapAltText } from '../map-text'
 import { wikilinkOccurrencesInSource } from '../wikilink/source'
-import { searchIndexJson, searchIndexScript, sitemapXml, feedXml, type SearchEntry, type FeedItem, type SitemapEntry } from './derived'
+import { searchIndexJson, searchIndexScript, sitemapXml, feedXml, llmsTxt, type SearchEntry, type FeedItem, type SitemapEntry, type LlmsEntry, type LlmsSection } from './derived'
 import {
     type BacklinkView,
     type NavViewNode,
@@ -377,6 +377,7 @@ export async function publishPublication(
 
     // 9. Derived files, from the included documents alone.
     writeDerivedFiles(pages, dated, publication, journals.length > 0, hasPostsArchive, bundle, info)
+    writeLlmsTxt(publication, nav, pages, dated, bundle)
     bundle.set('.nojekyll', '')
 
     // 10. What the site loads from elsewhere.
@@ -821,7 +822,7 @@ async function copyReferencedAssets(
     }
 }
 
-/** The search index, and for a site with a `url` its sitemap and feed, from the rendered pages alone. */
+/** The search index, and for a site with a `url` its sitemap and feed, from the rendered pages alone. Its `llms.txt` follows the menu, so `publishPublication` writes that. */
 function writeDerivedFiles(
     pages: readonly RenderedPage[],
     dated: readonly RenderedPage[],
@@ -852,8 +853,58 @@ function writeDerivedFiles(
             bundle.set('feed.xml', feedXml(publication.url, publication.name, items))
         }
     } else {
-        info.push({ level: 'info', code: 'no-site-url', message: 'The publication has no `url`, so no sitemap or feed is written - add one to the publication page to get both.' })
+        info.push({ level: 'info', code: 'no-site-url', message: 'The publication has no `url`, so no sitemap, feed or llms.txt is written - add one to the publication page to get them.' })
     }
+}
+
+/** The site's `llms.txt`, for a publication with a `url`: its entries are absolute addresses, as the sitemap's are. */
+function writeLlmsTxt(publication: Publication, nav: readonly NavNode[], pages: readonly RenderedPage[], dated: readonly RenderedPage[], bundle: SiteBundle): void {
+    if (publication.url) bundle.set('llms.txt', llmsTxt(publication.url, publication.name, llmsSections(nav, pages, dated)))
+}
+
+/** Where a page is on the site: the home page is the site's index. */
+function addressOf(page: RenderedPage): string {
+    return page.isHome ? 'index.html' : page.url
+}
+
+/** A menu entry and everything under it, in the order the menu shows them. */
+function menuEntries(node: NavNode): NavNode[] {
+    return [node, ...node.children.flatMap(menuEntries)]
+}
+
+/**
+ * The sections of the site's `llms.txt`, from the rendered pages alone, as the search index is.
+ * They follow the menu, which is the publication's outline or, without one, the list of pages: an
+ * entry at the top level goes under Pages, and a group, or a page with pages under it, is a section
+ * of its own. A page the menu does not name follows: undated pages under Pages, then the posts and
+ * the journal entries, newest first. A menu entry that leads off the site, or to an archive page,
+ * is no page and is left out.
+ */
+function llmsSections(nav: readonly NavNode[], pages: readonly RenderedPage[], dated: readonly RenderedPage[]): LlmsSection[] {
+    const byAddress = new Map<string, RenderedPage>()
+    for (const page of pages) byAddress.set(page.url, page).set(addressOf(page), page)
+    const listed = new Set<RenderedPage>()
+    const entryOf = (page: RenderedPage): LlmsEntry => ({ title: page.title, url: addressOf(page), description: page.rendered.excerpt })
+    /** The pages among `nodes` that no section holds yet, as entries. */
+    const take = (nodes: readonly NavNode[]): LlmsEntry[] => {
+        const fresh = nodes.flatMap((node) => (node.href !== undefined && !node.external ? [byAddress.get(node.href)] : [])).filter((page): page is RenderedPage => page !== undefined && !listed.has(page))
+        const once = [...new Set(fresh)]
+        for (const page of once) listed.add(page)
+        return once.map(entryOf)
+    }
+    /** The pages no section holds yet, as entries, in the order given. */
+    const rest = (remaining: readonly RenderedPage[]): LlmsEntry[] => {
+        const fresh = remaining.filter((page) => !listed.has(page))
+        for (const page of fresh) listed.add(page)
+        return fresh.map(entryOf)
+    }
+
+    const top = take(nav.filter((node) => node.children.length === 0))
+    const groups = nav.filter((node) => node.children.length > 0).map((node) => ({ title: node.label, entries: take(menuEntries(node)) }))
+    const undated = rest(pages.filter((page) => page.date === undefined))
+    const posts = rest(dated.filter((page) => page.doc.kind === 'page'))
+    const journal = rest(dated.filter((page) => page.doc.kind === 'journal'))
+    return [{ title: 'Pages', entries: [...top, ...undated] }, ...groups, { title: 'Posts', entries: posts }, { title: 'Journal', entries: journal }]
 }
 
 /** What the site loads from elsewhere: from the includes, the theme's files and the custom CSS. */

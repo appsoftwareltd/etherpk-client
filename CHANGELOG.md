@@ -5,6 +5,27 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.51.0 - 2026-11-25
+
+### Client
+
+- **The EtherPK Format has a specification.** The way EtherPK keeps a graph as Markdown files has a
+  name, a version and a page that specifies it: <https://docs.etherpk.com/etherpk-format>. The
+  `format/` folder of this repository holds an example graph folder and the names, links and tasks a
+  program gets from reading it, so another tool can check its own reading. The `AGENTS.md` in a graph
+  folder names the format and its version. The specification and the example are under the MIT License.
+- **A published site gets an `llms.txt`.** A publication with a site address writes `llms.txt` beside
+  the sitemap: the site's name, then each page's title, address and first words, under the headings of
+  the menu. A coding agent or a documentation index that is given the file's address reads the site's
+  pages from it. It lists only the pages the site shows. A publish replaces an `llms.txt` you kept in
+  the site folder yourself.
+
+### Headless Client
+
+- **The Headless Client is listed in the MCP Registry.** Each release publishes its entry,
+  `io.github.appsoftwareltd/etherpk`, so the directories and agent clients that read the registry can
+  find the server. Its instructions name the EtherPK Format and where the specification is.
+
 ## 0.50.0 - 2026-11-25
 
 ### Client

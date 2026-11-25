@@ -1,0 +1,13 @@
+{
+    "$schema": "https://context7.com/schema/context7.json",
+    "projectTitle": "EtherPK",
+    "description": "A personal knowledge base in plain Markdown that a person and a coding agent both read and write: the EtherPK Format, the Headless Client (an MCP server) and the etherpk agent skill.",
+    "folders": ["format", "skills/etherpk", "apps/mcp"],
+    "excludeFolders": ["apps/mcp/src", "apps/mcp/dist"],
+    "rules": [
+        "Read the AGENTS.md in a graph folder in full before writing a file in it: EtherPK writes the format's rules there.",
+        "Bullets are '- ' with two spaces of indentation for each level. Never run a Markdown formatter over a document.",
+        "A page's name is the title in its frontmatter, and a journal entry is journals/YYYY-MM-DD.md.",
+        "A synced graph has no folder: read and write it through the etherpk MCP tools."
+    ]
+}

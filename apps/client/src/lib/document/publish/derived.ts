@@ -1,6 +1,6 @@
 /**
- * The files a [[Published Site]] derives from its pages: the search index, the sitemap and the
- * feed. Each is built from the publication's own documents and nothing else, which is the
+ * The files a [[Published Site]] derives from its pages: the search index, the sitemap, the
+ * feed and `llms.txt`. Each is built from the publication's own documents and nothing else, which is the
  * whole protection argument (`Roadmap` → Protected content must not reach a published site):
  * a document the selection did not include cannot be in an index built from what it included.
  */
@@ -85,4 +85,49 @@ ${entries.join('\n')}
   </channel>
 </rss>
 `
+}
+
+/** One page of the site in `llms.txt`: its title, its site-relative address and a line about it. */
+export interface LlmsEntry {
+    title: string
+    url: string
+    /** The page's excerpt. Empty when the page has no text. */
+    description: string
+}
+
+/** A group of pages under one heading. */
+export interface LlmsSection {
+    title: string
+    entries: readonly LlmsEntry[]
+}
+
+/** Text on one line: every run of whitespace, line breaks of any kind included, becomes one space. */
+function oneLine(text: string): string {
+    return text.replace(/\s+/g, ' ').trim()
+}
+
+/** A title as markdown link text: one line, with the characters that would end the link written as literals. */
+function linkText(title: string): string {
+    return oneLine(title).replace(/[\\[\]]/g, '\\$&')
+}
+
+/**
+ * The site's `llms.txt` (llmstxt.org): its name as a heading, then each section as a heading over
+ * one markdown link a line, each with the page's absolute address and its excerpt. A program that
+ * is handed the file's address, such as a coding agent or a documentation index, reads the site's
+ * pages from it. `siteUrl` is the site's absolute address and entries carry site-relative paths. A
+ * section with no entries is left out.
+ */
+export function llmsTxt(siteUrl: string, siteTitle: string, sections: readonly LlmsSection[]): string {
+    const lines = [`# ${oneLine(siteTitle)}`, '']
+    for (const section of sections) {
+        if (section.entries.length === 0) continue
+        lines.push(`## ${oneLine(section.title)}`, '')
+        for (const entry of section.entries) {
+            const description = oneLine(entry.description)
+            lines.push(`- [${linkText(entry.title)}](${siteUrl}/${entry.url})${description === '' ? '' : `: ${description}`}`)
+        }
+        lines.push('')
+    }
+    return lines.join('\n')
 }

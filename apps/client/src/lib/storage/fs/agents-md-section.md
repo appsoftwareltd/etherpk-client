@@ -7,6 +7,10 @@ anywhere else, so an edit made here is the edit, and a corrupted file is corrupt
 The user documentation is at <https://docs.etherpk.com> - the pages that matter for editing
 these files are linked at the end of this section.
 
+The files are in the **EtherPK Format**, version 1. This section describes it in full for an
+agent working here, and its specification, with an example folder to check a program against, is
+at <https://docs.etherpk.com/etherpk-format>.
+
 EtherPK may have this folder open in a browser while you work. It notices files that change
 on disk (on window focus and on a light poll) and reloads them - if the user also had unsaved
 edits to the same file, EtherPK stops and asks them which version to keep rather than merging.
@@ -410,4 +414,5 @@ https://app.etherpk.com/graph/folder/reports/d/Garden%20Notes
 - Tables: <https://docs.etherpk.com/tables>
 - Protected documents: <https://docs.etherpk.com/protected-documents>
 - Every construct on one page: <https://docs.etherpk.com/document-syntax>
+- The format's specification: <https://docs.etherpk.com/etherpk-format>
 - Everything else: <https://docs.etherpk.com>

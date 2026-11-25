@@ -73,7 +73,8 @@ Read the folder's `AGENTS.md` in full before you write a file in it. Its EtherPK
 format reference: page names and identity, frontmatter, outliner bullets, tasks and their comments, links, assets,
 protected documents, and the rules that keep a file readable by EtherPK. EtherPK rewrites that
 section to match the version the user runs, so where it and this skill differ, follow
-`AGENTS.md`.
+`AGENTS.md`. The format has a name and a version, the EtherPK Format, and its specification is at
+<https://docs.etherpk.com/etherpk-format>.
 
 **Check:** you have read the whole EtherPK section.
 
@@ -126,7 +127,8 @@ section to match the version the user runs, so where it and this skill differ, f
   `etherpk-terminal` and `etherpk-al-folio`. A custom theme is made in EtherPK's Theme editor or
   with the MCP theme tools.
 - When the user knows the site's address, set `url: https://...` in the `publication:` mapping.
-  The site then gets a sitemap, and a feed of its dated pages when it has any.
+  The site then gets a sitemap, an `llms.txt` that lists its pages for agents, and a feed of its
+  dated pages when it has any.
 
 **Check:** every page meant for the site has `public: true` and the id in `publications:`, and
 each one is in the menu or linked from a page that is.

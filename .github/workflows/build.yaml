@@ -4,7 +4,8 @@ name: Build and release
 # `v<version>` tag yet is a release: versioned images, the Headless Client and the Extension API on
 # npm, then the tag and a GitHub Release with the Node bundle. Each publishing step can run twice
 # without harm, and the tag is created last, so a release that fails part-way completes on a re-run
-# or the next push.
+# or the next push. The Headless Client's entry in the MCP Registry is the one step the tag does not
+# wait for: when it fails, re-run that job.
 
 on:
   push:
@@ -235,6 +236,85 @@ jobs:
           for tarball in "$RUNNER_TEMP"/npm/*.tgz; do
             npm publish "$tarball" --access public
           done
+
+  mcp-registry:
+    name: List the Headless Client in the MCP Registry
+    needs: [version, npm-publish]
+    # The registry holds no package. It reads `mcpName` from the package on npm, so the npm publish
+    # comes first. npm-publish is skipped when the version is already on npm; this still runs then,
+    # so a failed listing can be run again, but never after a failure.
+    if: ${{ !failure() && !cancelled() && needs.version.outputs.release == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      # The registry exchanges this job's OIDC token for the right to publish under
+      # io.github.<this repository's owner>/, so no registry token is stored anywhere.
+      id-token: write
+      contents: read
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      # Pinned to a release whose Sigstore bundle is verified below, never releases/latest.
+      MCP_PUBLISHER_VERSION: v1.8.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Skip a version the registry already lists
+        id: registry
+        run: |
+          set -euo pipefail
+          name=$(jq -r .name apps/mcp/server.json)
+          listed=$(curl --fail --silent --show-error "https://registry.modelcontextprotocol.io/v0/servers?search=etherpk" \
+            | jq --arg name "$name" --arg version "$VERSION" '[.servers[] | select(.server.name == $name and .server.version == $version)] | length')
+          if [ "$listed" = 0 ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "$name $VERSION is already in the registry"
+          fi
+      # npm can take a little while to serve a version it has just accepted, and the registry reads it.
+      - name: Wait for npm to serve this version
+        if: steps.registry.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          package=$(jq -r '.packages[0].identifier' apps/mcp/server.json)
+          for _ in $(seq 1 30); do
+            if [ "$(npm view "$package@$VERSION" mcpName 2>/dev/null)" = "$(jq -r .name apps/mcp/server.json)" ]; then exit 0; fi
+            sleep 10
+          done
+          echo "npm does not serve $package $VERSION with the mcpName of server.json after five minutes" >&2
+          exit 1
+      - name: Install cosign
+        if: steps.registry.outputs.publish == 'true'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Download and verify mcp-publisher
+        if: steps.registry.outputs.publish == 'true'
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          arch="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')"
+          archive="mcp-publisher_${os}_${arch}.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob \
+            --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$archive"
+          tar xzf "$archive" mcp-publisher
+          rm -f "$archive" "$archive.sigstore.json"
+      # server.json carries no version of its own: the entry is for the version this run released.
+      - name: Publish server.json under this version
+        if: steps.registry.outputs.publish == 'true'
+        working-directory: apps/mcp
+        run: |
+          set -euo pipefail
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' server.json > server.tmp
+          mv server.tmp server.json
+          "$RUNNER_TEMP/mcp-publisher" login github-oidc
+          "$RUNNER_TEMP/mcp-publisher" publish
 
   release:
     name: Tag and GitHub Release with the Node bundle

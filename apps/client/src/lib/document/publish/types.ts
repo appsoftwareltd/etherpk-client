@@ -47,7 +47,7 @@ export interface Publication {
     selection: PublicationSelection
     /** Concept whose content becomes the front page; absent ⇒ a generated index. */
     home?: string
-    /** Where the site is deployed; used for the feed and the sitemap. */
+    /** Where the site is deployed; used for the feed, the sitemap and `llms.txt`. */
     url?: string
     /** A bundled theme name, a URL to a manifest, or a graph theme id. */
     theme: string

@@ -60,11 +60,19 @@ engine without an editor: an MCP server that gives an AI agent one of your graph
 
 User documentation is at <https://docs.etherpk.com>.
 
+A graph folder is written in the **EtherPK Format**: Markdown files a person and a coding agent
+can both read and write. Its [specification](https://docs.etherpk.com/etherpk-format) says how a
+program reads and writes one, and [`format/`](format/README.md) holds an example folder with the
+result a reader gets from that folder.
+
 ## Licence
 
 The Elastic License 2.0 lets you use, copy, modify and self-host this software. It does not let you
 offer it to others as a hosted or managed service. It is a source-available licence, not an open
 source one.
+
+The EtherPK Format's specification, its example folder, the EtherPK section of `AGENTS.md` and the
+agent skill's starter folders are under the [MIT License](format/LICENSE).
 
 ## Contents
 
@@ -76,6 +84,7 @@ source one.
 | `packages/themes` | The site themes the publisher bundles |
 | `packages/extension-api` | The Extension API every EtherPK extension is written against, MIT licensed, published to npm as [`@appsoftwareltd/etherpk-extension-api`](https://www.npmjs.com/package/@appsoftwareltd/etherpk-extension-api) |
 | `extensions` | The extensions that come with the Client: Agent Chat, Excalidraw drawings, the Graph View, Kanban boards and maps |
+| `format` | An example graph folder in the EtherPK Format, and the result a program gets from reading it ([README](format/README.md)) |
 | `skills/etherpk` | The agent skill: how an AI agent makes, edits and publishes EtherPK graph folders ([SKILL.md](skills/etherpk/SKILL.md)) |
 
 ## Run it

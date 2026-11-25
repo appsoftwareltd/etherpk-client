@@ -155,6 +155,8 @@ describe('the MCP server', () => {
         ])
         expect(client.getInstructions()).toContain('"Notes"')
         expect(client.getInstructions()).toContain('protected')
+        // The format's name and the address of its specification: what an agent can look up or cite.
+        expect(client.getInstructions()).toMatch(/EtherPK Format, version \d+, specified at https:\/\/docs\.etherpk\.com\/etherpk-format/)
     })
 
     // An agent that goes looking for the notes on disk finds the sign-in instead, so the

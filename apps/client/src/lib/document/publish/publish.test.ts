@@ -57,6 +57,7 @@ describe('publishPublication', () => {
                 'guide.html',
                 'index.html',
                 'journal.html',
+                'llms.txt',
                 'physics.html',
                 'search-index.js',
                 'search.json',
@@ -219,6 +220,31 @@ describe('publishPublication', () => {
         expect(sitemap).toContain('<loc>https://docs.example.com/index.html</loc>')
         expect(sitemap).toContain('<loc>https://docs.example.com/guide.html</loc>')
         expect(sitemap).not.toContain('secret')
+        // llms.txt follows the outline: a page at the top level under Pages, a group or a page with
+        // pages under it as a section of its own, then the journal, which the outline does not name.
+        expect(bundle.get('llms.txt')).toBe(
+            [
+                '# Docs Site',
+                '',
+                '## Pages',
+                '',
+                '- [Welcome](https://docs.example.com/index.html): Welcome to the docs. See Guide.',
+                '',
+                '## Guide',
+                '',
+                `- [Guide](https://docs.example.com/guide.html): ${search.documents[1].excerpt}`,
+                '- [Guide Advanced](https://docs.example.com/guide-advanced.html): advanced, back to Guide',
+                '',
+                '## Reference',
+                '',
+                '- [Physics](https://docs.example.com/physics.html): physics',
+                '',
+                '## Journal',
+                '',
+                '- [2026-06-02](https://docs.example.com/2026-06-02.html): day one, see Guide',
+                '',
+            ].join('\n'),
+        )
         const feed = bundle.get('feed.xml') as string
         expect(feed).toContain('<link>https://docs.example.com/2026-06-02.html</link>')
         expect(feed).toContain('<link>https://docs.example.com/guide.html</link>')
@@ -729,8 +755,9 @@ describe('publish contracts', () => {
             expect(bundle.has('journal.html')).toBe(false)
             // An undated page is the menu of a blog without an outline; a post is not.
             expect(text(bundle.get('garden.html')).split('|')[14]).toBe('')
-            expect(report.info).toContainEqual(expect.objectContaining({ code: 'no-site-url' }))
+            expect(report.info).toContainEqual(expect.objectContaining({ code: 'no-site-url', message: expect.stringContaining('no sitemap, feed or llms.txt is written') }))
             expect(bundle.has('sitemap.xml')).toBe(false)
+            expect(bundle.has('llms.txt')).toBe(false)
         })
 
         it('uses the home layout for the home page, found by an alias', async () => {
@@ -912,6 +939,42 @@ describe('publish contracts', () => {
             const blog = site('  kind: blog\n  url: https://garden.example.com/\n', [pageDoc('Garden', '- beans\n', 'public: true\npublications: [site]\ndate: 2026-05-01')])
             const blogSite = await publishPublication(blog.source, blog.publication, probe())
             expect(text(blogSite.bundle.get('sitemap.xml'))).toContain('<loc>https://garden.example.com/posts.html</loc>')
+        })
+
+        it('lists a site with no outline in llms.txt: its undated pages, then its posts with the newest first', async () => {
+            const dated = (day: string) => `public: true\npublications: [site]\ndate: ${day}`
+            const blog = site('  kind: blog\n  url: https://garden.example.com/\n', [
+                pageDoc('Spring', '- sowing\n', dated('2026-03-01')),
+                pageDoc('About', '- who digs here\n'),
+                pageDoc('Summer', '- watering\n', dated('2026-06-01')),
+            ])
+            const { bundle } = await publishPublication(blog.source, blog.publication, probe())
+            expect(text(bundle.get('llms.txt'))).toBe(
+                [
+                    '# Site',
+                    '',
+                    '## Pages',
+                    '',
+                    '- [About](https://garden.example.com/about.html): who digs here',
+                    '',
+                    '## Posts',
+                    '',
+                    '- [Summer](https://garden.example.com/summer.html): watering',
+                    '- [Spring](https://garden.example.com/spring.html): sowing',
+                    '',
+                ].join('\n'),
+            )
+        })
+
+        // The file is built from the pages the site holds, as the search index is, so a document the
+        // publication leaves out cannot be named in it.
+        it('names no document in llms.txt that the site does not hold', async () => {
+            const { bundle } = await publishPublication(source, docs, environment())
+            const llms = text(bundle.get('llms.txt'))
+            // A page's excerpt may name a document it links to, as the page itself does. No entry leads to one.
+            for (const left of ['secret.html', 'protected-doc.html', 'release-notes.html', 'site-footer.html', 'site-styles.html', 'private-head.html', '404.html', SECRET_BODY, CIPHER_TEXT]) {
+                expect(llms).not.toContain(left)
+            }
         })
     })
 })
