@@ -284,7 +284,10 @@ test('a remote that cannot be asked is not one with no feed', () => {
 // The public workflows run only in the public repository, at a release. These rules read them as text, by
 // job, so that a change that breaks one is caught here first.
 
-const WORKFLOWS = join(here, '../../public-repos/client/.github/workflows')
+// In this repository they are under public-repos/client; the export puts them at the public
+// repository's own .github/workflows, where these tests run as well.
+const PRIVATE_WORKFLOWS = join(here, '../../public-repos/client/.github/workflows')
+const WORKFLOWS = existsSync(PRIVATE_WORKFLOWS) ? PRIVATE_WORKFLOWS : join(here, '../../.github/workflows')
 
 /** The jobs of a workflow: each one's id and the lines under it. */
 function jobsOf(file) {
