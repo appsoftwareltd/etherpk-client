@@ -185,6 +185,11 @@ export interface WorkspaceServices {
      * View never holds a renderer - which is swapped out from under it at the breakpoint.
      */
     retitleView?: (panelId: string, title: string) => void
+    /**
+     * Write the open panel's address again in place, when it is the Visit the address bar names: a
+     * [[Block View]] whose Block's words or place changed (ADR 0209). No new history entry.
+     */
+    readdressView?: (panelId: string) => void
     /** The graph's lock, for the sidebar. Absent on a graph with no Protection Key. */
     protection?: ProtectionControls
     frontmatter?: FrontmatterService

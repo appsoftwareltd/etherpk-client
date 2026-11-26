@@ -53,6 +53,14 @@ export interface ShownRange {
      * run is drawn from the level below it (`augmentations/outline-base.ts`).
      */
     nestedUnder: number
+    /**
+     * The run is one bullet [[Block]] and everything nested under it, a [[Block View]] (ADR 0209):
+     * `nestedUnder` is the Block's own line, the run's first. The run is drawn from that line's level
+     * rather than the one below it, Enter on that line starts its first child (`outliner-keymap.ts`),
+     * and the person's edit that would change that line's indent is refused: the Block's place among
+     * the hidden lines is not this editor's to change.
+     */
+    wholeBlock?: boolean
 }
 
 /**
@@ -62,6 +70,8 @@ export interface ShownRange {
 export interface ShownRangeOf {
     (state: EditorState): ShownRange | null
     readonly names?: ShownPartNames
+    /** What the run is read with, loaded beside it: a field `rangeOf` reads, say. */
+    readonly extension?: Extension
 }
 
 /** The names of a part whose host gives none. */
@@ -73,7 +83,7 @@ const rangeOfFacet = Facet.define<ShownRangeOf, ShownRangeOf | null>({ combine: 
 const shownRangeFacet = Facet.define<ShownRange | null, ShownRange | null | undefined>({
     combine: (values) => (values.length === 0 ? undefined : values[0]),
     // The same run worked out again is no change to what reads it.
-    compare: (a, b) => a === b || (!!a && !!b && a.from === b.from && a.to === b.to && a.nestedUnder === b.nestedUnder),
+    compare: (a, b) => a === b || (!!a && !!b && a.from === b.from && a.to === b.to && a.nestedUnder === b.nestedUnder && a.wholeBlock === b.wholeBlock),
 })
 
 /** The editor's shown run: null when nothing is shown, undefined in an editor that shows everything. */
@@ -184,10 +194,25 @@ function judgeOwnEdit(tr: Transaction, before: ShownRange | null): Transaction |
     const { from, to } = mappedEdges(tr, before)
     if (from === to) return emptied(tr, from)
     const after = shownRangeIn(tr.state)
-    // Inside the run, but shown text would leave it: Shift+Tab past the task, Tab into the comments.
-    if (!after || after.from > from || after.to < to) return refuse(tr, 'move-out')
+    if (!after || takesShownOut(tr, before, after, from, to)) return refuse(tr, 'move-out')
     const selection = clampedSelection(tr, after)
     return selection ? [tr, selection] : tr
+}
+
+/**
+ * Whether an edit inside the run would take shown text out of it: Shift+Tab past the task, Tab into
+ * the comments. In a Block View, also an edit that changes the indent of the Block's own line: Tab
+ * or Shift+Tab on it would move the Block among lines this editor hides, and an outdent could take
+ * the lines after it in under it.
+ */
+function takesShownOut(tr: Transaction, before: ShownRange, after: ShownRange, from: number, to: number): boolean {
+    if (after.from > from || after.to < to) return true
+    return before.wholeBlock === true && indentAt(tr.startState, before.from) !== indentAt(tr.state, from)
+}
+
+/** The indent of the line starting at `pos`. */
+function indentAt(state: EditorState, pos: number): number {
+    return lineIndent(state.doc.lineAt(pos).text)
 }
 
 /**
@@ -207,7 +232,7 @@ function mappedEdges(tr: Transaction, before: ShownRange): { from: number; to: n
  * sole empty bullet). The change is often written as a smaller replacement that ends in the same text,
  * so the text is compared, not the change. The break goes with the lines, so no blank line is left.
  */
-function emptiesRun(tr: Transaction, range: ShownRange): boolean {
+export function emptiesRun(tr: Transaction, range: ShownRange): boolean {
     const doc = tr.startState.doc
     if (doc.length - tr.newDoc.length !== range.to - range.from + 1) return false
     const after = tr.newDoc.toString()
@@ -215,11 +240,16 @@ function emptiesRun(tr: Transaction, range: ShownRange): boolean {
     return breakBefore || (range.to < doc.length && doc.sliceString(0, range.from) + doc.sliceString(range.to + 1) === after)
 }
 
-/** Everything shown was deleted: the line left empty goes too, with the break before it. */
+/**
+ * Everything shown was deleted: the line left empty goes too, with the break before it, or with the
+ * break after it at the document's start (a [[Block View]] of the first Block).
+ */
 function emptied(tr: Transaction, at: number): readonly TransactionSpec[] {
     const line = tr.newDoc.lineAt(at)
-    if (line.text !== '' || line.from === 0) return [tr]
-    return [tr, { changes: { from: line.from - 1, to: line.to }, selection: EditorSelection.cursor(line.from - 1), sequential: true }]
+    if (line.text !== '') return [tr]
+    if (line.from > 0) return [tr, { changes: { from: line.from - 1, to: line.to }, selection: EditorSelection.cursor(line.from - 1), sequential: true }]
+    if (line.to < tr.newDoc.length) return [tr, { changes: { from: 0, to: line.to + 1 }, selection: EditorSelection.cursor(0), sequential: true }]
+    return [tr]
 }
 
 /**
@@ -248,9 +278,11 @@ function runBase(state: EditorState): OutlineBase | null {
     if (!range || range.nestedUnder > state.doc.lines) return null
     const parent = range.nestedUnder - 1
     const { lines, outline } = analysisFor(state)
+    // A Block View draws the Block's own line at the left edge: its level, not the one below it.
+    const below = range.wholeBlock ? 0 : 1
     return {
-        depth: (outline[parent]?.depth ?? 0) + 1,
-        indent: lineIndent(lines[parent]) + INDENT_UNIT,
+        depth: (outline[parent]?.depth ?? 0) + below,
+        indent: lineIndent(lines[parent]) + below * INDENT_UNIT,
         shown: { first: state.doc.lineAt(range.from).number - 1, last: state.doc.lineAt(range.to).number - 1 },
     }
 }
@@ -283,6 +315,7 @@ export function showsPartOfDocument(state: EditorState): boolean {
  */
 export function shownRange(rangeOf: ShownRangeOf): Extension {
     return [
+        rangeOf.extension ?? [],
         rangeOfFacet.of(rangeOf),
         // `rangeOf` reads the anchored line and the shared analysis, so both are dependencies.
         shownRangeFacet.compute(['doc', lineAnchorField, editorAnalysisField, rangeOfFacet], (state) => state.facet(rangeOfFacet)?.(state) ?? null),

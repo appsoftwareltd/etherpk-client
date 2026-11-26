@@ -5,6 +5,16 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Open a block in a tab.** **Open Block in tab**, on a bullet's menu or in the Command Menu,
+  shows that bullet and everything nested under it in a tab of its own, titled by its
+  words. Edits there are edits to the page. **Copy link to block** copies a link that opens the same
+  tab, and the link still finds the block after lines are added above it or its words change. The
+  Task Editor's **Open in tab** opens its task this way.
+
 ## 0.53.0 - 2026-11-26
 
 ### Headless Client

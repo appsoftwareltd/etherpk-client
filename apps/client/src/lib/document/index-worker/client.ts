@@ -131,6 +131,8 @@ export interface RemoteGraphIndex {
     tasks(query: TaskQuery, offset: number, limit: number): Promise<TaskPageResult>
     /** Every task by document, line and text, unordered: where else a [[Task Reference]]'s task might be. */
     taskLabels(): Promise<TaskLabel[]>
+    /** Every bullet by document, line and label, unordered: where else a [[Block View]]'s Block might be. */
+    bulletLabels(): Promise<TaskLabel[]>
     /**
      * [[Semantic Search]]'s store and scan, as round trips (ADR 0076). The index holds vectors
      * and answers nearest-passage queries; it knows no model, so the caller embeds. A
@@ -1215,6 +1217,10 @@ export function createRemoteGraphIndex(
         async taskLabels() {
             const response = await request<Extract<IndexResponse, { type: 'task-labels' }>>((id) => ({ type: 'task-labels', id }))
             return response.tasks
+        },
+        async bulletLabels() {
+            const response = await request<Extract<IndexResponse, { type: 'bullet-labels' }>>((id) => ({ type: 'bullet-labels', id }))
+            return response.bullets
         },
         semantic: {
             async status(model) {

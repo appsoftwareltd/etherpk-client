@@ -4,7 +4,7 @@ import { createAddressBook } from '#lib/extensions/addresses.js'
 
 import { EXTENSION_ADDRESS_KIND } from '#lib/extensions/addresses.js'
 
-import { assetUrl, documentUrl, encodeConceptPath, graphUrl, themeUrl, viewUrl } from './document-url'
+import { assetUrl, documentUrl, encodeConceptPath, graphUrl, themeUrl, viewUrl, withSearch } from './document-url'
 import { setExtensionAddresses } from './extension-addresses'
 
 describe("an extension View's address", () => {
@@ -105,5 +105,13 @@ describe('themeUrl', () => {
 
     it('is what viewUrl gives a theme View', () => {
         expect(viewUrl({ where: 'sync', name: 'g1' }, { kind: 'theme', target: 'docs-theme' })).toBe('/graph/sync/g1/t/docs-theme')
+    })
+})
+
+describe('withSearch', () => {
+    it('puts the query before the fragment, where a browser reads it', () => {
+        expect(withSearch('/graph/sync/g/d/Garden#block=1-abcdef012345', '?autosaveMs=150')).toBe('/graph/sync/g/d/Garden?autosaveMs=150#block=1-abcdef012345')
+        expect(withSearch('/graph/sync/g/d/Garden', '?a=1')).toBe('/graph/sync/g/d/Garden?a=1')
+        expect(withSearch('/graph/sync/g/d/Garden#x', '')).toBe('/graph/sync/g/d/Garden#x')
     })
 })

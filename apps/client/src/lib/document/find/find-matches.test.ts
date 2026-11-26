@@ -5,6 +5,7 @@ import { armourProtected, keyFingerprint, sealProtected } from '#lib/crypto/inde
 
 import { editorAnalysis } from '../view/analysis/editor-analysis'
 import { CIPHER_FENCE_INFO } from '../protection/cipher-fence'
+import { shownRange } from '../view/shown-range'
 import { type FindQuery, findMatches, matchLines, nearestMatch, rowPieces } from './find-matches'
 
 function state(doc: string): EditorState {
@@ -223,5 +224,16 @@ describe("a Match List row's pieces", () => {
         const pieces = rowPieces(long, null, 10)
         expect(pieces[0]).toEqual({ kind: 'text', text: `…${'x'.repeat(9)} ` })
         expect(pieces[1]).toEqual({ kind: 'match', text: 'Garden' })
+    })
+})
+
+describe('find in an editor showing part of a document', () => {
+    it('finds only in the lines it shows, as a Block View does (ADR 0209)', () => {
+        const doc = '- Garden\n  - water the beans\n- Kitchen\n  - water the plants'
+        const editor = EditorState.create({ doc, extensions: [editorAnalysis(), shownRange(() => ({ from: 0, to: doc.indexOf('\n- Kitchen'), nestedUnder: 1, wholeBlock: true }))] })
+        const found = findMatches(editor, query('water')).matches.map((match) => editor.sliceDoc(match.from, match.to + ' the beans'.length))
+        expect(found).toEqual(['water the beans'])
+        const nothing = EditorState.create({ doc, extensions: [editorAnalysis(), shownRange(() => null)] })
+        expect(findMatches(nothing, query('water')).matches).toEqual([])
     })
 })

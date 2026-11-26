@@ -32,10 +32,16 @@ export interface GraphPrintParts {
     /** The View in front in the main region. */
     front(): ViewRef | null
     fence(info: string): InteractiveFence | null | undefined
+    /**
+     * What an open [[Block View]] prints (ADR 0209): its document, its title and its Block's
+     * markdown, or null when no such View is open or it has no Block. Absent where there are none.
+     */
+    block?(target: string): { document: string; title: string; markdown: string } | null
 }
 
 function documentOrFence(view: ViewRef | null): PrintSubject | null {
     if (view?.kind === 'document') return { kind: 'document', target: view.target }
+    if (view?.kind === 'block') return { kind: 'block', target: view.target }
     return view?.kind === 'fence' ? { kind: 'fence', target: view.target } : null
 }
 
@@ -82,7 +88,11 @@ export function graphPrinting(parts: GraphPrintParts): PrintCommandDeps {
         return ref && fence?.quote && fence.identify ? { ref, fence } : null
     }
 
-    const concept = (subject: PrintSubject) => (subject.kind === 'document' ? subject.target : (parseFenceViewTarget(subject.target)?.document ?? subject.target))
+    const concept = (subject: PrintSubject) => {
+        if (subject.kind === 'document') return subject.target
+        if (subject.kind === 'block') return parts.block?.(subject.target)?.document ?? subject.target
+        return parseFenceViewTarget(subject.target)?.document ?? subject.target
+    }
 
     function storeNow(): DocumentStore {
         const store = parts.store()
@@ -99,15 +109,33 @@ export function graphPrinting(parts: GraphPrintParts): PrintCommandDeps {
         return printPicture(picture, { name: ref.document, onReady: ready(ref.document, onReady) })
     }
 
+    /** A Block View's Block and what is nested under it, headed by its title over its document's name. */
+    async function printBlock(target: string, onReady: () => void) {
+        const block = parts.block?.(target)
+        if (!block) throw new Error('The block is no longer open')
+        refuseProtected(block.document)
+        const { printDocument } = await import('#lib/document/print/print-document.js')
+        return printDocument(
+            { name: block.document, heading: block.title || block.document, from: block.document, text: block.markdown },
+            {
+                environment: drawnFor(block.document),
+                picture: async (reference) => (isWebAddress(reference) || isEmbedded(reference) ? reference : parts.asset(reference)),
+                onReady: ready(block.document, onReady),
+            },
+        )
+    }
+
     return {
         nameOf: concept,
         active: () => documentOrFence(parts.front()),
         printable(subject) {
             if (subject.kind === 'fence' && drawing(subject.target) === null) return 'no'
+            if (subject.kind === 'block' && !parts.block?.(subject.target)) return 'no'
             return parts.isProtected(concept(subject)) ? 'protected' : 'yes'
         },
         async print(subject, onReady) {
             if (subject.kind === 'fence') return printDrawing(subject.target, onReady)
+            if (subject.kind === 'block') return printBlock(subject.target, onReady)
             const text = await textToPrint(storeNow(), subject.target)
             const { printDocument } = await import('#lib/document/print/print-document.js')
             return printDocument(

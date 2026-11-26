@@ -195,6 +195,20 @@ export function displayAssetName(fileName: string): string {
     return parsed.ext ? `${stem}.${parsed.ext}` : stem
 }
 
+/**
+ * The id a synced graph writes into an asset's name to keep names apart (`plan.<uuid>.png`), as a
+ * Folder graph writes a content hash.
+ */
+const SYNCED_ASSET_ID_SEGMENT = /\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\.[^.]+$|$)/
+
+/**
+ * An asset's file name as a person named it, on either backend: without a Folder graph's content
+ * hash ({@link displayAssetName}) or a synced graph's id (`plan.<uuid>.png` reads `plan.png`).
+ */
+export function assetNameAsNamed(fileName: string): string {
+    return displayAssetName(fileName).replace(SYNCED_ASSET_ID_SEGMENT, '')
+}
+
 /** A synced graph's asset id, with or without its extension: what a tab has until the real name arrives. */
 export function isBareAssetId(target: string): boolean {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.[^.]+)?$/i.test(target)

@@ -28,7 +28,7 @@
     import { todayISO } from "#lib/document/calendar/month-grid-core.js";
     import { TASK_COPY_REFERENCE } from "#lib/document/commands/agent-instruction-commands.js";
     import { bulletLabel } from "#lib/document/index-derive.js";
-    import { openConceptAtLine } from "#lib/document/open-concept.js";
+    import { openBlockAtLine } from "#lib/document/block-view.js";
     import { addTaskToJournal } from "#lib/document/task-placement.js";
     import { assetReferencesIn, newTaskLines, taskLineWithFreeTag, taskLineWithTitle, titleWords } from "#lib/document/task-structure.js";
     import { type TaskPriority, type TaskStatus } from "#lib/document/task-tags.js";
@@ -597,16 +597,17 @@
     }
 
     /**
-     * Open, or bring forward, the task's document in a tab of its own, at the line the description
-     * editor follows. It leaves as Done does, saving the title or staying to say it could not: a tab
-     * opened behind the dialog could not be seen. The tab opens after the dialog has gone, because
-     * the dialog hands the keyboard back as it goes, and the tab's editor is to end up with it.
+     * Open, or bring forward, the task in a [[Block View]] of its own (ADR 0209): the task and
+     * everything nested under it, at the line the description editor follows. It leaves as Done
+     * does, saving the title or staying to say it could not: a tab opened behind the dialog could not
+     * be seen. The tab opens after the dialog has gone, because the dialog hands the keyboard back as
+     * it goes, and the tab's editor is to end up with it.
      */
     async function openInTab(): Promise<void> {
         const target = currentTarget();
         if (!task || !target || !(await requestClose())) return;
         await tick();
-        openConceptAtLine(target.document, target.line, panelId);
+        await openBlockAtLine(target.document, target.line, panelId);
     }
 
     /**

@@ -273,3 +273,28 @@ describe('an Asset tab is a Visit too', () => {
         expect(h.pushed).toHaveLength(before)
     })
 })
+
+describe('a Block View is a Visit too (ADR 0209)', () => {
+    const target = JSON.stringify(['Garden', 2, 'abcdef012345'])
+
+    it('pushes its document’s address with the Block in the fragment', () => {
+        const h = makeHarness()
+        h.engine.seed()
+        h.controller.openView({ kind: 'block', target })
+        expect(h.pushed.at(-1)?.url).toBe('/graph/sync/g1/d/Garden#block=2-abcdef012345')
+    })
+
+    it('writes its address again in place when asked, only while it is the current Visit', () => {
+        const h = makeHarness()
+        h.engine.seed()
+        h.controller.openView({ kind: 'block', target })
+        const pushes = h.pushed.length
+        const replaces = h.replaced.length
+        h.engine.readdress(`block:${target}`)
+        expect(h.pushed).toHaveLength(pushes)
+        expect(h.replaced).toHaveLength(replaces + 1)
+        h.controller.openView({ kind: 'document', target: 'Kitchen' })
+        h.engine.readdress(`block:${target}`)
+        expect(h.replaced).toHaveLength(replaces + 1)
+    })
+})

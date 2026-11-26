@@ -35,6 +35,7 @@
         restorePosition,
         type HistoryEngine,
         type ReadingPositionStore,
+        withSearch,
     } from "#lib/navigation/index.js";
     import type { GraphAddress } from "#lib/navigation/graph-address.js";
     import {
@@ -434,6 +435,10 @@
     import { lookupInteractiveFence } from "#lib/document/view/augmentations/interactive-fence-contract.js";
     import { insertBlock } from "#lib/document/view/block-insert.js";
     import FenceView from "#lib/document/view/FenceView.svelte";
+    import BlockView from "#lib/document/view/BlockView.svelte";
+    import { BLOCK_VIEW_KIND, BLOCK_VIEW_TITLE_PREFIX, blockSeen, blockViewAt, blockViewDocument, copyBlockLink, liveBlockView, openBlockView, parseBlockViewTarget } from "#lib/document/block-view.js";
+    import { registerBlockViewCommands } from "#lib/document/commands/block-view-commands.js";
+    import { parseBlockLink } from "#lib/document/block-link.js";
     import { type FenceRef, fenceViewTarget, parseFenceViewTarget, setFenceHosting } from "#lib/document/view/fence-hosting.js";
     import { closeFenceWindow, openFenceWindow } from "#lib/document/view/fence-window.js";
     import { createDocumentsReader } from "#lib/agent-read/documents-reader.js";
@@ -2038,11 +2043,21 @@
     function noteMainViewActivated(view: ViewRef): void {
         noteFileInFront(view.kind === "asset" ? view.target : null);
         if (view.kind === "asset") recents?.touchKnownPdf(view.target);
+        touchBlockViewDocument(view);
         if (view.kind !== "document") return;
         setActiveDocument(view.target);
         // Becoming the main region's active View is exactly what makes a document Recent — the
         // same signal Navigation History rides.
         recents?.touch(view.target);
+    }
+
+    /**
+     * A Block View is a visit to its document (ADR 0209): the document is Recent, and the active
+     * document stays the one the person last had open whole.
+     */
+    function touchBlockViewDocument(view: ViewRef): void {
+        const document = blockViewDocument(view);
+        if (document) recents?.touch(document);
     }
 
     /**
@@ -3520,6 +3535,20 @@
             return `${lookupInteractiveFence(fence.info)?.title ?? fence.info}: ${fence.document}`;
         },
     });
+    // A [[Block View]] (ADR 0209): one Block and everything nested under it, in a tab of its own.
+    // Titled by the Block's words, which the View sets once it has found the Block; until then by
+    // the words it showed last on this device, or its document's name.
+    registry.register({
+        kind: BLOCK_VIEW_KIND,
+        component: BlockView,
+        naturalRegion: "main",
+        title: (view) => {
+            const seen = blockSeen(view.target);
+            const document = seen?.document ?? parseBlockViewTarget(view.target)?.document ?? "";
+            return `${BLOCK_VIEW_TITLE_PREFIX}${seen?.title || document}`;
+        },
+        titlePrefix: BLOCK_VIEW_TITLE_PREFIX,
+    });
     setExtensionAddresses(extensionHost.addresses);
     function registerExtensionViews(views: ReturnType<typeof extensionHost.views>) {
         for (const declared of views) {
@@ -3723,6 +3752,21 @@
         if (entryIsAnotherGraphs()) return false;
         return navigation.type === "popstate" || (navigation.type === "goto" && !navigation.shallow);
     }
+
+    /**
+     * A Block's address (ADR 0209) pasted over the address of the page in front differs from it in
+     * its fragment alone, and a browser takes that as a change of fragment rather than a navigation.
+     * It names a Visit all the same.
+     */
+    function visitBlockFromFragment(): void {
+        if (phase !== "ready" || entryIsAnotherGraphs() || !parseBlockLink(location.href)) return;
+        const view = viewFromParams();
+        if (view) navEngine?.visitFromUrl(view);
+    }
+    onMount(() => {
+        window.addEventListener("hashchange", visitBlockFromFragment);
+        return () => window.removeEventListener("hashchange", visitBlockFromFragment);
+    });
 
     afterNavigate((navigation) => {
         if (!arrivesFromElsewhere(navigation)) return;
@@ -5280,6 +5324,7 @@
                 asset: async (reference) => (await assetStore?.resolve(reference))?.url ?? null,
                 front: () => (controller ? (mainViewInFront(controller.serialize().model)?.view ?? null) : null),
                 fence: lookupInteractiveFence,
+                block: (target) => liveBlockView(target)?.printable() ?? null,
             }),
         );
         const detachDocumentRows = detachDocumentCommands;
@@ -5409,10 +5454,26 @@
         // Paste on the line menu, which replaces the browser's on a right-click in text.
         // With them, the block menu raised on a bullet's dot: fold, copy, paste beside, move and delete a Block.
         const detachLinePaste = registerPasteCommands(commandRegistry, contributions);
-        const detachBlockMenu = registerBlockCommands(commandRegistry, contributions);
+        // A Block View (ADR 0209): Open in tab and Copy link to block on the block menu, and the rows
+        // on a Block View's own tab.
+        const detachBlockMenu = registerBlockCommands(commandRegistry, contributions, {
+            blockViews: { open: (link, panelId) => void openBlockView(link, panelId), copyLink: copyBlockLink },
+        });
+        const detachBlockViewRows = registerBlockViewCommands(commandRegistry, contributions, {
+            openDocument: (document, line, panelId, side) => {
+                if (!side) return openConceptAtLine(document, line, panelId);
+                const opened = openConceptBeside(document, panelId, side, line);
+                if (opened) focusActivatedDocument(opened);
+            },
+            canOpenBeside: (panelId) => controller?.canOpenBeside(panelId) ?? false,
+            front: (panelId) => controller?.frontView(panelId),
+            copyLink: copyBlockLink,
+            openBlock: (link, panelId) => void openBlockView(link, panelId),
+        });
         detachPasteCommands = () => {
             detachLinePaste();
             detachBlockMenu();
+            detachBlockViewRows();
         };
         detachBookmarkCommands = registerBookmarkCommands(commandRegistry, contributions, {
             openDocumentAtLine: (concept, line) => openConceptAtDocumentLine(concept, line),
@@ -5534,14 +5595,14 @@
             // graphs' (chosen-graph.ts), and Back from the other one has to find this one.
             pushUrl: (url, state) =>
                 void writeOwnHistory(() =>
-                    goto(url + withoutSettingsTab(page.url.search), {
+                    goto(withSearch(url, withoutSettingsTab(page.url.search)), {
                         shallow: true,
                         state: { etherpkVisit: state, ...chosenGraphState({ id: graphId }) },
                     }),
                 ),
             replaceUrl: (url, state) =>
                 void writeOwnHistory(() =>
-                    goto(url + withoutSettingsTab(page.url.search), {
+                    goto(withSearch(url, withoutSettingsTab(page.url.search)), {
                         shallow: true,
                         replace: true,
                         state: { etherpkVisit: state, ...chosenGraphState({ id: graphId }) },
@@ -5787,6 +5848,7 @@
             // attempt at this vanished before any View could call it.
             retitleView: (panelId, title) =>
                 renderer?.setTitle?.(panelId, title),
+            readdressView: (panelId) => navEngine?.readdress(panelId),
         });
         return true;
     }
@@ -6088,7 +6150,9 @@
         const concept = page.params.concept;
         // By the name the index resolves it to, as a wikilink opens it: an alias (a bookmark, a
         // renamed page's old name) opens the page it names, under that page's own name.
-        if (concept) return { kind: "document", target: canonicalConceptName(concept) };
+        // A Block's address (ADR 0209): the document's, with the Block in its fragment. Read from
+        // the location, which a shallow write keeps current and `page.url` does not.
+        if (concept) return blockViewAt(location.href, canonicalConceptName) ?? { kind: "document", target: canonicalConceptName(concept) };
         const assetId = page.params.assetId;
         if (assetId) return { kind: "asset", target: assetId };
         const themeId = page.params.themeId;

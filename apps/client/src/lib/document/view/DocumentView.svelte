@@ -104,6 +104,7 @@
         revealAt,
         visibility: visibilityProp,
         shownRange: shownRangeProp,
+        findable: findableProp = false,
         onopenintab,
         oncaret,
         source: sourceProp,
@@ -134,6 +135,11 @@
          * revealing it.
          */
         shownRange?: ShownRangeOf
+        /**
+         * Embedded only: the host is a Pane's own tab, a [[Block View]] (ADR 0209), so this View hosts
+         * a find box as a tab's document does. Find reads only the lines `shownRange` shows.
+         */
+        findable?: boolean
         /**
          * With `shownRange`: open the whole document in a tab, where an edit this editor refuses can
          * be made. A refused edit's notice offers it as **Open in tab** (`edit-refused.ts`). The host
@@ -166,6 +172,8 @@
      * reveals addressed to its document, may be a [[Draft]], and on a journal day carries a roll.
      */
     const ownsTab = !embedded && !rolled
+    /** Hosts a find box: a tab's own document, or an embedded editor its host says is a tab's (a Block View). */
+    const hostsFind = ownsTab || (embedded && untrack(() => findableProp))
     /** Fixed for the View's life: a presenter hands a View one visibility object. */
     const visibility = untrack(() => visibilityProp)
     /** Fixed for the View's life: the part shown, and the document held in place of the store's. */
@@ -447,7 +455,7 @@
      * View's root, the find host (`find-events.ts`), so neither the keys nor the editors need to
      * know which View that is.
      */
-    const findController = ownsTab
+    const findController = hostsFind
         ? new FindController({
               session: findSession(),
               layout: () => (prefersMobileLayout() ? 'phone' : 'desktop'),
@@ -1743,7 +1751,7 @@
     data-doc-target={view.target}
     data-embedded={embedded || undefined}
     data-rolled={rolled || undefined}
-    data-find-host={ownsTab || undefined}
+    data-find-host={hostsFind || undefined}
     style:--gk-scrollbar-inset="{scrollbarInset}px"
     style:--gk-match-list-height="{matchListShown ? matchListHeight : 0}px"
     style:--gk-end-buttons-height="{endShown ? endButtonsHeight : 0}px"

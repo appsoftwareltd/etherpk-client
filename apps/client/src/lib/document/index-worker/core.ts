@@ -41,6 +41,7 @@ import {
     searchText,
     searchTextCount,
     taskLabels,
+    bulletLabels,
     tasksMatching,
     tasksMatchingCount,
     templatePages,
@@ -494,6 +495,7 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
 
                 case 'tasks':
                 case 'task-labels':
+                case 'bullet-labels':
                     return [taskResponse(db, request)]
 
                 case 'asset-usage': {
@@ -596,8 +598,9 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
 export const INDEX_DISCARDED_PREFIX = 'index-discarded:'
 
 /** The answer to a request for tasks: nothing with no database open. */
-function taskResponse(db: SqlDb | undefined, request: Extract<IndexRequest, { type: 'tasks' | 'task-labels' }>): IndexResponse {
+function taskResponse(db: SqlDb | undefined, request: Extract<IndexRequest, { type: 'tasks' | 'task-labels' | 'bullet-labels' }>): IndexResponse {
     if (request.type === 'task-labels') return { type: 'task-labels', id: request.id, tasks: db ? taskLabels(db) : [] }
+    if (request.type === 'bullet-labels') return { type: 'bullet-labels', id: request.id, bullets: db ? bulletLabels(db) : [] }
     const page = db ? tasksMatching(db, request.query, request.offset, request.limit) : { hits: [], hasMore: false }
     return { type: 'tasks', id: request.id, hits: page.hits, hasMore: page.hasMore, total: db ? tasksMatchingCount(db, request.query) : 0 }
 }

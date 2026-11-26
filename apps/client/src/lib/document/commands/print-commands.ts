@@ -23,8 +23,11 @@ export const PROTECTED_NOT_PRINTED = 'A Protected Document cannot be printed.'
 export const PRINT_OPEN = 'Another print is open. Close its dialog, and then print again.'
 const PRINT_NOTICE = 'print'
 
-/** What a print is of: a document by its concept (in a Plain Folder, its path), or a fence's own tab by its View target. */
-export type PrintSubject = { kind: 'document'; target: string } | { kind: 'fence'; target: string }
+/**
+ * What a print is of: a document by its concept (in a Plain Folder, its path), or a fence's own tab
+ * or a [[Block View]] (ADR 0209) by its View target.
+ */
+export type PrintSubject = { kind: 'document'; target: string } | { kind: 'fence'; target: string } | { kind: 'block'; target: string }
 
 /** Whether a subject can be printed: `protected` says so when asked by key, and `no` leaves the key to the browser. */
 export type Printable = 'yes' | 'protected' | 'no'
@@ -45,7 +48,7 @@ export function printSubjectOf(target: ContextMenuTarget): PrintSubject | null {
     if (isDocumentTarget(target)) return { kind: 'document', target: target.concept }
     if (target.kind !== 'tab' || !target.view) return null
     // A Plain Folder's file is a document by its path, whatever its tab's target looks like.
-    if (target.view.kind === 'document' || target.view.kind === 'fence') return { kind: target.view.kind, target: target.view.target }
+    if (target.view.kind === 'document' || target.view.kind === 'fence' || target.view.kind === 'block') return { kind: target.view.kind, target: target.view.target }
     return null
 }
 

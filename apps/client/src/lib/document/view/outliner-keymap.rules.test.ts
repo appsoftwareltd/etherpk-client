@@ -86,6 +86,7 @@ import {
 import { collapsedExtensionFences, fenceIdAt, interactiveFences } from './augmentations/interactive-fence-state'
 import { mapSizeEdits } from '../map-text'
 import { type TaskPart, taskPartRange } from './task-part-range'
+import { blockViewRange } from './block-view-range'
 import { lineIndent } from '../outliner'
 import { collectRefusals, editorFixture, type FixtureOptions, type HeadlessEditor, press } from './testing/editor-state-fixture'
 import { FIND_REPLACE_EVENT, FIND_SELECT_EVENT } from '../find/find-edit'
@@ -4702,6 +4703,51 @@ describe('an editor showing part of a task (ADR 0170)', () => {
         editor.dispatch(editor.state.update({ effects: anchorLine.of(editor.state.doc.line(2).from) }))
         editor.select(editor.text().indexOf('Build'))
         expect(editor.fixture()).toBe(task('    - |measure'))
+    })
+})
+
+// A [[Block View]] (ADR 0209, `block-view-range.ts`): an editor showing one Block and everything nested
+// under it. The keys work as anywhere inside it. The Block's own line stays where it is among the lines
+// the editor hides: Enter on it starts its first child, and an edit that would move it, or take a line
+// out from under it, is refused, leaving the document as it was.
+describe('a Block View (ADR 0209)', () => {
+    /** `key` pressed in a Block View of the Block on the fixture's third line. */
+    function pressInBlock(before: string, key: string): { after: string; refused: ShownRangeEdge[] } {
+        const editor = editorFixture(before, { extensions: [lineAnchor(), shownRange(blockViewRange())] })
+        editor.dispatch(editor.state.update({ effects: anchorLine.of(editor.state.doc.line(3).from) }))
+        const refusals = collectRefusals(editor)
+        for (const each of key.split(' ')) editor.key(each)
+        return { after: editor.fixture(), refused: refusals.map((reason) => (typeof reason === 'string' ? reason : reason.edge) as ShownRangeEdge) }
+    }
+    const garden = (block: string) => `- [[Garden]]\n  - Path\n${block}\n  - Shed\n- Kitchen`
+    const rows: Array<Rule & { refused?: ShownRangeEdge }> = [
+        { rule: "Enter at the end of the Block's own line, with nothing under it, starts its first child", precedent: 'Logseq', before: garden('  - Beds|'), key: 'Enter', after: garden('  - Beds\n    - |') },
+        { rule: "Enter inside the Block's own line moves the rest of it to a new first child", precedent: 'Logseq', before: garden('  - Be|ds'), key: 'Enter', after: garden('  - Be\n    - |ds') },
+        { rule: "Enter inside the Block's own line, with children, puts the rest first among them", precedent: 'Logseq', before: garden('  - Be|ds\n    - weed'), key: 'Enter', after: garden('  - Be\n    - |ds\n    - weed') },
+        { rule: "Enter on a task's own line starts an open task under it", precedent: 'Logseq', before: garden('  - [x] Beds|'), key: 'Enter', after: garden('  - [x] Beds\n    - [ ] |') },
+        { rule: 'Enter at the end of the last line shown starts a line that is shown too', precedent: 'EtherPK', before: garden('  - Beds\n    - weed|'), key: 'Enter', after: garden('  - Beds\n    - weed\n    - |') },
+        { rule: "Backspace at the start of the Block's own line never joins it onto the line above", precedent: 'EtherPK', before: garden('  - |Beds'), key: 'Backspace', after: garden('  - |Beds'), refused: 'join-above' },
+        { rule: 'Delete at the end of the last line shown never joins the line after onto it', precedent: 'EtherPK', before: garden('  - Beds\n    - weed|'), key: 'Delete', after: garden('  - Beds\n    - weed|'), refused: 'join-below' },
+        { rule: "Tab on the Block's own line never nests it under the line above", precedent: 'EtherPK', before: garden('  - Beds|'), key: 'Tab', after: garden('  - Beds|'), refused: 'move-out' },
+        { rule: "Shift+Tab on the Block's own line never moves it out a level", precedent: 'EtherPK', before: garden('  - Beds|'), key: 'Shift-Tab', after: garden('  - Beds|'), refused: 'move-out' },
+        { rule: 'Shift+Tab that would take a line out from under the Block is refused', precedent: 'EtherPK', before: garden('  - Beds\n    - weed|'), key: 'Shift-Tab', after: garden('  - Beds\n    - weed|'), refused: 'move-out' },
+        { rule: "Alt+Up on the Block's own line never moves it above the line before", precedent: 'EtherPK', before: garden('  - Beds|'), key: 'Alt-ArrowUp', after: garden('  - Beds|'), refused: 'move-out' },
+        { rule: "Alt+Down on the Block's own line never moves it past the line after", precedent: 'EtherPK', before: garden('  - Beds|'), key: 'Alt-ArrowDown', after: garden('  - Beds|'), refused: 'move-out' },
+        { rule: 'Tab nests a line under the one above it, as anywhere', precedent: 'Logseq', before: garden('  - Beds\n    - weed\n    - mulch|'), key: 'Tab', after: garden('  - Beds\n    - weed\n      - mulch|') },
+    ]
+    for (const row of rows) {
+        it(`${row.key}: ${row.rule} (${row.precedent})`, () => {
+            const { after, refused } = pressInBlock(row.before, row.key)
+            expect(after).toBe(row.after)
+            expect(refused).toEqual(row.refused ? [row.refused] : [])
+        })
+    }
+
+    it("is drawn from the Block's own level: its line at the left edge, a thread only from a line with a child (Logseq)", () => {
+        const editor = editorFixture(garden('  - Beds|\n    - weed\n      - pull'), { extensions: [markdownWithCodeHighlight(), lineAnchor(), shownRange(blockViewRange())] })
+        editor.dispatch(editor.state.update({ effects: anchorLine.of(editor.state.doc.line(3).from) }))
+        expect(outlineBaseIn(editor.state)).toEqual({ depth: 1, indent: 2, shown: { first: 2, last: 4 } })
+        expect(guideThreadsFor(editor.state).map((thread) => `${thread.parent}→${thread.last}`)).toEqual(['2→4', '3→4'])
     })
 })
 

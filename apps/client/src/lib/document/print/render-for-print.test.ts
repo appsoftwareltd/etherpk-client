@@ -13,6 +13,12 @@ describe('a document as it prints', () => {
         expect(html).not.toContain('public')
     })
 
+    it('starts with a Block View’s title, its document named under it (ADR 0209)', async () => {
+        const { html } = await renderForPrint({ name: 'Garden', heading: 'Beds & paths', from: 'Garden', text: '- Beds\n  - weed\n' }, {})
+        expect(html).toMatch(/^<h1>Beds &amp; paths<\/h1>\n<p class="etherpk-print-from">From Garden<\/p>/)
+        expect(html).toContain('weed')
+    })
+
     it('escapes the name', async () => {
         expect((await renderForPrint({ name: 'A <b> & "c"', text: '' }, {})).html).toContain('<h1>A &lt;b&gt; &amp; &quot;c&quot;</h1>')
     })

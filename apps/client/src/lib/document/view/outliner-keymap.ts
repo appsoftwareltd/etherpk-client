@@ -62,6 +62,7 @@ import { anchoredMove } from './anchored-move'
 import { frontmatterEnter } from './frontmatter-keys'
 import { caretContext, type FencedBlock, fencedBlockAt, lineInFrontmatter, outermostFencedBlockAt, unterminatedFenceOpenerAt } from './outliner-context'
 import { plainLists } from './list-items-keymap'
+import { shownRangeIn } from './shown-range'
 import { blockSelectionTaskLines, bulletToggleable, taskToggleable, toggledBullet } from './task-toggleable'
 
 /**
@@ -406,13 +407,32 @@ const enterBullet: StateCommand = (view) => {
     // the empty→outdent arm is gone — outdent is Shift-Tab, leaving the list is Mod-Enter breakout).
     const atLineEnd = head === lineFrom + line.length
     const next = lines[index + 1]
-    if (atLineEnd && next !== undefined && isBulletLine(next) && lineIndent(next) > lineIndent(line)) {
+    const hasChildren = next !== undefined && isBulletLine(next) && lineIndent(next) > lineIndent(line)
+    if (enterOnBlockViewLine(view, index, hasChildren)) return true
+    if (atLineEnd && hasChildren) {
         const insert = '\n' + ' '.repeat(lineIndent(next)) + newBulletMarker(next)
         dispatch(view, { changes: { from: head, insert }, selection: { anchor: head + insert.length } })
         return true
     }
     const indent = line.slice(0, lineIndent(line))
     const insert = '\n' + indent + newBulletMarker(line)
+    dispatch(view, { changes: { from: head, insert }, selection: { anchor: head + insert.length } })
+    return true
+}
+
+/**
+ * Enter on a [[Block View]]'s own line (ADR 0209): a sibling would land among the lines the editor
+ * hides, so Enter anywhere on it starts the Block's first child, at its children's indent when it has
+ * some, carrying the text after the caret, as Logseq does in a block zoomed into. False on any other
+ * line, and in an editor that shows the whole document.
+ */
+function enterOnBlockViewLine(view: Target, index: number, hasChildren: boolean): boolean {
+    const range = shownRangeIn(view.state)
+    if (!range?.wholeBlock || index !== range.nestedUnder - 1) return false
+    const { lines, head } = ctx(view)
+    const line = lines[index]
+    const indent = hasChildren ? lineIndent(lines[index + 1]) : lineIndent(line) + INDENT_UNIT
+    const insert = '\n' + ' '.repeat(indent) + newBulletMarker(line)
     dispatch(view, { changes: { from: head, insert }, selection: { anchor: head + insert.length } })
     return true
 }

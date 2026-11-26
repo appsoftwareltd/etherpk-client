@@ -2536,6 +2536,18 @@ export function taskLabels(db: SqlDb): TaskLabel[] {
     )
 }
 
+/**
+ * Every bullet and [[Task]] [[Block]] in the live generation by document, 0-based body line and
+ * label, in no order: where else a [[Block View]]'s Block might be, once it has left the document
+ * its link names (`block-link.ts`).
+ */
+export function bulletLabels(db: SqlDb): TaskLabel[] {
+    return db.all<TaskLabel>(
+        "SELECT p.concept AS document, b.start_line AS line, b.label AS label FROM blocks b JOIN pages p ON p.id = b.page_id WHERE p.generation = ? AND b.kind IN ('bullet', 'task')",
+        [activeIndexGeneration(db)],
+    )
+}
+
 /** `YYYY-MM-DD` shifted by whole days, so the caller never leaves string space. */
 function addDays(day: string, days: number): string {
     const [year, month, date] = day.split('-').map(Number)

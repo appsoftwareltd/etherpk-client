@@ -56,7 +56,7 @@ export async function printDocument(document: PrintableDocument, deps: PrintDocu
         })
         container.append(fragment)
         if (hasMath) await loadMathFonts()
-        return await printContainer({ container, title: printFileName(document.name), onReady: deps.onReady })
+        return await printContainer({ container, title: printFileName(document.heading ?? document.name), onReady: deps.onReady })
     } finally {
         held.release()
     }

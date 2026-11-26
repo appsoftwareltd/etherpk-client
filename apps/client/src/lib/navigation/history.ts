@@ -62,6 +62,11 @@ export interface HistoryEngine {
     apply(state: VisitState): void
     /** A real navigation landed on an addressable [[View]]'s URL: open it and adopt the entry. */
     visitFromUrl(view: ViewRef): void
+    /**
+     * The address of the View in `panelId` changed while it stayed open (a [[Block View]]'s Block was
+     * edited, ADR 0209): when it is the current Visit, write its address again in place.
+     */
+    readdress(panelId: string): void
 }
 
 /** A forceNew copy's panel id is `key::n`; positions key by the canonical key. */
@@ -165,6 +170,12 @@ export function createHistoryEngine(options: HistoryEngineOptions): HistoryEngin
             }
             current = state
             restoreFor(state)
+        },
+
+        readdress(panelId) {
+            if (applying || !current || current.panelId !== panelId) return
+            const active = mainVisit()
+            if (active?.panelId === panelId) options.replaceUrl(active.url, current)
         },
 
         visitFromUrl(view) {

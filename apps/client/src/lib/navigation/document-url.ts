@@ -20,6 +20,7 @@
  * Back was meant to find Settings again (2026-09-20).
  */
 
+import { BLOCK_VIEW_KIND, blockViewUrl } from '#lib/document/block-view.js'
 import { DIRECTORY_SEGMENT, EXTENSION_ADDRESS_KIND } from '#lib/extensions/addresses.js'
 import type { ViewRef } from '#lib/layout/index.js'
 
@@ -61,8 +62,20 @@ export function viewUrl(graph: GraphAddress, view: ViewRef): string | null {
     if (view.kind === 'document') return documentUrl(graph, view.target)
     if (view.kind === 'asset') return assetUrl(graph, view.target)
     if (view.kind === 'theme') return themeUrl(graph, view.target)
+    // A [[Block View]] (ADR 0209): its document's address, with the Block in the fragment.
+    if (view.kind === BLOCK_VIEW_KIND) return blockViewUrl(graph, view)
     // A page of an extension not installed here keeps the address it was opened at.
     if (view.kind === EXTENSION_ADDRESS_KIND) return `${graphUrl(graph)}/${DIRECTORY_SEGMENT}/${encodeConceptPath(view.target)}`
     // Every other kind is an extension's, addressed as its manifest declares (ADR 0121).
     return extensionAddresses()?.url(graph, view) ?? null
+}
+
+/**
+ * `url` with `search` (`?…` or empty) put where a query goes: before any fragment. A [[Block View]]'s
+ * address carries its Block in the fragment (ADR 0209), and a query written after it would be read as
+ * part of the fragment.
+ */
+export function withSearch(url: string, search: string): string {
+    const hash = url.indexOf('#')
+    return hash === -1 ? url + search : url.slice(0, hash) + search + url.slice(hash)
 }

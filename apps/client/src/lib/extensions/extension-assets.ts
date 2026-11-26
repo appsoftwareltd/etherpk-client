@@ -23,7 +23,7 @@ import { assetLightboxImage, type LightboxImage } from '#lib/components/lightbox
 import { defaultMaxImageDisplaySize } from '#lib/document/view/asset-upload.js'
 import { canvasToBlob, drawImageToCanvas } from '#lib/document/view/image-canvas.js'
 import { canvasEncoder, optimizeImage } from '#lib/document/view/image-optimize.js'
-import { assetNameFromRef, type AssetStore, buildAssetMarkdown, displayAssetName, isImageExt, splitNameExt } from '#lib/storage/fs/asset-store.js'
+import { assetNameFromRef, type AssetStore, buildAssetMarkdown, assetNameAsNamed, isImageExt, splitNameExt } from '#lib/storage/fs/asset-store.js'
 import { AssetRefusedError } from '#lib/storage/synced/server-asset-store.js'
 
 /** The longest side an image is sent at, in pixels: what the large models read without scaling it again. */
@@ -54,17 +54,11 @@ function named(name: string, type: string): string {
     return ext ? `${stem}.${ext}` : name
 }
 
-/**
- * The id a synced graph writes into an asset's name to keep names apart (`plan.<uuid>.png`), as a
- * Folder graph writes a content hash; the hash is taken out by `displayAssetName`.
- */
-const ASSET_ID_SEGMENT = /\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\.[^.]+$|$)/
-
 /** What `ref` names, or null when it names no asset. */
 function describeAsset(ref: string): AssetDescription | null {
     const fileName = assetNameFromRef(ref)
     if (fileName === null) return null
-    return { name: displayAssetName(fileName).replace(ASSET_ID_SEGMENT, ''), fileName, image: isImageExt(splitNameExt(fileName).ext) }
+    return { name: assetNameAsNamed(fileName), fileName, image: isImageExt(splitNameExt(fileName).ext) }
 }
 
 export interface ExtensionAssetsDeps {

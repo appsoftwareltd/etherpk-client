@@ -1,5 +1,5 @@
 /** Public entry point for Navigation History (ADR 0023). */
-export { documentUrl, encodeConceptPath, graphUrl } from './document-url'
+export { documentUrl, encodeConceptPath, graphUrl, withSearch } from './document-url'
 export {
     capturePosition,
     clearPendingRestores,

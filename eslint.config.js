@@ -41,6 +41,8 @@ export const CLIENT_IMPORT_EXCEPTIONS = {
         '#lib/contrast-ink.js',
         '#lib/document/active-editor.js',
         '#lib/document/backlinks/index.js',
+        // The Task Editor's Open in tab opens its task in a Block View (ADR 0209, 2026-11-26).
+        '#lib/document/block-view.js',
         '#lib/document/calendar/month-grid-core.js',
         '#lib/document/caret-concepts.js',
         '#lib/document/commands/link-commands.js',

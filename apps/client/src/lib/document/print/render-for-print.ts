@@ -15,6 +15,13 @@ export interface PrintableDocument {
     name: string
     /** Its whole text, frontmatter included. */
     text: string
+    /**
+     * The heading the print opens with, in place of the name: a [[Block View]]'s title (ADR 0209),
+     * whose text is one Block of the document `name` names.
+     */
+    heading?: string
+    /** The document the text was taken from, said under the heading: "From Garden". */
+    from?: string
 }
 
 export interface PrintableHtml {
@@ -82,5 +89,6 @@ export async function renderForPrint(document: PrintableDocument, environment: P
     const pictures: PrintableHtml['pictures'] = new Map()
     for (const [path, bytes] of made.fencePictures) pictures.set(path, { bytes, type: PICTURE_TYPES[path.slice(path.lastIndexOf('.') + 1)] ?? 'image/png' })
     for (const { path, bytes, type } of made.mapPictures.values()) pictures.set(path, { bytes, type })
-    return { html: `<h1>${escapeHtml(document.name)}</h1>\n${rendered.html}`, pictures, hasMath: rendered.hasMath }
+    const from = document.from === undefined ? '' : `<p class="etherpk-print-from">From ${escapeHtml(document.from)}</p>\n`
+    return { html: `<h1>${escapeHtml(document.heading ?? document.name)}</h1>\n${from}${rendered.html}`, pictures, hasMath: rendered.hasMath }
 }

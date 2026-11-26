@@ -20,6 +20,7 @@ import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
 import { extensionFences } from '../extension-fence'
 import { protectedRanges } from '../view/augmentations/protected-fence-core'
+import { shownRangeIn } from '../view/shown-range'
 
 /** How a query matches: the three switches in the box. */
 export interface FindOptions {
@@ -99,27 +100,41 @@ interface Found {
     match?: RegExpExecArray
 }
 
-/** Every match of `query` in the document, in document order. */
+/**
+ * Every match of `query` in the document, in document order. In an editor that shows one part of
+ * its document (a [[Block View]], `shown-range.ts`), every match in that part and none outside it:
+ * the person cannot see the rest, and a replace there would be refused.
+ */
 export function findMatches(state: EditorState, query: FindQuery): FindResult {
     if (query.search === '') return { matches: [], error: null }
+    const shown = shownRangeIn(state)
     if (query.regexp) {
         const error = regexpError(query.search)
         if (error) return { matches: [], error }
     }
     const regions = documentRegions(state.doc)
     const matches: Match[] = []
-    const found: Iterable<Found> =
-        query.regexp && !asksForLineBreak(query.search)
-            ? matchesByLine(state, query)
-            : // The cursor's declared type leaves out the groups a regular expression's match carries.
-              { [Symbol.iterator]: () => searchQueryFor(query).getCursor(state) as Iterator<Found> }
-    for (const { from, to, match } of found) {
+    for (const { from, to, match } of found(state, query)) {
+        if (!inShown(shown, from, to)) continue
         if (regions.unread.some((range) => overlaps(range, from, to))) continue
         const keep = keptBy(regions, state.doc, from, to)
         if (keep === undefined) continue
         matches.push({ from, to, line: state.doc.lineAt(from).number, keep, captures: match ? Array.from(match, (group) => group ?? '') : null })
     }
     return { matches, error: null }
+}
+
+/** Every place `query` matches, before any is kept or left out. */
+function found(state: EditorState, query: FindQuery): Iterable<Found> {
+    if (query.regexp && !asksForLineBreak(query.search)) return matchesByLine(state, query)
+    // The cursor's declared type leaves out the groups a regular expression's match carries.
+    return { [Symbol.iterator]: () => searchQueryFor(query).getCursor(state) as Iterator<Found> }
+}
+
+/** Whether `from`..`to` is in what the editor shows: anywhere when it shows the whole document. */
+function inShown(shown: ReturnType<typeof shownRangeIn>, from: number, to: number): boolean {
+    if (shown === undefined) return true
+    return shown !== null && from >= shown.from && to <= shown.to
 }
 
 /**

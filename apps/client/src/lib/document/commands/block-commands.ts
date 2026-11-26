@@ -33,6 +33,8 @@ import {
     structureSpec,
 } from '../view/block-actions'
 import { anchoredBlock } from '../view/block-menu-anchor'
+import { blockLinkInEditor } from '../view/block-view-range'
+import type { BlockLink } from '../block-link'
 import { bodyWritable } from '../view/body-writable'
 import { indentBranch, moveBranchDown, moveBranchUp, outdentBranch } from '../view/outliner-keymap'
 import { dispatchPaste, readClipboard } from './paste-commands'
@@ -100,6 +102,25 @@ async function pasteBeside(target: ContextMenuTarget, where: 'before' | 'after')
     dispatchPaste(found.view, data)
 }
 
+/**
+ * What the [[Block View]] rows need from the workspace (ADR 0209). A Plain Folder and the editor
+ * harness have no Block Views, and offer neither row.
+ */
+export interface BlockViewOpeners {
+    /** Open the Block a link names in a Block View, in the Pane holding `sourcePanelId`. */
+    open(link: BlockLink, sourcePanelId: string | undefined): void
+    /** Put the Block's address on the clipboard, and say so. */
+    copyLink(link: BlockLink): Promise<void>
+}
+
+/** The Block View openers of the workspace that registered the rows, if it has Block Views. */
+let blockViews: BlockViewOpeners | undefined
+
+/** The link to the target's Block, worked out from its editor as it is now. */
+async function linkOf(found: Found, target: ContextMenuTarget): Promise<BlockLink | null> {
+    return isBlockTarget(target) ? blockLinkInEditor(found.view.state, found.line, target.concept) : null
+}
+
 /** One row: its Command, label, when it shows, and the group it is drawn in. */
 interface Row {
     id: string
@@ -118,6 +139,19 @@ interface Row {
 const structural = (command: StateCommand) => (state: EditorState, line: number) => structureSpec(state, line, command)
 
 const ROWS: Row[] = [
+    {
+        // First: it shows the Block on its own, before anything acts on it.
+        id: 'block.openInTab',
+        label: 'Open Block in tab',
+        group: 0,
+        icon: 'view-larger',
+        readOnly: true,
+        applies: () => blockViews !== undefined,
+        run: async (found, target) => {
+            const link = await linkOf(found, target)
+            if (link) blockViews?.open(link, isBlockTarget(target) ? target.panelId : undefined)
+        },
+    },
     {
         id: 'block.fold',
         label: ({ view, line }) => (isFoldedBullet(view.state, line) ? 'Unfold' : 'Fold'),
@@ -154,6 +188,17 @@ const ROWS: Row[] = [
         run: (found) => runFocused(found, (state, line) => caretSpec(state, line, 'end')),
     },
     { id: 'block.copy', label: 'Copy block', group: 3, icon: 'copy', readOnly: true, applies: () => true, run: (found) => copyBlock(found) },
+    {
+        id: 'block.copyLink',
+        label: 'Copy link to block',
+        group: 3,
+        readOnly: true,
+        applies: () => blockViews !== undefined,
+        run: async (found, target) => {
+            const link = await linkOf(found, target)
+            if (link) await blockViews?.copyLink(link)
+        },
+    },
     {
         id: 'block.cut',
         label: 'Cut block',
@@ -224,8 +269,10 @@ function shown(row: Row, found: Found | null, target: ContextMenuTarget): found 
     return row.applies(found)
 }
 
-export function registerBlockCommands(commands: CommandRegistry, contributions: ContributionRegistry): () => void {
+export function registerBlockCommands(commands: CommandRegistry, contributions: ContributionRegistry, options: { blockViews?: BlockViewOpeners } = {}): () => void {
     const disposers: (() => void)[] = []
+    blockViews = options.blockViews
+    const registered = options.blockViews
     ROWS.forEach((row, index) => {
         disposers.push(commands.register(row.id, (arg) => {
             const target = arg && typeof arg === 'object' ? (arg as ContextMenuTarget) : null
@@ -254,5 +301,6 @@ export function registerBlockCommands(commands: CommandRegistry, contributions: 
     })
     return () => {
         for (const dispose of disposers.splice(0)) dispose()
+        if (blockViews === registered) blockViews = undefined
     }
 }

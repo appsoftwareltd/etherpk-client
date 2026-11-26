@@ -41,6 +41,12 @@
     .etherpk-print-document h1 {
         font-size: 20pt;
     }
+    /* A Block View's print names the document its Block came from, under the heading (ADR 0209). */
+    .etherpk-print-document > .etherpk-print-from {
+        margin: -0.2em 0 1em;
+        font-size: 11pt;
+        color: #525252;
+    }
     .etherpk-print-document h2 {
         font-size: 16pt;
     }

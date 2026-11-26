@@ -408,6 +408,23 @@ describe('index core', () => {
         ])
     })
 
+    it('lists every bullet and task by document, body line and label, for finding a Block elsewhere', async () => {
+        const { host } = persistentHost()
+        const core = createIndexCore(host)
+        await core.handle({ type: 'open', graphId: 'g1' })
+        await rebuild(core, [doc('Garden', '# Beds\n- note\n  - [ ] water the beans\nplain prose'), doc('Kitchen', '- sweep')])
+
+        const [response] = await core.handle({ type: 'bullet-labels', id: 9 })
+
+        expect(response).toMatchObject({ type: 'bullet-labels', id: 9 })
+        const bullets = (response as Extract<IndexResponse, { type: 'bullet-labels' }>).bullets
+        expect([...bullets].sort((a, b) => a.label.localeCompare(b.label))).toEqual([
+            { document: 'Garden', line: 1, label: 'note' },
+            { document: 'Kitchen', line: 0, label: 'sweep' },
+            { document: 'Garden', line: 2, label: 'water the beans' },
+        ])
+    })
+
     it('emits a small revisioned delta for one changed document', async () => {
         const { host } = persistentHost()
         const core = createIndexCore(host)

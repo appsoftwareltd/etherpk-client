@@ -133,3 +133,24 @@ describe('what a Plain Folder prints', () => {
         expect(printing.printable({ kind: 'fence', target: DRAWING })).toBe('no')
     })
 })
+
+describe('printing a Block View (ADR 0209)', () => {
+    const BLOCK = { document: 'Garden', title: 'Beds', markdown: '- Beds\n  - weed' }
+
+    it('prints the open Block View in front, by its document', () => {
+        const printing = graphPrinting(parts({ front: () => ({ kind: 'block', target: 't' }), block: () => BLOCK }))
+        expect(printing.active()).toEqual({ kind: 'block', target: 't' })
+        expect(printing.printable({ kind: 'block', target: 't' })).toBe('yes')
+        expect(printing.nameOf({ kind: 'block', target: 't' })).toBe('Garden')
+    })
+
+    it('is not offered for a Block View that has no Block, nor for one in a Protected Document', () => {
+        expect(graphPrinting(parts({ block: () => null })).printable({ kind: 'block', target: 't' })).toBe('no')
+        expect(graphPrinting(parts({ block: () => BLOCK, isProtected: () => true })).printable({ kind: 'block', target: 't' })).toBe('protected')
+    })
+
+    it('prints the Block and what is nested under it', async () => {
+        const printing = graphPrinting(parts({ block: () => BLOCK }))
+        await expect(printing.print({ kind: 'block', target: 't' }, () => {})).resolves.toBe('printed')
+    })
+})
