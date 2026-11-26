@@ -4,10 +4,10 @@ This repository holds the EtherPK Client (`apps/client`, SvelteKit 3 with Svelte
 Headless Client (`apps/mcp`, a Node MCP server that bundles `apps/client/src/lib` through a `#lib`
 alias), the packages both use (`packages/shared`, `packages/themes`), the Extension API
 (`packages/extension-api`), the extensions that come with the Client (`extensions/`) and the
-agent skill (`skills/etherpk`), whose starter folders' `AGENTS.md` and `CLAUDE.md` are generated
+agent skill (`skills/etherpk`), whose starter folders' `AGENTS.template.md` and `CLAUDE.template.md` are generated
 by `apps/client/src/lib/storage/fs/agents-md-skill-starters.test.ts`. `skills/.claude-plugin/plugin.json`
 makes `skills/` a Claude Code plugin that also starts the Headless Client, listed by
-`.claude-plugin/marketplace.json`, and
+`.claude-plugin/marketplace.json` and exported on its own to `appsoftwareltd/etherpk-claude-plugin`, and
 `apps/mcp/src/claude-plugin.test.ts` checks its options against the flags `serve` reads.
 
 ## Before you change anything

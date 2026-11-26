@@ -5,7 +5,7 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.54.0 - 2026-11-26
 
 ### Client
 
@@ -14,6 +14,19 @@ starts at 0.9.3.
   words. Edits there are edits to the page. **Copy link to block** copies a link that opens the same
   tab, and the link still finds the block after lines are added above it or its words change. The
   Task Editor's **Open in tab** opens its task this way.
+- **Clearer steps for an agent on the Agents tab.** The steps read Step 1, Step 2 and Step 3. With
+  **Claude Code** chosen, step 2 gives two options, the MCP server and the EtherPK plugin, says to
+  use one of them, and lists what each cannot do.
+
+### Headless Client
+
+- **The Claude Code plugin has a repository of its own,**
+  [`appsoftwareltd/etherpk-claude-plugin`](https://github.com/appsoftwareltd/etherpk-claude-plugin),
+  for Anthropic's plugin directory. `/plugin install etherpk --marketplace appsoftwareltd/etherpk-client`
+  still installs it.
+- **The skill's starter folders keep `AGENTS.md` and `CLAUDE.md` as `AGENTS.template.md` and
+  `CLAUDE.template.md`.** The skill renames them when it copies a starter, so a new graph folder is
+  the same as before.
 
 ## 0.53.0 - 2026-11-26
 

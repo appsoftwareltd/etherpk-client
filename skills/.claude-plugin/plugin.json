@@ -3,13 +3,13 @@
     "name": "etherpk",
     "displayName": "EtherPK",
     "description": "Your EtherPK notes in Claude Code. Claude searches, reads and edits a synced graph, kept end-to-end encrypted across your devices, or a graph folder on this device, and writes pages, journal entries and tasks in the EtherPK Format.",
-    "version": "0.53.0",
+    "version": "0.54.0",
     "author": {
-        "name": "App Software Ltd",
+        "name": "EtherPK",
         "url": "https://etherpk.com"
     },
     "homepage": "https://docs.etherpk.com/claude-code-plugin",
-    "repository": "https://github.com/appsoftwareltd/etherpk-client",
+    "repository": "https://github.com/appsoftwareltd/etherpk-claude-plugin",
     "license": "Elastic-2.0",
     "keywords": [
         "notes",

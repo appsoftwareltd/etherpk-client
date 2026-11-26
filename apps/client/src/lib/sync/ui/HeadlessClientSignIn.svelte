@@ -27,7 +27,7 @@
         headlessClient: string;
         /** Ask the server for an Agent Setup Code over the managed connection; null on a custom server (ADR 0132). */
         createSetupCode: (() => Promise<{ code: string; expiresAt: string }>) | null;
-        /** The first of numbered steps: "1. Log in the agent". */
+        /** The first of numbered steps: "Step 1. Log in the agent". */
         numbered?: boolean;
     } = $props();
 
@@ -45,7 +45,7 @@
     let copyError = $state<string | null>(null);
     onDestroy(() => clearTimeout(setupCodeTimer));
 
-    const heading = $derived(numbered ? "1. Log in the agent" : "Log in the agent");
+    const heading = $derived(numbered ? "Step 1. Log in the agent" : "Log in the agent");
 
     async function makeSetupCode() {
         const create = createSetupCode;

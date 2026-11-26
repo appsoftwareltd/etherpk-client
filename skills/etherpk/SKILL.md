@@ -47,7 +47,12 @@ Then stop until they have restarted the agent with the tools connected.
 
    ```sh
    mkdir -p <folder> && cp -R <this skill's folder>/assets/docs/. <folder>/
+   mv <folder>/AGENTS.template.md <folder>/AGENTS.md
+   mv <folder>/CLAUDE.template.md <folder>/CLAUDE.md
    ```
+
+   The starter keeps `AGENTS.md` and `CLAUDE.md` as `AGENTS.template.md` and `CLAUDE.template.md`,
+   so that a copy of this skill holds no instruction file of its own. Rename both, as above.
 
 3. Name the site. The publication page is `pages/Docs.md` (or `pages/Blog.md`), and its
    `title:` is the site's name, for example `Tally Docs`. Change the `title:` and rename the file

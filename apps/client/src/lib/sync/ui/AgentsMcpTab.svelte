@@ -121,6 +121,12 @@
 
 <!-- The registration for the chosen agent, with its copy button and where it goes. -->
 {#snippet registration(text: string, commandTestId: string, copyTestId: string)}
+    {@render commandBox(text, commandTestId, copyTestId)}
+    <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-register-note">{registerNote(agentTool)}</p>
+{/snippet}
+
+<!-- The registration command and its Copy button, and a failed copy's message. -->
+{#snippet commandBox(text: string, commandTestId: string, copyTestId: string)}
     <div class="flex items-start gap-2">
         <pre
             class="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md border border-neutral-900/10 dark:border-neutral-100/15 bg-neutral-50 dark:bg-white/5 p-3 font-mono text-sm"
@@ -132,27 +138,52 @@
             data-testid={copyTestId}>{copied ? "Copied" : "Copy"}</button
         >
     </div>
-    <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-register-note">{registerNote(agentTool)}</p>
     {#if copyError}
         <p role="status" class="text-sm text-red-700 dark:text-red-400">{copyError}</p>
     {/if}
 {/snippet}
 
-<!-- The EtherPK plugin for Claude Code, offered beside the Claude Code registration as the other
-     way to take that step: it registers the same graph and adds the Agent Skill. Two
-     registrations of one graph give Claude every tool twice, so the note says to choose one.
-     Nothing when another agent is chosen, or when there is no plugin command (pluginInstallCommand). -->
-{#snippet claudePlugin(props: AgentsReachableProps)}
-    {@const text = agentTool === "claude" ? pluginInstallCommand(props) : null}
-    {#if text}
-        <div class="space-y-1 pt-2" data-testid="agents-plugin">
-            <AgentCommandRow
-                key="plugin"
-                label="Or install the EtherPK plugin for Claude Code"
-                {text}
-                note="Run this on the agent's device in place of the command above. The plugin tells Claude Code about this graph and adds the EtherPK skill. Use the plugin or the command, not both, or Claude Code gets every EtherPK tool twice."
-            />
+<!-- Step 2 for the chosen agent. With Claude Code, and a plugin to offer (pluginInstallCommand), it
+     is a choice of two: the MCP server registration, first because it works for every agent and
+     every graph, or the EtherPK plugin, which registers the same graph and adds the Agent Skill.
+     Two registrations of one graph give Claude every tool twice, so the lead says to choose one,
+     and each option says what it cannot do. Any other agent gets its one registration. `step` is
+     the label's prefix on a synced graph, whose steps are numbered ("Step 2 "), and empty on a
+     folder graph, whose MCP server is one optional section. -->
+{#snippet registrationOrPlugin(props: AgentsReachableProps, text: string, commandTestId: string, copyTestId: string, step: string)}
+    {@const plugin = agentTool === "claude" ? pluginInstallCommand(props) : null}
+    {#if plugin}
+        <div class="space-y-4 pt-1" data-testid="agents-claude-choice">
+            <p class="text-sm text-neutral-950 dark:text-neutral-100">
+                To let Claude Code use EtherPK's tools on this graph, either <strong>add the MCP server</strong> or
+                <strong>install the EtherPK plugin</strong>. Use one of the two options (with both, Claude Code sees every EtherPK tool twice).
+            </p>
+            <div class="space-y-1" data-testid="agents-option-mcp">
+                <span class="text-sm font-medium text-neutral-950 dark:text-neutral-100">{step}{step ? "(Option 1)" : "Option 1"}: Add the MCP server</span>
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
+                    Adds this graph's MCP server to Claude Code for every project. Run it in a terminal on the agent's device.
+                </p>
+                {@render commandBox(text, commandTestId, copyTestId)}
+                <ul class="list-disc space-y-0.5 pl-5 text-sm text-neutral-600 dark:text-neutral-400">
+                    <li>Run it once for each graph you want Claude to use.</li>
+                    <li>Adds no skill. To have Claude create and publish a new blog, docs or wiki folder, add the EtherPK skill under Optional Steps.</li>
+                </ul>
+            </div>
+            <div class="space-y-1" data-testid="agents-plugin">
+                <span class="text-sm font-medium text-neutral-950 dark:text-neutral-100">{step}{step ? "(Option 2)" : "Option 2"}: Install the EtherPK plugin</span>
+                <p class="text-sm text-neutral-600 dark:text-neutral-400">
+                    Adds this graph and the EtherPK skill to Claude Code in one command. Run it in a terminal on the agent's device.
+                </p>
+                <AgentCommandRow key="plugin" text={plugin} />
+                <ul class="list-disc space-y-0.5 pl-5 text-sm text-neutral-600 dark:text-neutral-400">
+                    <li>Serves one graph only. For a second graph, add its MCP server instead.</li>
+                    <li>Needs a recent version of Claude Code.</li>
+                    <li>To change the graph later, run <code class="font-mono">/plugin configure etherpk@etherpk</code> in Claude Code.</li>
+                </ul>
+            </div>
         </div>
+    {:else}
+        {@render registration(text, commandTestId, copyTestId)}
     {/if}
 {/snippet}
 
@@ -285,12 +316,13 @@
                     It needs no sign-in. It keeps an index of the notes, so the agent can search them, follow links and list tasks, and its edits keep the format.
                     Edits the agent makes to the files directly still show up.
                 </p>
-                {@render registration(
+                {@render registrationOrPlugin(
+                    agents,
                     registerFolderCommand(agentTool, agents.folderPath, agents.headlessClient, agents.folderName),
                     "agents-register-folder-command",
                     "agents-copy-register-folder",
+                    "",
                 )}
-                {@render claudePlugin(agents)}
             </div>
         {:else}
             <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-folder-no-path">
@@ -350,18 +382,19 @@
             </li>
             <li class="space-y-1">
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-medium">2. Tell the agent about this graph</span>
+                    <span class="font-medium">Step 2. Tell the agent about this graph</span>
                     {@render toolSelect("agents-tool", "Agent to tell about this graph")}
                 </div>
-                {@render registration(
+                {@render registrationOrPlugin(
+                    agents,
                     registerCommand(agentTool, agents.graphId, agents.serverBaseUrl, agents.headlessClient, agents.graphName),
                     "agents-register-command",
                     "agents-copy-register",
+                    "Step 2 ",
                 )}
-                {@render claudePlugin(agents)}
             </li>
             <li class="space-y-1" data-testid="agents-hand-task">
-                <span class="font-medium">3. Hand the agent a task</span>
+                <span class="font-medium">Step 3. Hand the agent a task</span>
                 <p class="text-neutral-600 dark:text-neutral-400">
                     Use <span class="font-medium">Copy agent instruction</span>
                     on a task or a Kanban lane, and paste the text into the agent's chat.

@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -26,8 +26,15 @@ const SKILL = ['public-repos/client/skills/etherpk', 'skills/etherpk']
     .map((path) => join(REPO, path))
     .find((path) => existsSync(join(path, 'SKILL.md')))
 
+/**
+ * The starter keeps them under template names, which the skill renames when it copies the starter:
+ * Anthropic's plugin directory refuses a plugin that holds a file named `AGENTS.md` or `CLAUDE.md`,
+ * and the skill's folder is the Claude Code plugin's.
+ */
+const template = (file: string) => file.replace(/\.md$/, '.template.md')
+
 describe.each(['docs', 'blog'])('the %s starter', (starter) => {
-    it('carries the AGENTS.md and CLAUDE.md EtherPK writes into an empty folder', async () => {
+    it('carries the AGENTS.md and CLAUDE.md EtherPK writes into an empty folder, under template names', async () => {
         expect(SKILL, 'the etherpk skill folder, with its SKILL.md').toBeDefined()
         let clock = 0
         const adapter = createMemoryDirectoryAdapter({ now: () => ++clock })
@@ -35,7 +42,12 @@ describe.each(['docs', 'blog'])('the %s starter', (starter) => {
 
         const agents = await adapter.readRootFile(AGENTS_MD_FILE)
         const claude = await adapter.readRootFile(CLAUDE_MD_FILE)
-        await expect(agents?.text).toMatchFileSnapshot(join(SKILL!, 'assets', starter, AGENTS_MD_FILE))
-        await expect(claude?.text).toMatchFileSnapshot(join(SKILL!, 'assets', starter, CLAUDE_MD_FILE))
+        await expect(agents?.text).toMatchFileSnapshot(join(SKILL!, 'assets', starter, template(AGENTS_MD_FILE)))
+        await expect(claude?.text).toMatchFileSnapshot(join(SKILL!, 'assets', starter, template(CLAUDE_MD_FILE)))
+    })
+
+    it('holds no file named AGENTS.md or CLAUDE.md, in any case', () => {
+        const names = readdirSync(join(SKILL!, 'assets', starter), { recursive: true }).map(String)
+        expect(names.filter((name) => /(^|\/)(agents|claude)\.md$/i.test(name))).toEqual([])
     })
 })
