@@ -21,7 +21,7 @@
 
 // The package and the login spelling are shared with the Sync Server's Access tokens page, which
 // prints the same command (headless-client-command.ts in the shared package).
-import { headlessClientLoginCommand } from '@appsoftwareltd/etherpk-shared'
+import { HEADLESS_CLIENT_PACKAGE, headlessClientLoginCommand } from '@appsoftwareltd/etherpk-shared'
 
 export type AgentsTabProps =
     | {
@@ -251,6 +251,24 @@ export const AGENT_SKILL_ROW = {
     text: skillInstallCommand(),
     note: 'You only need this to have an agent create a new blog, docs or wiki folder, check it and publish it. An agent working on an existing graph gets the format from the MCP server or the AGENTS.md in its folder. Run the command in the project your agent works in, or add -g for every project.',
 } as const
+
+/** Where the EtherPK plugin for Claude Code is published: a marketplace in the Client's Public Repository. */
+const PLUGIN_MARKETPLACE = 'appsoftwareltd/etherpk-client'
+
+/**
+ * Installs the EtherPK plugin for Claude Code with this graph set as its option: the Headless
+ * Client registered for the graph, and the Agent Skill, in one command run on the agent's device.
+ * It does what the Claude Code registration does, so the tab offers it in place of that command,
+ * never beside it as a second step. Null when there is no folder path to set yet, and on a Client
+ * pinned to its own release: the plugin runs whatever Headless Client npm has as latest, which
+ * need not be the one released with the operator's Sync Server.
+ */
+export function pluginInstallCommand(props: AgentsReachableProps): string | null {
+    if (props.headlessClient !== HEADLESS_CLIENT_PACKAGE) return null
+    const install = `claude plugin install etherpk --marketplace ${PLUGIN_MARKETPLACE}`
+    if (props.kind === 'synced') return `${install} --config graph=${props.graphId} --config sync_server=${props.serverBaseUrl.replace(/\/$/, '')}`
+    return props.folderPath ? `${install} --config ${shellPath(`graph_folder=${props.folderPath}`)}` : null
+}
 
 /** Installs the browser a publish draws Mermaid with (ADR 0084). */
 export function diagramsSetupCommand(headlessClient: string): string {

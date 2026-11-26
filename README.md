@@ -65,6 +65,19 @@ can both read and write. Its [specification](https://docs.etherpk.com/etherpk-fo
 program reads and writes one, and [`format/`](format/README.md) holds an example folder with the
 result a reader gets from that folder.
 
+## Use it from Claude Code
+
+The EtherPK plugin for Claude Code gives Claude one of your graphs, synced or a folder, and the
+`etherpk` agent skill. In Claude Code:
+
+```text
+/plugin install etherpk --marketplace appsoftwareltd/etherpk-client
+```
+
+Then set the plugin's options with `/plugin`: the name of a synced graph, or a graph folder. A
+synced graph needs a one-time sign-in on the device first, from the graph's **Settings → Agents**
+tab in EtherPK. See [Claude Code Plugin](https://docs.etherpk.com/claude-code-plugin).
+
 ## Licence
 
 The Elastic License 2.0 lets you use, copy, modify and self-host this software. It does not let you
@@ -86,6 +99,7 @@ agent skill's starter folders are under the [MIT License](format/LICENSE).
 | `extensions` | The extensions that come with the Client: Agent Chat, Excalidraw drawings, the Graph View, Kanban boards and maps |
 | `format` | An example graph folder in the EtherPK Format, and the result a program gets from reading it ([README](format/README.md)) |
 | `skills/etherpk` | The agent skill: how an AI agent makes, edits and publishes EtherPK graph folders ([SKILL.md](skills/etherpk/SKILL.md)) |
+| `.claude-plugin` | The Claude Code plugin's marketplace file. The plugin is the `skills/` folder, with the Headless Client started for the graph a person chooses |
 
 ## Run it
 

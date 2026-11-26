@@ -5,7 +5,9 @@ Headless Client (`apps/mcp`, a Node MCP server that bundles `apps/client/src/lib
 alias), the packages both use (`packages/shared`, `packages/themes`), the Extension API
 (`packages/extension-api`), the extensions that come with the Client (`extensions/`) and the
 agent skill (`skills/etherpk`), whose starter folders' `AGENTS.md` and `CLAUDE.md` are generated
-by `apps/client/src/lib/storage/fs/agents-md-skill-starters.test.ts`.
+by `apps/client/src/lib/storage/fs/agents-md-skill-starters.test.ts`. `.claude-plugin/marketplace.json`
+makes `skills/` a Claude Code plugin that also starts the Headless Client, and
+`apps/mcp/src/claude-plugin.test.ts` checks its options against the flags `serve` reads.
 
 ## Before you change anything
 

@@ -38,10 +38,24 @@ No sign-in and no Sync Server:
 claude mcp add --scope user etherpk -- npx @appsoftwareltd/etherpk-mcp serve --folder /path/to/your/notes
 ```
 
-The folder must already be an EtherPK graph, with `pages/` and `journals/` folders in it. EtherPK
+The folder must already be an EtherPK graph: a folder that holds `pages/` and `journals/` folders. EtherPK
 makes them when it opens a folder, and the [agent skill](#the-agent-skill) makes them for a new
 one. **Settings → Agents** shows this command with the path filled in once the folder's path is set
 on the General tab.
+
+### The Claude Code plugin
+
+In Claude Code, the EtherPK plugin registers the server and adds the [agent skill](#the-agent-skill)
+in one step:
+
+```text
+/plugin install etherpk --marketplace appsoftwareltd/etherpk-client
+```
+
+Set its options with `/plugin`: **Synced graph** takes a graph's name or id, and **Graph folder**
+takes a folder. Set one of the two. A synced graph still needs the `login` above, once per
+device: until then, each tool answers with the command to run, and a call after the login
+connects without a restart.
 
 ### Ask about your notes
 

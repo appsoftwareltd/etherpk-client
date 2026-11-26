@@ -30,6 +30,7 @@
         type AgentTool,
         diagramsSetupCommand,
         logoutEverywhereCommand,
+        pluginInstallCommand,
         publishCommand,
         registerCommand,
         registerFolderCommand,
@@ -134,6 +135,24 @@
     <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-register-note">{registerNote(agentTool)}</p>
     {#if copyError}
         <p role="status" class="text-sm text-red-700 dark:text-red-400">{copyError}</p>
+    {/if}
+{/snippet}
+
+<!-- The EtherPK plugin for Claude Code, offered beside the Claude Code registration as the other
+     way to take that step: it registers the same graph and adds the Agent Skill. Two
+     registrations of one graph give Claude every tool twice, so the note says to choose one.
+     Nothing when another agent is chosen, or when there is no plugin command (pluginInstallCommand). -->
+{#snippet claudePlugin(props: AgentsReachableProps)}
+    {@const text = agentTool === "claude" ? pluginInstallCommand(props) : null}
+    {#if text}
+        <div class="space-y-1 pt-2" data-testid="agents-plugin">
+            <AgentCommandRow
+                key="plugin"
+                label="Or install the EtherPK plugin for Claude Code"
+                {text}
+                note="Run this on the agent's device in place of the command above. The plugin tells Claude Code about this graph and adds the EtherPK skill. Use the plugin or the command, not both, or Claude Code gets every EtherPK tool twice."
+            />
+        </div>
     {/if}
 {/snippet}
 
@@ -271,6 +290,7 @@
                     "agents-register-folder-command",
                     "agents-copy-register-folder",
                 )}
+                {@render claudePlugin(agents)}
             </div>
         {:else}
             <p class="text-sm text-neutral-600 dark:text-neutral-400" data-testid="agents-folder-no-path">
@@ -338,6 +358,7 @@
                     "agents-register-command",
                     "agents-copy-register",
                 )}
+                {@render claudePlugin(agents)}
             </li>
             <li class="space-y-1" data-testid="agents-hand-task">
                 <span class="font-medium">3. Hand the agent a task</span>

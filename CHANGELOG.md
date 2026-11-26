@@ -5,13 +5,24 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.52.0 - 2026-11-26
 
 ### Client
 
+- **The Agents tab offers the Claude Code plugin.** With **Claude Code** chosen, a graph's Agents tab
+  gives a `claude plugin install` command with the graph set as its option, as the other way to tell
+  Claude Code about the graph, and says to use one of the two.
 - **Fixes.**
   - On a touch screen, a button of the Activity Bar no longer stays outlined or filled after a tap. The
     bar that marks the view showing stays.
+
+### Headless Client
+
+- **A Claude Code plugin.** `/plugin install etherpk --marketplace appsoftwareltd/etherpk-client`
+  adds the Headless Client and the `etherpk` agent skill to Claude Code. Its options take a synced
+  graph's name or a graph folder. See <https://docs.etherpk.com/claude-code-plugin>.
+- **Fixes.**
+  - `serve` and `publish` read an empty `--graph`, `--folder` or `--sync-server` as one not given.
 
 ## 0.51.0 - 2026-11-25
 

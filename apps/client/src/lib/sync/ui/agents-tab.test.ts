@@ -1,3 +1,7 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -8,6 +12,7 @@ import {
     loginCommand,
     logoutEverywhereCommand,
     mcpServerName,
+    pluginInstallCommand,
     publishCommand,
     registerCommand,
     registerFolderCommand,
@@ -168,5 +173,48 @@ describe('removing an agent\'s access', () => {
     it('spells logout --all with the pinned Headless Client', () => {
         expect(logoutEverywhereCommand(LATEST)).toBe('npx @appsoftwareltd/etherpk-mcp logout --all')
         expect(logoutEverywhereCommand(headlessClientPackage('0.8.1'))).toBe('npx @appsoftwareltd/etherpk-mcp@0.8.1 logout --all')
+    })
+})
+
+// The EtherPK plugin for Claude Code is installed from the Client's Public Repository, with its
+// options set on the command line to this graph. A Client pinned to its own release offers none:
+// the plugin always runs the Headless Client npm has as latest.
+describe('the Claude Code plugin', () => {
+    const synced = { kind: 'synced', graphId: 'g-1', graphName: 'Home', serverBaseUrl: 'https://sync.example.test/', headlessClient: LATEST, createSetupCode: noSetupCode } as const
+    const folder = { kind: 'folder', folderName: 'Field Notes', folderPath: '/home/me/Field Notes', headlessClient: LATEST } as const
+
+    it('installs with this synced graph and its Sync Server set', () => {
+        expect(pluginInstallCommand(synced)).toBe(
+            'claude plugin install etherpk --marketplace appsoftwareltd/etherpk-client --config graph=g-1 --config sync_server=https://sync.example.test',
+        )
+    })
+
+    it('installs with this folder set, quoted where a shell would split it', () => {
+        expect(pluginInstallCommand(folder)).toBe("claude plugin install etherpk --marketplace appsoftwareltd/etherpk-client --config 'graph_folder=/home/me/Field Notes'")
+        expect(pluginInstallCommand({ ...folder, folderPath: '/home/me/notes' })).toBe('claude plugin install etherpk --marketplace appsoftwareltd/etherpk-client --config graph_folder=/home/me/notes')
+    })
+
+    it('is not offered without a folder path, or by a Client pinned to its own release', () => {
+        expect(pluginInstallCommand({ ...folder, folderPath: null })).toBeNull()
+        expect(pluginInstallCommand({ ...synced, headlessClient: headlessClientPackage('0.8.1') })).toBeNull()
+    })
+
+    // The marketplace file is under public-repos/client here, and at the root of etherpk-client.
+    const REPO = fileURLToPath(new URL('../../../../../../', import.meta.url))
+    const marketplace = ['public-repos/client', '.']
+        .map((path) => join(REPO, path, '.claude-plugin', 'marketplace.json'))
+        .find((path) => existsSync(path))
+
+    it('sets only options the plugin has, under the plugin and marketplace names it is published as', () => {
+        expect(marketplace, '.claude-plugin/marketplace.json').toBeDefined()
+        const file = JSON.parse(readFileSync(marketplace!, 'utf8')) as { name: string; plugins: { name: string; userConfig: Record<string, unknown> }[] }
+        const [plugin] = file.plugins
+        for (const command of [pluginInstallCommand(synced)!, pluginInstallCommand(folder)!]) {
+            expect(command).toContain(`claude plugin install ${plugin.name} --marketplace`)
+            const keys = [...command.matchAll(/--config '?(\w+)=/g)].map((match) => match[1])
+            expect(keys.length).toBeGreaterThan(0)
+            for (const key of keys) expect(Object.keys(plugin.userConfig)).toContain(key)
+        }
+        expect(file.name).toBe('etherpk')
     })
 })

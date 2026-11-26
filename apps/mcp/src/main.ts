@@ -55,6 +55,7 @@ import {
     type ServerSelection,
     type StoredLogin,
 } from './config'
+import { CLI_OPTIONS } from './cli-options'
 import { describeConnectionFailure } from './connection-errors'
 import { forgetLoginSecrets, loginCredentials, saveLogin, upgradeToAgentToken } from './logins'
 import { systemSecretStore } from './secret-store'
@@ -63,6 +64,7 @@ import { MODEL, loadEmbeddingModel, removeSemantic, semanticSetupStatus, setupSe
 import { watchFolder } from './folder-watch'
 import { describeGraphLabel, findGraphByName, graphLabel, resolveGraphLabel, type MetaNameReader } from './graph-labels'
 import { readGraphName } from './graph-names'
+import { graphRequest as readGraphRequest, type GraphFlags, type GraphRequest } from './graph-request'
 import { runGraphHost, type HostedGraph, type PublishRequest } from './graph-host'
 import { connectionChangeLine } from './graph-connection'
 import { openHeadlessFolder } from './headless-folder'
@@ -749,23 +751,17 @@ function memoryNote(): string {
 }
 if (debugMemory) setInterval(() => console.error(`etherpk-mcp: memory${memoryNote()}`), 10_000).unref()
 
-interface ServeArgs {
-    graph?: string
-    folder?: string
-    'sync-server'?: string
+interface ServeArgs extends GraphFlags {
     'no-semantic'?: boolean
 }
 
-/** A graph `serve` or `publish` is asked for, before anything is read: a folder, or a synced graph by id or name. */
-type GraphRequest = { kind: 'folder'; path: string } | { kind: 'synced'; wanted: string; server: string | undefined }
-
-/** The flags of `serve` and `publish`, checked. */
+/** The flags of `serve` and `publish`, checked: the graph they ask for, or the reason and exit. */
 function graphRequest(command: 'serve' | 'publish', args: ServeArgs): GraphRequest {
-    const folder = args.folder?.trim()
-    const wanted = args.graph?.trim()
-    if (folder && (wanted || args['sync-server'])) fail(`${command} takes either --folder <path> or --graph <id or name> (with an optional --sync-server), not both.`)
-    if (!folder && !wanted) fail(`${command} needs --graph <id or name>, or --folder <path> for a graph folder.`)
-    return folder ? { kind: 'folder', path: resolve(folder) } : { kind: 'synced', wanted: wanted!, server: args['sync-server'] }
+    try {
+        return readGraphRequest(command, args)
+    } catch (error) {
+        return fail(describeError(error))
+    }
 }
 
 /** What a request is called until its host says: the folder's name, or the id or name given. */
@@ -1234,24 +1230,7 @@ async function main(): Promise<void> {
     const { values, positionals } = parseArgs({
         args: process.argv.slice(2),
         allowPositionals: true,
-        options: {
-            'sync-server': { type: 'string' },
-            pat: { type: 'string' },
-            code: { type: 'string' },
-            'recovery-code': { type: 'boolean' },
-            graph: { type: 'string' },
-            folder: { type: 'string' },
-            'no-semantic': { type: 'boolean' },
-            publication: { type: 'string' },
-            out: { type: 'string' },
-            github: { type: 'string' },
-            replace: { type: 'boolean' },
-            'dry-run': { type: 'boolean' },
-            all: { type: 'boolean' },
-            name: { type: 'string' },
-            help: { type: 'boolean', short: 'h' },
-            version: { type: 'boolean', short: 'v' },
-        },
+        options: CLI_OPTIONS,
     })
     if (values.version) {
         console.log(VERSION)
