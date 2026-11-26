@@ -13,4 +13,6 @@ export const load: PageLoad = ({ url }) => ({
     url: url.searchParams.get('url'),
     /** Where the share's files are kept on this device (`shared-files.ts`), or that they were dropped. */
     files: url.searchParams.get('files'),
+    /** How many more files the share carried than one share may. */
+    leftOut: Number(url.searchParams.get('leftOut')) || 0,
 })

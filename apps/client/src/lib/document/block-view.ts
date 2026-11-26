@@ -8,13 +8,12 @@
  * and that is what the address bar shows and what a reload resolves, falling back to the target.
  * The note is kept on the device, as the Layout is.
  */
-import { showNotice } from '#lib/activity/notices.js'
 import { getActiveLayoutController, type ViewRef } from '#lib/layout/index.js'
 
 import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 import { currentWorkspaceServices } from '#lib/workspace/workspace-services.js'
 
-import { parseGraphAddressPath, type GraphAddress } from '../navigation/graph-address'
+import { type GraphAddress } from '../navigation/graph-address'
 import { type BlockLink, blockFingerprintAt, blockLinkUrl, parseBlockLink } from './block-link'
 import { openConceptAtLine, openViewInPaneOf } from './open-concept'
 
@@ -176,25 +175,6 @@ export function openBlockView(link: BlockLink, sourcePanelId?: string): boolean 
         }
     }
     return openViewInPaneOf({ kind: BLOCK_VIEW_KIND, target: blockViewTarget(link) }, sourcePanelId)
-}
-
-/** The Client's own address of a Block, for the clipboard; null outside a graph's address. */
-export function blockLinkAddress(link: BlockLink, location: Pick<Location, 'origin' | 'pathname'> = globalThis.location): string | null {
-    const graph = parseGraphAddressPath(location.pathname)?.address
-    return graph ? blockLinkUrl(graph, link, location.origin) : null
-}
-
-/** Put the address of the Block a link names on the clipboard, and say so: the clipboard shows nothing. */
-export async function copyBlockLink(link: BlockLink): Promise<void> {
-    const address = blockLinkAddress(link)
-    if (!address) return
-    try {
-        await navigator.clipboard.writeText(address)
-        showNotice({ id: 'block-link-copy', tone: 'info', text: 'Copied a link to the block.' })
-    } catch (error) {
-        console.error('[block-view] could not copy a link to the block', error)
-        showNotice({ id: 'block-link-copy', tone: 'error', text: 'Could not copy the link to the block. The browser did not allow it: try again from the menu.' })
-    }
 }
 
 /**

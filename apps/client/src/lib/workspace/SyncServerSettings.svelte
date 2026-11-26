@@ -30,6 +30,7 @@
      * Headings follow the page's: the Sync tab's sections are h2, this server's name h3, its cards
      * h4 and the parts of a card h5, each a size or weight apart from the text beneath it.
      */
+    import { THIS_PLACE } from '#lib/native/place.js'
     import {
         PLAN_NOTICE_TEXT,
         UNLIMITED_ALLOWANCE,
@@ -631,10 +632,10 @@
                     data-testid="keys-help"
                     class="mt-1 text-sm text-neutral-500 dark:text-neutral-400"
                 >
-                    Your synced graphs on {server.host} open in this browser only
+                    Your synced graphs on {server.host} open in {THIS_PLACE} only
                     while your Encryption Keys are unlocked here. They stay unlocked
                     until you sign out, forget the server, remove its synced graphs
-                    from this browser, or clear this browser's data. If your Encryption
+                    from {THIS_PLACE}, or clear {THIS_PLACE}'s data. If your Encryption
                     Keys are replaced or reset on another device, the ones held here
                     stop working. Unlock them again, by approval from another device
                     or with the new Recovery Code, to replace them.

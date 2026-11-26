@@ -11,14 +11,22 @@
      * Two folders with one name have one address, so moving from one to the other (a row of the
      * Graphs menu) changes only the chosen id the navigation carries. The gate answers that too.
      */
+    import { THIS_PLACE_START } from '#lib/native/place.js'
     import { untrack } from 'svelte'
 
+    import { goto } from '$app/navigation'
+
+    import { type FolderHandle, isFolderLost, pickFolder } from '#lib/storage/folder-access.js'
+    import { isPickerCancel } from '#lib/storage/fs/picker-cancel.js'
     import { tryEnsurePermission } from '#lib/storage/graph-registry-idb.js'
+    import { describeChosenFolderFailure } from '#lib/workspace/folder-open-copy.js'
+    import { LOST_PLAIN_FOLDER_NEXT, lostPlainFolder } from '#lib/workspace/lost-folder-copy.js'
     import { choiceDetail, foldersNamedHeading } from '#lib/workspace/graph-address-gate.js'
 
-    import { resolvePlainAddress } from '../plain-address'
+    import { chosenPlainFolderState, plainFolderUrl, resolvePlainAddress } from '../plain-address'
     import type { PlainFolderRecord } from '../plain-folder-registry'
     import { createIdbPlainFolderRegistry } from '../plain-folder-registry-idb'
+    import { rechoosePlainFolder } from '../rechoose-plain-folder'
     import PlainFolderWorkspace from './PlainFolderWorkspace.svelte'
 
     let { name, chosenId = null, autosaveMs }: { name: string; chosenId?: string | null; autosaveMs?: number } = $props()
@@ -27,6 +35,8 @@
         | { kind: 'reading' }
         | { kind: 'open'; folder: PlainFolderRecord }
         | { kind: 'needs-permission'; folder: PlainFolderRecord }
+        /** An installed app can no longer reach the folder: it is chosen again. */
+        | { kind: 'lost'; folder: PlainFolderRecord }
         | { kind: 'choose'; folders: PlainFolderRecord[] }
         | { kind: 'not-held' }
         | { kind: 'failed'; message: string }
@@ -39,8 +49,11 @@
     async function enter(folder: PlainFolderRecord): Promise<void> {
         // A press on a choice is newer than any reading still on its way.
         const mine = ++reading
-        const allowed = await tryEnsurePermission(folder.handle)
-        if (mine === reading) gate = allowed ? { kind: 'open', folder } : { kind: 'needs-permission', folder }
+        const lost = await isFolderLost(folder.handle)
+        const allowed = !lost && (await tryEnsurePermission(folder.handle))
+        if (mine !== reading) return
+        if (lost) gate = { kind: 'lost', folder }
+        else gate = allowed ? { kind: 'open', folder } : { kind: 'needs-permission', folder }
     }
 
     /** Goes up with each reading of the registry, so an answer overtaken by a later one is dropped. */
@@ -71,7 +84,7 @@
         const chosen = chosenId
         untrack(() => {
             if (gate.kind === 'reading' && reading === 0) void resolve(chosen)
-            else if (chosen !== null && !((gate.kind === 'open' || gate.kind === 'needs-permission') && gate.folder.id === chosen)) void resolve(chosen)
+            else if (chosen !== null && !('folder' in gate && gate.folder.id === chosen)) void resolve(chosen)
         })
     })
 
@@ -83,7 +96,28 @@
             if (await tryEnsurePermission(folder.handle)) gate = { kind: 'open', folder }
             else grantError = 'The browser did not grant access to the folder. Press Grant access and choose Allow.'
         } catch (error) {
-            grantError = `Could not ask for access: ${error instanceof Error ? error.message : String(error)}`
+            console.error('[plain-folder] could not ask for access to the folder', error)
+            grantError = describeChosenFolderFailure(error)
+        } finally {
+            granting = false
+        }
+    }
+
+    /** Choose folder: the folder chosen takes the lost one's place, and opens. */
+    async function rechoose(lost: PlainFolderRecord): Promise<void> {
+        if (granting) return
+        granting = true
+        grantError = null
+        try {
+            const outcome = await rechoosePlainFolder(lost, await pickFolder())
+            if (outcome.kind === 'refused') grantError = outcome.message
+            else if (outcome.folder.name === name) await enter(outcome.folder)
+            else await goto(plainFolderUrl(outcome.folder.name), { replaceState: true, state: chosenPlainFolderState(outcome.folder) })
+        } catch (error) {
+            // Closing the picker is a choice, and nothing is said.
+            if (isPickerCancel(error)) return
+            console.error('[plain-folder] the folder chosen in place of a lost one could not be opened', error)
+            grantError = describeChosenFolderFailure(error)
         } finally {
             granting = false
         }
@@ -92,7 +126,7 @@
 
 {#if gate.kind === 'open'}
     {#key gate.folder.id}
-        <PlainFolderWorkspace id={gate.folder.id} name={gate.folder.name} handle={gate.folder.handle as FileSystemDirectoryHandle} {autosaveMs} />
+        <PlainFolderWorkspace id={gate.folder.id} name={gate.folder.name} handle={gate.folder.handle as FolderHandle} {autosaveMs} />
     {/key}
 {:else}
     <div class="gate" data-testid="plain-folder-gate" data-gate={gate.kind}>
@@ -111,6 +145,19 @@
                 </button>
                 <a class="gk-button" href="/graphs">Back to graphs</a>
             </div>
+        {:else if gate.kind === 'lost'}
+            {@const folder = gate.folder}
+            <p data-testid="plain-folder-lost">{lostPlainFolder(folder.name)}</p>
+            <p>{LOST_PLAIN_FOLDER_NEXT}</p>
+            {#if grantError}
+                <p role="alert" class="error" data-testid="plain-folder-grant-error">{grantError}</p>
+            {/if}
+            <div class="actions">
+                <button type="button" class="gk-button gk-button--primary" data-testid="plain-folder-rechoose" aria-disabled={granting} aria-busy={granting} onclick={() => rechoose(folder)}>
+                    {granting ? 'Waiting for the folder…' : 'Choose folder…'}
+                </button>
+                <a class="gk-button" href="/graphs">Back to graphs</a>
+            </div>
         {:else if gate.kind === 'choose'}
             <!-- As many folders as are listed, each by when it was added: all that tells apart folders with one name. -->
             <p data-testid="plain-folder-choose">{foldersNamedHeading(gate.folders.length, name)}. Which one do you want to open?</p>
@@ -122,7 +169,7 @@
                 {/each}
             </div>
         {:else if gate.kind === 'not-held'}
-            <p data-testid="plain-folder-not-held">This browser has no Plain Folder named “{name}”. Open the folder from the Graphs page to add it.</p>
+            <p data-testid="plain-folder-not-held">{THIS_PLACE_START} has no Plain Folder named “{name}”. Open the folder from the Graphs page to add it.</p>
             <div class="actions"><a class="gk-button gk-button--primary" href="/graphs">Go to graphs</a></div>
         {:else}
             <p role="alert">Could not read this device’s folders: {gate.message}</p>

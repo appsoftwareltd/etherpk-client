@@ -9,6 +9,10 @@
     import { updated } from "$app/state";
     import { goto } from "$app/navigation";
     import { watchAppInstall } from "#lib/storage/app-install.js";
+    import CloseDialog from "#lib/native/CloseDialog.svelte";
+    import { nativePlatform } from "#lib/native/bridge.js";
+    import { startedInstalledApp } from "#lib/native/first-launch.js";
+    import { GRAPHS_PATH, leadsToAbsentPage } from "#lib/native/installed-pages.js";
     import InstallAppDialog from "#lib/install/InstallAppDialog.svelte";
     import TooltipHost from "#lib/surface/ui/TooltipHost.svelte";
     import { welcomeInstalledApp } from "#lib/install/install-notices.js";
@@ -33,10 +37,15 @@
     // version poll (vite.config `version.pollInterval`) sees a new build, the next
     // client-side navigation becomes a full-page load, picking up the new hashed assets.
     // Mixed-version tabs caused days of unreproducible bug reports (2026-07-28/29).
-    beforeNavigate(({ willUnload, to, shallow, type }) => {
+    beforeNavigate(({ willUnload, to, shallow, type, cancel }) => {
         if (shallow && type === 'goto') return;
 
-        if (updated.current && !willUnload && to?.url) {
+        // A Native App holds no public pages, and nothing answers for one.
+        if (willUnload || !to?.url) return;
+        if (leadsToAbsentPage(to.url)) {
+            cancel();
+            if (location.pathname !== GRAPHS_PATH) void goto(GRAPHS_PATH);
+        } else if (updated.current) {
             location.href = to.url.href;
         }
     });
@@ -48,7 +57,9 @@
         // The service worker (src/service-worker/index.ts, ADR 0142) keeps the app's files so the
         // app starts with no network, and makes it installable. SvelteKit builds it as a module.
         // Registering a new script at the same scope replaces the old `/sw.js`.
-        if ("serviceWorker" in navigator) {
+        // A desktop Native App's is for the Theme preview alone, and the Android app has none
+        // (src/service-worker/installed.ts).
+        if ("serviceWorker" in navigator && nativePlatform() !== "android") {
             navigator.serviceWorker.register("/service-worker.js", { type: "module" }).catch((err) => {
                 console.warn("[sw] Registration failed:", err);
             });
@@ -63,6 +74,7 @@
             void import("#lib/storage/synced/queued-uploads-device.js").then((uploads) => uploads.sendQueuedUploadsAtStart()).catch(() => {});
         if ("requestIdleCallback" in window) requestIdleCallback(sendWaitingUploads, { timeout: 10_000 });
         else setTimeout(sendWaitingUploads, 3_000);
+        void startedInstalledApp();
         const stopWatching = watchAppInstall();
         welcomeInstalledApp();
         // The manifest's `launch_handler` focuses the open window for a new launch instead of
@@ -86,6 +98,7 @@
 {@render children()}
 
 <InstallAppDialog />
+<CloseDialog />
 
 <!-- The one tooltip, for every control that carries `data-tooltip` (surface/tooltip.ts). -->
 <TooltipHost />

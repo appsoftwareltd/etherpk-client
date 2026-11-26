@@ -13,8 +13,9 @@
  * - **A save changes only the edited lines.** The file is read as bytes, and its byte order mark
  *   and line endings are kept (file-form.ts). A save with no change writes nothing.
  * - **A save reads the file first.** When another program has changed it, the save stops at a
- *   conflict. The File System Access API has no compare-and-set, so a write landing between that
- *   read and ours is still replaced (spec/folder-save, `bugs/Window.cfg`).
+ *   conflict. The File System Access API has no compare-and-set, so in a browser a write landing
+ *   between that read and ours is still replaced (spec/folder-save, `bugs/Window.cfg`). An installed
+ *   app's shell refuses that write (write-unless-moved.ts).
  * - **A file that is gone is never written back unasked.** A Folder graph brings it back, since an
  *   edit outranks a delete there (ADR 0039). Here a checkout or another editor removed it on
  *   purpose, so the tab says so and `restore` is the person's to press.
@@ -24,6 +25,7 @@
 import { DocumentNotFoundError, type DocumentStore, type EditorDocument, type TextChange } from '../document/types'
 import { lineFeedsOnly } from '../document/line-endings'
 import { type Debounced, debounce } from '../storage/fs/debounce'
+import { expectedOf, untilWritten, writeUnlessMoved } from '../storage/fs/write-unless-moved'
 
 import { type FileForm, decodeFile, encodeFile, placeEdits } from './file-form'
 import { type FileBytes, type FileStamp, type FolderTreeAdapter, isNotFound } from './folder-tree-adapter'
@@ -82,6 +84,8 @@ export interface PlainFolderStore extends DocumentStore {
     /** Write the buffer now if it is unsaved, and wait for every write in flight. */
     flushDocument(path: string): Promise<void>
     flushAll(): Promise<void>
+    /** The paths of the open files whose edits are not in the folder. After a flush, those that could not be written. */
+    unsavedPaths(): string[]
     /** Compare every open file with the folder: reload, raise a conflict, or note a removal. */
     reconcile(): Promise<void>
     resolveConflict(path: string, choice: 'keep-mine' | 'take-disk'): Promise<void>
@@ -234,34 +238,48 @@ export function createPlainFolderStore(adapter: FolderTreeAdapter, options: Plai
      * agreed with. Resolves true once the file holds it, false when the save stopped: the file had
      * moved or gone.
      */
-    async function writeChecked(doc: OpenFile, written: string): Promise<boolean> {
-        let file: FileBytes
-        try {
-            file = await adapter.read(doc.path)
-        } catch (error) {
-            if (!isNotFound(error)) throw error
-            noteRemoved(doc)
-            return false
-        }
-        const read = interpret(doc.path, file)
-        if (!sameAsRead(doc, read)) {
-            // Another program made the same edit: the file already says what we would write.
-            if (read.kind === 'text' && read.text === written && read.form.bom === doc.form.bom) {
-                doc.diskText = written
-                doc.lastModified = read.stamp.lastModified
-                doc.size = read.stamp.size
-                return true
+    function writeChecked(doc: OpenFile, written: string): Promise<boolean> {
+        return untilWritten(async () => {
+            const file = await readNow(doc)
+            if (file === null) {
+                noteRemoved(doc)
+                return false
             }
-            followDisk(doc, read)
-            return false
-        }
-        // Nothing between the read above and this write: that moment is the one a write from
-        // outside can still slip into.
-        const stamp = await adapter.write(doc.path, encodeFile(written, doc.form))
+            const read = interpret(doc.path, file)
+            if (!sameAsRead(doc, read)) return alreadyWritten(doc, read, written)
+            // Nothing between the read above and this write: in a browser that moment is the one a
+            // write from outside can still slip into.
+            const stamp = await writeOver(doc, read.stamp, written)
+            // Null is a write refused because the file moved since the read: read and judge it again.
+            return stamp === null ? undefined : holdsNow(doc, written, stamp)
+        })
+    }
+
+    /** The file is not what the buffer last agreed with. True when another program made the same edit. */
+    function alreadyWritten(doc: OpenFile, read: Read, written: string): boolean {
+        if (read.kind === 'text' && read.text === written && read.form.bom === doc.form.bom) return holdsNow(doc, written, read.stamp)
+        followDisk(doc, read)
+        return false
+    }
+
+    /** The file holds `written`, with these stamps. */
+    function holdsNow(doc: OpenFile, written: string, stamp: FileStamp): true {
         doc.diskText = written
         doc.lastModified = stamp.lastModified
         doc.size = stamp.size
         return true
+    }
+
+    /** Write over the file as it was just read, or where there was none. Null when it has moved since. */
+    function writeOver(doc: OpenFile, read: FileStamp | null, text: string): Promise<FileStamp | null> {
+        return writeUnlessMoved(
+            expectedOf(read),
+            (expected) => adapter.write(doc.path, encodeFile(text, doc.form), expected),
+            async () => {
+                const stat = await adapter.stat(doc.path)
+                return stat?.kind === 'file' ? stat : null
+            },
+        )
     }
 
     /** A file whose buffer may be written: read, editable, there, and not waiting on the person. */
@@ -436,6 +454,36 @@ export function createPlainFolderStore(adapter: FolderTreeAdapter, options: Plai
         }
     }
 
+    /** Throws, with the newer version shown, when the file is neither what the person was shown nor what would be written. */
+    function askAgainIfMoved(doc: OpenFile, shown: PlainConflict, read: Read | null): void {
+        const shownNow = shownOf(read)
+        if (shownNow === null || shownNow === shown.diskText || shownNow === doc.buffer) return
+        raiseConflict(doc, shownNow)
+        changed(doc)
+        throw new Error('another program changed the file again while you were choosing')
+    }
+
+    /**
+     * **Keep mine**: the buffer goes over the version of the file the person was shown. A file that
+     * has moved again since is shown to them instead, and nothing is written: writing then would
+     * replace a version they were never shown.
+     */
+    async function keepMine(doc: OpenFile, shown: PlainConflict): Promise<void> {
+        await untilWritten(async () => {
+            const file = await readNow(doc)
+            const read = file === null ? null : interpret(doc.path, file)
+            askAgainIfMoved(doc, shown, read)
+            // Their lines go into the file as it is now, so its own endings and mark are kept.
+            if (read?.kind === 'text') {
+                doc.diskText = read.text
+                doc.form = read.form
+            }
+            const written = toWrite(doc, doc.buffer)
+            const stamp = await writeOver(doc, read?.stamp ?? null, written)
+            return stamp === null ? undefined : holdsNow(doc, written, stamp)
+        })
+    }
+
     /** **Take the disk's**: the buffer becomes the file, or the tab notes that the file went meanwhile. */
     function takeDisk(doc: OpenFile, file: FileBytes | null): void {
         if (file === null) {
@@ -506,6 +554,8 @@ export function createPlainFolderStore(adapter: FolderTreeAdapter, options: Plai
             await Promise.all([...open.values()].map(saveNow))
         },
 
+        unsavedPaths: () => [...open.values()].filter((doc) => doc.dirty).map((doc) => doc.path),
+
         async reconcile() {
             for (const doc of [...open.values()]) {
                 try {
@@ -521,27 +571,8 @@ export function createPlainFolderStore(adapter: FolderTreeAdapter, options: Plai
         async resolveConflict(path, choice) {
             const doc = fileAt(path)
             if (!doc?.conflict) return
-            const file = await readNow(doc)
-            if (choice === 'take-disk') return takeDisk(doc, file)
-            const read = file === null ? null : interpret(doc.path, file)
-            const shownNow = shownOf(read)
-            // The file moved again while the person was choosing. Writing now would replace a
-            // version they were never shown, so show that one and ask again.
-            if (shownNow !== null && shownNow !== doc.conflict.diskText && shownNow !== doc.buffer) {
-                raiseConflict(doc, shownNow)
-                changed(doc)
-                throw new Error('another program changed the file again while you were choosing')
-            }
-            // Their lines go into the file as it is now, so its own endings and mark are kept.
-            if (read?.kind === 'text') {
-                doc.diskText = read.text
-                doc.form = read.form
-            }
-            const written = toWrite(doc, doc.buffer)
-            const stamp = await adapter.write(doc.path, encodeFile(written, doc.form))
-            doc.diskText = written
-            doc.lastModified = stamp.lastModified
-            doc.size = stamp.size
+            if (choice === 'take-disk') return takeDisk(doc, await readNow(doc))
+            await keepMine(doc, doc.conflict)
             doc.loaded = true
             doc.readOnly = null
             doc.missing = false
@@ -562,10 +593,13 @@ export function createPlainFolderStore(adapter: FolderTreeAdapter, options: Plai
             }
             await adapter.createDirectory(dirOf(doc.path))
             const written = toWrite(doc, doc.buffer)
-            const stamp = await adapter.write(doc.path, encodeFile(written, doc.form))
-            doc.diskText = written
-            doc.lastModified = stamp.lastModified
-            doc.size = stamp.size
+            const stamp = await writeOver(doc, null, written)
+            if (stamp === null) {
+                // Another program made the file as this one was about to.
+                await reconcileFile(doc)
+                return
+            }
+            holdsNow(doc, written, stamp)
             doc.loaded = true
             doc.missing = false
             doc.removedElsewhere = false

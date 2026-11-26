@@ -3,8 +3,67 @@ import {
     ManagedTokenError,
     clearManagedAccessToken,
     freshManagedBearerToken,
+    holdManagedAccessToken,
     managedBearerToken,
 } from './managed-token'
+
+const native = vi.hoisted(() => ({ installed: false, accessToken: vi.fn() }))
+vi.mock('#lib/native/bridge.js', async (original) => ({
+    ...(await original<typeof import('#lib/native/bridge.js')>()),
+    isNativeApp: () => native.installed,
+}))
+vi.mock('#lib/native/session.js', () => ({ nativeAccessToken: native.accessToken }))
+
+// An installed app has no /auth/token: its shell keeps the refresh token and answers for it.
+describe('managed bearer tokens in an installed app', () => {
+    const noServer = vi.fn<typeof fetch>(async () => { throw new Error('an installed app has no server to ask') })
+    const grant = (accessToken: string, forMs = 15 * 60_000) => ({ accessToken, expiresAt: Date.now() + forMs })
+
+    beforeEach(() => {
+        native.installed = true
+        native.accessToken.mockReset()
+        noServer.mockClear()
+        clearManagedAccessToken()
+    })
+    afterEach(() => { native.installed = false })
+
+    it('come from the shell, once while they are good', async () => {
+        native.accessToken.mockResolvedValue(grant('access-1'))
+        await expect(Promise.all([managedBearerToken(noServer), managedBearerToken(noServer)])).resolves.toEqual(['access-1', 'access-1'])
+        await expect(managedBearerToken(noServer)).resolves.toBe('access-1')
+        expect(native.accessToken).toHaveBeenCalledTimes(1)
+        expect(native.accessToken).toHaveBeenCalledWith({ forceRefresh: false })
+        expect(noServer).not.toHaveBeenCalled()
+    })
+
+    it('are asked for again when less than a minute is left, and refreshed when a fresh one is asked for', async () => {
+        native.accessToken.mockResolvedValueOnce(grant('access-1', 30_000)).mockResolvedValueOnce(grant('access-2')).mockResolvedValueOnce(grant('access-3'))
+        await managedBearerToken(noServer)
+        await expect(managedBearerToken(noServer)).resolves.toBe('access-2')
+        await expect(freshManagedBearerToken(noServer)).resolves.toBe('access-3')
+        expect(native.accessToken).toHaveBeenLastCalledWith({ forceRefresh: true })
+    })
+
+    it('are a 401 when nobody is signed in, as they are in a browser', async () => {
+        native.accessToken.mockResolvedValue(null)
+        await expect(managedBearerToken(noServer)).rejects.toEqual(new ManagedTokenError('Managed Sync sign-in is required', 401))
+    })
+
+    it('are a 503, and no sign-out, when the account site could not be asked', async () => {
+        native.accessToken.mockRejectedValue(new DOMException('no answer', 'NetworkError'))
+        await expect(managedBearerToken(noServer)).rejects.toMatchObject({ name: 'ManagedTokenError', status: 503 })
+        native.accessToken.mockResolvedValue(grant('access-1'))
+        await expect(managedBearerToken(noServer)).resolves.toBe('access-1')
+    })
+
+    it('hold what a sign-in answered, until they are cleared', async () => {
+        holdManagedAccessToken(grant('access-9'))
+        await expect(managedBearerToken(noServer)).resolves.toBe('access-9')
+        clearManagedAccessToken()
+        native.accessToken.mockResolvedValue(null)
+        await expect(managedBearerToken(noServer)).rejects.toMatchObject({ status: 401 })
+    })
+})
 
 describe('managed bearer tokens', () => {
     beforeEach(() => {

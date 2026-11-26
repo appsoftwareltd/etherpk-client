@@ -186,7 +186,3 @@ export function directoryHandleFolder(root: FileSystemDirectoryHandle): SiteFold
         listFiles: () => listFiles(root),
     }
 }
-
-export function writeSiteToDirectory(root: FileSystemDirectoryHandle, bundle: SiteBundle, options: SiteWriteOptions): Promise<SiteWriteResult> {
-    return writeSite(directoryHandleFolder(root), bundle, options)
-}

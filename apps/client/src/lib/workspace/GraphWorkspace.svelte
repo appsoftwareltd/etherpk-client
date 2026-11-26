@@ -15,6 +15,7 @@
      * (the backend owns document text); it does reset per-editor undo/cursor/scroll
      * — a known, accepted limitation.
      */
+    import { ANOTHER_TAB, EXPORT_ELSEWHERE, OPEN_HERE, THIS_PLACE, THIS_PLACE_START } from "#lib/native/place.js";
     import { type Component, onMount, tick, untrack } from "svelte";
 
     import { dev } from "$app/env";
@@ -23,6 +24,12 @@
     import { page } from "$app/state";
     import * as env from "$app/env/public";
     import { currentReturnPath } from "#lib/auth/sign-in-links.js";
+    import { hasNativeFeature, isNativeApp } from "#lib/native/bridge.js";
+    import { isNativeFolder, nativeFolderPath, showNativeFile } from "#lib/native/folder-ref.js";
+    import { folderWatch } from "#lib/native/folder-watch.js";
+    import { guardLeaving } from "#lib/native/leave-guard.js";
+    import { openingAddress, webClientAddress } from "#lib/native/web-address.js";
+    import { downloadUrl, saveFailureReason } from "#lib/native/save-file.js";
     import {
         capturePosition,
         clearPendingRestores,
@@ -37,7 +44,7 @@
         type ReadingPositionStore,
         withSearch,
     } from "#lib/navigation/index.js";
-    import type { GraphAddress } from "#lib/navigation/graph-address.js";
+    import { type GraphAddress, graphAddressOf, sameGraphAddress } from "#lib/navigation/graph-address.js";
     import {
         LAYOUT_VERSION,
         type LayoutController,
@@ -245,7 +252,9 @@
     import { createBrowserPublishEnvironment } from "#lib/document/publish/host/browser-environment.js";
     import { MAP_PICTURE_KIND, type MapPictureRenderer } from "#lib/document/publish/map-picture-renderer.js";
     import { MAP_FENCE_INFO } from "#lib/document/map-text.js";
-    import { writeSiteToDirectory } from "#lib/document/publish/host/site-writer.js";
+    import { releaseFolder } from "#lib/storage/release-folder.js";
+    import { siteFolderFor } from "#lib/document/publish/host/site-folder-for.js";
+    import { writeSite } from "#lib/document/publish/host/site-writer.js";
     import { downloadZip, zipSite } from "#lib/document/publish/host/zip.js";
     import { publishToRepository } from "#lib/document/publish/host/github-site-folder.js";
     import { createBranch } from "#lib/document/publish/host/github-repository.js";
@@ -436,7 +445,8 @@
     import { insertBlock } from "#lib/document/view/block-insert.js";
     import FenceView from "#lib/document/view/FenceView.svelte";
     import BlockView from "#lib/document/view/BlockView.svelte";
-    import { BLOCK_VIEW_KIND, BLOCK_VIEW_TITLE_PREFIX, blockSeen, blockViewAt, blockViewDocument, copyBlockLink, liveBlockView, openBlockView, parseBlockViewTarget } from "#lib/document/block-view.js";
+    import { BLOCK_VIEW_KIND, BLOCK_VIEW_TITLE_PREFIX, blockSeen, blockViewAt, blockViewDocument, liveBlockView, openBlockView, parseBlockViewTarget } from "#lib/document/block-view.js";
+    import { copyBlockLink } from "#lib/document/block-link-copy.js";
     import { registerBlockViewCommands } from "#lib/document/commands/block-view-commands.js";
     import { parseBlockLink } from "#lib/document/block-link.js";
     import { type FenceRef, fenceViewTarget, parseFenceViewTarget, setFenceHosting } from "#lib/document/view/fence-hosting.js";
@@ -463,7 +473,12 @@
         createFilesystemDocumentStore,
         createIdbGraphRegistry,
         createIdbGraphStoragePort,
-        createWebFsDirectoryAdapter,
+        type FolderHandle,
+        canPickFolder,
+        directoryAdapterFor,
+        isFolderLost,
+        isFolderOnDisk,
+        pickFolder,
         ensureAgentInstructions,
         registerSyncedGraphOnDevice,
         maxContentWidthOf,
@@ -477,9 +492,7 @@
         getOpfsRoot,
         hasPermission,
         tryEnsurePermission,
-        isOnDisk,
         isPickerCancel,
-        pickGraphDirectory,
         readMirrorFolder,
         setLastGraphId,
         STORAGE_RECOVERY_FOOTNOTE_OPEN_GRAPH,
@@ -597,6 +610,8 @@
     import InviteDialog from "#lib/sync/ui/InviteDialog.svelte";
     import { isDemoGraph } from "#lib/demo/demo-graph.js";
     import { chosenGraphState } from "#lib/workspace/chosen-graph.js";
+    import { LOST_PUBLISH_FOLDER } from "#lib/workspace/lost-folder-copy.js";
+    import { rechooseGraphFolder, type RechosenFolder } from "#lib/workspace/rechoose-folder.js";
     import { entryIsAnotherGraphs as namesAnotherGraph } from "#lib/workspace/graph-address-gate.js";
     import { setOpenFolderGraph } from "#lib/workspace/open-folder-graph.svelte.js";
     import { createWorkspaceUsage } from "#lib/telemetry/workspace-usage.js";
@@ -828,7 +843,11 @@
         | "access-lost";
     let phase = $state<Phase>("loading");
     /** The folder the open stopped at for want of permission, for Grant access to ask about. */
-    let folderAwaitingGrant: FileSystemDirectoryHandle | null = null;
+    let folderAwaitingGrant: FolderHandle | null = null;
+    /** That folder is one a Native App can no longer reach, so it has to be chosen again. */
+    let folderLost = $state(false);
+    /** The folder this graph is kept in, once it is open. Null for a synced graph. */
+    let openFolder = $state.raw<FolderHandle | null>(null);
     /** Grant access has asked, and the browser has not answered yet. */
     let granting = $state(false);
     /** Why Grant access did not get the folder, in user copy. */
@@ -1266,7 +1285,7 @@
      */
     let mirrorTakeover = $state<
         | ((MirrorTakeover & { kind: "confirm" }) & {
-              handle: FileSystemDirectoryHandle;
+              handle: FolderHandle;
               folder: string;
           })
         | (MirrorTakeover & { kind: "refuse" })
@@ -1409,7 +1428,7 @@
         | (() => Promise<{ docBytes: number; assetBytes: number; versionBytes?: number; deletedAssetBytes?: number }>)
         | null = null;
     // Filesystem backend: the adapter + current settings back the settings dialog's save.
-    let fsAdapter: ReturnType<typeof createWebFsDirectoryAdapter> | undefined;
+    let fsAdapter: ReturnType<typeof directoryAdapterFor> | undefined;
     let currentFsSettings: GraphSettings = {};
     /**
      * The graph's toolbar colour (Graph Settings, ADR 0071), or empty for the theme's own
@@ -1447,11 +1466,13 @@
     /** What the running mirror reports, shown on Settings → Mirror; null when there is none. */
     let mirrorStatus = $state<MirrorStatus | null>(null);
     /** The folder a running mirror writes to, so a permission it lost can be asked for again. */
-    let mirrorHandleInUse: FileSystemDirectoryHandle | undefined;
-    /** A folder this device remembers but has not been granted access to in this session. */
+    let mirrorHandleInUse: FolderHandle | undefined;
+    /** A folder this device remembers and cannot write to yet: not granted in this session, or lost. */
     let mirrorNeedsPermission = $state<{
-        handle: FileSystemDirectoryHandle;
+        handle: FolderHandle;
         folder: string;
+        /** A Native App can no longer reach it, so it has to be chosen again. */
+        lost: boolean;
     } | null>(null);
     /**
      * Cross-tab ownership of this graph's folder (ADR 0042's mechanism, a different job). Two
@@ -3081,20 +3102,6 @@
         }
     }
 
-    /**
-     * Hand a resolved [[Asset]] to the browser as a download. An anchor with `download` rather
-     * than a navigation, so the object URL is saved under the asset's own name instead of
-     * replacing the app.
-     */
-    function downloadResolvedAsset(url: string, fileName: string) {
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-    }
-
     /** Open the delete confirmation, reporting what points at the document (ADR 0039 §3). */
     async function startDelete(concept: string) {
         // A document a publication names under `includes:` is refused, not confirmed: the site
@@ -3262,15 +3269,59 @@
         // Edits still waiting for an idle version are kept now (ADR 0184): the text is read here,
         // and the sealed version waits in the outbox until the graph next opens if need be.
         graphVersions?.recorder.settle();
+        writePendingEdits();
     }
 
     /**
      * Leaving the page (another tab or app, or a phone's home screen) keeps the edits still
-     * waiting for an idle version. `visibilitychange` comes before `pagehide` and is the last event
-     * a phone reliably sends, so the text is read while the page can still finish sealing it.
+     * waiting for an idle version, and writes those still waiting to be saved. `visibilitychange`
+     * comes before `pagehide` and is the last event a phone reliably sends, so both start while the
+     * page can still finish them.
      */
-    function keepVersionsWhenHidden() {
-        if (document.visibilityState === "hidden") graphVersions?.recorder.settle();
+    function keepEditsWhenHidden() {
+        if (document.visibilityState !== "hidden") return;
+        graphVersions?.recorder.settle();
+        writePendingEdits();
+    }
+
+    /**
+     * A page that is going gets no time to finish a write: one started on `pagehide` is dropped with
+     * the page (`tests-client/folder-graph-close.test.ts`). So while an edit is not in the folder yet,
+     * or a save of it failed, the browser asks before it closes or leaves the page, and staying saves
+     * the edit. The wait is the autosave's, so a person who pauses before closing is not asked.
+     * A Native App's shell waits for the page instead (`saveBeforeLeaving`).
+     */
+    function askBeforeLosingEdits(event: BeforeUnloadEvent) {
+        if (isNativeApp() || !editsNotInFolder()) return;
+        writePendingEdits();
+        event.preventDefault();
+    }
+
+    /** Whether a folder graph has edits its folder does not hold. */
+    function editsNotInFolder(): boolean {
+        const folder = store as Partial<FilesystemDocumentStore> | undefined;
+        if (!folder?.unsavedTargets) return false;
+        return folder.unsavedTargets().length > 0 || (protectedStore?.hasPendingWrites ?? false);
+    }
+
+    /** Before a Native App's window closes: write every edit, and name this graph when one cannot be written. */
+    async function saveBeforeLeaving(): Promise<string | null> {
+        flushPersistence();
+        try {
+            await settlePendingWrites();
+            return null;
+        } catch (err) {
+            console.warn("[workspace] edits are unsaved as the window closes", err);
+            return `Some of your latest edits in ${graphDisplayName || "this graph"} could not be saved, and closing loses those edits.`;
+        }
+    }
+
+    /**
+     * Start writing every edit that is waiting for its autosave. A write that fails is reported
+     * where every failed save is, so nothing is said here.
+     */
+    function writePendingEdits() {
+        void settlePendingWrites().catch((err) => console.warn("[workspace] pending edits were not all written", err));
     }
 
     /**
@@ -3596,6 +3647,7 @@
         settings: personSettings(),
         clientVersion: RELEASE_VERSION,
         storage: typeof localStorage === "undefined" ? undefined : localStorage,
+        serverless: isNativeApp(),
     });
     // The person's Extension Directory extensions, kept in step on this device: installed as they
     // arrive from the account, removed when the person removes them elsewhere or the account ends
@@ -3892,7 +3944,7 @@
     async function resolveRoot(
         attempt: GraphOpenAttempt,
         known: MissingGraphDiagnosis | null,
-    ): Promise<FileSystemDirectoryHandle | null> {
+    ): Promise<FolderHandle | null> {
         if (dev && opfs) {
             const opfsRoot = await attempt.wait(getOpfsRoot());
             return attempt.wait(
@@ -3933,9 +3985,9 @@
         // A page load or a restored tab has no user gesture, so the browser refuses to ask and the
         // Grant access screen supplies one. An open that follows a click in the app can often still
         // ask from here, which saves that person a second click.
-        const handle = record.handle as FileSystemDirectoryHandle;
-        const granted = await attempt.wait(tryEnsurePermission(handle));
-        if (!granted) {
+        const handle = record.handle as FolderHandle;
+        folderLost = await attempt.wait(isFolderLost(handle));
+        if (folderLost || !(await attempt.wait(tryEnsurePermission(handle)))) {
             folderAwaitingGrant = handle;
             phase = "needs-permission";
             return null;
@@ -4576,7 +4628,8 @@
         if (!useServer) {
             const root = await resolveRoot(attempt, hidden);
             if (!root) return false; // phase already set (missing / needs-permission)
-            const adapter = createWebFsDirectoryAdapter(root);
+            openFolder = root;
+            const adapter = directoryAdapterFor(root);
             const s = createFilesystemDocumentStore(adapter, {
                 autosaveMs: dev ? autosaveMs : undefined,
                 onConflict: (c) => {
@@ -4705,7 +4758,8 @@
             // Dev-gate OPFS graphs have no registry record - the id stands in so the
             // dialog's name validation never blocks a settings save.
             fsAdapter = adapter;
-            fsFolderName = (await attempt.wait(isOnDisk(root))) ? root.name : undefined;
+            fsFolderName = (await attempt.wait(isFolderOnDisk(root))) ? root.name : undefined;
+            await attempt.wait(rememberFolderPath(root));
             const fsRegistry = createIdbGraphRegistry();
             const fsRecord = await attempt.wait(fsRegistry.getGraph(graphId));
             graphDisplayName = fsRecord?.name ?? graphId;
@@ -5305,9 +5359,10 @@
                 canonicalName: (concept) => canonicalConceptName(concept),
                 onError: (text) => notify(text),
                 onCopied: (text) => notify(text),
-                hasFilePath: (concept) =>
-                    fsFolderName !== undefined && fileLocationOf(concept) !== null,
+                hasFilePath,
+                hasFile,
                 copyFilePath: (concept) => void copyDocumentFilePath(concept),
+                showFile: showFileInFileManager,
             },
         );
         // Print or save as PDF… (ADR 0207), through the projection the editors read.
@@ -5495,7 +5550,7 @@
                 index: () => graphIndex ?? null,
                 protectedUsage: protectedUsageOf,
                 quickNoteTexts: allQuickNoteTexts,
-                download: downloadResolvedAsset,
+                download: downloadUrl,
                 copyImage: copyImageToClipboard,
                 openAsset: (assetId, ref, line, concept) => {
                     // A link to a page of a PDF. The tab is keyed by the Asset alone.
@@ -5759,6 +5814,7 @@
         if (!useServer)
             detachReconcile = attachReconciliation(
                 s as FilesystemDocumentStore,
+                { watch: folderWatch(openFolder) },
             );
         attempt.checkpoint();
         workspaceGeneration = publishWorkspaceServices({
@@ -5938,8 +5994,9 @@
         try {
             return await seedWelcomePage({
                 graphId,
-                // This Client's own demo, so a self-hosted Client does not link to another's.
-                demoUrl: new URL("/demo", location.origin).href,
+                // This Client's own demo, so a self-hosted Client does not link to another's. A Native
+                // App's own address leads nowhere outside it (web-address.ts).
+                demoUrl: webClientAddress("/demo"),
                 claims: browserWelcomeClaims(),
                 documentCount: () => open.listDocuments().length,
                 createPage: (title, body) => open.createPage(title, body),
@@ -6439,10 +6496,17 @@
         }
     }
 
-    function downloadHeldCopyUnsent(): void {
-        if (!heldCopyUnsent || missing?.kind !== "no-longer-member") return;
-        saveUnsentChangesFile(heldCopyUnsent.unsent, missing.name);
-        heldCopyUnsent = { ...heldCopyUnsent, downloaded: true };
+    async function downloadHeldCopyUnsent(): Promise<void> {
+        const held = heldCopyUnsent;
+        if (!held || missing?.kind !== "no-longer-member") return;
+        try {
+            // Said to be kept only once it is: an app that asks where to save can be told not to.
+            if ((await saveUnsentChangesFile(held.unsent, missing.name)) === "cancelled" || heldCopyUnsent !== held) return;
+            heldCopyUnsent = { ...held, downloaded: true };
+        } catch (err) {
+            console.error("[workspace] the unsent changes were not saved", err);
+            removeHeldCopyError = `The unsent changes were not saved. ${saveFailureReason(err)}`;
+        }
     }
 
     function keepHeldCopy(): void {
@@ -6516,6 +6580,40 @@
         folderAwaitingGrant = null;
         phase = "loading";
         await runBuild();
+    }
+
+    /**
+     * Choose folder, for a graph whose folder a Native App can no longer reach: the folder chosen
+     * takes the lost one's place and the graph opens from there. Its name is in the graph's address,
+     * so a folder that was renamed opens at its own.
+     */
+    async function rechooseFolder() {
+        if (granting) return;
+        granting = true;
+        grantError = null;
+        let rechosen: RechosenFolder | null = null;
+        try {
+            const registry = createIdbGraphRegistry();
+            const record = await registry.getGraph(graphId);
+            if (!record) throw new DOMException("The graph is not on this device's list.", "NotFoundError");
+            rechosen = await rechooseGraphFolder(record, await pickFolder(), registry);
+            if (rechosen.kind === "refused") grantError = rechosen.message;
+        } catch (err) {
+            // Closing the picker is a choice, and nothing is said.
+            if (!isPickerCancel(err)) {
+                console.warn("[workspace] could not open the folder chosen for the graph", err);
+                grantError = describeFolderOpenFailure(err);
+            }
+        } finally {
+            granting = false;
+        }
+        if (rechosen?.kind !== "graph") return;
+        const { graph } = rechosen;
+        folderAwaitingGrant = null;
+        folderLost = false;
+        phase = "loading";
+        if (sameGraphAddress(graphAddressOf(graph), graphAddress)) await runBuild();
+        else await queueHistoryWrite(() => goto(graphUrl(graphAddressOf(graph)), { replaceState: true, state: chosenGraphState(graph) }));
     }
 
     /**
@@ -6601,7 +6699,7 @@
             const unsent = await readUnsentChanges(cache, serverRootDocId, (docId) =>
                 docId === serverRootDocId ? sg.rootDoc : sg.docSync(docId).doc,
             );
-            saveUnsentChangesFile(unsent, exportStem());
+            await saveUnsentChangesFile(unsent, exportStem());
         } catch (err) {
             console.warn("[workspace] could not prepare the unsent changes", err);
             unsentDownloadError = `Could not prepare the download: ${(err as Error).message}. Try again.`;
@@ -6692,7 +6790,7 @@
             tone: "info",
             dismissal: "manual",
             title: "Your Encryption Keys are stored on this device",
-            text: "The Encryption Keys that open your synced graphs are kept in this browser without encryption. A passcode keeps them encrypted, and you enter it once each time you open EtherPK in this browser. You can also set one later on the This Device tab of the Graphs page.",
+            text: `The Encryption Keys that open your synced graphs are kept in ${THIS_PLACE} without encryption. A passcode keeps them encrypted, and you enter it once each time you ${OPEN_HERE}. You can also set one later on the This Device tab of the Graphs page.`,
             actions: [
                 {
                     label: "Set a passcode",
@@ -6710,6 +6808,28 @@
                 },
             ],
         });
+    }
+
+    /** Whether the document has a file in a folder on this device. */
+    function hasFile(concept: string): boolean {
+        return fsFolderName !== undefined && fileLocationOf(concept) !== null;
+    }
+
+    /** The same, where the file has a path: one the app knows, or that the person can be asked for. */
+    function hasFilePath(concept: string): boolean {
+        return hasFile(concept) && (!isNativeFolder(openFolder) || readGraphFolderPath(graphId) !== null);
+    }
+
+    /** Ask where the folder is. A Native App knows, or is on a platform with no path to give. */
+    function askFolderPath(): Promise<string | null> {
+        if (isNativeFolder(openFolder)) return Promise.resolve(null);
+        return new Promise((answered) => (folderPathPrompt = { skippable: true, answered }));
+    }
+
+    /** A Native App knows where the folder is, so nobody is asked to type it. */
+    async function rememberFolderPath(folder: FolderHandle): Promise<void> {
+        const path = isNativeFolder(folder) ? await nativeFolderPath(folder) : null;
+        if (path) writeGraphFolderPath(graphId, path);
     }
 
     /**
@@ -6754,6 +6874,20 @@
         }
     }
 
+    /** Show in file manager, where the app's shell can: absent in a browser, and the menu row with it. */
+    const showFileInFileManager = hasNativeFeature("showInFileManager") ? (concept: string) => void showDocumentFile(concept) : undefined;
+
+    async function showDocumentFile(concept: string): Promise<void> {
+        const location = fileLocationOf(concept);
+        if (!location || !isNativeFolder(openFolder)) return;
+        try {
+            await showNativeFile(openFolder, `${location.subdir}/${location.fileName}`);
+        } catch (err) {
+            console.warn("[workspace] a file could not be shown", err);
+            notify(`Could not show the file of “${concept}”. Open the folder “${openFolder.name}” yourself to find it.`);
+        }
+    }
+
     /** Close the folder path dialog with what the person gave, or null, and carry on with whatever raised it. */
     function answerFolderPath(path: string | null): void {
         const prompt = folderPathPrompt;
@@ -6767,10 +6901,11 @@
      * dialog closes, whichever way it closes.
      */
     async function agentReach(document: string | null): Promise<AgentReach> {
-        const agentsUrl = agentsSettingsUrl(location.origin, graphAddress);
+        // An address the person opens from the agent's terminal: an etherpk: link in a Native App.
+        const agentsUrl = openingAddress(agentsSettingsUrl("", graphAddress));
         if (isServerStore) return { kind: "synced", graphName: syncedGraphName(), agentsUrl };
         if (fsFolderName === undefined) return { kind: "browser", graphName: graphDisplayName || null, agentsUrl };
-        const folderPath = await folderPathOrAskOnce(graphId, () => new Promise((answered) => (folderPathPrompt = { skippable: true, answered })));
+        const folderPath = await folderPathOrAskOnce(graphId, askFolderPath);
         return { kind: "folder", folderName: fsFolderName, folderPath, file: document === null ? null : fileLocationOf(document) };
     }
 
@@ -6919,20 +7054,26 @@
         return record;
     }
 
-    async function publishTo(publication: Publication, target: PublishTarget, options: { confirmed?: boolean } = {}): Promise<PublishAttempt> {
-        const record = target === "zip" ? undefined : await readPublicationDestination(graphId, publication.id);
-        const folderRecord = target === "folder" && record && !isRepositoryRecord(record) ? record : undefined;
-        const repositoryRecord = target === "repository" && record && isRepositoryRecord(record) ? record : undefined;
-        const handle = folderRecord?.handle as FileSystemDirectoryHandle | undefined;
-        if (target === "folder" && !handle) throw new Error("Choose a folder first.");
-        if (target === "repository" && !repositoryRecord) throw new Error("Save a repository first.");
-        if (handle && !(await ensurePermission(handle, "readwrite"))) {
+    /** Throws, in words for the person, when a site cannot be written into the folder. */
+    async function checkPublishFolder(handle: FolderHandle): Promise<void> {
+        if (await isFolderLost(handle)) throw new Error(LOST_PUBLISH_FOLDER);
+        if (!(await ensurePermission(handle, "readwrite"))) {
             throw new Error("EtherPK was not allowed to write to the folder. Choose it again to grant access.");
         }
         // Again at publish time: the folder may have been chosen before the check existed, or a
         // graph opened there since.
-        const overlap = handle ? await findPublishFolderOverlap(handle, await readKnownGraphFolders()) : null;
-        if (overlap && handle) throw new Error(publishFolderOverlapMessage(handle.name, overlap));
+        const overlap = await findPublishFolderOverlap(handle, await readKnownGraphFolders());
+        if (overlap) throw new Error(publishFolderOverlapMessage(handle.name, overlap));
+    }
+
+    async function publishTo(publication: Publication, target: PublishTarget, options: { confirmed?: boolean } = {}): Promise<PublishAttempt> {
+        const record = target === "zip" ? undefined : await readPublicationDestination(graphId, publication.id);
+        const folderRecord = target === "folder" && record && !isRepositoryRecord(record) ? record : undefined;
+        const repositoryRecord = target === "repository" && record && isRepositoryRecord(record) ? record : undefined;
+        const handle = folderRecord?.handle as FolderHandle | undefined;
+        if (target === "folder" && !handle) throw new Error("Choose a folder first.");
+        if (target === "repository" && !repositoryRecord) throw new Error("Save a repository first.");
+        if (handle) await checkPublishFolder(handle);
         // A repository never checked is checked before the graph is read, so a token that cannot
         // write there fails in a second rather than after the render (ADR 0152).
         if (repositoryRecord && !repositoryRecord.checkedAt) {
@@ -7030,7 +7171,7 @@
                         });
                         where = commit ? ` to ${repo.owner}/${repo.name}@${repo.branch}` : `, nothing changed on ${repo.owner}/${repo.name}@${repo.branch}, so no commit`;
                     } else {
-                        const written = await writeSiteToDirectory(handle as FileSystemDirectoryHandle, run.bundle, {
+                        const written = await writeSite(siteFolderFor(handle as FolderHandle), run.bundle, {
                             seeded: run.seeded,
                             agentsMd: run.agentsMd,
                             onProgress: (done, total) => activity.report({ phase: 2, done, total }),
@@ -7110,7 +7251,7 @@
 
     function publishTabProps(): PublishTabProps {
         return {
-            folderSupported: "showDirectoryPicker" in window,
+            folderSupported: canPickFolder(),
             load: async () => {
                 const { source, unsettled } = await readGraphForPublishing();
                 const summary = summarisePublishing(source);
@@ -7125,9 +7266,9 @@
                 return { kind: "folder", folder: record.folder, publishedAt: record.publishedAt };
             },
             onchoosefolder: async (publicationId) => {
-                let handle: FileSystemDirectoryHandle;
+                let handle: FolderHandle;
                 try {
-                    handle = await window.showDirectoryPicker({ mode: "readwrite" });
+                    handle = await pickFolder();
                 } catch (err) {
                     // Closing the picker is a choice, and nothing is said.
                     if (isPickerCancel(err)) return null;
@@ -7149,7 +7290,11 @@
                 });
                 return { folder: handle.name };
             },
-            onforgetdestination: (publicationId) => forgetPublicationDestination(graphId, publicationId),
+            onforgetdestination: async (publicationId) => {
+                const kept = await readPublicationDestination(graphId, publicationId);
+                await forgetPublicationDestination(graphId, publicationId);
+                if (kept && !isRepositoryRecord(kept)) await releaseFolder(kept.handle);
+            },
             onsaverepository: async (publicationId, repository): Promise<RepositoryCheckState> => {
                 const existing = await readPublicationDestination(graphId, publicationId);
                 const same =
@@ -7520,7 +7665,7 @@
         if (!s || !isServerStore) return;
         let checking: ReturnType<typeof setTimeout> | undefined;
         try {
-            const handle = await pickGraphDirectory();
+            const handle = await pickFolder();
             // Reading a large folder takes a moment, and nothing else is on screen meanwhile.
             // Delayed so the common case, an empty folder, never flashes it.
             checking = setTimeout(
@@ -7559,7 +7704,7 @@
      * believes is a current backup and is not.
      */
     async function startMirror(
-        handle: FileSystemDirectoryHandle,
+        handle: FolderHandle,
         folder: string,
         options: { announce?: boolean; persist?: boolean } = {},
     ) {
@@ -7585,7 +7730,7 @@
         mirror?.dispose();
         mirror = createLocalMirror(
             createMirrorSource(mirrorSourceDeps(s)),
-            createWebFsDirectoryAdapter(handle),
+            directoryAdapterFor(handle),
             { folder },
         );
         const own = mirror;
@@ -7718,13 +7863,14 @@
             () => undefined,
         );
         if (!remembered?.handle) return;
-        const handle = remembered.handle as FileSystemDirectoryHandle;
+        const handle = remembered.handle as FolderHandle;
         if (!(await claimMirrorFolder())) return;
-        if (await hasPermission(handle)) {
+        const lost = await isFolderLost(handle);
+        if (!lost && (await hasPermission(handle))) {
             await startMirror(handle, remembered.folder, { persist: false });
             return;
         }
-        mirrorNeedsPermission = { handle, folder: remembered.folder };
+        mirrorNeedsPermission = { handle, folder: remembered.folder, lost };
     }
 
     /**
@@ -7931,7 +8077,7 @@
         const release = await tryClaimLock(exportLockName(graphId));
         if (!release) {
             notify(
-                "Another tab of this browser is exporting this graph. Wait for it to finish.",
+                `${ANOTHER_TAB} is exporting this graph. Wait for it to finish.`,
             );
             return;
         }
@@ -7942,9 +8088,9 @@
             // Close Settings first, as the mirror's folder pick does: the save picker is a native
             // dialog, and two dialogs fight over focus and Escape.
             closeGraphSettings();
-            let handle: FileSystemFileHandle;
+            let picked: Awaited<ReturnType<typeof pickExportFile>>;
             try {
-                handle = await pickExportFile(fileName);
+                picked = await pickExportFile(fileName);
             } catch (err) {
                 release();
                 // Closing the picker without choosing is a decision, not a failure to report.
@@ -7952,12 +8098,12 @@
                 notify(`Could not choose where to export: ${(err as Error).message}`);
                 return;
             }
-            sink = createSaveFileSink(() => handle.createWritable());
+            sink = createSaveFileSink(picked.open, picked.unused);
         } else {
             if (!scratchAvailable()) {
                 release();
                 notify(
-                    "This browser has nowhere to build the archive: neither a save picker nor private storage.",
+                    `${THIS_PLACE_START} has nowhere to build the archive: neither a save picker nor private storage.`,
                 );
                 return;
             }
@@ -7979,7 +8125,7 @@
                 if (spare !== null && spare < needed) {
                     release();
                     notify(
-                        `This graph's attachments come to about ${formatBytes(needed)}, and this browser has about ${formatBytes(Math.max(0, spare))} of storage to build the archive in. Export it from a desktop browser instead.`,
+                        `This graph's attachments come to about ${formatBytes(needed)}, and ${THIS_PLACE} has about ${formatBytes(Math.max(0, spare))} of storage to build the archive in. ${EXPORT_ELSEWHERE}`,
                     );
                     return;
                 }
@@ -8108,7 +8254,9 @@
         mirrorNeedsPermission = null;
         mirrorHandleInUse = undefined;
         releaseMirrorFolder();
+        const kept = await readMirrorFolder(graphId).catch(() => undefined);
         await forgetMirrorFolder(graphId).catch(() => {});
+        await releaseFolder(kept?.handle);
         notify("Stopped mirroring. The folder and contents remain in place.");
     }
 
@@ -8123,11 +8271,13 @@
             folder: mirrorNeedsPermission.folder,
             running: false,
             syncing: false,
-            paused: {
-                kind: "permission",
-                message:
-                    "EtherPK needs your permission again before it can write to this folder.",
-            },
+            paused: mirrorNeedsPermission.lost
+                ? { kind: "folder", message: "EtherPK can no longer open this folder. It may have been moved, renamed or deleted, or EtherPK may have lost its permission." }
+                : {
+                      kind: "permission",
+                      message:
+                          "EtherPK needs your permission again before it can write to this folder.",
+                  },
             documents: 0,
             assets: 0,
             skipped: [],
@@ -8136,6 +8286,14 @@
             danglingLinks: [],
             changesElsewhereUnchecked: false,
         };
+    }
+
+    /** The mirror's status as its tab shows it. */
+    function shownMirrorStatus(): MirrorStatus | null {
+        const status = mirrorStatus ?? rememberedMirrorStatus();
+        // A Native App has no permission to ask for again. Choosing the folder is what gives it.
+        if (status?.paused?.kind !== "permission" || !isNativeFolder(mirrorHandleInUse)) return status;
+        return { ...status, paused: { ...status.paused, kind: "folder" } };
     }
 
     /**
@@ -8231,17 +8389,23 @@
     }
 
     /**
+     * The folder whose permission clears a pause, or null when one has to be chosen: none is remembered,
+     * it is missing, or a Native App lost it, and then there is no permission to ask for.
+     */
+    async function mirrorFolderToAskFor(): Promise<FolderHandle | null> {
+        const handle = mirrorNeedsPermission?.handle ?? mirrorHandleInUse;
+        if (!handle || mirrorStatus?.paused?.kind === "folder") return null;
+        return (await isFolderLost(handle)) ? null : handle;
+    }
+
+    /**
      * Clear a pause. A missing folder needs a new one; anything else needs the permission this
      * click is the gesture for, and then another attempt.
      */
     async function reconnectMirror() {
         closeGraphSettings();
         const pending = mirrorNeedsPermission;
-        if (mirrorStatus?.paused?.kind === "folder") {
-            void enableMirror();
-            return;
-        }
-        const handle = pending?.handle ?? mirrorHandleInUse;
+        const handle = await mirrorFolderToAskFor();
         if (!handle) {
             void enableMirror();
             return;
@@ -8286,7 +8450,8 @@
 
     async function disposeWorkspaceResources() {
         window.removeEventListener("pagehide", flushPersistence);
-        document.removeEventListener("visibilitychange", keepVersionsWhenHidden);
+        document.removeEventListener("visibilitychange", keepEditsWhenHidden);
+        window.removeEventListener("beforeunload", askBeforeLosingEdits);
         stopWatch?.();
         flushPersistence();
         clearPendingRestores();
@@ -8442,8 +8607,10 @@
             };
         }
         window.addEventListener("pagehide", flushPersistence);
-        document.addEventListener("visibilitychange", keepVersionsWhenHidden);
+        document.addEventListener("visibilitychange", keepEditsWhenHidden);
+        window.addEventListener("beforeunload", askBeforeLosingEdits);
         session.own(disposeWorkspaceResources);
+        session.own(guardLeaving(saveBeforeLeaving));
         // A bookmark that arrives from another device for a page protected here goes too.
         session.own(subscribeBookmarks(() => protectedBookmarks.schedule()));
         session.own(() => protectedBookmarks.dispose());
@@ -8565,7 +8732,8 @@
     downloading={downloadingUnsent}
     downloadError={unsentDownloadError}
     ondownload={() => void downloadUnsentChanges()}
-    ongrant={() => void grantAccess()}
+    {folderLost}
+    ongrant={() => void (folderLost ? rechooseFolder() : grantAccess())}
     onback={() => void queueHistoryWrite(() => goto("/graphs"))}
     onretry={() => void retryOpen()}
     onsetup={() => void setUpHere()}
@@ -8848,7 +9016,7 @@
         nameHelp={isServerStore
             ? "Changes the graph name for all members."
             : "Changes the display name only - the folder on disk keeps its name."}
-        folderPath={!isServerStore && fsFolderName !== undefined
+        folderPath={!isServerStore && fsFolderName !== undefined && !isNativeFolder(openFolder)
             ? {
                   path: readGraphFolderPath(graphId) ?? "",
                   folderName: fsFolderName,
@@ -8856,9 +9024,9 @@
             : null}
         mirror={isServerStore
             ? {
-                  status: mirrorStatus ?? rememberedMirrorStatus(),
+                  status: shownMirrorStatus(),
                   heldElsewhere: mirrorHeldElsewhere,
-                  supported: "showDirectoryPicker" in window,
+                  supported: canPickFolder(),
                   onenable: () => {
                       // Close Settings first, as protection setup does: the folder picker is a
                       // native dialog, and a non-empty folder asks for confirmation in a modal of

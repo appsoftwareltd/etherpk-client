@@ -1,0 +1,38 @@
+{
+    "recorded": "0.51.0 Clients (graph-sync.ts) and the 0.51.0 relay (ws-handler.ts) talking to each other, one message of each shape.",
+    "client": [
+        "{\"v\":3,\"type\":\"subscribe\",\"docIds\":[\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10000\"]}",
+        "{\"v\":3,\"type\":\"catchup\",\"requestId\":\"9dccd63c-d2e1-4108-9501-05a73c7d4452\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10000\",\"generation\":1,\"afterSeq\":0,\"priority\":\"foreground\",\"maxRows\":256,\"maxBytes\":8388608}",
+        "{\"v\":3,\"type\":\"presence\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"epochId\":1,\"envelope\":\"AQEBAAAAEoEfxSm_kny81lFXaysAzHcdjpzP6DX44DXRonQVpO5lP3rsM7mVXxzJtq33-3slC1Dhvp7xs5_2GkRJP_PwOV4CUcJuBGO6GznjW_8hJB4OHZsp1xIyf0s7BPDIZJv-LUa1GeIFWdiose2RDFYyUZI8Df67lMOZfH1YmPcdboi-4-1QoIr03IFHQ6tWksqxO5bFnbGLi4AAD77zf30b6gW8J-6aURdjM6hOt0AE\"}",
+        "{\"v\":3,\"type\":\"append\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"outboxId\":\"18906181-f64a-4536-980d-ed4749b977cf\",\"generation\":1,\"epochId\":1,\"envelope\":\"AQEBAAAA_bw_Ah2fIJtph-yoat20nrpZ9NaFmulfxMkmJljQVX9NhRNcHGWTFNa2iAUUscVSS4Vf4VN_WTXMBLAU39M4rJxf\"}",
+        "{\"v\":3,\"type\":\"ack_confirm\",\"outboxId\":\"18906181-f64a-4536-980d-ed4749b977cf\"}",
+        "{\"v\":3,\"type\":\"watermarks\",\"requestId\":\"a68c5622-b807-47f0-a9bc-40ed4bcbb2f4\",\"docIds\":[\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\"]}",
+        "{\"v\":3,\"type\":\"subscribe\",\"all\":true}",
+        "{\"v\":3,\"type\":\"snapshot_put\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"generation\":1,\"throughSeq\":1,\"epochId\":1,\"envelope\":\"AQEBAAAA_bw_Ah2fIJtph-yoat20nrpZ9NaFmulfxMkmJljQVX9NhRNcHGWTFNa2iAUUscVSS4Vf4VN_WTXMBLAU39M4rJxf\"}",
+        "{\"v\":3,\"type\":\"snapshot_get\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"generation\":1,\"throughSeq\":1}",
+        "{\"v\":3,\"type\":\"snapshot_verified\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"generation\":1,\"throughSeq\":1}",
+        "{\"v\":3,\"type\":\"catchup\",\"requestId\":\"436b04ad-cbe2-405e-9b71-95c41519e6cf\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"generation\":1,\"afterSeq\":0,\"priority\":\"background\",\"maxRows\":256,\"maxBytes\":8388608}",
+        "{\"v\":3,\"type\":\"delete\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"outboxId\":\"a56a0fb7-2af9-448e-b0dc-1eacd5fb1a92\",\"generation\":1}",
+        "{\"v\":3,\"type\":\"resurrect\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"outboxId\":\"03a2baaa-c453-47a2-a273-8d8f01d82b28\",\"generation\":2,\"epochId\":1,\"envelope\":\"AQEBAAAA_bw_Ah2fIJtph-yoat20nrpZ9NaFmulfxMkmJljQVX9NhRNcHGWTFNa2iAUUscVSS4Vf4VN_WTXMBLAU39M4rJxf\"}",
+        "{\"v\":3,\"type\":\"unsubscribe\",\"docIds\":[\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\"]}"
+    ],
+    "server": [
+        "{\"v\":3,\"type\":\"catchup_batch\",\"requestId\":\"9dccd63c-d2e1-4108-9501-05a73c7d4452\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10000\",\"generation\":1,\"state\":\"active\",\"throughSeq\":0,\"hasMore\":false,\"updates\":[]}",
+        "{\"v\":3,\"type\":\"presence\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"envelope\":\"AQEBAAAAB7KplDzcUVwQKN77JBtUhbY8o1f3bqUV17yJcaTb787J4wafLv2HkF3ibdYrvT-xPUUfd9ZJJsxseqky-Dxc9XDtthpbRKwcBhUrEZq2RCG2ykQGs2wJqML_MMx0PZkcI4A-X5JjWDCOTh0ZzGw7as7lidBwyqKo44BjZZrUBp8XYKwWSeY_5dozNYkksabxskFDQAKdqsvc7rXtFkfmtSXoZvDyrhOneaX4DlC4\"}",
+        "{\"v\":3,\"type\":\"ack\",\"outboxId\":\"18906181-f64a-4536-980d-ed4749b977cf\",\"generation\":1,\"state\":\"active\",\"seq\":1}",
+        "{\"v\":3,\"type\":\"update\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"generation\":1,\"seq\":1,\"epochId\":1,\"envelope\":\"AQEBAAAA_bw_Ah2fIJtph-yoat20nrpZ9NaFmulfxMkmJljQVX9NhRNcHGWTFNa2iAUUscVSS4Vf4VN_WTXMBLAU39M4rJxf\"}",
+        "{\"v\":3,\"type\":\"watermarks\",\"requestId\":\"a68c5622-b807-47f0-a9bc-40ed4bcbb2f4\",\"documents\":[{\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"generation\":1,\"state\":\"active\",\"lastSeq\":2}]}",
+        "{\"v\":3,\"type\":\"snapshot_ack\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"generation\":1,\"throughSeq\":1}",
+        "{\"v\":3,\"type\":\"snapshot_data\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"generation\":1,\"throughSeq\":1,\"epochId\":1,\"envelope\":\"AQEBAAAA_bw_Ah2fIJtph-yoat20nrpZ9NaFmulfxMkmJljQVX9NhRNcHGWTFNa2iAUUscVSS4Vf4VN_WTXMBLAU39M4rJxf\"}",
+        "{\"v\":3,\"type\":\"error\",\"code\":\"snapshot_missing\",\"message\":\"No such snapshot\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\"}",
+        "{\"v\":3,\"type\":\"catchup_batch\",\"requestId\":\"436b04ad-cbe2-405e-9b71-95c41519e6cf\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"generation\":1,\"state\":\"active\",\"throughSeq\":2,\"hasMore\":false,\"updates\":[{\"seq\":2,\"epochId\":1,\"envelope\":\"AQEBAAAAl4utOaXRVqqYZfQSa99U-YF5k9vCheayOM9RaDBbQIzejEdIBxRzGSMBso3mpYjPEh99qYy2VC-eVDIzKhfgUdA\"}],\"snapshot\":{\"throughSeq\":1,\"epochId\":1,\"envelope\":\"AQEBAAAA_bw_Ah2fIJtph-yoat20nrpZ9NaFmulfxMkmJljQVX9NhRNcHGWTFNa2iAUUscVSS4Vf4VN_WTXMBLAU39M4rJxf\"}}",
+        "{\"v\":3,\"type\":\"error\",\"code\":\"stale_generation\",\"message\":\"Stale document generation\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"currentGeneration\":1}",
+        "{\"v\":3,\"type\":\"error\",\"code\":\"quota_denied\",\"message\":\"Managed Sync write allowance reached\",\"quotaCode\":\"owned_storage_limit\",\"retryable\":true,\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"outboxId\":\"ff66ccc4-e650-425d-bbcc-b173cb48236e\"}",
+        "{\"v\":3,\"type\":\"ack\",\"outboxId\":\"a56a0fb7-2af9-448e-b0dc-1eacd5fb1a92\",\"generation\":2,\"state\":\"deleted\",\"seq\":0}",
+        "{\"v\":3,\"type\":\"catchup_batch\",\"docId\":\"018f47a0-7b5d-7cc5-b5c1-f0fbcde10001\",\"generation\":2,\"state\":\"deleted\",\"throughSeq\":0,\"hasMore\":false,\"updates\":[]}",
+        "{\"v\":3,\"type\":\"epoch_changed\",\"epoch\":2}",
+        "{\"v\":3,\"type\":\"error\",\"code\":\"unsupported_version\",\"message\":\"Unsupported sync protocol version\"}",
+        "{\"v\":3,\"type\":\"error\",\"code\":\"invalid_message\",\"message\":\"Message does not match the sync protocol\"}",
+        "{\"v\":3,\"type\":\"error\",\"code\":\"membership_revoked\",\"message\":\"Graph membership has been revoked\"}"
+    ]
+}

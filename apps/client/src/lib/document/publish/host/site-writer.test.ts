@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { type SiteFolder, isOwnedPath, writeSite, writeSiteToDirectory } from './site-writer'
+import { type SiteFolder, directoryHandleFolder, isOwnedPath, writeSite } from './site-writer'
 
 /** A memory File System Access directory: the subset the site writer uses. */
 interface MemFile {
@@ -88,11 +88,11 @@ function writesOf(dir: MemDir, path: string): number {
 const seeded = new Map([['README.md', 'seeded readme'], ['.github/workflows/pages.yaml', 'workflow']])
 const agentsMd = (existing: string | null) => (existing ? existing.replace(/<!-- s -->[\s\S]*<!-- e -->/, '<!-- s -->new<!-- e -->') : '<!-- s -->new<!-- e -->')
 
-describe('writeSiteToDirectory', () => {
+describe('writeSite, over a browser’s directory handle', () => {
     it('writes the bundle into nested folders, seeds once, and writes AGENTS.md', async () => {
         const root: MemDir = { kind: 'directory', entries: new Map() }
         const bundle = new Map<string, string | Uint8Array>([['index.html', '<p>hi</p>'], ['assets/a.png', new Uint8Array([1, 2])], ['theme/theme.css', 'body{}']])
-        const result = await writeSiteToDirectory(dirHandle(root), bundle, { seeded, agentsMd })
+        const result = await writeSite(directoryHandleFolder(dirHandle(root)), bundle, { seeded, agentsMd })
         expect(result).toEqual({ written: 6, unchanged: 0, deleted: [] })
         expect(fileText(root, 'index.html')).toBe('<p>hi</p>')
         expect(fileText(root, 'theme/theme.css')).toBe('body{}')
@@ -104,7 +104,7 @@ describe('writeSiteToDirectory', () => {
         const root: MemDir = { kind: 'directory', entries: new Map() }
         const handle = dirHandle(root)
         const first = new Map<string, string | Uint8Array>([['index.html', 'v1'], ['old.html', 'gone soon'], ['assets/a.png', new Uint8Array([1])], ['assets/old.png', new Uint8Array([9])], ['theme/theme.css', 'css']])
-        await writeSiteToDirectory(handle, first, { seeded, agentsMd })
+        await writeSite(directoryHandleFolder(handle), first, { seeded, agentsMd })
         // The user edits the seeded README and adds files of their own.
         await (await (await handle.getFileHandle('README.md', { create: true })).createWritable()).write('mine')
         ;(root.entries.get('README.md') as MemFile).bytes = new TextEncoder().encode('mine')
@@ -113,7 +113,7 @@ describe('writeSiteToDirectory', () => {
         root.entries.set('AGENTS.md', { kind: 'file', bytes: new TextEncoder().encode('# Mine\n<!-- s -->old<!-- e -->\nkeep'), writes: 0 })
 
         const second = new Map<string, string | Uint8Array>([['index.html', 'v2'], ['assets/a.png', new Uint8Array([1])], ['theme/theme.css', 'css']])
-        const result = await writeSiteToDirectory(handle, second, { seeded, agentsMd })
+        const result = await writeSite(directoryHandleFolder(handle), second, { seeded, agentsMd })
         expect(result.deleted.sort()).toEqual(['assets/old.png', 'old.html'])
         expect(result.unchanged).toBe(2)
         expect(fileText(root, 'index.html')).toBe('v2')
@@ -142,11 +142,11 @@ describe('writeSiteToDirectory', () => {
             ['maps/old.webp', new Uint8Array([2])],
             ['pictures/old.png', new Uint8Array([3])],
         ])
-        await writeSiteToDirectory(handle, first, { seeded: new Map(), agentsMd })
+        await writeSite(directoryHandleFolder(handle), first, { seeded: new Map(), agentsMd })
         root.entries.set('garden', { kind: 'directory', entries: new Map([['plan.txt', { kind: 'file', bytes: new TextEncoder().encode('mine'), writes: 0 }]]) })
 
         const second = new Map<string, string | Uint8Array>([['index.html', 'v2'], ['maps/kept.webp', new Uint8Array([1])]])
-        const result = await writeSiteToDirectory(handle, second, { seeded: new Map(), agentsMd })
+        const result = await writeSite(directoryHandleFolder(handle), second, { seeded: new Map(), agentsMd })
         expect(result.deleted.sort()).toEqual(['maps/old.webp', 'pictures/old.png'])
         expect(fileText(root, 'maps/kept.webp')).not.toBeNull()
         expect(fileText(root, 'garden/plan.txt')).toBe('mine')
@@ -156,7 +156,7 @@ describe('writeSiteToDirectory', () => {
         const root: MemDir = { kind: 'directory', entries: new Map() }
         root.entries.set('.git', { kind: 'directory', entries: new Map([['HEAD', { kind: 'file', bytes: new TextEncoder().encode('ref'), writes: 0 }]]) })
         root.entries.set('stale.html', { kind: 'file', bytes: new Uint8Array(), writes: 0 })
-        const result = await writeSiteToDirectory(dirHandle(root), new Map([['index.html', 'x']]), { seeded: new Map(), agentsMd })
+        const result = await writeSite(directoryHandleFolder(dirHandle(root)), new Map([['index.html', 'x']]), { seeded: new Map(), agentsMd })
         expect(result.deleted).toEqual(['stale.html'])
         expect(fileText(root, '.git/HEAD')).toBe('ref')
     })

@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-shared",
-    "version": "0.54.0",
+    "version": "0.55.0",
     "license": "Elastic-2.0",
     "private": true,
     "type": "module",
@@ -234,6 +234,10 @@
         "./copy-wording": {
             "types": "./src/testing/copy-wording.ts",
             "default": "./src/testing/copy-wording.ts"
+        },
+        "./released-sync": {
+            "types": "./src/testing/released/index.ts",
+            "default": "./src/testing/released/index.ts"
         }
     },
     "scripts": {

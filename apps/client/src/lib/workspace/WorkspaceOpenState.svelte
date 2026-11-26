@@ -1,12 +1,16 @@
 <script lang="ts">
+    import { THIS_PLACE, THIS_PLACE_START } from '#lib/native/place.js'
     import LoadingSweep from '#lib/components/LoadingSweep.svelte'
     import InstallOffer from '#lib/install/InstallOffer.svelte'
+    import { managedSignInOnClick } from '#lib/auth/managed-sign-in.js'
     import { managedSignInHref, syncConnectHref } from '#lib/auth/sign-in-links.js'
+    import { isNativeApp } from '#lib/native/bridge.js'
 
     import type { AccessLossNotice } from '#lib/sync/access-loss.js'
     import { serverHost } from '#lib/sync/sync-connections.js'
 
     import type { MissingGraphDiagnosis } from './graph-availability'
+    import { LOST_GRAPH_FOLDER, LOST_GRAPH_FOLDER_NEXT } from './lost-folder-copy'
     import { openProgressLine } from './open-progress-line'
 
     let {
@@ -19,6 +23,7 @@
         setupError = null,
         granting = false,
         grantError = null,
+        folderLost = false,
         shareWaiting = false,
         shareLanded = false,
         accessLost = null,
@@ -52,6 +57,8 @@
         granting?: boolean
         /** Why Grant access did not get the folder, in user copy. */
         grantError?: string | null
+        /** The folder is one an installed app can no longer reach: it is chosen again, not granted. */
+        folderLost?: boolean
         /**
          * A [[Share Target]] share is waiting for this graph (ADR 0087). A stalled open says the
          * text is safe and will land once the graph opens; a failed one says where to take it.
@@ -159,12 +166,12 @@
          listed towards Reset (2026-09-01), when the fix was the registry write below. -->
     <div class="notice" data-testid="graph-missing" data-kind={missing?.kind ?? 'unknown'}>
         {#if missing?.kind === 'available'}
-            <h2>This graph is on your account but not set up in this browser.</h2>
+            <h2>This graph is on your account but not set up in {THIS_PLACE}.</h2>
             <p>
                 The sync server lists you as {missing.role === 'owner' ? 'its owner' : 'a Player'}.
-                Setting it up here registers it in this browser and your notes sync down as usual.
+                Setting it up here registers it in {THIS_PLACE} and your notes sync down as usual.
                 Nothing is deleted{missing.staleRecord
-                    ? ' - the details this browser held for it under another sign-in are replaced.'
+                    ? ` - the details ${THIS_PLACE} held for it under another sign-in are replaced.`
                     : '.'}
             </p>
             {#if setupError}
@@ -179,12 +186,13 @@
         {:else if missing?.kind === 'signed-out'}
             <h2>Sign in to open this graph</h2>
             <p>
-                You are signed out of EtherPK in this browser. Synced graphs open once you sign in,
+                You are signed out of EtherPK in this {isNativeApp() ? 'app' : 'browser'}. Synced graphs open once you sign in,
                 and you come back to this page.
             </p>
             <div class="notice__actions">
-                <!-- A full load: /auth/login is a server route that hands over to the account site. -->
-                <a class="gk-button gk-button--primary" data-testid="graph-missing-sign-in" href={managedSignInHref(returnPath)} data-sveltekit-reload>
+                <!-- A full load: /auth/login is a server route that hands over to the account site. An
+                     installed app has no such route and signs in through its shell. -->
+                <a class="gk-button gk-button--primary" data-testid="graph-missing-sign-in" href={managedSignInHref(returnPath)} onclick={managedSignInOnClick(returnPath)} data-sveltekit-reload>
                     Sign in
                 </a>
                 <button class="gk-button" onclick={onback}>Back to graphs</button>
@@ -206,7 +214,7 @@
             <h2>This device is not connected to {hostOf(missing.serverOrigin)}</h2>
             <p>
                 This graph syncs through {hostOf(missing.serverOrigin)}. Connect this device to it in
-                Sync settings, and the graph opens again with everything this browser holds.
+                Sync settings, and the graph opens again with everything {THIS_PLACE} holds.
             </p>
             <div class="notice__actions">
                 <a class="gk-button gk-button--primary" data-testid="graph-missing-connect" href={syncConnectHref(returnPath)} data-sveltekit-reload>
@@ -217,7 +225,7 @@
         {:else if missing?.kind === 'no-longer-member'}
             <h2>You no longer have access to this graph</h2>
             <p>
-                Its owner deleted it, or you left it or were removed. This browser still holds a
+                Its owner deleted it, or you left it or were removed. {THIS_PLACE_START} still holds a
                 copy - remove it to free the space. If you are invited again, accept the invite on
                 the Graphs page.
             </p>
@@ -253,14 +261,14 @@
             </p>
             <button class="gk-button justify-self-center" onclick={onback}>Back to graphs</button>
         {:else if missing?.kind === 'not-a-member'}
-            <h2>That graph is not in this browser.</h2>
+            <h2>That graph is not in {THIS_PLACE}.</h2>
             <p>
                 Your sync account is not a member of it either. If someone shared it with you,
                 accept their invite on the Graphs page.
             </p>
             <button class="gk-button justify-self-center" onclick={onback}>Back to graphs</button>
         {:else if missing?.kind === 'unknown' && missing.reason === 'server-unreachable'}
-            <h2>That graph is not in this browser.</h2>
+            <h2>That graph is not in {THIS_PLACE}.</h2>
             <p>
                 The sync server could not be reached to check whether it is on your account. Check
                 your connection, then try again.
@@ -282,7 +290,7 @@
                 <button class="gk-button" onclick={onback}>Back to graphs</button>
             </div>
         {:else}
-            <h2>That graph is not in this browser.</h2>
+            <h2>That graph is not in {THIS_PLACE}.</h2>
             <p>
                 If it is a synced graph, connect your sync server in Sync settings on the Graphs
                 page and add it to this device from there.
@@ -296,7 +304,12 @@
     </div>
 {:else if phase === 'needs-permission'}
     <div class="notice" data-testid="graph-needs-permission">
-        <p>EtherPK needs permission to read and write this graph's folder.</p>
+        {#if folderLost}
+            <p data-testid="graph-folder-lost">{LOST_GRAPH_FOLDER}</p>
+            <p>{LOST_GRAPH_FOLDER_NEXT}</p>
+        {:else}
+            <p>EtherPK needs permission to read and write this graph's folder.</p>
+        {/if}
         {#if grantError}
             <p role="alert" class="notice__error" data-testid="graph-grant-error">{grantError}</p>
         {/if}
@@ -304,7 +317,11 @@
             <!-- aria-disabled, not disabled: a disabled button loses focus, which would leave a
                  keyboard user on nothing when the refusal comes back. The handler ignores a second press. -->
             <button class="gk-button gk-button--primary" data-testid="graph-grant" onclick={ongrant} aria-disabled={granting} aria-busy={granting}>
-                {granting ? 'Waiting for the browser…' : 'Grant access'}
+                {#if folderLost}
+                    {granting ? 'Waiting for the folder…' : 'Choose folder…'}
+                {:else}
+                    {granting ? 'Waiting for the browser…' : 'Grant access'}
+                {/if}
             </button>
             <!-- The notice covers the whole workspace, and a person who refused needs a way out. -->
             <button class="gk-button" data-testid="graph-grant-back" onclick={onback}>Back to graphs</button>
@@ -332,7 +349,7 @@
         <div class="notice__actions">
             {#if accessLost.primary}
                 <!-- A full load: /auth/login is a server route, and the connect form reads the URL on load. -->
-                <a class="gk-button gk-button--primary" data-testid="graph-access-lost-primary" href={accessLost.primary.href} data-sveltekit-reload>
+                <a class="gk-button gk-button--primary" data-testid="graph-access-lost-primary" href={accessLost.primary.href} onclick={accessLost.primary.signIn ? managedSignInOnClick(returnPath) : undefined} data-sveltekit-reload>
                     {accessLost.primary.label}
                 </a>
             {/if}

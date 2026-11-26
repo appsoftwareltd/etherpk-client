@@ -24,9 +24,8 @@
         createWebFsDirectoryAdapter,
         ensurePermission,
         getOpfsRoot,
-        isFsaSupported,
-        pickGraphDirectory,
     } from '#lib/storage/index.js'
+    import { isFsaSupported, pickGraphDirectory } from '#lib/storage/fs/web-fs-adapter.js'
     import type { ViewRef } from '#lib/layout/index.js'
 
     // ── OPFS adapter self-test ────────────────────────────────────────────

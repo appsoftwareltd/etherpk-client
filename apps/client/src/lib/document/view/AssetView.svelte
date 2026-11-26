@@ -20,6 +20,7 @@
 
     import { AssetIntegrityError, AssetUnavailableError, displayAssetName, isBareAssetId, type ResolvedAsset } from "#lib/storage/fs/asset-store.js";
     import { assetViewerFor, tryGetActiveContributionRegistry } from "#lib/surface/index.js";
+    import { downloadUrl } from "#lib/native/save-file.js";
     import { viewKey, type ViewRef } from "#lib/layout/index.js";
     import { workspaceService } from "#lib/workspace/workspace-services.js";
 
@@ -104,12 +105,7 @@
 
     function download() {
         if (!resolved) return;
-        const a = document.createElement("a");
-        a.href = resolved.url;
-        a.download = resolved.name;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+        downloadUrl(resolved.url, resolved.name);
     }
 </script>
 

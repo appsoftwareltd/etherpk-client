@@ -13,6 +13,7 @@
  * check does not already backstop.
  */
 
+import { guardLeaving } from '#lib/native/leave-guard.js'
 import { NOTICE_AUTO_DISMISS_MS } from '#lib/notice-dismissal.js'
 
 import type { Activity, ActivityAction, ActivityDismissal, ActivityPhase, ActivityProgress, ActivityState } from './types'
@@ -234,7 +235,12 @@ function guardUnload(): void {
     unloadGuarded = importing
     if (importing) window.addEventListener('beforeunload', warnBeforeUnload)
     else window.removeEventListener('beforeunload', warnBeforeUnload)
+    stopGuardingClose?.()
+    stopGuardingClose = importing ? guardLeaving(() => 'An import is still running, and closing leaves the import half done.') : null
 }
+
+/** The same question, where a Native App's window is closed (leave-guard.ts). */
+let stopGuardingClose: (() => void) | null = null
 
 /** A message worth showing: an abort reads as a cancellation, not as a stack-trace. */
 function describe(err: unknown): string {

@@ -5,6 +5,7 @@
  */
 
 import { showNotice } from '#lib/activity/notices.js'
+import { isNativeApp } from '#lib/native/bridge.js'
 import { appInstallState } from '#lib/storage/app-install.js'
 import { type InstallOfferMoment, claimInstallOffer, installOfferEligible } from '#lib/storage/install-offers.js'
 import { currentInstallPlatform } from '#lib/storage/install-platform.js'
@@ -27,7 +28,8 @@ export function claimInstallOfferHere(moment: InstallOfferMoment): boolean {
  * report, so it goes by itself.
  */
 export function welcomeInstalledApp(): void {
-    if (!appInstallState().installed) return
+    // An app a person downloaded and installed themselves needs no telling. The words are of a browser's.
+    if (!appInstallState().installed || isNativeApp()) return
     try {
         if (localStorage.getItem(WELCOME_SEEN_KEY)) return
         localStorage.setItem(WELCOME_SEEN_KEY, '1')

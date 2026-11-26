@@ -39,7 +39,7 @@ export interface AccessLossNotice {
     title: string
     body: string
     /** The way back in, when there is one; "Back to graphs" is always offered beside it. */
-    primary?: { label: string; href: string }
+    primary?: { label: string; href: string; signIn?: boolean }
     /** Offer to download the changes that will not be sent. */
     canDownload: boolean
 }
@@ -48,7 +48,7 @@ const KEPT = 'Changes you made here are kept on this device and sync when you ar
 
 /** `returnPath`: the page to come back to after signing in or connecting again. */
 export function describeAccessLoss(loss: WorkspaceAccessLoss, returnPath?: string): AccessLossNotice {
-    const signIn = { label: 'Sign in again', href: managedSignInHref(returnPath) }
+    const signIn = { label: 'Sign in again', href: managedSignInHref(returnPath), signIn: true }
     const connect = { label: 'Connect again', href: syncConnectHref(returnPath) }
     switch (loss.reason) {
         case 'membership': {

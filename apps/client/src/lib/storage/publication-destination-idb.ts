@@ -11,6 +11,8 @@
 
 import { type IDBPDatabase, openDB } from 'idb'
 
+import { fromStoredFolder, toStoredFolder } from '../native/folder-ref'
+
 import { isClosedConnectionError } from './idb-connection'
 
 const DB_NAME = 'etherpk-publications'
@@ -72,7 +74,7 @@ interface DestinationRecordBase {
 
 /** A [[Publish Folder]]. */
 export interface PublicationFolderRecord extends DestinationRecordBase {
-    /** A `FileSystemDirectoryHandle`; opaque here. */
+    /** A `FileSystemDirectoryHandle` or an installed app's folder; opaque here. */
     handle: unknown
     folder: string
 }
@@ -100,13 +102,27 @@ export function publicationDestinationKey(graphId: string, publicationId: string
     return `${graphId}/${publicationId}`
 }
 
-export function readPublicationDestination(graphId: string, publicationId: string): Promise<PublicationDestinationRecord | undefined> {
-    return withStore(async (database) => (await database.get(STORE, publicationDestinationKey(graphId, publicationId))) as PublicationDestinationRecord | undefined)
+export async function readPublicationDestination(graphId: string, publicationId: string): Promise<PublicationDestinationRecord | undefined> {
+    const key = publicationDestinationKey(graphId, publicationId)
+    const record = await withStore(async (database) => (await database.get(STORE, key)) as PublicationDestinationRecord | undefined)
+    return record && withFolder(record)
+}
+
+/** The record as kept, with its folder as the rest of the Client holds one. */
+function withFolder(record: PublicationDestinationRecord): PublicationDestinationRecord {
+    return isRepositoryRecord(record) ? record : { ...record, handle: fromStoredFolder(record.handle) }
+}
+
+/** Every destination this device remembers, for every graph. */
+export async function listPublicationDestinations(): Promise<PublicationDestinationRecord[]> {
+    const records = await withStore(async (database) => (await database.getAll(STORE)) as PublicationDestinationRecord[])
+    return records.map(withFolder)
 }
 
 export function writePublicationDestination(record: PublicationDestinationRecord): Promise<void> {
+    const stored = isRepositoryRecord(record) ? record : { ...record, handle: toStoredFolder(record.handle) }
     return withStore(async (database) => {
-        await database.put(STORE, record)
+        await database.put(STORE, stored)
     })
 }
 

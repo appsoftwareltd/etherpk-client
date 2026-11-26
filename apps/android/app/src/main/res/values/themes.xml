@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The page's light or dark follows this theme, so it follows the device's setting. -->
+    <style name="Theme.EtherPK" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@color/window</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
+    </style>
+</resources>

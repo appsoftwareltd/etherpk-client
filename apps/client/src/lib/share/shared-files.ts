@@ -65,9 +65,15 @@ export async function keepSharedFiles(files: readonly File[], options: { id?: st
     for (const file of files) {
         stored.push({ name: file.name, type: file.type, lastModified: file.lastModified, bytes: await file.arrayBuffer() })
     }
-    const all = ((await inStore('readonly', (store) => store.getAll())) ?? []) as StoredShare[]
     await inStore('readwrite', (store) => {
-        for (const share of all) if (now - share.createdAt > SHARED_FILES_MAX_AGE_MS) store.delete(share.id)
+        // One set at a time: every set abandoned in the last day would otherwise be in memory at once.
+        const walk = store.openCursor()
+        walk.onsuccess = () => {
+            const cursor = walk.result
+            if (!cursor) return
+            if (now - (cursor.value as StoredShare).createdAt > SHARED_FILES_MAX_AGE_MS) cursor.delete()
+            cursor.continue()
+        }
         store.put({ id, createdAt: now, files: stored } satisfies StoredShare)
     })
     return id

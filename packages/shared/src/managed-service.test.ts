@@ -9,6 +9,7 @@ import {
     MANAGED_SYNC_SCOPE,
     managedUsageSchema,
     serviceEntitlementSchema,
+    quotaErrorResponseSchema,
     syncAccountSummarySchema,
     syncServerCapabilitiesSchema,
 } from './managed-service'
@@ -246,5 +247,13 @@ describe('identity statement (ADR 0101)', () => {
         expect(identityStatementSchema.safeParse({ ...statement, audience: ENTITLEMENT_AUDIENCE }).success).toBe(false)
         expect(identityStatementSchema.safeParse({ ...statement, revision: 0 }).success).toBe(false)
         expect(identityStatementSchema.safeParse({ ...statement, banned: true }).success).toBe(false)
+    })
+})
+
+describe('a quota refusal from a newer Sync Server', () => {
+    it('is read without the fields it adds, and only for a code that is known', () => {
+        const refusal = { error: 'quota_denied', code: 'owned_storage_limit', retryable: true }
+        expect(quotaErrorResponseSchema.parse({ ...refusal, limit: 9 })).toEqual(refusal)
+        expect(quotaErrorResponseSchema.safeParse({ ...refusal, code: 'too_many_gardens' }).success).toBe(false)
     })
 })

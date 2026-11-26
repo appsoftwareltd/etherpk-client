@@ -25,6 +25,7 @@ import {
     fileStem,
     journalConceptOf,
 } from './identity'
+import { readTexts, runsFor } from './read-texts'
 
 export interface DocumentEntry {
     kind: DocumentKind
@@ -55,7 +56,7 @@ export interface ScanOptions {
     writeInFlight?: (subdir: Subdir, fileName: string) => boolean
 }
 
-const SCANNED_SUBDIRS: Subdir[] = ['journals', 'pages']
+export const SCANNED_SUBDIRS: Subdir[] = ['journals', 'pages']
 
 /** Whether a listed name is a document file: `.md`, in any case. A `.crswap` swap file is not. */
 export function isDocumentFile(name: string): boolean {
@@ -66,16 +67,6 @@ function fileKey(subdir: Subdir, fileName: string): string {
     return `${subdir}/${fileName}`
 }
 
-/** A file's text, or null when it is no longer there. Any other failure is the caller's. */
-async function readUnlessGone(adapter: DirectoryAdapter, subdir: Subdir, name: string): Promise<string | null> {
-    try {
-        return (await adapter.read(subdir, name)).text
-    } catch (error) {
-        if ((error as DOMException | null)?.name === 'NotFoundError') return null
-        throw error
-    }
-}
-
 /** Where a scan stands: the last scan's entries by file, and the files a save is writing now. */
 interface ScanContext {
     adapter: DirectoryAdapter
@@ -83,20 +74,36 @@ interface ScanContext {
     writeInFlight: (subdir: Subdir, fileName: string) => boolean
 }
 
-/**
- * The entry for one listed document file: the last scan's, when the listing's stamps have not moved
- * (or a save of ours is writing it), else read from the file. Null for a file removed since the
- * listing (a delete or a rename finishing while a reconcile scans): it is gone.
- */
-async function entryFor(context: ScanContext, subdir: Subdir, kind: DocumentKind, listed: DirEntry): Promise<DocumentEntry | null> {
+/** The last scan's entry for a listed file whose stamps have not moved, or that a save of ours is writing. */
+function knownEntry(context: ScanContext, subdir: Subdir, listed: DirEntry): DocumentEntry | null {
     const { name, lastModified, size } = listed
     const known = context.previous.get(fileKey(subdir, name))
     if (known && ((known.lastModified === lastModified && known.size === size) || context.writeInFlight(subdir, name))) return known
-    const text = await readUnlessGone(context.adapter, subdir, name)
-    if (text === null) return null
+    return null
+}
+
+/** The entry a file's text makes. */
+function entryFrom(subdir: Subdir, kind: DocumentKind, { name, lastModified, size }: DirEntry, text: string): DocumentEntry {
     const fm = parseFrontmatter(text)
     const concept = kind === 'journal' ? journalConceptOf(name) : conceptOf(fm, fileStem(name))
     return { kind, concept, key: conceptKey(concept), subdir, fileName: name, aliases: aliasesOf(fm), lastModified, size }
+}
+
+/**
+ * The entries for a run of listed document files: the last scan's for each whose stamps have not
+ * moved, else read from the file. A file removed since the listing (a delete or a rename finishing
+ * while a reconcile scans) is gone, and has none.
+ */
+async function entriesFor(context: ScanContext, subdir: Subdir, kind: DocumentKind, run: DirEntry[]): Promise<DocumentEntry[]> {
+    const known = run.map((listed) => knownEntry(context, subdir, listed))
+    const moved = run.filter((_, index) => known[index] === null)
+    const texts = await readTexts(context.adapter, subdir, moved.map((listed) => listed.name))
+    const textOf = new Map(moved.map((listed, index) => [listed.name, texts[index]]))
+    return run.flatMap((listed, index) => {
+        const text = textOf.get(listed.name) ?? null
+        const entry = known[index] ?? (text === null ? null : entryFrom(subdir, kind, listed, text))
+        return entry ? [entry] : []
+    })
 }
 
 export async function scanGraph(adapter: DirectoryAdapter, options: ScanOptions = {}): Promise<DocumentEntry[]> {
@@ -110,10 +117,9 @@ export async function scanGraph(adapter: DirectoryAdapter, options: ScanOptions 
     for (const subdir of SCANNED_SUBDIRS) {
         const kind = documentKindOf(subdir)
         if (!kind) continue
-        for (const listed of await adapter.list(subdir)) {
-            if (!isDocumentFile(listed.name)) continue
-            const entry = await entryFor(context, subdir, kind, listed)
-            if (entry) (kind === 'journal' ? journals : pages).push(entry)
+        const files = (await adapter.list(subdir)).filter((listed) => isDocumentFile(listed.name))
+        for (const run of runsFor(adapter, files)) {
+            for (const entry of await entriesFor(context, subdir, kind, run)) (kind === 'journal' ? journals : pages).push(entry)
         }
     }
 

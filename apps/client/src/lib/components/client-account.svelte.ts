@@ -10,6 +10,7 @@
  * checks the account again, as it did when each control held its own copy; the drawer's does not.
  */
 import * as env from '$app/env/public'
+import { signOutOfInstalledApp } from '#lib/auth/managed-sign-in.js'
 import { ManagedTokenError } from '#lib/auth/managed-token.js'
 import {
     DevicePasscodeLockedError,
@@ -49,6 +50,13 @@ class ClientAccount {
      * these, each linking to its sub-tab on the Sync tab, where its account and keys are.
      */
     otherServers = $state.raw<string[]>([])
+
+    /**
+     * Whether someone is signed in to EtherPK here, once a sign-in or a sign-out on this page has said so;
+     * null before that, when the page's own data says it. Only an installed app signs in without a load.
+     */
+    managedSession = $state<boolean | null>(null)
+    signingOut = $state(false)
 
     readonly managedSyncAvailable = isManagedSyncConfigured(env)
     #generation = 0
@@ -154,6 +162,33 @@ class ClientAccount {
         // the page leaves, so it cannot keep showing a signed-in account while it goes.
         ++this.#generation
         endManagedSessionInThisBrowser()
+    }
+
+    /** A sign-in on this page finished, in an installed app. The other windows check again too. */
+    signedIn(): void {
+        this.managedSession = true
+        announceAccountSignal({ type: 'check' })
+        void this.refresh()
+    }
+
+    /**
+     * Sign out of an installed app: its own sign-in only, where a browser's way out goes on to every
+     * EtherPK site. The shell forgets the sign-in before this page or another window is told, so that
+     * the check each then makes is answered signed out.
+     */
+    async signOutOfInstalledApp(): Promise<void> {
+        if (this.signingOut) return
+        this.signingOut = true
+        ++this.#generation
+        try {
+            // A sign-out the shell could not finish has said so, and the person stays signed in here.
+            if (!(await signOutOfInstalledApp())) return
+            endManagedSessionInThisBrowser()
+            this.managedSession = false
+            await this.refresh({ announce: false })
+        } finally {
+            this.signingOut = false
+        }
     }
 
     /**

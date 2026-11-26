@@ -7,6 +7,7 @@
 import type { FenceImage } from '@appsoftwareltd/etherpk-extension-api'
 
 import { copyPngToClipboard } from '#lib/document/view/clipboard-image.js'
+import { downloadBlob } from '#lib/native/save-file.js'
 
 import { imageFailedNotice } from './fence-frame-core'
 
@@ -22,19 +23,6 @@ class ImageNotDrawn extends Error {
 
 const DRAWING_FAILED = "It couldn't be drawn."
 
-/** Download `file`, as an Export does: a download keeps its own reference to the bytes once it has started. */
-function download(file: Blob, name: string): void {
-    const url = URL.createObjectURL(file)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = name
-    link.rel = 'noopener'
-    document.body.append(link)
-    link.click()
-    link.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 10_000)
-}
-
 /**
  * Draw the fence's image and copy or save it. `draw` is called at once and a copy's clipboard write
  * starts at once, with the PNG to follow, because a browser allows that write only inside the
@@ -48,7 +36,7 @@ export function keepFenceImage(how: 'copy' | 'save', draw: () => Promise<FenceIm
         return new Blob([image.bytes as BlobPart], { type: 'image/png' })
     })
     if (how === 'copy') return copyPngToClipboard(png)
-    return png.then((file) => download(file, `${name}.png`))
+    return png.then((file) => downloadBlob(file, `${name}.png`))
 }
 
 /** What to tell the person about a failure, and whether pressing again may work. */

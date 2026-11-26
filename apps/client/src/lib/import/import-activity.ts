@@ -12,6 +12,7 @@ import { createBreather } from '#lib/activity/breathe.js'
 import { runActivity, type ActivityHandle, type ActivityOutcome } from '#lib/activity/store.js'
 import { importMarkers, type ImportMarker, type StartedImport } from './import-marker'
 import type { Activity, ActivityPhase } from '#lib/activity/types.js'
+import type { FolderHandle } from '#lib/storage/folder-access.js'
 import type { GraphRegistry } from '#lib/storage/graph-registry.js'
 
 import { convertInWorker, type WorkerFactory } from './convert-client'
@@ -84,7 +85,7 @@ function controlFor(handle: ActivityHandle, phases: ActivityPhase[]): ImportCont
 
 export interface FilesystemImportRequest {
     kind: 'filesystem'
-    handle: FileSystemDirectoryHandle
+    handle: FolderHandle
     registry: GraphRegistry
 }
 

@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 **/build/
+# The Client as static files for the Native Apps (pnpm build:installed).
+apps/client/build-installed/
 # The Headless Client's Vite bundle (apps/mcp), built by CI and by the e2e spec that drives it.
 apps/mcp/dist/
 # The Extension API's built declarations and API Extractor's scratch folder (its reports, in
@@ -94,3 +96,10 @@ reports/
 
 .stryker-tmp/
 stryker-setup-*.js
+
+# Signing keys of the Native Apps (apps/android/SIGNING.md, scripts/native-apps/create-update-keys.mjs).
+# They are made outside the repository, and never belong in it.
+
+*.p12
+*.jks
+*.keystore

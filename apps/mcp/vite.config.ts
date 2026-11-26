@@ -14,6 +14,9 @@ const here = fileURLToPath(new URL('.', import.meta.url))
 const bundled = new Set([
     '@appsoftwareltd/etherpk-shared',
     '@appsoftwareltd/etherpk-themes',
+    // Modules the Headless Client shares with the app ask whether they run in an installed app, which
+    // the Headless Client never is. TypeScript source, as the shared package is.
+    '@appsoftwareltd/etherpk-native-bridge',
     // The Graph View's model, for graph_insights and graph_path (ADR 0122): TypeScript source while
     // the extension is built in this repository.
     '@appsoftwareltd/etherpk-extension-graph-view',

@@ -264,7 +264,7 @@
             <p class="text-sm text-neutral-600 dark:text-neutral-400">
                 Enter the Recovery Code you saved for <span class="font-medium text-neutral-950 dark:text-neutral-100">{host}</span>
                 to unlock your Encryption Keys on this device. A code for another Sync Server does not
-                open them. It never leaves your browser and the sync server never sees it.
+                open them. It never leaves this device and the sync server never sees it.
             </p>
             <div>
                 <label for="unlock-code" class="gk-label mb-1.5 block">Recovery Code</label>

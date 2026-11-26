@@ -66,11 +66,19 @@ export const versionUploadSchema = z.strictObject({
 
 export type VersionUpload = z.infer<typeof versionUploadSchema>
 
+/*
+ * The answers below are read tolerantly: a newer Sync Server may add a field, and a Client leaves it
+ * out. The upload above stays strict, because the server acts on it.
+ */
+
+/** A version's reason as a Client reads it. One a newer Client gave is listed as an ordinary version. */
+const receivedReason = versionReasonSchema.catch('idle')
+
 /**
  * The upload's outcome. `skipped`: the server keeps no versions (a retention period of zero); the
  * Client treats it as done.
  */
-export const versionUploadResultSchema = z.strictObject({
+export const versionUploadResultSchema = z.object({
     status: z.enum(['stored', 'exists', 'skipped']),
 })
 
@@ -81,18 +89,18 @@ export type VersionUploadResult = z.infer<typeof versionUploadResultSchema>
  * waits out its notice: until `from`, `retentionDays` (the longer period) still applies.
  * `removalPaused` is set while the Owner's plan has lapsed: nothing is removed by age.
  */
-export const versionPolicySchema = z.strictObject({
+export const versionPolicySchema = z.object({
     retentionDays: z.int().nonnegative(),
-    reduction: z.strictObject({ toDays: z.int().nonnegative(), from: isoTime }).nullable(),
+    reduction: z.object({ toDays: z.int().nonnegative(), from: isoTime }).nullable(),
     removalPaused: z.boolean(),
 })
 
 export type VersionPolicy = z.infer<typeof versionPolicySchema>
 
-export const versionListEntrySchema = z.strictObject({
+export const versionListEntrySchema = z.object({
     versionId: z.uuid(),
     createdAt: isoTime,
-    reason: versionReasonSchema,
+    reason: receivedReason,
     bytes: z.int().nonnegative(),
     epochId: z.int().nonnegative(),
 })
@@ -100,7 +108,7 @@ export const versionListEntrySchema = z.strictObject({
 export type VersionListEntry = z.infer<typeof versionListEntrySchema>
 
 /** `GET …/docs/:docId/versions`: verified versions, newest first. */
-export const versionListSchema = z.strictObject({
+export const versionListSchema = z.object({
     versions: z.array(versionListEntrySchema),
     policy: versionPolicySchema,
 })
@@ -108,10 +116,10 @@ export const versionListSchema = z.strictObject({
 export type VersionList = z.infer<typeof versionListSchema>
 
 /** `GET …/docs/:docId/versions/:versionId`: one sealed version. */
-export const versionEnvelopeSchema = z.strictObject({
+export const versionEnvelopeSchema = z.object({
     versionId: z.uuid(),
     createdAt: isoTime,
-    reason: versionReasonSchema,
+    reason: receivedReason,
     epochId: z.int().nonnegative(),
     envelope,
 })
@@ -123,9 +131,9 @@ export type VersionEnvelope = z.infer<typeof versionEnvelopeSchema>
  * sealed identity gives the Client its name. `removeAt` is when the last thing keeping it goes,
  * unless a Member removes it first; null while removal is paused.
  */
-export const deletedItemsSchema = z.strictObject({
+export const deletedItemsSchema = z.object({
     documents: z.array(
-        z.strictObject({
+        z.object({
             docId: z.uuid(),
             deletedAt: isoTime.nullable(),
             newestVersionId: z.uuid(),
@@ -134,7 +142,7 @@ export const deletedItemsSchema = z.strictObject({
         }),
     ),
     assets: z.array(
-        z.strictObject({
+        z.object({
             assetId: z.uuid(),
             size: z.int().nonnegative(),
             deletedAt: isoTime,

@@ -144,8 +144,11 @@ export function defaultPolicyRules(sanitize: (html: string) => string, origin: s
 
 function sameOrigin(input: string, origin: string): boolean {
     try {
-        // A blob URL's origin is the origin of the page that made it.
-        return new URL(input, origin).origin === origin
+        // By the address itself and not by `URL.origin`, which is "null" for the scheme of a desktop
+        // Native App wherever the scheme is not known to be one with an origin. A blob URL has the
+        // origin of the page that made it in its address.
+        const { href } = new URL(input, `${origin}/`)
+        return href.startsWith(`${origin}/`) || href.startsWith(`blob:${origin}/`)
     } catch {
         return false
     }

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Another app, for the tests of the first: its document provider, its shared files and what it sends. Never released. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <queries>
+        <package android:name="com.etherpk.app" />
+    </queries>
+    <application android:label="EtherPK test app" tools:ignore="MissingApplicationIcon,ExportedReceiver,ExportedContentProvider">
+        <provider
+            android:name=".TestDocuments"
+            android:authorities="com.etherpk.testapp.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+        <receiver android:name=".TestDocumentsGrant" android:exported="true" />
+        <!-- Not exported: each share carries the permission to read it, as a file manager's does. -->
+        <provider
+            android:name=".TestShares"
+            android:authorities="com.etherpk.testapp.shares"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+        <activity android:name=".SendActivity" android:exported="true" />
+    </application>
+</manifest>

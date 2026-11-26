@@ -37,6 +37,13 @@ export interface FileContent {
 }
 
 /**
+ * The stamps a file must still have for a write to go ahead, or `absent` for a file that must not be
+ * there. An installed app's shell refuses any other write with a `NoModificationAllowedError`. The
+ * browser has no such check, and its adapter writes whatever the file has become.
+ */
+export type ExpectedStamp = { lastModified: number; size: number } | 'absent'
+
+/**
  * A file's raw bytes plus its last-modified time (the binary counterpart of {@link FileContent}).
  * The bytes are ArrayBuffer-backed (not Shared) so they pass straight to the Web Crypto, Blob,
  * and File System Access APIs without a cast.
@@ -56,8 +63,13 @@ export interface DirectoryAdapter {
     list(subdir: Subdir): Promise<DirEntry[]>
     /** Read one file; rejects if it is absent. */
     read(subdir: Subdir, name: string): Promise<FileContent>
+    /**
+     * Read many files in one go, in the order asked, with null for one that is not there. Only where
+     * each read is a round trip worth saving: without it a caller reads them one at a time.
+     */
+    readMany?(subdir: Subdir, names: string[]): Promise<(FileContent | null)[]>
     /** Create-or-overwrite a file; resolves with its post-write mtime and size. */
-    write(subdir: Subdir, name: string, text: string): Promise<FileContent>
+    write(subdir: Subdir, name: string, text: string, expected?: ExpectedStamp): Promise<FileContent>
     /** Read one file as raw bytes (for binary Assets); rejects if it is absent. */
     readBinary(subdir: Subdir, name: string): Promise<BinaryContent>
     /** Create-or-overwrite a file from raw bytes (for binary Assets); resolves with its post-write mtime. */

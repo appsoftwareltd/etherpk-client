@@ -22,10 +22,12 @@
  * can count installs. No identifier is sent or stored.
  */
 
+import { isNativeApp } from '#lib/native/bridge.js'
+
 import { ensurePersistentStorage } from './storage-persistence'
 
 export interface AppInstallState {
-    /** Running as an installed app (standalone display mode) on this device. */
+    /** Running as a Native App on this device: standalone display mode, or an app with its own shell. */
     installed: boolean
     /** The browser has offered its install dialog and `promptInstall()` can show it. */
     promptAvailable: boolean
@@ -60,6 +62,8 @@ export interface AppInstallHost {
     heldOffer?(): InstallPromptEvent | null
     /** Chromium's `navigator.getInstalledRelatedApps`, where it exists. */
     getInstalledRelatedApps?(): Promise<Array<{ platform: string }>>
+    /** The page runs in an app with its own shell (`lib/native`), which is no web app to install. */
+    installedByShell?: boolean
     /** Send one outcome to the server. Must not throw. */
     report?(outcome: InstallOutcome): void
 }
@@ -87,7 +91,7 @@ function set(next: Partial<AppInstallState>): void {
 }
 
 function isInstalled(host: AppInstallHost, query: DisplayModeQuery | undefined): boolean {
-    return query?.matches === true || host.navigator?.standalone === true
+    return host.installedByShell === true || query?.matches === true || host.navigator?.standalone === true
 }
 
 /**
@@ -199,8 +203,12 @@ function reportToServer(outcome: InstallOutcome): void {
     }
 }
 
+/** In an app with its own shell no offer is listened for, and nothing is counted, having no server to count it. */
+const SHELL_HOST: AppInstallHost = { addEventListener: () => {}, removeEventListener: () => {}, installedByShell: true }
+
 function browserHost(): AppInstallHost | undefined {
     if (typeof window === 'undefined') return undefined
+    if (isNativeApp()) return SHELL_HOST
     const relatedApps = (navigator as Navigator & { getInstalledRelatedApps?: () => Promise<Array<{ platform: string }>> })
         .getInstalledRelatedApps
     return {

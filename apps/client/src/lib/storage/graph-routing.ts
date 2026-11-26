@@ -34,12 +34,13 @@ export type GraphTarget = { kind: 'open'; graph: GraphRecord } | { kind: 'picker
  * - The installed-launch marker and the shortcut name are for this decision and the request log
  *   only, so neither is carried on. Every other parameter is (dev's `?autosaveMs=`).
  * - An installed launch never lands on the public home: with no graphs it opens the Graphs page,
- *   whose first-run card is where a new graph starts.
+ *   whose first-run card is where a new graph starts. `installedApp` says every launch is one: an
+ *   app with its own shell (`lib/native`) holds none of the public pages.
  * - A shortcut opens in the graph `/` would have resumed: `today` as today's [[Journal Entry]],
  *   with today read now (a launch can come days after the last), and `search` and `quick-note`
  *   as an action the workspace runs once open. With no graph to resume it opens the Graphs page.
  */
-export function rootDestination(target: GraphTarget, search: string, today: () => string): string {
+export function rootDestination(target: GraphTarget, search: string, today: () => string, options: { installedApp?: boolean } = {}): string {
     const shortcut = launchShortcutFrom(search)
     const rest = withoutParams(search, [INSTALLED_LAUNCH_PARAM, SHORTCUT_PARAM])
     if (target.kind === 'open') {
@@ -52,7 +53,7 @@ export function rootDestination(target: GraphTarget, search: string, today: () =
         }
         return `${graphUrl(address)}${rest}`
     }
-    if (target.kind === 'home' && !shortcut && !isInstalledLaunch(search)) return `/home${rest}`
+    if (target.kind === 'home' && !shortcut && !options.installedApp && !isInstalledLaunch(search)) return `/home${rest}`
     return '/graphs'
 }
 

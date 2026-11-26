@@ -6,6 +6,8 @@
  *
  * A document, a drawing and a PDF all print through here.
  */
+import { shellPrint } from '#lib/native/print.js'
+
 import './print.css'
 
 /**
@@ -84,7 +86,7 @@ export async function printContainer(job: PrintJob): Promise<PrintOutcome> {
         await Promise.all([...container.querySelectorAll('img')].map((image) => image.decode().catch(() => {})))
         if (job.title !== undefined) document.title = job.title
         job.onReady?.()
-        return await printAndWait(window)
+        return await (shellPrint(DIALOG_LIMIT_MS) ?? printAndWait(window))
     } finally {
         if (job.title !== undefined) document.title = title
         document.body.classList.remove('etherpk-printing')

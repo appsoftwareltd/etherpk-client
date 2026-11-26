@@ -1,3 +1,6 @@
+import { isNativeApp } from '#lib/native/bridge.js'
+import { nativeAccessToken } from '#lib/native/session.js'
+
 interface BrowserToken {
     accessToken: string
     expiresAt: number
@@ -29,8 +32,9 @@ let cached: BrowserToken | null = null
 let refreshInFlight: Promise<BrowserToken> | null = null
 
 /**
- * Return a managed access token from memory, refreshing through the same-origin BFF when needed.
- * The refresh token remains inside the encrypted HTTP-only cookie and is never returned here.
+ * Return a managed access token from memory, refreshing when needed: through the same-origin BFF in a
+ * browser, where the refresh token stays inside the encrypted HTTP-only cookie, and through the shell
+ * in an installed app, which keeps it. It is never returned here.
  */
 export async function managedBearerToken(fetcher: typeof fetch = fetch): Promise<string> {
     if (cached && cached.expiresAt > Date.now() + 60_000) return cached.accessToken
@@ -62,6 +66,11 @@ async function requestTokenWithCrossTabLock(fetcher: typeof fetch, fresh = false
         return navigator.locks.request('etherpk-managed-token-refresh', () => requestToken(fetcher, fresh))
     }
     return requestToken(fetcher, fresh)
+}
+
+/** Keep the access token a sign-in in an installed app answered with. */
+export function holdManagedAccessToken(token: BrowserToken): void {
+    cached = { accessToken: token.accessToken, expiresAt: token.expiresAt }
 }
 
 export function clearManagedAccessToken(): void {
@@ -99,7 +108,23 @@ function retryAfterMs(response: Response): number {
     return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS)
 }
 
-async function requestTokenOnce(fetcher: typeof fetch, fresh: boolean): Promise<BrowserToken> {
+/** The shell's answer. It serialises its own refreshes and waits out a busy service itself. */
+async function requestNativeToken(fresh: boolean): Promise<BrowserToken> {
+    const grant = await nativeAccessToken({ forceRefresh: fresh }).catch((cause: unknown) => {
+        // The sign-in is kept: a shell that learns it has ended answers null.
+        console.warn('[sign-in] the shell gave no access token', cause)
+        throw new ManagedTokenError('Managed Sync sign-in is temporarily unavailable', 503)
+    })
+    if (!grant) throw new ManagedTokenError('Managed Sync sign-in is required', 401)
+    return grant
+}
+
+/** From the shell in an installed app, and from the Client's own server in a browser. */
+function requestTokenOnce(fetcher: typeof fetch, fresh: boolean): Promise<BrowserToken> {
+    return isNativeApp() ? requestNativeToken(fresh) : requestServerToken(fetcher, fresh)
+}
+
+async function requestServerToken(fetcher: typeof fetch, fresh: boolean): Promise<BrowserToken> {
     // `fresh` asks the endpoint to refresh even while the token it holds is good.
     const response = await fetcher(fresh ? '/auth/token?fresh=1' : '/auth/token', {
         method: 'POST',

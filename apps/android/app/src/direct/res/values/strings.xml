@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="folder_access_label">Folder access</string>
+    <string name="folder_access_heading">All files access</string>
+    <string name="folder_access_off">EtherPK opens the folders you choose without this permission. With All files access turned on, large folders open faster, a file is replaced in one step when you save, and changes other apps make to your notes appear straight away.\n\nAll files access lets EtherPK reach every file in shared storage. EtherPK uses it only for the folders you choose.</string>
+    <string name="folder_access_on">All files access is on. EtherPK uses it only for the folders you choose.\n\nTo turn it off, open Android settings.</string>
+    <string name="folder_access_action">Open Android settings</string>
+</resources>

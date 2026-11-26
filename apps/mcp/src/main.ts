@@ -39,6 +39,7 @@ import pkg from '../package.json'
 import { EnvelopeError, fromBase64Url, mergeKeyringEpochs, toBase64Url, type KeyVault } from '#lib/crypto/index.js'
 import { createGraphNamePublisher } from '#lib/sync/graph-name-envelope.js'
 import { readKeyHandouts } from '#lib/sync/key-handouts.js'
+import { nameThisClient } from '#lib/sync/this-client.js'
 
 import { connectAccount, openAccountVault, resolveGraphById, type HeadlessAccount } from './account'
 import { exchangeForAgentToken, redeemSetupCode, revokeHeldToken } from './agent-token'
@@ -104,6 +105,8 @@ import { bindServeLifetime } from './serve-lifetime'
 import { SocketTransport } from './socket-transport'
 
 const VERSION: string = pkg.version
+// What the sync engine, which is the Client's, says of itself to a Sync Server.
+nameThisClient({ kind: 'headless', version: VERSION })
 
 /**
  * How the user invokes this program, so every hint is one they can paste. Through npx - the way

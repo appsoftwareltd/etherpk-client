@@ -27,10 +27,10 @@ export function launchTarget(targetUrl: string | undefined, origin: string, open
     if (url.origin !== origin) return null
     if (url.searchParams.has(SHORTCUT_PARAM) || url.pathname === '/share' || url.pathname === '/open-file') return `${url.pathname}${url.search}`
     // The fragment goes too: a link to a task carries the task there.
-    return isWorkspacePath(url.pathname) ? `${url.pathname}${url.search}${url.hash}` : null
+    return isWorkspaceAddress(url.pathname) ? `${url.pathname}${url.search}${url.hash}` : null
 }
 
 /** A workspace address: an app page that is not the root resolver, the Graphs page or the Share Target. */
-function isWorkspacePath(pathname: string): boolean {
+export function isWorkspaceAddress(pathname: string): boolean {
     return isAppPagePath(pathname) && !['/', '/graphs', '/share', '/open-file'].includes(pathname)
 }

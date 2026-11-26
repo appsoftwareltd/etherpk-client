@@ -8,13 +8,14 @@
  * A folder the person picked is stored as its handle, which Chromium can keep in IndexedDB. A
  * folder inside the Origin Private File System (what the end-to-end tests give the picker) is
  * stored by its path, as the graph registry stores one, because WebKit cannot store the handle.
+ * An installed app's folder is stored by its shell's id.
  *
  * Browser only.
  */
 import { type IDBPDatabase, openDB } from 'idb'
 
 import { getOpfsRoot } from '../storage/fs/web-fs-adapter'
-import { folderAt, handleForStorage, isStoredOpfsFolder } from '../storage/graph-registry-opfs-paths'
+import { handleForStorage, handleFromStorage } from '../storage/graph-registry-opfs-paths'
 import { isClosedConnectionError } from '../storage/idb-connection'
 
 import { type PlainFolderPort, type PlainFolderRecord, type PlainFolderRegistry, createPlainFolderRegistry } from './plain-folder-registry'
@@ -71,9 +72,8 @@ async function withStore<T>(work: (database: IDBPDatabase) => Promise<T>): Promi
 
 /** The stored record with its folder's handle, or null when the folder is gone from private storage. */
 async function withHandle(record: PlainFolderRecord): Promise<PlainFolderRecord | null> {
-    if (!isStoredOpfsFolder(record.handle)) return record
     try {
-        return { ...record, handle: await folderAt(await getOpfsRoot(), record.handle.opfsPath) }
+        return { ...record, handle: await handleFromStorage(record.handle, getOpfsRoot) }
     } catch (error) {
         if ((error as DOMException | null)?.name !== 'NotFoundError') {
             console.warn('[plain-folders] a private-storage folder could not be opened', record.id, error)

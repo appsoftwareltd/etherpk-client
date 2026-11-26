@@ -41,6 +41,22 @@ describe('PlainFolderStore: opening and saving a file', () => {
     beforeEach(() => vi.useFakeTimers())
     afterEach(() => vi.useRealTimers())
 
+    it('names the files whose edits are not in the folder: before a save, and after one that failed', async () => {
+        let refuse = true
+        const { store, openReady, textOf } = await folder({ 'beans.md': 'a', 'peas.md': 'b' }, (tree) => ({
+            ...tree,
+            write: (path, bytes, options) => (refuse && path === 'beans.md' ? Promise.reject(new DOMException('x', 'NotAllowedError')) : tree.write(path, bytes, options)),
+        }))
+        for (const path of ['beans.md', 'peas.md']) (await openReady(path)).applyChange({ from: 0, to: 0, insert: 'edited ' })
+        expect(store.unsavedPaths()).toEqual(['beans.md', 'peas.md'])
+        await store.flushAll()
+        expect(store.unsavedPaths()).toEqual(['beans.md'])
+        refuse = false
+        await store.flushAll()
+        expect(store.unsavedPaths()).toEqual([])
+        expect(await textOf('beans.md')).toContain('edited')
+    })
+
     it('opens a file by its path and gives the editor line feeds', async () => {
         const { store, openReady } = await folder({ 'guide/watering.md': 'beans\r\npeas\r\n' })
         const doc = store.open('guide/watering.md')

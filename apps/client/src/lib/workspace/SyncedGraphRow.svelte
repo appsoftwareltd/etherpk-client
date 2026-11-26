@@ -13,6 +13,7 @@
      * this device knows one (graph-card.ts), over a neutral panel with everything else. A notice in
      * amber or red stays on the panel, since neither can be promised to read on a colour a person chose.
      */
+    import { THE_STORE, THIS_PLACE } from '#lib/native/place.js'
     import { formatBytes } from '@appsoftwareltd/etherpk-shared'
     import { inkFor } from '#lib/contrast-ink.js'
     import GraphGrip, { type GraphGripProps } from './GraphGrip.svelte'
@@ -311,7 +312,7 @@
                 <span
                     class="truncate text-sm {accent ? '' : 'text-neutral-500 dark:text-neutral-400'}"
                     data-testid="graphs-cache-hint"
-                    title="A synced graph's copy is stored in the browser, not in a folder">On this device</span
+                    title="A synced graph's copy is stored in {THE_STORE}, not in a folder">On this device</span
                 >
             </div>
             <button data-testid="graphs-open" aria-label={`Open ${name}`} onclick={onopen} class={accent ? OPEN_ON_COLOUR : OPEN_BUTTON}>
@@ -539,7 +540,7 @@
             {#if onDevice}
                 <button
                     data-testid="graphs-remove"
-                    data-tooltip="Deletes this browser's copy - the graph stays on the sync server" aria-description="Deletes this browser's copy - the graph stays on the sync server"
+                    data-tooltip="Deletes {THIS_PLACE}'s copy - the graph stays on the sync server" aria-description="Deletes {THIS_PLACE}'s copy - the graph stays on the sync server"
                     onclick={onforget}
                     class={TEXT_BUTTON}>Remove from this device</button
                 >

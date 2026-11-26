@@ -21,6 +21,7 @@
      * back ticked every time the dialog opens. Paste and drop straight onto the editor have no
      * surface to ask on and always optimise.
      */
+    import { pageReadsClipboard } from "#lib/native/clipboard.js";
     import Dialog from "@appsoftwareltd/etherpk-shared/dialog";
     import { tryGetActiveAssetStore } from "#lib/document/index.js";
     import {
@@ -60,6 +61,7 @@
     // The Async Clipboard API is what the Paste button needs; without it the button is
     // noise (Firefox exposes `read` only behind a flag), so it is hidden rather than dead.
     const canReadClipboard =
+        pageReadsClipboard() &&
         typeof navigator !== "undefined" &&
         typeof navigator.clipboard?.read === "function";
 

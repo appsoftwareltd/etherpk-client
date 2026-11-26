@@ -44,7 +44,9 @@ import {
 } from '#lib/offline/app-shell.js'
 import { EBOOK_FRAME_PATH } from '#lib/document/ebook/ebook-frame-policy.js'
 import { SHARE_FILES_DROPPED, shareAddress, sharedFilesOf } from '#lib/share/share-post.js'
+import { withinShareLimits } from '#lib/share/share-limits.js'
 import { keepSharedFiles } from '#lib/share/shared-files.js'
+import { PREVIEW_PREFIX, keepPostedPreviews, previewResponse } from './theme-preview.js'
 
 // SvelteKit documents `immutable` as empty in development. `import.meta.env.DEV` is not usable
 // here: SvelteKit's build of this worker compiles it to true.
@@ -64,6 +66,9 @@ const APP_FILES = new Set([
 ])
 /** The files cached when this version installs, and those cached only once a page fetches them. */
 const { atInstall: INSTALL_FILES, onDemand: ON_DEMAND_FILES } = splitAppFiles(APP_FILES)
+
+// The Theme editor's preview (ADR 0082).
+keepPostedPreviews(sw)
 
 sw.addEventListener('install', (event) => {
     event.waitUntil(
@@ -277,115 +282,6 @@ function withDeadline<T>(request: Promise<T>, deadlineMs: number): Promise<T> {
 }
 
 /* ------------------------------------------------------------------------------------------- */
-/* The Theme editor's preview (ADR 0082).                                                        */
-/* ------------------------------------------------------------------------------------------- */
-
-/*
- * A page rendered inside the app's own document inherits the app's Content Security Policy, which
- * allows no inline script; a theme's search script (and the script that keeps the page picker in
- * step) could never run in a `srcdoc` frame. A response served from here is a real navigation
- * with a policy of its own, so the Theme editor posts the rendered site to this worker and frames
- * `/__etherpk-preview/<id>/index.html`. The response carries a `sandbox` policy, so the document
- * has an opaque origin and nothing in the preview reaches the app's storage; because such a
- * document's own requests are not this worker's to answer, every page arrives self-contained
- * (stylesheets and scripts inlined, images as data urls). The bundle lives in this worker's
- * memory only: when the worker is restarted the frame gets a small page saying so, and the editor
- * re-posts on the next Update preview.
- */
-
-const PREVIEW_PREFIX = '/__etherpk-preview/'
-
-/** id → Map<path, { body, type }>. */
-const previews = new Map<string, Map<string, { body: string | Uint8Array; type: string }>>()
-
-const MIME: Record<string, string> = {
-    html: 'text/html; charset=utf-8',
-    css: 'text/css; charset=utf-8',
-    js: 'text/javascript; charset=utf-8',
-    json: 'application/json; charset=utf-8',
-    xml: 'application/xml; charset=utf-8',
-    svg: 'image/svg+xml',
-    png: 'image/png',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    gif: 'image/gif',
-    webp: 'image/webp',
-    avif: 'image/avif',
-    ico: 'image/x-icon',
-    pdf: 'application/pdf',
-    woff2: 'font/woff2',
-    woff: 'font/woff',
-    ttf: 'font/ttf',
-    txt: 'text/plain; charset=utf-8',
-    md: 'text/markdown; charset=utf-8',
-}
-
-function mimeOf(path: string): string {
-    const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
-    return MIME[ext] || 'application/octet-stream'
-}
-
-/** Tells the parent which page the frame is showing, so its picker follows a click. */
-const PAGE_SCRIPT =
-    "<script>window.parent.postMessage({ type: 'etherpk-preview-page', page: location.pathname.split('/').slice(3).join('/') }, '*')</script>"
-
-sw.addEventListener('message', (event) => {
-    const data = event.data as { type?: unknown; id?: unknown; files?: unknown } | null
-    if (!data || typeof data !== 'object') return
-    if (data.type === 'etherpk-preview-set' && typeof data.id === 'string' && Array.isArray(data.files)) {
-        const bundle = new Map<string, { body: string | Uint8Array; type: string }>()
-        for (const entry of data.files as unknown[]) {
-            if (!Array.isArray(entry) || typeof entry[0] !== 'string') continue
-            bundle.set(entry[0], { body: entry[1] as string | Uint8Array, type: mimeOf(entry[0]) })
-        }
-        previews.set(data.id, bundle)
-        event.ports[0]?.postMessage({ ok: true })
-    } else if (data.type === 'etherpk-preview-clear' && typeof data.id === 'string') {
-        previews.delete(data.id)
-    }
-})
-
-function expired(): Response {
-    return new Response(
-        '<!DOCTYPE html><html><body style="font-family:system-ui;padding:2rem;color:#404040"><p>This preview has expired (the browser restarted its background worker). Press <strong>Update preview</strong> to render it again.</p></body></html>',
-        { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
-    )
-}
-
-async function preview(url: URL): Promise<Response> {
-    const rest = url.pathname.slice(PREVIEW_PREFIX.length)
-    const slash = rest.indexOf('/')
-    const id = slash === -1 ? rest : rest.slice(0, slash)
-    let path = slash === -1 ? '' : rest.slice(slash + 1)
-    if (path === '') path = 'index.html'
-    try {
-        path = decodeURIComponent(path)
-    } catch {
-        // Left as written.
-    }
-    const bundle = previews.get(id)
-    const file = bundle?.get(path)
-    if (!file) return bundle ? new Response('Not found', { status: 404 }) : expired()
-    let body = file.body
-    if (file.type.startsWith('text/html') && typeof body === 'string') {
-        body = body.includes('</body>') ? body.replace('</body>', PAGE_SCRIPT + '</body>') : body + PAGE_SCRIPT
-    }
-    return new Response(body as BodyInit, {
-        status: 200,
-        headers: {
-            'Content-Type': file.type,
-            'Cache-Control': 'no-store',
-            // The preview's own policy: what a static host would give the site (nothing), plus the
-            // sandbox that gives the document an opaque origin, so a theme's script runs here with
-            // no reach into the app. The frame's own sandbox attribute has to allow same-origin for
-            // this navigation to reach the worker at all; this is what takes it away again.
-            'Content-Security-Policy': "sandbox allow-scripts allow-forms allow-popups; default-src * data: blob: 'unsafe-inline' 'unsafe-eval'",
-            'X-Content-Type-Options': 'nosniff',
-        },
-    })
-}
-
-/* ------------------------------------------------------------------------------------------- */
 /* A share from the device's share sheet (ADR 0186).                                           */
 /* ------------------------------------------------------------------------------------------- */
 
@@ -403,7 +299,7 @@ async function postedShare(request: Request): Promise<Response> {
     } catch {
         return Response.redirect('/share', 303)
     }
-    const files = sharedFilesOf(form)
+    const { kept: files, leftOut } = withinShareLimits(sharedFilesOf(form))
     let kept: string | null = null
     if (files.length > 0) {
         kept = await keepSharedFiles(files).catch((error: unknown) => {
@@ -411,7 +307,7 @@ async function postedShare(request: Request): Promise<Response> {
             return SHARE_FILES_DROPPED
         })
     }
-    return Response.redirect(shareAddress(form, kept), 303)
+    return Response.redirect(shareAddress(form, kept, leftOut), 303)
 }
 
 /* ------------------------------------------------------------------------------------------- */
@@ -423,7 +319,7 @@ sw.addEventListener('fetch', (event) => {
     const url = new URL(request.url)
     if (url.origin !== sw.location.origin) return
     if (url.pathname.startsWith(PREVIEW_PREFIX)) {
-        event.respondWith(preview(url))
+        event.respondWith(previewResponse(url))
         return
     }
     if (request.method === 'POST' && url.pathname === '/share') {

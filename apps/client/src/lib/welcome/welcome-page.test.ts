@@ -88,6 +88,15 @@ describe('the Welcome page text', () => {
     })
 })
 
+describe('the Welcome page with no demo address to give', () => {
+    it('names the button that opens the demo, and writes no address', () => {
+        const body = welcomePageBody(null)
+        expect(body).toContain('Open the demo from the Graphs page, with **Try the demo**.')
+        expect(body).not.toMatch(/\]\((?!https:\/\/docs\.etherpk\.com)[^)]*\)/)
+        expect(body).not.toContain('null')
+    })
+})
+
 describe("the demo's Welcome page", () => {
     it('holds the same lines to try, together and in order, so the two pages cannot drift apart', async () => {
         const demo = await readFile(resolve(__dirname, '../../../static/demo-graph/pages', `${WELCOME_PAGE_TITLE}.md`), 'utf8')

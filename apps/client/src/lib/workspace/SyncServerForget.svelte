@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { THIS_PLACE } from '#lib/native/place.js'
     /**
      * Forgetting one Sync Server on this device (ADR 0111): the button, then the question in place
      * with what forgetting does, since it locks the server's Encryption Keys here. On a server's
@@ -59,7 +60,7 @@
         data-testid="sync-server-forget-consequence"
     >
         {managed
-            ? "This app signs out on this device and locks your Encryption Keys for it. Your EtherPK account stays signed in elsewhere and its graphs stay as they are. The copies this browser holds stay hidden until you sign in again."
-            : "This device forgets its address and access token, and locks your Encryption Keys for it. The token stays active until you revoke it on the server, and the copies this browser holds stay hidden until you add it again."}
+            ? `This app signs out on this device and locks your Encryption Keys for it. Your EtherPK account stays signed in elsewhere and its graphs stay as they are. The copies ${THIS_PLACE} holds stay hidden until you sign in again.`
+            : `This device forgets its address and access token, and locks your Encryption Keys for it. The token stays active until you revoke it on the server, and the copies ${THIS_PLACE} holds stay hidden until you add it again.`}
     </p>
 {/if}

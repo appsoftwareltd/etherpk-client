@@ -24,6 +24,7 @@
      * never dropped on the floor. Reached with no query and a share still waiting (a graph that
      * would not open sent the user back here), the form is shown over that share again.
      */
+    import { THE_ASKER, THIS_PLACE } from "#lib/native/place.js";
     import { onMount } from "svelte";
 
     import { afterNavigate, goto } from "$app/navigation";
@@ -45,6 +46,7 @@
     import QuickNoteBox from "#lib/document/view/QuickNoteBox.svelte";
     import QuickNoteFileUnder from "#lib/document/view/QuickNoteFileUnder.svelte";
     import { PendingNoteFiles } from "#lib/document/view/quick-note-pending-files.js";
+    import { leftOutMessage } from "#lib/share/share-limits.js";
     import { SHARE_FILES_DROPPED } from "#lib/share/share-post.js";
     import { forgetSharedFiles, keepSharedFiles, readSharedFiles } from "#lib/share/shared-files.js";
     import { createIdbGraphRegistry, getLastGraphId, type GraphRecord } from "#lib/storage/index.js";
@@ -65,6 +67,8 @@
         filesId?: string;
         /** It arrived with files that could not be kept: the page says so. */
         filesDropped?: boolean;
+        /** How many of its files were left out, because one share may carry so many. */
+        filesLeftOut?: number;
     }
 
     /**
@@ -79,16 +83,18 @@
      */
     function arrivedShare(): Share | null {
         const arrived = composeSharedNote(data);
-        const files = arrivedFiles(data.files);
+        const files = arrivedFiles(data.files, data.leftOut);
         // A share of files alone has no text, and is still a share.
         if (!arrived && !files) return null;
         return { text: arrived?.text ?? "", truncated: arrived?.truncated ?? false, createdAt: Date.now(), ...files };
     }
 
-    /** What the address says about the share's files: where they are kept, or that they were dropped. */
-    function arrivedFiles(files: string | null): Pick<Share, "filesId" | "filesDropped"> | null {
-        if (!files) return null;
-        return files === SHARE_FILES_DROPPED ? { filesDropped: true } : { filesId: files };
+    /** What the address says about the share's files: where they are kept, or that they were dropped or left out. */
+    function arrivedFiles(files: string | null, leftOut: number): Pick<Share, "filesId" | "filesDropped" | "filesLeftOut"> | null {
+        if (!files && leftOut === 0) return null;
+        const missing = leftOut > 0 ? { filesLeftOut: leftOut } : {};
+        if (!files) return missing;
+        return { ...missing, ...(files === SHARE_FILES_DROPPED ? { filesDropped: true } : { filesId: files }) };
     }
 
     const initialShare = arrivedShare();
@@ -247,7 +253,7 @@
                 // Read failed is not "none": the copy must not send someone to make a new graph
                 // when theirs are all still there.
                 console.error("Could not read the graph list:", err);
-                registryError = "Your graphs could not be read from this browser's storage. Nothing has been deleted.";
+                registryError = `Your graphs could not be read from ${THIS_PLACE}'s storage. Nothing has been deleted.`;
             }
         })();
         return () => {
@@ -265,7 +271,8 @@
         under = null;
         pending.clear();
         filesMissing = false;
-        void loadFiles(next);
+        // The share as the page holds it: what was handed in is not the object `share` is now.
+        void loadFiles(share);
         textError = "";
         addError = "";
         landing = null;
@@ -485,7 +492,7 @@
             await navigator.clipboard.writeText(text);
             copied = true;
         } catch {
-            copyError = "Could not copy: the browser refused clipboard access. Select the text above and copy it by hand.";
+            copyError = `Could not copy: ${THE_ASKER} refused clipboard access. Select the text above and copy it by hand.`;
         }
     }
 
@@ -558,6 +565,11 @@
                 oninput={onTextInput}
                 onkey={onTextKey}
             />
+            {#if share.filesLeftOut}
+                <p class="text-sm text-(--gk-text-warning)" role="status" data-testid="share-files-left-out">
+                    {leftOutMessage(share.filesLeftOut)}
+                </p>
+            {/if}
             {#if share.filesDropped}
                 <p class="text-sm text-(--gk-text-warning)" role="status" data-testid="share-files-dropped">
                     The file did not arrive. Share it to EtherPK again.

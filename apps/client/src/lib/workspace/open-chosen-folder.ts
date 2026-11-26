@@ -6,7 +6,7 @@
  * gives it the browser.
  */
 import { crossTabLocksAvailable } from '#lib/cross-tab-lock.js'
-import { createWebFsDirectoryAdapter } from '#lib/storage/fs/web-fs-adapter.js'
+import { directoryAdapterFor, type FolderHandle } from '#lib/storage/folder-access.js'
 import { readKnownGraphFolders } from '#lib/storage/folder-ownership.js'
 import type { GraphRegistry } from '#lib/storage/graph-registry.js'
 import { findFolderOwner, openAsFolderGraphRefusal } from '#lib/storage/synced/mirror-takeover.js'
@@ -28,8 +28,8 @@ function oneAtATime<T>(run: () => Promise<T>): Promise<T> {
     return next
 }
 
-export function openChosenFolder(handle: FileSystemDirectoryHandle, registry: GraphRegistry): Promise<ChosenFolderOutcome> {
-    const adapter = createWebFsDirectoryAdapter(handle)
+export function openChosenFolder(handle: FolderHandle, registry: GraphRegistry): Promise<ChosenFolderOutcome> {
+    const adapter = directoryAdapterFor(handle)
     return registerChosenFolder({
         handle,
         name: handle.name,

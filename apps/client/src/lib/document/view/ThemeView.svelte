@@ -32,6 +32,7 @@
      * open, because a real publication is seconds of work and nobody wants that on every
      * keystroke.
      */
+    import { isNativeApp } from "#lib/native/bridge.js";
     import { onDestroy, onMount } from "svelte";
     import { EditorState } from "@codemirror/state";
     import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
@@ -543,7 +544,7 @@
                     <p class="px-3 py-1 text-sm text-neutral-500 dark:text-neutral-400">
                         Shows your unsaved edits.
                         {#if previewChoices && previewChoices.length === 0}No publication uses this theme yet, so this is sample content.{/if}
-                        {#if previewBundle && !previewSession}Scripts (search, a theme's own) do not run in this preview, and it cannot open in a tab: the browser has no service worker to serve it.{/if}
+                        {#if previewBundle && !previewSession}Scripts (search, a theme's own) do not run in this preview, and it cannot open in a tab{isNativeApp() ? '.' : ': the browser has no service worker to serve it.'}{/if}
                         {#if previewReport && previewReport.warnings.length > 0}{previewReport.warnings.length} warning{previewReport.warnings.length === 1 ? "" : "s"} in the report.{/if}
                     </p>
                     {#if previewError}<p role="alert" class="px-3 py-1 text-sm text-red-700 dark:text-red-300" data-testid="theme-view-preview-error">{previewError}</p>{/if}

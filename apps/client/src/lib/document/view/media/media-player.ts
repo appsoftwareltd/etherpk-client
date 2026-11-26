@@ -15,6 +15,7 @@
  * (`augmentations/media-embed.ts`) and the asset viewer (`viewers/MediaAssetViewer.svelte`) mount
  * the same thing. The rules with no DOM in them are in `media-player-core.ts`.
  */
+import { THIS_PLACE_START } from '#lib/native/place.js'
 import './media-player.css'
 
 import { formatMediaTime, keyAction, mediaTypeLabel, nextSpeed, seekTarget, steppedVolume, type MediaKind } from './media-player-core'
@@ -264,7 +265,7 @@ export function createMediaPlayer(options: MediaPlayerOptions): MediaPlayer {
         }
         // Asked before the bytes are handed over: a type the browser has no decoder for never plays.
         if (source.type && media.canPlayType(source.type) === '') {
-            setState('unplayable', `This browser cannot play ${name}.`)
+            setState('unplayable', `${THIS_PLACE_START} cannot play ${name}.`)
             return false
         }
         media.src = source.url
@@ -370,7 +371,7 @@ export function createMediaPlayer(options: MediaPlayerOptions): MediaPlayer {
         const code = media.error?.code
         // 4: the browser has no decoder for it. Anything else broke part way: the bytes, the decode.
         if (code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-            setState('unplayable', `This browser cannot play ${name}.`)
+            setState('unplayable', `${THIS_PLACE_START} cannot play ${name}.`)
             return
         }
         resumeAt = media.currentTime

@@ -47,6 +47,8 @@ export interface SourceSummary {
     format: ImportFormat
     markdownCount: number
     otherCount: number
+    /** Files of the source that could not be read, which the import leaves out. */
+    unreadable?: string[]
 }
 
 /** Detect the format and count what the junk filter lets through. */

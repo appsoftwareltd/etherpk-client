@@ -15,6 +15,8 @@
  * therefore returned to the caller to log rather than assumed, and calling this on every
  * load is fine: `persisted()` is answered first and costs nothing.
  */
+import { isNativeApp } from '#lib/native/bridge.js'
+
 export interface StoragePersistence {
     /** The browser exposes `navigator.storage.persist` at all. */
     supported: boolean
@@ -31,6 +33,9 @@ const UNSUPPORTED: StoragePersistence = { supported: false, persisted: false, re
 export async function ensurePersistentStorage(
     storage: StorageManagerLike | undefined = globalThis.navigator?.storage,
 ): Promise<StoragePersistence> {
+    // A Native App's data is the app's own, kept until it is uninstalled. A WebView refuses the request
+    // every time, so asking would only log a refusal that means nothing.
+    if (isNativeApp()) return UNSUPPORTED
     if (!storage || typeof storage.persist !== 'function' || typeof storage.persisted !== 'function') {
         return UNSUPPORTED
     }
@@ -76,6 +81,7 @@ export async function persistenceStep(env: {
     /** EtherPK's explanation was shown in this browser before. */
     explained: boolean
 }): Promise<PersistenceStep> {
+    if (isNativeApp()) return 'none'
     if (!(await notYetPersisted(env.storage))) return 'none'
     if (!browserAsksBeforePersisting(env.userAgent)) return 'request'
     const state = await persistentStoragePermission(env.permissions)

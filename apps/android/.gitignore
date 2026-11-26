@@ -1,0 +1,8 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+# Signing keys are made by the owner and never committed. See SIGNING.md.
+*.keystore
+*.jks
+*.p12

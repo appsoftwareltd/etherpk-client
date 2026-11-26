@@ -1,9 +1,12 @@
 <script lang="ts">
+    import { THE_STORE_YOURS } from "#lib/native/place.js";
     import { untrack } from "svelte";
     /**
      * One PDF, in its tab: the toolbar, the pages and the panels. Behaviour is in `PdfReader`; this is
      * what the person sees of it. Drawn by the app rather than framed, for the reasons in ADR 0055.
      */
+    import { isNativeApp } from "#lib/native/bridge.js";
+    import { downloadUrl, saveBlob } from "#lib/native/save-file.js";
     import { todayISO } from "#lib/document/calendar/month-grid-core.js";
     import { viewKey } from "#lib/layout/index.js";
     import { openConcept } from "#lib/document/open-concept.js";
@@ -376,7 +379,7 @@
             clearTimeout(selectionCopiedTimer);
             selectionCopiedTimer = setTimeout(() => (selectionCopied = false), 1500);
         } catch (error) {
-            showToast(`That could not be copied (${error instanceof Error ? error.message : String(error)}). It is still selected, so try your browser's own Copy.`);
+            showToast(`That could not be copied (${error instanceof Error ? error.message : String(error)}). It is still selected, so try ${THE_STORE_YOURS} own Copy.`);
         }
     }
 
@@ -406,15 +409,18 @@
         saveOpen = true;
     }
 
+    const CHOOSE_WHERE_TO_SAVE = "Choose where to save the file, or untick “A file on this device”.";
+
     async function saveToDevice(bytes: Uint8Array<ArrayBuffer>, fileName: string) {
         const blob = new Blob([bytes], { type: "application/pdf" });
-        if ("showSaveFilePicker" in window) {
+        // A Native App's shell asks where to save (save-file.ts).
+        if (!isNativeApp() && "showSaveFilePicker" in window) {
             let handle: FileSystemFileHandle;
             try {
                 handle = await window.showSaveFilePicker({ suggestedName: fileName, types: [{ description: "PDF", accept: { "application/pdf": [".pdf"] } }] });
             } catch (error) {
                 // Cancelled in the picker. The dialog stays open with everything as it was.
-                if (error instanceof DOMException && error.name === "AbortError") throw new Error("Choose where to save the file, or untick “A file on this device”.");
+                if (error instanceof DOMException && error.name === "AbortError") throw new Error(CHOOSE_WHERE_TO_SAVE);
                 throw error;
             }
             const writable = await handle.createWritable();
@@ -422,14 +428,7 @@
             await writable.close();
             return;
         }
-        const address = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = address;
-        anchor.download = fileName;
-        document.body.append(anchor);
-        anchor.click();
-        anchor.remove();
-        setTimeout(() => URL.revokeObjectURL(address), 60_000);
+        if ((await saveBlob(blob, fileName)) === "cancelled") throw new Error(CHOOSE_WHERE_TO_SAVE);
     }
 
     async function addCopyToGraph(bytes: Uint8Array<ArrayBuffer>, fileName: string, linkTo: string | null) {
@@ -473,12 +472,7 @@
 
     function downloadOriginal() {
         moreOpen = false;
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = displayName;
-        document.body.append(anchor);
-        anchor.click();
-        anchor.remove();
+        downloadUrl(url, displayName);
     }
 
     function onSignaturePlaced(blob: Blob, aspect: number) {

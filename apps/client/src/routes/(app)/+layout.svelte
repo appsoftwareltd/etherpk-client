@@ -2,6 +2,7 @@
     import { page } from "$app/state";
     import ActivityToastHost from "#lib/activity/ui/ActivityToastHost.svelte";
     import AssetUploadModal from "#lib/components/AssetUploadModal.svelte";
+    import { clientAccount } from "#lib/components/client-account.svelte.js";
     import ClientAccountNavigationMenu from "#lib/components/ClientAccountNavigationMenu.svelte";
     import GraphNavigationMenu from "#lib/components/GraphNavigationMenu.svelte";
     import InstallEntry from "#lib/install/InstallEntry.svelte";
@@ -37,7 +38,8 @@
 
     const navItems = $derived(buildApplicationNavigation({
         managed: data.managedService,
-        signedIn: data.managedSessionAvailable,
+        // What a sign-in or sign-out on this page said is newer than the page's data.
+        signedIn: clientAccount.managedSession ?? data.managedSessionAvailable,
         syncServerUrl: data.serverPortalUrl,
         pricingUrl: data.corporatePricingUrl,
         graphsUrl: "/graphs",

@@ -5,6 +5,7 @@
  * Browser-only; the decisions themselves are unit-tested in `mirror-takeover.test.ts`, and this
  * file is exercised by the Local Mirror Playwright spec through the OPFS picker stand-in.
  */
+import { type FolderHandle, treeAdapterFor } from './folder-access'
 import type { Subdir } from './fs/directory-adapter'
 import { createIdbGraphStoragePort } from './graph-registry-idb'
 import { listMirrorFolders } from './mirror-folder-idb'
@@ -21,33 +22,21 @@ export async function readKnownGraphFolders(exceptMirrorOf?: string): Promise<Kn
 }
 
 /**
- * Read a folder without creating anything in it. The web-fs adapter creates each subfolder it is
+ * Read a folder without creating anything in it. A directory adapter creates each subfolder it is
  * asked about, which is right for a graph's own folder and wrong for one the user may still
  * decline: cancelling the takeover dialog would leave empty journals/ and pages/ folders behind.
  */
-export function readOnlyFolder(root: FileSystemDirectoryHandle): FolderReader {
-    async function subdir(name: Subdir): Promise<FileSystemDirectoryHandle | null> {
-        try {
-            return await root.getDirectoryHandle(name)
-        } catch (error) {
-            if ((error as DOMException)?.name === 'NotFoundError' || (error as DOMException)?.name === 'TypeMismatchError') {
-                return null
-            }
-            throw error
-        }
-    }
+export function readOnlyFolder(root: FolderHandle): FolderReader {
+    const tree = treeAdapterFor(root)
     return {
-        async list(name) {
-            const dir = await subdir(name)
-            if (!dir) return []
-            const names: string[] = []
-            for await (const entry of dir.values()) if (entry.kind === 'file') names.push(entry.name)
-            return names
+        async list(name: Subdir) {
+            // Asked before it is listed: a folder that cannot be reached must not read as one with
+            // nothing in it, and a listing that fails says the same for both.
+            if ((await tree.stat(name))?.kind !== 'directory') return []
+            return (await tree.list(name)).filter((entry) => entry.kind === 'file').map((entry) => entry.name)
         },
         async read(name, file) {
-            const dir = await subdir(name)
-            if (!dir) throw new DOMException(`${name}/${file} is not there`, 'NotFoundError')
-            return (await (await dir.getFileHandle(file)).getFile()).text()
+            return new TextDecoder().decode((await tree.read(`${name}/${file}`)).bytes)
         },
     }
 }

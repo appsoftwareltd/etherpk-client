@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The build a person downloads. It can reach shared storage by path, once the person turns that on in Android's settings. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="AllFilesAccessPolicy,ScopedStorage" />
+
+    <application>
+        <activity android:name=".MainActivity">
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity>
+        <activity android:name=".FolderAccessActivity" android:exported="true" android:label="@string/folder_access_label">
+            <intent-filter>
+                <action android:name="android.intent.action.APPLICATION_PREFERENCES" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

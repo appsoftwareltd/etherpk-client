@@ -7,6 +7,7 @@
  * in the argument, and a lane through its sibling. The board names the lane in the argument, and the
  * Client knows the graph, the clipboard and how to say so, as for a card.
  */
+import { THIS_PLACE } from '#lib/native/place.js'
 import {
     type CommandRegistry,
     type ContextMenuTarget,
@@ -52,7 +53,7 @@ async function copyInstruction(text: string, what: string, reach: AgentReach, de
         deps.notify(`Could not copy the agent instruction: ${error instanceof Error ? error.message : String(error)}`, 'error')
         return false
     }
-    deps.notify(reach.kind === 'browser' ? 'Copied, but an agent cannot reach this graph because it is kept in this browser.' : `Copied an agent instruction for ${what}. Paste it to your agent.`, 'info')
+    deps.notify(reach.kind === 'browser' ? `Copied, but an agent cannot reach this graph because it is kept in ${THIS_PLACE}.` : `Copied an agent instruction for ${what}. Paste it to your agent.`, 'info')
     return true
 }
 

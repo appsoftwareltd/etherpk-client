@@ -27,4 +27,15 @@ describe('describeFilesystemSaveFailure', () => {
         expect(copy).not.toMatch(/server/i)
         expect(describeFilesystemSaveFailure('not an error', 'A')).toMatch(/^Could not save “A”\./)
     })
+
+    it('in an installed app names no browser, no tab and nothing the app cannot ask for', () => {
+        const names = ['QuotaExceededError', 'NotAllowedError', 'SecurityError', 'NoModificationAllowedError', 'NotFoundError', 'NotReadableError', 'InvalidStateError', 'OperationError']
+        for (const name of names) {
+            const copy = describeFilesystemSaveFailure(new DOMException('x', name), 'A', true)
+            expect([name, copy]).not.toEqual([name, expect.stringMatching(/browser|this tab/i)])
+            expect(copy).toContain('kept in this window')
+        }
+        expect(describeFilesystemSaveFailure(new DOMException('x', 'NotAllowedError'), 'A', true)).toContain('choose the folder')
+        expect(describeFilesystemSaveFailure(new DOMException('odd', 'OperationError'), 'A', true)).toContain('The system reported: odd.')
+    })
 })

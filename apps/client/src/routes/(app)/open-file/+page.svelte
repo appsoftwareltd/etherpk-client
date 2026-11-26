@@ -12,15 +12,16 @@
     import { showNotice } from '#lib/activity/notices.js'
     import { readKnownGraphFolders } from '#lib/storage/folder-ownership.js'
     import { isPickerCancel } from '#lib/storage/fs/picker-cancel.js'
-    import { pickGraphDirectory } from '#lib/storage/fs/web-fs-adapter.js'
+    import { pickFolder, treeAdapterFor } from '#lib/storage/folder-access.js'
     import { appHeaderHiddenOnPhone } from '#lib/workspace/app-header.svelte.js'
     import { examineChosenFolder, registerPlainFolder } from '#lib/plain/choose-folder.js'
-    import { pathInFolder } from '#lib/plain/launched-file.js'
+    import { FolderTooLargeToSearch, pathInFolder } from '#lib/plain/launched-file.js'
+    import { releaseFile } from '#lib/native/file-ref.js'
+    import { describeChosenFolderFailure } from '#lib/workspace/folder-open-copy.js'
     import { launchedFile } from '#lib/plain/launched-file.svelte.js'
     import { chosenPlainFolderState, plainFileUrl } from '#lib/plain/plain-address.js'
     import { createIdbPlainFolderRegistry } from '#lib/plain/plain-folder-registry-idb.js'
     import PlainFolderWorkspace from '#lib/plain/ui/PlainFolderWorkspace.svelte'
-    import { createWebTreeAdapter } from '#lib/plain/web-tree-adapter.js'
 
     const file = $derived(launchedFile.current)
     let busy = $state(false)
@@ -33,24 +34,34 @@
         if (!opened || busy) return
         busy = true
         try {
-            const folder = await pickGraphDirectory()
-            const path = await pathInFolder(folder, opened)
+            const folder = await pickFolder()
+            const path = await pathInFolder(folder, opened).catch((error: unknown) => {
+                if (!(error instanceof FolderTooLargeToSearch)) throw error
+                say(`${folder.name} has too many files to search for ${opened.name}. Choose the folder the file is in.`)
+                return undefined
+            })
+            if (path === undefined) return
             if (path === null) {
                 say(`That folder does not hold ${opened.name}. Choose the folder the file is in, or one above it.`)
                 return
             }
             const registry = createIdbPlainFolderRegistry()
-            const chosen = await examineChosenFolder(folder, { plainFolders: () => registry.list(), knownFolders: () => readKnownGraphFolders(), treeOf: createWebTreeAdapter })
+            const chosen = await examineChosenFolder(folder, { plainFolders: () => registry.list(), knownFolders: () => readKnownGraphFolders(), treeOf: treeAdapterFor })
             if (chosen.kind === 'refused') say(chosen.message)
             else if (chosen.kind === 'folder-graph') say(`${folder.name} is an EtherPK graph. Open it from the Graphs page, and its pages open there.`)
             else {
                 const held = chosen.kind === 'plain-folder' ? chosen.folder : await registerPlainFolder(folder, registry, () => crypto.randomUUID(), Date.now)
                 launchedFile.set(null)
                 await goto(plainFileUrl(held.name, path), { state: chosenPlainFolderState(held) })
+                // The file is reached through its folder now. The navigation waited for its saves
+                // (leave-guard.ts), so the shell can let go of the file it was opened as.
+                releaseFile(opened)
             }
         } catch (error) {
             // Closing the picker is a choice: nothing is said.
-            if (!isPickerCancel(error)) say(`The folder could not be opened (${error instanceof Error ? error.message : String(error)}).`)
+            if (isPickerCancel(error)) return
+            console.error('[open-file] the folder chosen for the file could not be opened', error)
+            say(describeChosenFolderFailure(error))
         } finally {
             busy = false
         }

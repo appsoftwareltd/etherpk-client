@@ -1,4 +1,5 @@
 <script lang="ts" module>
+    import { THIS_PLACE_START } from "#lib/native/place.js";
     import type { ServerGraphScope } from "#lib/storage/graph-registry.js";
     import type { SyncApi } from "#lib/sync/sync-api.js";
 
@@ -37,7 +38,9 @@
      */
     import { onMount, tick } from "svelte";
     import { ActivityConflictError, isRunning } from "#lib/activity/store.js";
-    import { isFsaSupported, isPickerCancel, pickGraphDirectory } from "#lib/storage/index.js";
+    import { isNativeApp } from "#lib/native/bridge.js";
+    import { releaseFolder } from "#lib/storage/release-folder.js";
+    import { canPickFolder, type FolderHandle, isPickerCancel, pickFolder } from "#lib/storage/index.js";
     import type { GraphRegistry } from "#lib/storage/graph-registry.js";
     import { getOpfsRoot } from "#lib/storage/fs/web-fs-adapter.js";
     import { describeSyncFailure } from "#lib/sync/sync-error-copy.js";
@@ -60,7 +63,8 @@
         type PreparedSource,
         type ServerImportResult,
     } from "../run-import";
-    import { type WalkableDirectory, walkDirectory } from "../directory-handle-source";
+    import { sourceFilesOf } from "../directory-handle-source";
+    import { describeChosenFolderFailure } from "#lib/workspace/folder-open-copy.js";
     import { describeSource } from "../source";
     import { prepareZipSource } from "../zip-source";
     import { encryptedNotePaths } from "../asnotes-layout";
@@ -106,7 +110,7 @@
          * dialog opens with it read, as if it had been picked here. The import copies from it and
          * never writes to it.
          */
-        sourceFolder?: FileSystemDirectoryHandle | null;
+        sourceFolder?: FolderHandle | null;
         /**
          * What `sourceFolder` was read as when it was chosen. The walk here leaves out the
          * directories another tool marks its folder with (`.obsidian`), so it cannot tell by itself.
@@ -152,7 +156,7 @@
         ["asnotes", "AS Notes"],
     ];
 
-    const folderAvailable = $derived(isFsaSupported() || opfsDestination);
+    const folderAvailable = $derived(canPickFolder() || opfsDestination);
     /**
      * Which destinations can be used, read before a file is asked for. It follows the account
      * checks, so a dialog opened while one is still out moves on by itself when it answers.
@@ -234,15 +238,17 @@
     }
 
     /** Read a folder handed over by the Graphs page, as the source picker would have. */
-    async function readSourceFolder(folder: FileSystemDirectoryHandle) {
+    async function readSourceFolder(folder: FolderHandle) {
         busy = true;
         error = null;
         try {
-            const files = await walkDirectory(folder as unknown as WalkableDirectory);
-            if (files.length === 0) error = "That folder holds no files.";
-            else accept({ ...describeSource(files, folder.name), ...(sourceFormat ? { format: sourceFormat } : {}) });
+            const { files, unreadable } = await sourceFilesOf(folder);
+            if (files.length === 0 && unreadable.length > 0) error = "None of that folder’s files could be read. Close any program using the files, then choose the folder again.";
+            else if (files.length === 0) error = "That folder holds no files.";
+            else accept({ ...describeSource(files, folder.name), unreadable, ...(sourceFormat ? { format: sourceFormat } : {}) });
         } catch (e) {
-            error = `Could not read that folder: ${(e as Error).message}`;
+            console.error("[import] the source folder could not be read", e);
+            error = describeChosenFolderFailure(e);
         } finally {
             busy = false;
         }
@@ -250,6 +256,27 @@
     onMount(() => {
         if (sourceFolder) void readSourceFolder(sourceFolder);
     });
+
+    /**
+     * Choose folder. In a browser the folder input needs no permission to write, which an import's
+     * source never asks for. An installed app has the shell's folder dialog, and a WebView has nothing else.
+     */
+    function chooseSourceFolder() {
+        if (isNativeApp()) void pickSourceFolder();
+        else sourceInput?.click();
+    }
+
+    async function pickSourceFolder() {
+        try {
+            const folder = await pickFolder();
+            await readSourceFolder(folder);
+            // Read whole, and not a folder the app keeps.
+            await releaseFolder(folder);
+        } catch (e) {
+            // Closing the picker is a choice, and nothing is said.
+            if (!isPickerCancel(e)) error = `Could not read that folder: ${(e as Error).message}`;
+        }
+    }
 
     function onSourcePicked() {
         const files = sourceInput?.files;
@@ -287,6 +314,12 @@
         }
     }
 
+    /** The first few paths, and how many more, for a line that stays short. */
+    function unreadableList(paths: readonly string[]): string {
+        const shown = paths.slice(0, 3).join(", ");
+        return paths.length > 3 ? `${shown} and ${paths.length - 3} more` : shown;
+    }
+
     function accept(next: PreparedSource) {
         error = null;
         prepared = next;
@@ -312,7 +345,7 @@
     }
 
     /** The destination directory: the FSA picker, or a fresh OPFS dir under the dev gate. */
-    async function pickDestination(): Promise<FileSystemDirectoryHandle | null> {
+    async function pickDestination(): Promise<FolderHandle | null> {
         if (opfsDestination) {
             const root = await getOpfsRoot();
             return root.getDirectoryHandle(
@@ -321,7 +354,7 @@
             );
         }
         try {
-            return await pickGraphDirectory();
+            return await pickFolder();
         } catch (err) {
             // Closing the picker is a choice, and nothing is said. A picker that failed is
             // reported by `runImport`, which keeps the dialog and everything typed into it.
@@ -463,7 +496,7 @@
                  destination needs and the way to the one this browser can have. -->
             <div data-testid="import-no-destination" class="space-y-3">
                 <h3 class="text-sm font-semibold text-neutral-950 dark:text-white">
-                    This browser has nowhere to put an imported graph yet
+                    {THIS_PLACE_START} has nowhere to put an imported graph yet
                 </h3>
                 <p class="text-sm text-neutral-600 dark:text-neutral-300">
                     An import creates a new graph, as a synced graph or in a local folder.
@@ -545,7 +578,7 @@
                     data-testid="import-choose-source"
                     data-autofocus
                     disabled={busy}
-                    onclick={() => sourceInput?.click()}
+                    onclick={chooseSourceFolder}
                     class="gk-button"
                     >Choose folder…</button
                 >
@@ -571,6 +604,19 @@
                     ? "file"
                     : "files"}, {prepared.otherCount} other.
             </p>
+            {#if prepared.unreadable?.length}
+                <p
+                    class="text-sm text-neutral-600 dark:text-neutral-300"
+                    data-testid="import-unreadable"
+                >
+                    {prepared.unreadable.length === 1
+                        ? "1 file could not be read and will not be imported"
+                        : `${prepared.unreadable.length} files could not be read and will not be imported`}:
+                    {unreadableList(prepared.unreadable)}. Close any program using
+                    {prepared.unreadable.length === 1 ? "the file" : "the files"}, then
+                    choose the folder again.
+                </p>
+            {/if}
             <div>
                 <label
                     for="import-format"

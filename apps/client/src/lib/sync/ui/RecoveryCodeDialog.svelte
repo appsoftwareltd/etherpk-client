@@ -19,6 +19,7 @@
      * A first code on a device with one server shows the warning and the code and little else:
      * nothing above them competes with "copy this now".
      */
+    import { saveBlob } from "#lib/native/save-file.js";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import { recoveryCodeFileName, recoveryCodeFileText } from "../recovery-code-file";
     import { serverHost } from "../sync-connections";
@@ -98,23 +99,15 @@
         }
     }
 
-    function download() {
+    async function download() {
         saveError = null;
         try {
             const blob = new Blob([recoveryCodeFileText({ code, serverOrigin, account })], { type: "text/plain" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = recoveryCodeFileName(serverOrigin);
-            // Attached before the click and revoked well after it: revoking in the same tick
-            // cancels the transfer in some browsers, which then reported as a successful save.
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            setTimeout(() => URL.revokeObjectURL(url), 10_000);
-            copied = true;
-        } catch {
-            saveError = "The download could not start. Copy the code above by hand instead.";
+            // Not kept until it is: an app that asks where to save can be told not to.
+            if ((await saveBlob(blob, recoveryCodeFileName(serverOrigin))) !== "cancelled") copied = true;
+        } catch (error) {
+            console.error("[recovery code] could not be saved", error);
+            saveError = "The file was not saved. Copy the code above by hand instead.";
         }
     }
 

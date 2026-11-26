@@ -16,6 +16,8 @@ import { opaqueLineFlags } from '../document/outliner'
 
 import { decodeFile, encodeFile } from './file-form'
 import { fileKindOf } from './file-kind'
+import { expectedOf } from '../storage/fs/write-unless-moved'
+
 import { type FolderTreeAdapter, isNotFound } from './folder-tree-adapter'
 import type { PlainFolderStore } from './plain-folder-store'
 import { relativeLink, resolveLink } from './plain-path'
@@ -185,10 +187,12 @@ async function rewriteOpenFile(store: RewriteStore, plan: RewritePlan): Promise<
 /** Write a file that is not open, if it is still exactly what the plan read. False when it is not. */
 async function rewriteClosedFile(tree: Tree, plan: RewritePlan): Promise<boolean> {
     try {
-        const decoded = decodeFile((await tree.read(plan.path)).bytes)
+        const read = await tree.read(plan.path)
+        const decoded = decodeFile(read.bytes)
         if (!decoded.ok || decoded.text !== plan.before) return false
-        // Nothing between the read above and this write: the one moment another write can still slip into.
-        await tree.write(plan.path, encodeFile(plan.after, decoded.form))
+        // Nothing between the read above and this write: in a browser, the one moment another write
+        // can still slip into. An installed app's shell refuses this write then.
+        await tree.write(plan.path, encodeFile(plan.after, decoded.form), expectedOf(read))
         return true
     } catch (error) {
         if (!isNotFound(error)) console.warn(`[link-rewrite] could not update the links of ${plan.path}`, error)

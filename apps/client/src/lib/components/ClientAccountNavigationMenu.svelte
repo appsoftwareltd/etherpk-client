@@ -2,7 +2,9 @@
     import { onMount } from "svelte";
 
     import { page } from "$app/state";
-    import { currentReturnPath, managedSignInHref, syncConnectHref } from "#lib/auth/sign-in-links.js";
+    import { signInToEtherPK } from "#lib/auth/managed-sign-in.js";
+    import { currentReturnPath, syncConnectHref } from "#lib/auth/sign-in-links.js";
+    import { isNativeApp } from "#lib/native/bridge.js";
     import {
         saveManagedSyncConnection,
         serverHost,
@@ -62,7 +64,7 @@
         // Added beside any custom server this device holds, and the header's account from then on.
         saveManagedSyncConnection();
         // Back to this page once signed in: a document someone was about to open, not /graphs.
-        window.location.href = managedSignInHref(currentReturnPath(window.location));
+        void signInToEtherPK(currentReturnPath(window.location), { signedIn: () => clientAccount.signedIn() });
     }
 
     onMount(() => {
@@ -71,13 +73,26 @@
 </script>
 
 <!-- Sign out of EtherPK: a top-level form navigation follows the fixed Corporate and Server
-     continuations, which clear every managed host-only session. -->
+     continuations, which clear every managed host-only session. An installed app has no such
+     sessions: its shell holds its sign-in, and the browser's is left as it is. -->
 {#snippet signOutOfEtherPK()}
-    <form method="POST" action="/auth/logout/managed" onsubmit={() => clientAccount.prepareManagedSignOut()}>
-        <button type="submit" class="gk-menu-item">
-            Sign out of EtherPK
+    {#if isNativeApp()}
+        <button
+            type="button"
+            data-testid="sign-out-of-app"
+            aria-disabled={clientAccount.signingOut}
+            onclick={() => clientAccount.signOutOfInstalledApp()}
+            class="gk-menu-item"
+        >
+            {clientAccount.signingOut ? "Signing out…" : "Sign out of this app"}
         </button>
-    </form>
+    {:else}
+        <form method="POST" action="/auth/logout/managed" onsubmit={() => clientAccount.prepareManagedSignOut()}>
+            <button type="submit" class="gk-menu-item">
+                Sign out of EtherPK
+            </button>
+        </form>
+    {/if}
 {/snippet}
 
 <!-- What the signed-in account's dropdown holds, and on a phone what its drawer row expands to.

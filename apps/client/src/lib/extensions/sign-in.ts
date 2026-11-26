@@ -17,6 +17,7 @@
  * Every page of the origin hears the channel, which is no wider than the reach every extension
  * already has: extensions run unsandboxed in the Client's page.
  */
+import { isNativeApp } from '#lib/native/bridge.js'
 import type { AuthorizeOptions, ExtensionAuth } from '@appsoftwareltd/etherpk-extension-api'
 
 /** The Client's one return page for every extension's sign-in. */
@@ -45,6 +46,8 @@ export interface ExtensionSignInOptions {
     origin: string
     /** Open the sign-in address in a popup, or null when the browser blocked it. */
     openWindow(url: string): SignInPopup | null
+    /** Why nobody can sign in to another service here, in words for the person, where that is so. */
+    unavailable?: string
     /** A channel by name: a BroadcastChannel in the browser. */
     channel(name: string): SignInChannel
 }
@@ -70,6 +73,7 @@ export function createExtensionSignIn(options: ExtensionSignInOptions): Extensio
     return {
         redirectUri: `${options.origin}${SIGN_IN_PATH}`,
         authorize(address: string, authorizeOptions: AuthorizeOptions = {}): Promise<Record<string, string>> {
+            if (options.unavailable) return Promise.reject(new Error(options.unavailable))
             let url: URL
             try {
                 url = new URL(address)
@@ -138,5 +142,8 @@ export function browserSignIn(): ExtensionAuth {
         // browser that will not make one opens a tab, which works the same.
         openWindow: (url) => window.open(url, '_blank', 'popup,width=520,height=680'),
         channel: (name) => new BroadcastChannel(name),
+        // A service sends the person back to this page's own address, which in a Native App no
+        // browser can open.
+        unavailable: isNativeApp() ? 'EtherPK cannot sign in to another service from this app. Open EtherPK in a browser to use this extension.' : undefined,
     })
 }

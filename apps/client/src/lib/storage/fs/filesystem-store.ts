@@ -56,9 +56,11 @@ import type { DirectoryAdapter, FileContent, Subdir } from './directory-adapter'
 import { type Debounced, debounce } from './debounce'
 import { parseFrontmatter } from './frontmatter'
 import { type DocumentKind, aliasesOf, conceptKey, fileStem } from './identity'
+import { readableTexts, runsFor } from './read-texts'
 import { reconcileDecision } from './reconcile'
-import { type DocumentEntry, scanGraph } from './scan'
+import { type DocumentEntry, isDocumentFile, SCANNED_SUBDIRS, scanGraph } from './scan'
 import { type RegistryChanges, registryChanges } from './registry-changes'
+import { expectedOf, untilWritten, writeUnlessMoved } from './write-unless-moved'
 
 /** One document as fed to the backlink index: identity, aliases, and body. */
 export interface IndexDocSnapshot {
@@ -152,6 +154,8 @@ export interface FilesystemDocumentStore extends DocumentStore {
      * folder.
      */
     flushAll(): Promise<void>
+    /** The open documents whose edits are not in the folder: waiting for their autosave, or refused by a save. */
+    unsavedTargets(): string[]
     /** Build the registry from disk at graph open: every file is read and its identity learnt. */
     scan(): Promise<void>
     /** Current registry snapshot (journals date-desc, then pages alpha). */
@@ -221,6 +225,12 @@ export interface FilesystemDocumentStore extends DocumentStore {
      * ones. A document with a write in flight is judged after the write settles.
      */
     reconcile(): Promise<void>
+    /**
+     * Whether a watch's changes are all the app's own: open documents whose files hold what was last
+     * saved, and files a pass reads nothing of (a swap file, an asset). Such a change needs no pass,
+     * and a watch reports every save, so typing would otherwise walk the folder once a second.
+     */
+    changesAreOwn(changed: ReadonlySet<string>): Promise<boolean>
     /** Resolve a raised conflict by keeping the buffer or taking the disk copy. */
     resolveConflict(target: string, choice: 'keep-mine' | 'take-disk'): Promise<void>
     /**
@@ -730,18 +740,31 @@ export function createFilesystemDocumentStore(
      * that already holds `written` is left as it is. One that is gone is written back, since an
      * edit outranks a delete (ADR 0039 §4).
      *
-     * The File System Access API has no compare-and-set, so a write landing after this read and
-     * before ours cannot be seen (spec/folder-save, `bugs/Window.cfg`). The write follows the
-     * read with nothing between them, to keep that moment as short as it can be.
+     * The File System Access API has no compare-and-set, so there a write landing after this read
+     * and before ours cannot be seen (spec/folder-save, `bugs/Window.cfg`). The write follows the
+     * read with nothing between them, to keep that moment as short as it can be. An installed app's
+     * shell has one: it refuses the write, and the file is read and judged again.
      */
-    async function writeChecked(doc: OpenDoc, written: string): Promise<{ lastModified: number; size: number } | null> {
-        const disk = await fileBeforeSave(doc)
-        if (disk !== null && disk.text !== doc.baseText) {
-            if (disk.text === written) return disk
-            followDisk(doc, disk)
-            return null
-        }
-        return adapter.write(doc.subdir, doc.fileName, written)
+    function writeChecked(doc: OpenDoc, written: string): Promise<{ lastModified: number; size: number } | null> {
+        return untilWritten(async () => {
+            const disk = await fileBeforeSave(doc)
+            if (disk !== null && disk.text !== doc.baseText) {
+                if (disk.text === written) return disk
+                followDisk(doc, disk)
+                return null
+            }
+            // Null is a write refused because the file moved since the read: read and judge it again.
+            return (await writeOver(doc, disk, written)) ?? undefined
+        })
+    }
+
+    /** Write over the file as it was just read, or where there was none. Null when it has moved since. */
+    function writeOver(doc: OpenDoc, disk: FileContent | null, text: string): Promise<FileContent | null> {
+        return writeUnlessMoved(
+            expectedOf(disk),
+            (expected) => adapter.write(doc.subdir, doc.fileName, text, expected),
+            () => fileBeforeSave(doc),
+        )
     }
 
     /**
@@ -756,6 +779,27 @@ export function createFilesystemDocumentStore(
             if (!(await adapter.exists(doc.subdir, doc.fileName))) return null
             throw error
         }
+    }
+
+    /**
+     * **Keep mine**: the buffer goes over the version of the file the person was shown. A file that
+     * has moved again since is shown to them instead, and nothing is written.
+     */
+    function keepMine(doc: OpenDoc, shown: DocumentConflict): Promise<{ lastModified: number; size: number }> {
+        return untilWritten(async () => {
+            const disk = await fileBeforeSave(doc)
+            if (disk !== null && disk.text !== shown.diskText && disk.text !== doc.buffer) {
+                doc.conflict = { target: doc.target, diskText: disk.text, bufferText: doc.buffer }
+                onConflict?.(doc.conflict)
+                throw new Error('another program changed the file again while you were choosing')
+            }
+            return (await writeOver(doc, disk, doc.buffer)) ?? undefined
+        })
+    }
+
+    /** A removed document's typing is not owed to the folder: it went with the document. */
+    function unsavedTargets(): string[] {
+        return [...open.values()].filter((doc) => doc.dirty && !doc.removed).map((doc) => doc.target)
     }
 
     /** Resolves once no write is in flight for `doc`, including any that were queued behind it. */
@@ -1039,7 +1083,12 @@ export function createFilesystemDocumentStore(
         if (read.text !== expected) return 'changed'
         let text = read.text
         for (let i = splices.length - 1; i >= 0; i--) text = applyTextChange(text, splices[i])
-        const written = await adapter.write(entry.subdir, entry.fileName, text)
+        const written = await writeUnlessMoved(
+            expectedOf(read),
+            (expected) => adapter.write(entry.subdir, entry.fileName, text, expected),
+            () => readIfPresent(entry.subdir, entry.fileName),
+        )
+        if (written === null) return 'changed'
         // As a save does: the registry keeps the stamps, so reconcile's fast path does not re-read
         // this write, and the index re-derives the one document.
         entry.lastModified = written.lastModified
@@ -1147,15 +1196,16 @@ export function createFilesystemDocumentStore(
                 total: entries.length,
                 batches: (async function* () {
                     const batch: IndexDocSnapshot[] = []
-                    for (const entry of entries) {
-                        // A rename cascade can move a file while the stream is in flight.
-                        // Its registry signal schedules another pass, so skip the stale read.
-                        const read = await adapter
-                            .read(entry.subdir, entry.fileName)
-                            .catch(() => null)
-                        if (!read) continue
-                        batch.push(indexSnapshotOf(entry, read.text))
-                        if (batch.length === 100) yield batch.splice(0)
+                    for (const run of runsFor(adapter, entries)) {
+                        const texts = await readableTexts(adapter, run)
+                        for (const [index, entry] of run.entries()) {
+                            // A rename cascade can move a file while the stream is in flight.
+                            // Its registry signal schedules another pass, so skip the stale read.
+                            const text = texts[index]
+                            if (text === null) continue
+                            batch.push(indexSnapshotOf(entry, text))
+                            if (batch.length === 100) yield batch.splice(0)
+                        }
                     }
                     if (batch.length > 0) yield batch
                 })(),
@@ -1178,6 +1228,22 @@ export function createFilesystemDocumentStore(
                 text = read.text
             }
             return indexSnapshotOf(entry, text)
+        },
+
+        async changesAreOwn(changed) {
+            for (const path of changed) {
+                const [subdir, ...rest] = path.split('/')
+                if (!(SCANNED_SUBDIRS as readonly string[]).includes(subdir)) continue
+                // The folder itself, or one inside it, may have come or gone with documents in it.
+                if (rest.length !== 1) return false
+                const [fileName] = rest
+                if (!isDocumentFile(fileName)) continue
+                const doc = [...open.values()].find((one) => one.subdir === subdir && one.fileName === fileName)
+                if (!doc || doc.removed || !doc.loaded) return false
+                const disk = await adapter.read(doc.subdir, doc.fileName).catch(() => null)
+                if (disk === null || disk.text !== doc.baseText) return false
+            }
+            return true
         },
 
         async reconcile() {
@@ -1209,15 +1275,7 @@ export function createFilesystemDocumentStore(
                 doc.conflict = null
                 notify(doc, doc.buffer)
             } else {
-                // The file may have moved again while the person was choosing. Writing now would
-                // replace a version they were never shown, so show that one and ask again.
-                const disk = await fileBeforeSave(doc)
-                if (disk !== null && disk.text !== doc.conflict.diskText && disk.text !== doc.buffer) {
-                    doc.conflict = { target: doc.target, diskText: disk.text, bufferText: doc.buffer }
-                    onConflict?.(doc.conflict)
-                    throw new Error('another program changed the file again while you were choosing')
-                }
-                const res = await adapter.write(doc.subdir, doc.fileName, doc.buffer)
+                const res = await keepMine(doc, doc.conflict)
                 doc.baseText = doc.buffer
                 doc.lastModified = res.lastModified
                 doc.size = res.size
@@ -1418,12 +1476,13 @@ export function createFilesystemDocumentStore(
             await saveNow(doc)
         },
 
+        unsavedTargets,
+
         async flushAll() {
             await Promise.all([...open.values()].map(saveNow))
             // A write that failed leaves its buffer dirty and resolves (onSaveError reports it). A
-            // caller reading the folder must not believe it, so this one says so. A removed
-            // document's typing is not owed to the folder: it went with the document.
-            const unwritten = [...open.values()].filter((doc) => doc.dirty && !doc.removed).map((doc) => doc.target)
+            // caller reading the folder must not believe it, so this one says so.
+            const unwritten = unsavedTargets()
             if (unwritten.length > 0) {
                 throw new Error(`Edits to ${unwritten.join(', ')} could not be written to the folder yet, so it does not hold them. Try again once they are saved.`)
             }

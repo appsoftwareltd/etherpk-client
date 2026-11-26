@@ -17,7 +17,7 @@ export interface PlainFolderRecord {
     name: string
     /** When it was added, in epoch milliseconds: the order of the list. */
     createdAt: number
-    /** A `FileSystemDirectoryHandle`; opaque here, as the graph registry's handles are. */
+    /** A `FileSystemDirectoryHandle` or an installed app's folder; opaque here, as the graph registry's are. */
     handle: unknown
 }
 
@@ -33,6 +33,8 @@ export interface PlainFolderRegistry {
     get(id: string): Promise<PlainFolderRecord | undefined>
     /** Add a folder. Adding an id that is already there changes nothing and returns the kept record. */
     add(record: PlainFolderRecord): Promise<PlainFolderRecord>
+    /** Keep another folder under an id that is already there: the folder was lost and chosen again. */
+    replaceFolder(record: PlainFolderRecord): Promise<void>
     /** Forget a folder on this device. Its files are not touched. */
     remove(id: string): Promise<void>
 }
@@ -49,6 +51,9 @@ export function createPlainFolderRegistry(port: PlainFolderPort): PlainFolderReg
             if (kept) return kept
             await port.put(record)
             return record
+        },
+        replaceFolder(record) {
+            return port.put(record)
         },
         remove(id) {
             return port.delete(id)

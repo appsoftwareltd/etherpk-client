@@ -21,13 +21,17 @@ export {
     mergeAgentsMdSection,
 } from './fs/agents-md'
 export type { EnsureAgentsMdOutcome } from './fs/agents-md'
+export { createWebFsDirectoryAdapter, getOpfsRoot } from './fs/web-fs-adapter'
 export {
-    createWebFsDirectoryAdapter,
-    getOpfsRoot,
-    isFsaSupported,
-    isOnDisk,
-    pickGraphDirectory,
-} from './fs/web-fs-adapter'
+    type FileHandle,
+    type FolderHandle,
+    canPickFolder,
+    directoryAdapterFor,
+    isFolderLost,
+    isFolderOnDisk,
+    pickFolder,
+    treeAdapterFor,
+} from './folder-access'
 export { isPickerCancel } from './fs/picker-cancel'
 
 // Identity + scan (pure).
@@ -149,4 +153,4 @@ export {
 export { type GraphTarget, resolveGraphTarget, rootDestination } from './graph-routing'
 
 // External-change reconciliation glue (focus + poll).
-export { type ReconciliationOptions, attachReconciliation } from './fs/reconciliation-dom'
+export { attachReconciliation } from './fs/reconciliation-dom'

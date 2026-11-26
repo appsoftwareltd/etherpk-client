@@ -12,6 +12,7 @@ import {
     DOCUMENT_COPY_WIKILINK,
     DOCUMENT_OPEN_BELOW,
     DOCUMENT_OPEN_TO_THE_RIGHT,
+    DOCUMENT_SHOW_FILE,
     FAVOURITE_ADD,
     FAVOURITE_MOVE,
     FAVOURITE_REMOVE,
@@ -58,6 +59,23 @@ describe('Copy full file path', () => {
         const { labels } = setup({ hasFilePath: () => true, copyFilePath: vi.fn() })
         expect(labels({ kind: 'favourite', concept: 'Alpha' })).not.toContain('Copy full file path to clipboard')
         expect(labels({ kind: 'recent', concept: 'Alpha' })).not.toContain('Copy full file path to clipboard')
+    })
+})
+
+describe('Show in file manager', () => {
+    const SHOW = 'Show in file manager'
+
+    it('is offered below the path only where the app can show files, and shows the document’s file', () => {
+        const showFile = vi.fn()
+        const { commands, labels } = setup({ hasFilePath: (concept) => concept === 'Alpha', hasFile: (concept) => concept === 'Alpha', copyFilePath: vi.fn(), showFile })
+        expect(labels(tab('Alpha')).slice(-2)).toEqual(['Copy full file path to clipboard', SHOW])
+        expect(labels(tab('Ghost'))).not.toContain(SHOW)
+        commands.execute(DOCUMENT_SHOW_FILE, tab('Alpha'))
+        expect(showFile).toHaveBeenCalledWith('Alpha')
+    })
+
+    it('is not offered in a browser, which has no way to', () => {
+        expect(setup({ hasFilePath: () => true, hasFile: () => true, copyFilePath: vi.fn() }).labels(tab('Alpha'))).not.toContain(SHOW)
     })
 })
 

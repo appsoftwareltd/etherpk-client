@@ -29,7 +29,9 @@ import {
     forgetMirrorFolder,
     getLastGraphId,
     type GraphRecord,
+    readMirrorFolder,
 } from '#lib/storage/index.js'
+import { releaseFolder } from '#lib/storage/release-folder.js'
 import { FOLDER_PATH_KEY_PREFIX, FOLDER_PATH_SKIPPED_KEY_PREFIX } from '#lib/storage/fs/folder-path.js'
 import { deleteGraphCache } from '#lib/sync/local-cache.js'
 import { deleteAssetCopies } from '#lib/storage/synced/asset-copies.js'
@@ -81,8 +83,17 @@ const browserDeps = (): ForgetGraphDeps => ({
             console.warn('[index] could not discard the search index of', graphId, error),
         )
     },
-    forgetMirrorFolder,
-    removeRecord: (graphId) => createIdbGraphRegistry().removeGraph(graphId),
+    forgetMirrorFolder: async (graphId) => {
+        const mirror = await readMirrorFolder(graphId)
+        await forgetMirrorFolder(graphId)
+        await releaseFolder(mirror?.handle)
+    },
+    removeRecord: async (graphId) => {
+        const registry = createIdbGraphRegistry()
+        const graph = await registry.getGraph(graphId)
+        await registry.removeGraph(graphId)
+        await releaseFolder(graph?.handle)
+    },
     lastGraphId: getLastGraphId,
     clearLastGraphId,
 })

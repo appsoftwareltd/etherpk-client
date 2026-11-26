@@ -8,6 +8,9 @@
  *
  * Pure, so the mapping is unit tested rather than inferred from a screenshot.
  */
+import { THIS_PLACE_START } from '#lib/native/place.js'
+import { isNativeApp } from '#lib/native/bridge.js'
+import { GET_LATEST, START_AGAIN } from '#lib/native/place.js'
 import type { QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
 import { ManagedTokenError } from '#lib/auth/managed-token.js'
 import { EnvelopeError, KeyringConflictError, RecoveryCodeError } from '#lib/crypto/index.js'
@@ -46,6 +49,15 @@ const QUOTA_CODES = new Set(Object.keys(QUOTA_COPY))
 /** Inviting your own address: the server's `invite_self`, and the invite dialog's own check. */
 export const INVITE_SELF_COPY = 'That is your own address. You already own this graph, so there is nobody to invite.'
 
+/** What an older Client is called, and who can update it. */
+const THIS_CLIENT = isNativeApp() ? 'This app' : 'This Client'
+const UPGRADE_THIS_CLIENT = isNativeApp()
+    ? 'Update EtherPK, then open this graph again.'
+    : 'Reload the page to get the latest Client, or ask whoever runs this Client to upgrade it.'
+const STORAGE_CONNECTION_LOST = isNativeApp()
+    ? 'EtherPK lost its connection to its storage. Close EtherPK and open it again - work already saved on this device is still here.'
+    : 'This tab lost its connection to the browser’s storage. Reload the page - work already saved on this device is still here.'
+
 const REFUSAL_COPY: Record<string, string> = {
     invite_self: INVITE_SELF_COPY,
     invite_already_member: 'They are already a Player in this graph.',
@@ -54,7 +66,7 @@ const REFUSAL_COPY: Record<string, string> = {
     asset_manifest_mismatch: 'This upload no longer matches the file it started with. Add the file again.',
     // Device approval (ADR 0125).
     upgrade_required:
-        'This version of EtherPK is too old for this Sync Server. Reload the page to get the latest version, or update the Headless Client.',
+        `This version of EtherPK is too old for this Sync Server. ${GET_LATEST}, or update the Headless Client.`,
     too_many_device_approvals:
         'This account has too many approval requests open or made recently. Finish or cancel one, or wait a while, then try again.',
     already_answered: 'Another of your devices is already handling this request.',
@@ -62,17 +74,17 @@ const REFUSAL_COPY: Record<string, string> = {
     // Signed Sync Identities (ADR 0126).
     key_signature_refused:
         'The Sync Server refused it because it is not signed with the security key the server holds for your account. If you replaced your Encryption Keys on another device, unlock this device again. Otherwise, contact whoever runs the server.',
-    invite_signature_refused: 'The Sync Server did not accept the signature on the invite. Reload the page, then try again.',
+    invite_signature_refused: `The Sync Server did not accept the signature on the invite. ${START_AGAIN}, then try again.`,
     invitee_changed: 'That address belongs to a different account now. Look them up again.',
     invitee_keys_changed: 'Their Encryption Keys changed after you looked them up. Look them up again and compare the new fingerprint.',
-    identity_required: 'Your security key has to be published before this change. Reload the page, then try again.',
+    identity_required: `Your security key has to be published before this change. ${START_AGAIN}, then try again.`,
     server_upgrade_required: 'This Sync Server runs an older version of EtherPK than this app. Ask whoever runs it to update it.',
     // Removal and Graph Key epochs (ADR 0127).
     remove_owner: 'The owner cannot be removed. Transfer the graph to someone else first, or delete it.',
     epoch_lease_lost: 'Another of your devices was changing the graph’s key at the same time. Try again.',
     epoch_members_changed: 'The graph’s members changed while its key was being changed. Try again.',
     epoch_recipient_keys_changed: 'A member’s Encryption Keys changed while the graph’s Graph Key was being changed. Try again.',
-    epoch_signature_refused: 'The Sync Server did not accept the signatures on the new key. Reload the page, then try again.',
+    epoch_signature_refused: `The Sync Server did not accept the signatures on the new key. ${START_AGAIN}, then try again.`,
     // Key Replacement (ADR 0128).
     new_identity_signature_refused: 'The Sync Server did not accept the signature made with your new Encryption Keys. Nothing changed. Try again.',
     identity_unchanged: 'The new Encryption Keys matched the old ones, so the Sync Server refused them. Nothing changed. Try again.',
@@ -107,10 +119,10 @@ export function isStorageConnectionFault(error: unknown): boolean {
 export function describeStorageFault(error: unknown): string | null {
     if (!(error instanceof Error)) return null
     if (error.name === 'QuotaExceededError') {
-        return 'This browser has run out of storage for your notes. Free up space on the device, or forget a graph you no longer need here, then try again.'
+        return `${THIS_PLACE_START} has run out of storage for your notes. Free up space on the device, or forget a graph you no longer need here, then try again.`
     }
     if (isStorageConnectionFault(error)) {
-        return 'This tab lost its connection to the browser’s storage. Reload the page - work already saved on this device is still here.'
+        return STORAGE_CONNECTION_LOST
     }
     return null
 }
@@ -210,7 +222,7 @@ export function describeSyncFailure(error: unknown, action: string): string {
     if (error instanceof SyncProtocolMismatchError) {
         return error.serverIsOlder
             ? `${opening} The Sync Server runs sync protocol ${error.serverVersion} and this Client needs ${error.clientVersion}. Its operator needs to upgrade the server - until then your changes are kept on this device.`
-            : `${opening} This Client runs sync protocol ${error.clientVersion} and the Sync Server runs ${error.serverVersion}. Reload the page to get the latest Client, or ask whoever runs this Client to upgrade it. Your changes are kept on this device.`
+            : `${opening} ${THIS_CLIENT} runs sync protocol ${error.clientVersion} and the Sync Server runs ${error.serverVersion}. ${UPGRADE_THIS_CLIENT} Your changes are kept on this device.`
     }
 
     // Key faults are device problems. Reporting them as "server could not be reached" sent

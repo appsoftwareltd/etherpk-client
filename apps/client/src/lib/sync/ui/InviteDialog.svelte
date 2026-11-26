@@ -7,6 +7,7 @@
      * before shows as Verified and needs no second comparison, and one whose key has changed
      * since is shown with a warning and a fresh comparison before anything is sent.
      */
+    import { webClientAddress } from "#lib/native/web-address.js";
     import {
         InviteeNotFoundError,
         isOwnAddress,
@@ -58,6 +59,11 @@
         prep?.pin.kind === "verified" ? "verified" : prep?.pin.kind === "changed" ? "changed" : "unchecked",
     );
 
+    /**
+     * The app's address, for the owner to send to somebody who has not set it up yet. A Native App's
+     * own address leads nowhere outside it, so it names the web Client's, or none (web-address.ts).
+     */
+    const appLink = webClientAddress("/graphs");
     /** What an invitee needs, in words: an account, a verified address where asked, and keys. */
     const needs = $derived(
         `${inviteeNeeds.account}${inviteeNeeds.verifiedEmail ? " with a verified email address" : ""}`,
@@ -67,15 +73,14 @@
      * one (it will not say whether an account exists). So it names every prerequisite.
      */
     const inviteeNotFound = $derived(
-        `Nobody with that address can be invited yet. They need ${needs}, and Encryption Keys: their first synced graph creates them, or Create Encryption Keys in Sync settings. Send them a link to EtherPK, then try again.`,
+        `Nobody with that address can be invited yet. They need ${needs}, and Encryption Keys: their first synced graph creates them, or Create Encryption Keys in Sync settings. ${appLink ? "Send them a link to EtherPK, then try again." : "Ask them to set up EtherPK, then try again."}`,
     );
-    /** The app's address, for the owner to send to somebody who has not set it up yet. */
-    const appLink = $derived(`${location.origin}/graphs`);
     let linkCopy = $state<"idle" | "copied" | string>("idle");
     /** The last lookup or send found nobody to invite: the dialog offers the app's link to send. */
     let inviteeMissing = $state(false);
 
     function copyAppLink() {
+        if (!appLink) return;
         writeClipboardText(appLink).then(
             () => (linkCopy = "copied"),
             (err: unknown) => (linkCopy = copyFailureMessage("link", err, appLink)),
@@ -158,7 +163,7 @@
 <!-- Somebody who cannot be invited yet usually has not set EtherPK up: the link is what to
      send them. The link itself stays on screen, so a blocked clipboard is no dead end. -->
 {#snippet appLinkOffer()}
-    {#if inviteeMissing}
+    {#if inviteeMissing && appLink}
         <div data-testid="invite-app-link" class="flex flex-wrap items-center gap-2">
             <code class="break-all rounded bg-neutral-100 px-2 py-1 font-mono text-sm text-neutral-900 dark:bg-white/10 dark:text-neutral-100">{appLink}</code>
             <button

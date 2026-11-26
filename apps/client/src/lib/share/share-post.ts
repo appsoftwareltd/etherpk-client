@@ -22,17 +22,22 @@ export function sharedFilesOf(form: FormData): File[] {
     return form.getAll(SHARE_FILES_FIELD).filter((entry): entry is File => typeof entry !== 'string' && entry.size > 0)
 }
 
+/** The words of a share: a posted form, or what a Native App's shell was handed. */
+export type SharedWords = Pick<FormData, 'get'>
+
 /**
  * The address to send a posted share to. `files` is the id its files are kept under,
- * {@link SHARE_FILES_DROPPED}, or null for a share with none.
+ * {@link SHARE_FILES_DROPPED}, or null for a share with none. `leftOut` is how many more there were
+ * than one share may carry (share-limits.ts).
  */
-export function shareAddress(form: FormData, files: string | null): string {
+export function shareAddress(words: SharedWords, files: string | null, leftOut = 0): string {
     const query = new URLSearchParams()
     for (const field of ['title', 'text', 'url']) {
-        const value = form.get(field)
+        const value = words.get(field)
         if (typeof value === 'string' && value !== '') query.set(field, value)
     }
     if (files) query.set('files', files)
+    if (leftOut > 0) query.set('leftOut', String(leftOut))
     const search = query.toString()
     return search === '' ? '/share' : `/share?${search}`
 }

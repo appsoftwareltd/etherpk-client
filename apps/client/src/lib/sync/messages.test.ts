@@ -23,20 +23,36 @@ describe('client sync protocol boundary', () => {
         expect(parseServerMessage('not json')).toBeNull()
     })
 
-    it('names the server protocol version when a message carries a different numeric version', () => {
-        // The server answers a mismatch with an error in its OWN version, so the Client reads
-        // "their version is not mine" in both directions.
+    it('reads the range of a server that speaks other versions', () => {
+        // 0.51.0 and earlier answer in the one version they speak, and name no range.
         expect(readServerMessage(JSON.stringify({ v: 4, type: 'error', code: 'unsupported_version' }))).toEqual({
-            kind: 'protocol_mismatch',
-            serverVersion: 4,
+            kind: 'version_refused',
+            serverRange: { min: 4, max: 4 },
         })
         expect(readServerMessage(JSON.stringify({ v: 1, type: 'ack', outboxId: 'x' }))).toEqual({
-            kind: 'protocol_mismatch',
-            serverVersion: 1,
+            kind: 'version_refused',
+            serverRange: { min: 1, max: 1 },
+        })
+        // Later ones name it, in a version this Client may or may not read.
+        for (const v of [3, 5]) {
+            expect(readServerMessage(JSON.stringify({ v, type: 'error', code: 'unsupported_version', message: 'No', supported: { min: 4, max: 5 } }))).toEqual({
+                kind: 'version_refused',
+                serverRange: { min: 4, max: 5 },
+            })
+        }
+        // A range that makes no sense is no range.
+        expect(readServerMessage(JSON.stringify({ v: 5, type: 'error', code: 'unsupported_version', supported: { min: 9, max: 1 } }))).toEqual({
+            kind: 'version_refused',
+            serverRange: { min: 5, max: 5 },
         })
     })
 
-    it('reads a missing, non-numeric or fractional version as malformed, not as a mismatch', () => {
+    it('passes over a message of a kind it does not know', () => {
+        expect(readServerMessage(JSON.stringify({ v: 3, type: 'plan_changed', plan: 'x' }))).toEqual({ kind: 'unknown' })
+        expect(parseServerMessage(JSON.stringify({ v: 3, type: 'plan_changed' }))).toBeNull()
+    })
+
+    it('reads a missing, non-numeric or fractional version as malformed, not as another version', () => {
         expect(readServerMessage(JSON.stringify({ type: 'presence', docId: DOC_ID, envelope: 'AAEC' }))).toEqual({ kind: 'malformed' })
         expect(readServerMessage(JSON.stringify({ v: '3', type: 'error' }))).toEqual({ kind: 'malformed' })
         expect(readServerMessage(JSON.stringify({ v: 3.5, type: 'error' }))).toEqual({ kind: 'malformed' })
@@ -51,6 +67,13 @@ describe('client sync protocol boundary', () => {
 })
 
 describe('SyncProtocolMismatchError', () => {
+    it('holds both ranges and says which side is older', () => {
+        const error = new SyncProtocolMismatchError({ min: 5, max: 6 }, { min: 3, max: 4 })
+        expect(error).toMatchObject({ serverRange: { min: 5, max: 6 }, clientRange: { min: 3, max: 4 }, serverVersion: 6, clientVersion: 4, serverIsOlder: false })
+        expect(error.message).toContain('sync protocol 5 to 6')
+        expect(new SyncProtocolMismatchError(2)).toMatchObject({ serverIsOlder: true, clientRange: { min: 3, max: 3 } })
+    })
+
     it('says which side is older, for logs and the Headless Client', () => {
         const serverOlder = new SyncProtocolMismatchError(1, 2)
         expect(serverOlder.serverIsOlder).toBe(true)

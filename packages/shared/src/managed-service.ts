@@ -188,7 +188,8 @@ export const quotaErrorCodeSchema = z.enum([
 
 export type QuotaErrorCode = z.infer<typeof quotaErrorCodeSchema>
 
-export const quotaErrorResponseSchema = z.strictObject({
+/** Read by Clients, which may be older than the server: a field they do not know is left out. */
+export const quotaErrorResponseSchema = z.object({
     error: z.literal('quota_denied'),
     code: quotaErrorCodeSchema,
     ownerPrincipalId: z.uuid().optional(),

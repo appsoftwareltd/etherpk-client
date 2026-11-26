@@ -35,7 +35,18 @@ export interface WriteRefusalCopy {
 
 const KEPT = 'Your changes are kept on this device and sync'
 
-export function describeWriteRefusal({ refusal, owner, plan, managed }: WriteRefusalContext): WriteRefusalCopy {
+/** A refusal for a reason this build has no word for: a newer server's. */
+const UNRECOGNISED: WriteRefusalCopy = {
+    reason: 'The sync server does not accept changes to this graph at the moment, for a reason this version of EtherPK does not know.',
+    next: `${KEPT} once it does. Updating EtherPK may show the reason.`,
+    billing: null,
+}
+
+export function describeWriteRefusal(context: WriteRefusalContext): WriteRefusalCopy {
+    return context.refusal.unrecognised ? UNRECOGNISED : describeQuotaRefusal(context)
+}
+
+function describeQuotaRefusal({ refusal, owner, plan, managed }: WriteRefusalContext): WriteRefusalCopy {
     const code = refusal.quotaCode
     if (code === 'entitlement_inactive') {
         if (owner === false) {
@@ -117,7 +128,9 @@ const AGENT_REASONS: Partial<Record<QuotaErrorCode, string>> = {
  * connection recovers") is untrue of a refusal.
  */
 export function writeRefusalForAgent(refusal: WriteRefusal, outstanding: number): string {
-    const reason = (refusal.quotaCode && AGENT_REASONS[refusal.quotaCode]) ?? 'a plan limit was reached'
+    const reason = refusal.unrecognised
+        ? 'the reason is one this version of etherpk-mcp does not know, so it may need updating'
+        : (refusal.quotaCode && AGENT_REASONS[refusal.quotaCode]) ?? 'a plan limit was reached'
     const held = outstanding === 1 ? '1 operation is held' : `${outstanding} operations are held`
     return `The Sync Server refused the edit: ${reason}. ${held} here and sent automatically once the server accepts changes again.`
 }

@@ -10,7 +10,12 @@
  * back into the handle on every read, in every browser. Everything above the storage port still
  * sees a handle. A folder the person picked is not in OPFS (and only Chromium can pick one), so it
  * is stored as the handle it is, as before.
+ *
+ * An installed app's folder is stored by the id its shell knows it by (`{ nativeFolder }`), and read
+ * back as the reference every reader expects (native/folder-ref.ts).
  */
+
+import { fromStoredFolder, isNativeFolder, toStoredFolder } from '../native/folder-ref.js'
 
 import type { GraphRecord, GraphStoragePort } from './graph-registry'
 
@@ -39,10 +44,11 @@ export async function folderAt(root: FileSystemDirectoryHandle, path: readonly s
 }
 
 /**
- * What to store for a folder's handle: its path when the folder is inside OPFS, else the handle
- * itself. Shared with the Plain Folder registry, which keeps folders the same way.
+ * What to store for a folder's handle: the shell's id for an installed app's folder, the path of a
+ * folder inside OPFS, else the handle itself. Every store that keeps a folder keeps it this way.
  */
 export async function handleForStorage(handle: unknown, opfsRoot: () => Promise<FileSystemDirectoryHandle>): Promise<unknown> {
+    if (isNativeFolder(handle)) return toStoredFolder(handle)
     if (!isDirectoryHandle(handle)) return handle
     let path: string[] | null
     try {
@@ -52,6 +58,14 @@ export async function handleForStorage(handle: unknown, opfsRoot: () => Promise<
         return handle
     }
     return path === null ? handle : ({ opfsPath: path } satisfies StoredOpfsFolder)
+}
+
+/**
+ * What a stored handle stands for: the opposite of {@link handleForStorage}. Rejects with a
+ * `NotFoundError` for a folder that is gone from OPFS.
+ */
+export async function handleFromStorage(stored: unknown, opfsRoot: () => Promise<FileSystemDirectoryHandle>): Promise<unknown> {
+    return isStoredOpfsFolder(stored) ? folderAt(await opfsRoot(), stored.opfsPath) : fromStoredFolder(stored)
 }
 
 export function withOpfsFoldersByPath(
@@ -64,34 +78,44 @@ export function withOpfsFoldersByPath(
         return handle === record.handle ? record : { ...record, handle }
     }
 
+    /** The root, or null when no record is kept there or it cannot be opened. */
+    async function rootFor(records: GraphRecord[]): Promise<FileSystemDirectoryHandle | null> {
+        if (!records.some((record) => isStoredOpfsFolder(record.handle))) return null
+        try {
+            return await opfsRoot()
+        } catch (error) {
+            console.warn('[graph-registry] private storage could not be opened, so its graphs are not listed', error)
+            return null
+        }
+    }
+
+    /** A record kept in private storage with its folder, or null when the folder is gone. */
+    async function fromPrivateStorage(record: GraphRecord, { opfsPath }: StoredOpfsFolder, root: FileSystemDirectoryHandle): Promise<GraphRecord | null> {
+        try {
+            // A record from before `where` existed: a folder stored by its path is in the browser.
+            return { ...record, where: record.where ?? 'browser', handle: await folderAt(root, opfsPath) }
+        } catch (error) {
+            // The folder is the graph, so a graph whose folder is gone (the browser evicted it) is not
+            // listed: there is nothing to open. The demo's own route checks for its folder separately
+            // and rebuilds it.
+            if ((error as DOMException | null)?.name !== 'NotFoundError') {
+                console.warn('[graph-registry] a private-storage graph folder could not be opened', record.id, error)
+            }
+            return null
+        }
+    }
+
     return {
         async getAll() {
             const records = await primary.getAll()
-            if (!records.some((record) => isStoredOpfsFolder(record.handle))) return records
-
-            let root: FileSystemDirectoryHandle | null = null
-            try {
-                root = await opfsRoot()
-            } catch (error) {
-                console.warn('[graph-registry] private storage could not be opened, so its graphs are not listed', error)
-            }
+            const root = await rootFor(records)
             const out: GraphRecord[] = []
             for (const record of records) {
-                if (!isStoredOpfsFolder(record.handle)) {
-                    out.push(record)
-                    continue
-                }
-                if (!root) continue
-                try {
-                    // A record from before `where` existed: a folder stored by its path is in the browser.
-                    out.push({ ...record, where: record.where ?? 'browser', handle: await folderAt(root, record.handle.opfsPath) })
-                } catch (error) {
-                    // The folder is the graph, so a graph whose folder is gone (the browser evicted
-                    // it) is not listed: there is nothing to open. The demo's own route checks for its
-                    // folder separately and rebuilds it.
-                    if ((error as DOMException | null)?.name !== 'NotFoundError') {
-                        console.warn('[graph-registry] a private-storage graph folder could not be opened', record.id, error)
-                    }
+                if (isStoredOpfsFolder(record.handle)) {
+                    const found = root && (await fromPrivateStorage(record, record.handle, root))
+                    if (found) out.push(found)
+                } else {
+                    out.push(record.handle === undefined ? record : { ...record, handle: fromStoredFolder(record.handle) })
                 }
             }
             return out

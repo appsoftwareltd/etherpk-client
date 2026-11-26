@@ -11,6 +11,9 @@
  * path, names composed (NFC). Files are bytes here. What they mean is file-form.ts's to say.
  */
 
+import type { FolderHandle } from '../native/folder-ref'
+import type { ExpectedStamp } from '../storage/fs/directory-adapter'
+
 export type EntryKind = 'file' | 'directory'
 
 /** One entry of a directory listing. */
@@ -43,8 +46,11 @@ export interface FolderTreeAdapter {
     canonicalPath(path: string): Promise<string | null>
     /** Read a file. Rejects with a `NotFoundError` when it is absent. */
     read(path: string): Promise<FileBytes>
-    /** Create or replace a file in a directory that exists. Resolves with its stamps after the write. */
-    write(path: string, bytes: Uint8Array<ArrayBuffer>): Promise<FileStamp>
+    /**
+     * Create or replace a file in a directory that exists. Resolves with its stamps after the write.
+     * An installed app's shell refuses to write over a file that is not as `expected`.
+     */
+    write(path: string, bytes: Uint8Array<ArrayBuffer>, expected?: ExpectedStamp): Promise<FileStamp>
     /** Create a directory, and any above it that are missing. Resolves when it already exists. */
     createDirectory(path: string): Promise<void>
     /** Remove a file, or a directory with everything in it. Resolves when nothing was there. */
@@ -52,10 +58,10 @@ export interface FolderTreeAdapter {
     /** Move or rename a file or a directory. Rejects when something is already at `to`. */
     move(from: string, to: string): Promise<void>
     /**
-     * The browser's own handle for the directory at `path`, where there is one: what opening a
-     * graph kept inside the folder is given. Absent on the in-memory fake.
+     * The directory at `path` as a folder of its own, where there is one: what opening a graph kept
+     * inside the folder is given. Absent on the in-memory fake.
      */
-    directoryHandle?(path: string): Promise<FileSystemDirectoryHandle>
+    directoryHandle?(path: string): Promise<FolderHandle>
 }
 
 /** The error a read of a missing file rejects with, as the browser's own handles do. */

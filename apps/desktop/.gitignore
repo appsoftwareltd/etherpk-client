@@ -1,0 +1,3 @@
+# Bundles and installers (pnpm build, pnpm package:linux, pnpm package:windows).
+dist/
+release/

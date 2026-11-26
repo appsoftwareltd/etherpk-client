@@ -8,6 +8,8 @@
  * every open, and thereafter lives in settings for anyone who goes looking.
  */
 
+import { THIS_PLACE_START } from '#lib/native/place.js'
+
 const KEY = 'etherpk.index-not-persisted-acknowledged'
 
 /** True when this device has already been told (and dismissed it). */
@@ -30,7 +32,7 @@ export function acknowledgeIndexNotice(): void {
 
 /** What the user is told. One sentence of fact, one of consequence, no alarm. */
 export const INDEX_NOT_PERSISTED_MESSAGE =
-    "This browser can't store this graph's search index between visits, so large graphs will take longer to open. Everything works normally otherwise, and your notes are unaffected."
+    `${THIS_PLACE_START} can't store this graph's search index between visits, so large graphs will take longer to open. Everything works normally otherwise, and your notes are unaffected.`
 
 /**
  * The ACTIONABLE variant: the pool is held by another live context, almost always a

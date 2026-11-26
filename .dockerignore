@@ -37,6 +37,11 @@ docker/
 reports/
 handoff/
 
+# The Native Apps, and the Client as static files that they package: no image runs them.
+apps/android/
+apps/desktop/
+apps/client/build-installed/
+
 # Spell check dictionary builds (served from R2, never part of an image)
 .dictionaries/
 

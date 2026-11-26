@@ -50,10 +50,11 @@ describe('describeAccessLoss', () => {
     })
 
     it('sends a managed account to sign in again, and a custom server to connect again', () => {
-        expect(describeAccessLoss({ reason: 'signed-out' }).primary).toEqual({ label: 'Sign in again', href: '/auth/login' })
+        expect(describeAccessLoss({ reason: 'signed-out' }).primary).toEqual({ label: 'Sign in again', href: '/auth/login', signIn: true })
         expect(describeAccessLoss({ reason: 'refused', managed: true, server: null }).primary).toEqual({
             label: 'Sign in again',
             href: '/auth/login',
+            signIn: true,
         })
         const token = describeAccessLoss({ reason: 'refused', managed: false, server: 'https://sync.example.org' })
         expect(token.title).toBe('The access token on this device no longer works')
@@ -64,7 +65,7 @@ describe('describeAccessLoss', () => {
     it('brings the person back to the graph after signing in or connecting again', () => {
         const here = '/graph/sync/graph-1/Plans'
         expect(describeAccessLoss({ reason: 'signed-out' }, here).primary)
-            .toEqual({ label: 'Sign in again', href: '/auth/login?redirect=%2Fgraph%2Fsync%2Fgraph-1%2FPlans' })
+            .toEqual({ label: 'Sign in again', href: '/auth/login?redirect=%2Fgraph%2Fsync%2Fgraph-1%2FPlans', signIn: true })
         expect(describeAccessLoss({ reason: 'disconnected', server: null }, here).primary)
             .toEqual({ label: 'Connect again', href: '/graphs?sync=connect&return=%2Fgraph%2Fsync%2Fgraph-1%2FPlans' })
     })

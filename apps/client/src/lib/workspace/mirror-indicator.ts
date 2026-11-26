@@ -10,6 +10,7 @@
  * stopped, which after a browser restart is the normal state until the folder's permission is
  * given back - and with the Settings tab as its only home, that looked identical to working.
  */
+import { ANOTHER_TAB } from '#lib/native/place.js'
 import { MIRROR_PHASE_LABELS, type MirrorStatus } from '#lib/storage/synced/local-mirror.js'
 
 /**
@@ -27,7 +28,7 @@ export type MirrorIndicatorView = { state: 'hidden' } | { state: 'writing' | 'cu
  */
 export function mirrorIndicatorView(status: MirrorStatus | null, heldElsewhere: boolean): MirrorIndicatorView {
     if (heldElsewhere && !status) {
-        return { state: 'waiting', title: 'Another tab of this browser is mirroring this graph to its folder.' }
+        return { state: 'waiting', title: `${ANOTHER_TAB} is mirroring this graph to its folder.` }
     }
     if (!status) return { state: 'hidden' }
     if (status.paused) {

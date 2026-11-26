@@ -14,21 +14,22 @@
     import { goto } from '$app/navigation'
     import { SHELL_PATH } from '#lib/offline/app-shell.js'
 
-    let message = $state('')
+    let failed = $state(false)
 
     onMount(() => {
         const target = location.pathname === SHELL_PATH ? '/graphs' : location.href
         goto(target, { replace: true }).catch((err: unknown) => {
-            message = err instanceof Error ? err.message : String(err)
+            console.error('[shell] the address could not be opened', err)
+            failed = true
         })
     })
 </script>
 
 <svelte:head><title>Opening EtherPK</title></svelte:head>
 
-{#if message}
+{#if failed}
     <div class="notice" data-testid="offline-shell-error" role="alert">
-        <p>Could not open this page: {message}</p>
+        <p>EtherPK could not open this page. The address may be wrong, or the page may have moved.</p>
         <button class="gk-button justify-self-center" onclick={() => goto('/graphs')}>Go to graphs</button>
     </div>
 {:else}

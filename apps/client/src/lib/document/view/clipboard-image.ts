@@ -17,6 +17,7 @@
  * follow when they arrive.
  */
 
+import { THE_ASKER, THIS_PLACE } from '#lib/native/place.js'
 import type { ResolvedAsset } from '#lib/storage/fs/asset-store.js'
 
 import { canvasToBlob, drawImageToCanvas } from './image-canvas'
@@ -36,7 +37,7 @@ function writePng(png: Promise<Blob>): Promise<void> {
     return Promise.all([png, write]).then(() => undefined)
 }
 
-const NO_IMAGE_CLIPBOARD = 'Could not copy the image: this browser cannot put images on the clipboard.'
+const NO_IMAGE_CLIPBOARD = `Could not copy the image: ${THIS_PLACE} cannot put images on the clipboard.`
 
 /**
  * Copy a PNG still being drawn to the clipboard. A rejection of `png` surfaces as it is, in the
@@ -97,7 +98,7 @@ function rethrowDescribed(err: unknown): never {
     const message = err instanceof Error ? err.message : String(err)
     if (message.startsWith('Could not copy the image')) throw err
     if (err instanceof DOMException && err.name === 'NotAllowedError') {
-        throw new Error('Could not copy the image: the browser blocked the clipboard.')
+        throw new Error(`Could not copy the image: ${THE_ASKER} blocked the clipboard.`)
     }
     throw new Error(`Could not copy the image: ${message}`)
 }

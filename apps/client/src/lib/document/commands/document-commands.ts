@@ -45,6 +45,7 @@ export const FAVOURITES_NOTICE = 'favourites'
 export const DOCUMENT_RENAME = 'document.rename'
 export const DOCUMENT_DELETE = 'document.delete'
 export const DOCUMENT_COPY_FILE_PATH = 'document.copyFilePath'
+export const DOCUMENT_SHOW_FILE = 'document.showInFileManager'
 /**
  * Put a document's name on the clipboard, exactly as its tab shows it: what a wikilink typed
  * elsewhere, or a message to someone, needs. Resolves `true` once the name is on the clipboard.
@@ -179,12 +180,19 @@ export interface DocumentCommandDeps {
      * live in the browser and on the Sync Server, and no path would mean anything.
      */
     hasFilePath?: (concept: string) => boolean
+    /** Whether the document has a file on disk, whether or not this device can name where. */
+    hasFile?: (concept: string) => boolean
     /**
      * Copies the document's full path on this device to the clipboard, asking for the graph
      * folder's path first when this device does not know it yet. The workspace owns both the
      * clipboard write and that prompt.
      */
     copyFilePath?: (concept: string) => void
+    /**
+     * Shows the document's file in the device's file manager. Absent where nothing can: a browser,
+     * or an installed app whose shell has no such call.
+     */
+    showFile?: (concept: string) => void
 }
 
 /**
@@ -312,6 +320,10 @@ export function registerDocumentCommands(
         commands.register(DOCUMENT_COPY_FILE_PATH, (arg) => {
             const concept = conceptOf(arg)
             if (concept !== '') deps.copyFilePath?.(concept)
+        }),
+        commands.register(DOCUMENT_SHOW_FILE, (arg) => {
+            const concept = conceptOf(arg)
+            if (concept !== '') deps.showFile?.(concept)
         }),
         // Written here rather than handed to the workspace like the path: a name or a wikilink
         // needs nothing the workspace owns (no folder path, no store lookup), so the whole
@@ -501,6 +513,15 @@ export function registerDocumentCommands(
             // Favourites or Recents row could carry it too, but has not been asked for.
             when: (target) =>
                 target.kind === 'document-tab' && (deps.hasFilePath?.(target.concept) ?? false),
+        }),
+        registerContextMenuItem(contributions, {
+            id: DOCUMENT_SHOW_FILE,
+            label: 'Show in file manager',
+            command: DOCUMENT_SHOW_FILE,
+            // Below the path, the other way to the same file.
+            order: 205,
+            when: (target) =>
+                target.kind === 'document-tab' && deps.showFile !== undefined && (deps.hasFile?.(target.concept) ?? false),
         }),
     )
 

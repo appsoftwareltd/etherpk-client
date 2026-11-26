@@ -28,6 +28,7 @@
      * than settings — whereas the General tab holds the actual Graph Settings, which do travel in
      * an [[Export]]. Naming it "Graph" would invert the glossary.
      */
+    import { ANOTHER_TAB, THIS_PLACE } from "#lib/native/place.js";
     import { onMount } from "svelte";
     import { normalizeDisplaySize } from "#lib/document/index.js";
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
@@ -720,7 +721,7 @@
                             class="text-sm text-neutral-950 dark:text-neutral-100"
                             data-testid="mirror-held-elsewhere"
                         >
-                            Another tab of this browser is mirroring this graph.
+                            {ANOTHER_TAB} is mirroring this graph.
                             Only one tab writes to the folder at a time - this
                             one takes over by itself if that tab closes.
                         </p>
@@ -1378,7 +1379,7 @@
                     ? "Search index: kept between visits, so this graph reopens quickly."
                     : indexPersistenceBlocked === "held"
                       ? "Search index: temporarily kept in memory because another window or browser tab holds its stored index. It will reconnect automatically."
-                      : "Search index: rebuilt each visit because this browser can't store it, so large graphs take longer to open."}
+                      : `Search index: rebuilt each visit because ${THIS_PLACE} can't store it, so large graphs take longer to open.`}
             </p>
         {/if}
         {#if onrebuildindex}

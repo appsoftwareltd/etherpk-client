@@ -17,6 +17,7 @@
  * keys, `sync-connections.ts` for access tokens) registers itself, and this module asks it for its
  * entries when it seals, opens or removes them all.
  */
+import { THIS_PLACE } from '#lib/native/place.js'
 import {
     bytesEqual,
     contextAad,
@@ -51,7 +52,7 @@ export type DevicePasscodeState = 'off' | 'locked' | 'unlocked'
 /** The device has a passcode and it has not been entered in this browser session. */
 export class DevicePasscodeLockedError extends VaultLockedError {
     constructor() {
-        super("The Encryption Keys on this device are protected by its passcode, which has not been entered in this browser session")
+        super(`The Encryption Keys on this device are protected by its passcode, which has not been entered in ${THIS_PLACE} session`)
         this.name = 'DevicePasscodeLockedError'
     }
 }

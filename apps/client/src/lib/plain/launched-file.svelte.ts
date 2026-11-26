@@ -7,14 +7,16 @@
  * hand over: the browser gives the file once.
  */
 
-let launched = $state.raw<FileSystemFileHandle | null>(null)
+import type { FileHandle } from '../native/folder-ref'
+
+let launched = $state.raw<FileHandle | null>(null)
 
 export const launchedFile = {
     /** The file waiting to be shown. Reactive. */
-    get current(): FileSystemFileHandle | null {
+    get current(): FileHandle | null {
         return launched
     },
-    set(file: FileSystemFileHandle | null): void {
+    set(file: FileHandle | null): void {
         launched = file
     },
 }

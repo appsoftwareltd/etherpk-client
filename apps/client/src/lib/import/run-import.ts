@@ -7,7 +7,7 @@
  */
 
 import type { GraphRegistry, ServerGraphScope } from '#lib/storage/graph-registry.js'
-import { createWebFsDirectoryAdapter } from '#lib/storage/fs/web-fs-adapter.js'
+import { directoryAdapterFor, type FolderHandle, removeFromFolder, treeAdapterFor } from '#lib/storage/folder-access.js'
 import { SUBDIRS } from '#lib/storage/fs/directory-adapter.js'
 import { createServerAssetStore } from '#lib/storage/synced/server-asset-store.js'
 import { createGraphNamePublisher } from '#lib/sync/graph-name-envelope.js'
@@ -43,12 +43,8 @@ export function prepareSource(fileList: ArrayLike<File>): PreparedSource | null 
 }
 
 /** True when the picked destination directory already has any entry (never-in-place). */
-export async function directoryHasEntries(handle: FileSystemDirectoryHandle): Promise<boolean> {
-    for await (const _ of handle.keys()) {
-        void _
-        return true
-    }
-    return false
+export async function directoryHasEntries(folder: FolderHandle): Promise<boolean> {
+    return (await treeAdapterFor(folder).list('')).length > 0
 }
 
 export interface ImportRunOptions {
@@ -66,16 +62,16 @@ export interface ImportRunOptions {
  */
 export async function runFilesystemImport(
     converted: ConvertedGraph,
-    deps: { handle: FileSystemDirectoryHandle; registry: GraphRegistry; name: string },
+    deps: { handle: FolderHandle; registry: GraphRegistry; name: string },
     options: ImportRunOptions,
 ): Promise<{ graphId: string }> {
-    const adapter = createWebFsDirectoryAdapter(deps.handle)
+    const adapter = directoryAdapterFor(deps.handle)
     try {
         await materializeToFilesystem(converted, adapter, options)
     } catch (err) {
         // The folder was empty at the start, so everything under the skeleton is ours.
         for (const subdir of SUBDIRS) {
-            await deps.handle.removeEntry(subdir, { recursive: true }).catch(() => {})
+            await removeFromFolder(deps.handle, subdir).catch(() => {})
         }
         throw err
     }

@@ -5,6 +5,7 @@
      * Encryption Keys on the device, so it lives with what the device holds rather than on any
      * one server's tab. A rule on the page, not a card border, separates it from the next section.
      */
+    import { OPEN_HERE, THIS_PLACE } from "#lib/native/place.js";
     import DevicePasscodeDialog, {
         type DevicePasscodeDialogMode,
     } from "#lib/sync/ui/DevicePasscodeDialog.svelte";
@@ -47,11 +48,11 @@
     >
         {#if passcode === "off"}
             Off. The Encryption Keys this device holds for your synced graphs,
-            and the access tokens for your own Sync Servers, are stored in this browser
+            and the access tokens for your own Sync Servers, are stored in {THIS_PLACE}
             without encryption. A passcode keeps them encrypted, and you enter it
-            once each time you open EtherPK in this browser.
+            once each time you {OPEN_HERE}.
         {:else if passcode === "locked"}
-            On. The passcode has not been entered in this browser session, so
+            On. The passcode has not been entered in {THIS_PLACE} session, so
             the Encryption Keys it protects are not in use yet.
         {:else}
             On. The Encryption Keys this device holds for your synced graphs, and

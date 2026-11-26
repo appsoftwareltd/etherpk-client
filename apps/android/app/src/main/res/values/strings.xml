@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">EtherPK</string>
+    <string name="process_text_label">Add to EtherPK</string>
+    <string name="no_app_for_link">No app on this device can open the link.</string>
+    <string name="share_partly_received">EtherPK could not receive every file. A share can hold up to 20 files and 100 MB, and each file must still be available in the app you shared from.</string>
+    <string name="sign_in_not_waiting">The login was interrupted. Log in again from EtherPK.</string>
+    <string name="old_webview_heading">Update Android System WebView</string>
+    <string name="old_webview_text">EtherPK needs Android System WebView 144 or later, and this device has an earlier version. Your notes are not affected. Update Android System WebView, then open EtherPK again.</string>
+    <string name="old_webview_action">Open the update page</string>
+    <string name="page_stopped_heading">EtherPK stopped</string>
+    <string name="page_stopped_text">EtherPK stopped several times in a minute, so it was not opened again. Your saved notes are not affected. If this device is low on memory, close other apps before you open EtherPK.</string>
+    <string name="page_stopped_action">Open EtherPK</string>
+</resources>

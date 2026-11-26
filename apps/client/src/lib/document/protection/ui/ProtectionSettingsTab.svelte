@@ -12,6 +12,7 @@
      * lose by leaving the tab; and a Save that applied to two tabs at once would be the confusing
      * thing, not this.
      */
+    import { THIS_PLACE_START } from "#lib/native/place.js";
     import { tick, untrack } from "svelte";
 
     import type { ProtectionTabProps } from "./protection-tab";
@@ -288,7 +289,7 @@
                 {/if}
             {:else if !canBindPasskey}
                 <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-                    This browser does not support passkeys, so unlocking here always needs the
+                    {THIS_PLACE_START} does not support passkeys, so unlocking here always needs the
                     passphrase.
                 </p>
             {:else}

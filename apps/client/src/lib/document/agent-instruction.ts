@@ -18,6 +18,7 @@
  * Each part is a paragraph of its own, with a blank line between parts. An agent's chat often shows
  * a paste as markdown, which joins lines with no blank line between them into one block of text.
  */
+import { THE_KEEPER } from '#lib/native/place.js'
 import { joinGraphPath } from '../storage/fs/folder-path'
 import type { Subdir } from '../storage/fs/directory-adapter'
 import type { TaskStatus } from './index-db'
@@ -64,7 +65,7 @@ function noServer(agentsUrl: string): string {
 }
 
 function outOfReach(agentsUrl: string): string {
-    return `This graph is kept inside this browser, so an agent cannot reach it. Tell the user that the Agents tab in EtherPK's Settings explains how to work with an agent. They can open it at ${agentsUrl}`
+    return `This graph is kept inside ${THE_KEEPER}, so an agent cannot reach it. Tell the user that the Agents tab in EtherPK's Settings explains how to work with an agent. They can open it at ${agentsUrl}`
 }
 
 /**
@@ -79,7 +80,7 @@ function taskTextAsWritten(label: string): string {
 /** The graph as the first line names it. A folder's id differs per browser, so it goes by its folder's name. */
 function graphSource(graphId: string, reach: AgentReach): string {
     if (reach.kind === 'folder') return `the graph folder "${reach.folderName}"`
-    if (reach.kind === 'browser') return reach.graphName ? `the graph "${reach.graphName}"` : 'a graph in this browser'
+    if (reach.kind === 'browser') return reach.graphName ? `the graph "${reach.graphName}"` : `a graph in ${THE_KEEPER}`
     return reach.graphName ? `the graph "${reach.graphName}" (${graphId})` : `the graph ${graphId}`
 }
 

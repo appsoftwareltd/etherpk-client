@@ -4,6 +4,7 @@
      * is its one primary action; the name beside it is a label, not a second way in. Synced graphs
      * have a card of their own (SyncedGraphRow). A coloured graph's band takes its colour (graph-card.ts).
      */
+    import { THE_STORE, THIS_PLACE } from '#lib/native/place.js'
     import { inkFor } from '#lib/contrast-ink.js'
     import { isDemoGraph } from '#lib/demo/demo-graph.js'
     import type { GraphRecord } from '#lib/storage/index.js'
@@ -86,8 +87,8 @@
             <span class="text-sm {quiet}">
                 <span
                     data-testid="graphs-demo-hint"
-                    title="The demo graph is stored in this browser only and is not backed up anywhere"
-                >In this browser only</span>
+                    title="The demo graph is stored in {THIS_PLACE} only and is not backed up anywhere"
+                >In {THIS_PLACE} only</span>
                 ·
                 <button
                     type="button"
@@ -109,7 +110,7 @@
             <span
                 class="truncate text-sm {quiet}"
                 data-testid="graphs-cache-hint"
-                title="A synced graph's local copy is stored in the browser, not in a folder"
+                title="A synced graph's local copy is stored in {THE_STORE}, not in a folder"
             >Local browser cache</span>
         {/if}
     </div>

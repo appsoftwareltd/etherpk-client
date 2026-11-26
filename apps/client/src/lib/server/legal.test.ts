@@ -19,6 +19,11 @@ describe('clientLegalLinks', () => {
         })
     })
 
+    it('uses the account site a Native App was built with, which no sign-in setting names', () => {
+        expect(clientLegalLinks({}, {}, 'https://www.example.com').termsUrl).toBe('https://www.example.com/terms')
+        expect(clientLegalLinks({}, { PUBLIC_TERMS_URL: 'https://example.org/terms' }, null).termsUrl).toBe('https://example.org/terms')
+    })
+
     it("uses the operator's pages on a self-hosted Client", () => {
         expect(clientLegalLinks({}, {
             PUBLIC_TERMS_URL: 'https://example.org/terms',

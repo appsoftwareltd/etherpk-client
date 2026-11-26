@@ -9,7 +9,8 @@
  * object URL, which the browser streams from disk. Nothing in either path holds the archive.
  */
 
-import { downloadBlob } from '#lib/document/publish/host/zip.js'
+import { isNativeApp } from '#lib/native/bridge.js'
+import { downloadBlob, openNativeSave } from '#lib/native/save-file.js'
 
 import { EXPORT_SCRATCH_DIRECTORY } from './export-scratch'
 import type { ScratchWorkerRequest, ScratchWorkerResponse } from './export-scratch-worker'
@@ -34,15 +35,18 @@ export interface DeliverableSink extends ExportSink {
 type WithoutId<T> = T extends unknown ? Omit<T, 'id'> : never
 
 export function saveFilePickerAvailable(): boolean {
-    return typeof window !== 'undefined' && 'showSaveFilePicker' in window
+    return isNativeApp() || (typeof window !== 'undefined' && 'showSaveFilePicker' in window)
 }
 
-/** Ask for the file the archive will stream into. Needs a user gesture. */
-export async function pickExportFile(suggestedName: string): Promise<FileSystemFileHandle> {
-    return window.showSaveFilePicker({
+/** Ask for the file the archive will stream into, and answer with how to open it. Needs a user gesture. */
+export async function pickExportFile(suggestedName: string): Promise<{ open: () => Promise<WritableTarget>; unused?: () => Promise<void> }> {
+    const native = await openNativeSave(suggestedName, 'application/zip')
+    if (native) return { open: async () => native, unused: () => native.abort() }
+    const handle = await window.showSaveFilePicker({
         suggestedName,
         types: [{ description: 'Zip archive', accept: { 'application/zip': ['.zip'] } }],
     })
+    return { open: () => handle.createWritable() }
 }
 
 /** The slice of `FileSystemWritableFileStream` a sink uses, so a test can stand one in. */
@@ -55,9 +59,10 @@ export interface WritableTarget {
 /**
  * The save-picker sink. The writable is opened on the first byte, so a pick that never gets that
  * far leaves the file as the picker made it, and `finish` does nothing: the swap file the
- * browser keeps until `close()` IS the not-yet-handed-over archive.
+ * browser keeps until `close()` IS the not-yet-handed-over archive. `unused` is for a target that is
+ * open from the pick, as a Native App's is, and has to be let go when nothing was written.
  */
-export function createSaveFileSink(open: () => Promise<WritableTarget>): DeliverableSink {
+export function createSaveFileSink(open: () => Promise<WritableTarget>, unused?: () => Promise<void>): DeliverableSink {
     let writable: Promise<WritableTarget> | undefined
     let settled = false
     return {
@@ -78,6 +83,7 @@ export function createSaveFileSink(open: () => Promise<WritableTarget>): Deliver
             if (settled) return
             settled = true
             if (writable) await (await writable).abort()
+            else await unused?.()
         },
     }
 }

@@ -1,0 +1,23 @@
+{
+    "name": "@appsoftwareltd/etherpk-native-bridge",
+    "version": "0.55.0",
+    "license": "Elastic-2.0",
+    "private": true,
+    "type": "module",
+    "sideEffects": false,
+    "exports": {
+        ".": "./src/index.ts",
+        "./memory": "./src/memory.ts",
+        "./contract": "./src/contract.ts",
+        "./installed-serving": "./src/installed-serving.ts"
+    },
+    "scripts": {
+        "check": "tsc --noEmit",
+        "test": "vitest run"
+    },
+    "devDependencies": {
+        "fast-check": "^4.9.0",
+        "typescript": "^6.0.2",
+        "vitest": "^4.1.12"
+    }
+}

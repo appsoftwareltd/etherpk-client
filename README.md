@@ -134,6 +134,37 @@ HOST=127.0.0.1 PORT=3000 node build
 The full guide, including Windows commands, is
 [Running EtherPK On Your Own Device](https://docs.etherpk.com/running-etherpk-on-your-own-computer).
 
+### Windows, Linux and Android apps
+
+Each release attaches installers that need no browser and no server:
+
+| Platform | File |
+| --- | --- |
+| Windows 10 and 11 (x64) | [`EtherPK-windows-x64.exe`](https://github.com/appsoftwareltd/etherpk-client/releases/latest/download/EtherPK-windows-x64.exe) |
+| Linux (x64), any distribution | [`EtherPK-linux-x64.AppImage`](https://github.com/appsoftwareltd/etherpk-client/releases/latest/download/EtherPK-linux-x64.AppImage) |
+| Debian and Ubuntu (x64) | [`EtherPK-linux-x64.deb`](https://github.com/appsoftwareltd/etherpk-client/releases/latest/download/EtherPK-linux-x64.deb) |
+
+The app for Android 11 and later, `EtherPK-android.apk`, is not on every release yet. The
+[releases page](https://github.com/appsoftwareltd/etherpk-client/releases) lists each release's files:
+take the APK from the newest release that lists one.
+
+The Windows and Linux files are not signed by a certificate authority, so Windows shows "Windows
+protected your PC" at the first start: select **More info**, then **Run anyway**. Check a download
+against the release before you run it, with either command:
+
+```bash
+sha256sum --check --ignore-missing SHA256SUMS
+gh attestation verify EtherPK-windows-x64.exe --repo appsoftwareltd/etherpk-client
+```
+
+On Ubuntu 24.04 and later, install the `.deb` rather than the AppImage: the system lets the AppImage
+start only with part of Chromium's sandbox off, and the app says so.
+
+The apps check a feed signed by App Software for newer versions, and offer a version some time after
+its release. The Graphs page's **This Device** tab says when there is one. In the Windows app and the
+AppImage, select **Update**, then **Restart and update** once it has downloaded. The `.deb` and the
+Android app open the release page for you to download it.
+
 ### Headless Client / MCP Server
 
 Published to npm as
@@ -193,6 +224,9 @@ ETHERPK_DEV_EXTENSIONS=/path/to/my-extension pnpm dev
 - A release is a `v<version>` tag. It publishes images tagged `<version>`, `<major>.<minor>` and
   `latest`, a GitHub Release with the Node bundle attached, and `@appsoftwareltd/etherpk-mcp` and
   `@appsoftwareltd/etherpk-extension-api` at the same version on npm.
+- The Windows and Linux installers are attached to the same release when they pass their tests on
+  GitHub's machines, and the Android APK too once releases are signed for Android. A release that is
+  missing an installer it should have is not marked Latest until it has them all.
 - The Client and the Headless Client share one version number with EtherPK's Sync Server, and
   only matching versions are tested together. A Client and a Sync Server on different sync
   protocol versions refuse to sync, and the Client says which side needs upgrading.

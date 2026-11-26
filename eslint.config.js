@@ -237,6 +237,12 @@ export default tseslint.config(
         ignores: [
             '**/node_modules/**',
             '**/build/**',
+            // The Installed Build (ADR 0209): the Client's built files, which every Native App packages.
+            'apps/client/build-installed/**',
+            // The desktop app's packaged output and the Android app's Gradle output.
+            'apps/desktop/release/**',
+            'apps/android/**/build/**',
+            'apps/android/.gradle/**',
             '**/dist/**',
             '**/.svelte-kit/**',
             '**/playwright-report*/**',
@@ -377,6 +383,17 @@ export default tseslint.config(
     {
         files: ['extensions/**/*.{ts,js,svelte}'],
         rules: { 'no-restricted-imports': extensionImportRule() },
+    },
+    {
+        // The desktop app's unit tests run in CI before the Client's generated tsconfig exists, and a
+        // Client file cannot be compiled without it. What the two share lives in packages/.
+        files: ['apps/desktop/src/**/*.ts'],
+        rules: {
+            'no-restricted-imports': withPatterns(clientImportRule(), {
+                group: ['**/client/*', '**/client/**'],
+                message: 'The desktop app imports no file of apps/client: put what both need in packages/native-bridge or packages/shared.',
+            }),
+        },
     },
     ...Object.entries(CLIENT_IMPORT_EXCEPTIONS).map(([folder, allowed]) => ({
         files: [`extensions/${folder}/**/*.{ts,js,svelte}`],

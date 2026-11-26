@@ -20,6 +20,8 @@
     import { onMount } from 'svelte'
 
     import { goto } from '$app/navigation'
+    import { isNativeApp } from '#lib/native/bridge.js'
+    import { openedByLaunch } from '#lib/native/first-launch.js'
     import { todayISO } from '#lib/document/calendar/month-grid-core.js'
     import { chosenGraphState } from '#lib/workspace/chosen-graph.js'
     import { createIdbGraphRegistry, getLastGraphId, resolveGraphTarget, rootDestination } from '#lib/storage/index.js'
@@ -30,12 +32,14 @@
         let cancelled = false
         ;(async () => {
             try {
+                // A Native App opened with a link, a share, a file or a folder goes there instead.
+                if (await openedByLaunch()) return
                 const graphs = await createIdbGraphRegistry().listGraphs()
                 if (cancelled) return
                 const target = resolveGraphTarget(graphs, getLastGraphId())
                 // Today is read at the moment of the launch: an installed app is opened days apart.
                 // The graph resumed is carried with the entry: its address may be two folders' (chosen-graph.ts).
-                await goto(rootDestination(target, window.location.search, () => todayISO()), {
+                await goto(rootDestination(target, window.location.search, () => todayISO(), { installedApp: isNativeApp() }), {
                     replace: true,
                     state: target.kind === 'open' ? chosenGraphState(target.graph) : {},
                 })

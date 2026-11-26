@@ -169,7 +169,7 @@ describe('shared sync protocol', () => {
         },
     )
 
-    it('requires UUID identifiers and non-empty strict fields', () => {
+    it('requires UUID identifiers and every field, and leaves out one it does not know', () => {
         expect(
             parseClientMessage(
                 JSON.stringify({ v: 3, type: 'append', docId: 'd1', outboxId: OUTBOX_ID, epochId: 1, envelope: 'AAEC' }),
@@ -195,7 +195,20 @@ describe('shared sync protocol', () => {
                     surprise: true,
                 }),
             ),
-        ).toMatchObject({ ok: false, code: 'invalid_message' })
+        ).toEqual({
+            ok: true,
+            value: {
+                v: 3,
+                type: 'catchup',
+                requestId: OUTBOX_ID,
+                docId: DOC_ID,
+                generation: 1,
+                afterSeq: 0,
+                priority: 'foreground',
+                maxRows: 256,
+                maxBytes: 1024,
+            },
+        })
     })
 
     it('rejects malformed base64url and enforces decoded envelope bytes before decoding', () => {

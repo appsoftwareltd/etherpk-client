@@ -1,0 +1,143 @@
+name: Promote to the update feed
+
+# The Native Apps update only from `feed.json` on the `update-feed` branch, which nothing else writes.
+# A release makes the installers and offers them to nobody. This workflow, approved by a person, does.
+#
+# `prepare` checks the release and shows what would be signed. `sign` waits for the approval of the
+# `update-feed` environment, checks it all again, since time has passed, then signs and publishes.
+# Neither installs a package: they run the scripts in scripts/native-apps, which use Node alone.
+#
+# An app never goes back to an older version. To undo one, pause it here, then release a higher version
+# and promote that.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'promote a version, pause platforms (offer them to nobody), or renew the date'
+        type: choice
+        options: [promote, pause, renew]
+        required: true
+      version:
+        description: 'promote: the released version, such as 1.2.0'
+        type: string
+      platforms:
+        description: 'promote: "released" for each the release has. Or windows-x64, linux-x64-appimage, linux-x64-deb, android, with commas'
+        type: string
+        default: released
+      minimum_version:
+        description: 'promote: older apps are told the update is required. Empty keeps what was set'
+        type: string
+      start_after:
+        description: 'Only when there is no feed: the sequence to start after. 0 for the first feed ever'
+        type: string
+      note:
+        description: 'Why, for the branch history'
+        type: string
+
+concurrency:
+  group: update-feed
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  ACTION: ${{ inputs.action }}
+  VERSION: ${{ inputs.version }}
+  PLATFORMS: ${{ inputs.platforms }}
+  MINIMUM_VERSION: ${{ inputs.minimum_version }}
+  START_AFTER: ${{ inputs.start_after }}
+  NOTE: ${{ inputs.note }}
+
+jobs:
+  prepare:
+    name: Check the release and show the feed
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Check the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/native-apps/promote-prepare.sh "$RUNNER_TEMP/prepared"
+      - name: Show what would be signed
+        run: |
+          set -euo pipefail
+          node scripts/native-apps/make-feed.mjs --action "$ACTION" --version "$VERSION" --platforms "$PLATFORMS" \
+            --minimum-version "$MINIMUM_VERSION" --start-after "$START_AFTER" --assets "$RUNNER_TEMP/prepared/assets" \
+            --previous "$(ls "$RUNNER_TEMP/prepared/previous.json" 2>/dev/null || true)" \
+            --keys apps/desktop/update-keys.json --show | tee feed-payload.json
+          {
+            echo "### The feed that would be signed"
+            echo '```json'
+            cat feed-payload.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  sign:
+    name: Sign and publish
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Restrict this environment to main and require a reviewer in the repository settings. Its deploy
+    # key is the only credential the update-feed branch's ruleset lets push, so the workflow token of
+    # this or any other job cannot change the feed.
+    environment: update-feed
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Check the release again
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/native-apps/promote-prepare.sh "$RUNNER_TEMP/prepared"
+      - name: Sign
+        env:
+          UPDATE_FEED_KEY: ${{ secrets.UPDATE_FEED_KEY }}
+          UPDATE_FEED_KEY_NEXT: ${{ secrets.UPDATE_FEED_KEY_NEXT }}
+        run: |
+          set -euo pipefail
+          node scripts/native-apps/make-feed.mjs --action "$ACTION" --version "$VERSION" --platforms "$PLATFORMS" \
+            --minimum-version "$MINIMUM_VERSION" --start-after "$START_AFTER" --assets "$RUNNER_TEMP/prepared/assets" \
+            --previous "$(ls "$RUNNER_TEMP/prepared/previous.json" 2>/dev/null || true)" \
+            --keys apps/desktop/update-keys.json --out "$RUNNER_TEMP/feed.json"
+      # Pushed over SSH with the environment's deploy key. GitHub's host keys come from its API, over
+      # HTTPS, so the push goes to GitHub and nowhere else.
+      - name: Publish
+        env:
+          UPDATE_FEED_DEPLOY_KEY: ${{ secrets.UPDATE_FEED_DEPLOY_KEY }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          if [ -z "$UPDATE_FEED_DEPLOY_KEY" ]; then
+            echo "::error title=No deploy key::The update-feed environment has no UPDATE_FEED_DEPLOY_KEY, the key the update-feed branch takes pushes from."
+            exit 1
+          fi
+          key="$RUNNER_TEMP/update-feed-deploy-key"
+          known="$RUNNER_TEMP/github-host-keys"
+          trap 'rm -f "$key"' EXIT
+          (umask 077; printf '%s\n' "$UPDATE_FEED_DEPLOY_KEY" > "$key")
+          curl --fail --silent --show-error https://api.github.com/meta | jq -r '.ssh_keys[] | "github.com " + .' > "$known"
+          [ -s "$known" ] || { echo '::error::GitHub gave no SSH host keys.'; exit 1; }
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$known"
+          export FEED_REMOTE="git@github.com:${GITHUB_REPOSITORY}.git"
+          scripts/native-apps/promote-publish.sh "$RUNNER_TEMP/prepared" "$RUNNER_TEMP/feed.json" \
+            "$(printf '%s %s (%s), by %s\n\n%s' "$ACTION" "$VERSION" "$PLATFORMS" "$GITHUB_ACTOR" "$NOTE")"

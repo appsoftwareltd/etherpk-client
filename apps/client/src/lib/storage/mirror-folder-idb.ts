@@ -18,6 +18,8 @@
 
 import { type IDBPDatabase, openDB } from 'idb'
 
+import { fromStoredFolder, toStoredFolder } from '../native/folder-ref'
+
 import { isClosedConnectionError } from './idb-connection'
 
 const DB_NAME = 'etherpk-mirrors'
@@ -75,18 +77,24 @@ async function withStore<T>(work: (database: IDBPDatabase) => Promise<T>): Promi
 /** A graph's mirror folder on this device: the handle plus its name, for the Mirror tab. */
 export interface MirrorFolderRecord {
     graphId: string
-    /** A `FileSystemDirectoryHandle`; opaque here, as the graph registry's handles are. */
+    /** A `FileSystemDirectoryHandle` or an installed app's folder; opaque here, as the graph registry's are. */
     handle: unknown
     folder: string
 }
 
-export function readMirrorFolder(graphId: string): Promise<MirrorFolderRecord | undefined> {
-    return withStore(async (database) => (await database.get(STORE, graphId)) as MirrorFolderRecord | undefined)
+/** The record as kept, with its folder as the rest of the Client holds one. */
+function withHandle(record: MirrorFolderRecord): MirrorFolderRecord {
+    return { ...record, handle: fromStoredFolder(record.handle) }
+}
+
+export async function readMirrorFolder(graphId: string): Promise<MirrorFolderRecord | undefined> {
+    const record = await withStore(async (database) => (await database.get(STORE, graphId)) as MirrorFolderRecord | undefined)
+    return record && withHandle(record)
 }
 
 export function writeMirrorFolder(record: MirrorFolderRecord): Promise<void> {
     return withStore(async (database) => {
-        await database.put(STORE, record)
+        await database.put(STORE, { ...record, handle: toStoredFolder(record.handle) })
     })
 }
 
@@ -100,6 +108,7 @@ export function forgetMirrorFolder(graphId: string): Promise<void> {
  * Every graph's mirror folder on this device, so choosing a folder can recognise one that is
  * already another graph's mirror: two graphs in one folder delete each other's files.
  */
-export function listMirrorFolders(): Promise<MirrorFolderRecord[]> {
-    return withStore(async (database) => (await database.getAll(STORE)) as MirrorFolderRecord[])
+export async function listMirrorFolders(): Promise<MirrorFolderRecord[]> {
+    const records = await withStore(async (database) => (await database.getAll(STORE)) as MirrorFolderRecord[])
+    return records.map(withHandle)
 }

@@ -12,17 +12,30 @@ import { sanitizeEbookBookmarks, type EbookBookmark, type EbookBookmarksChange }
 import { sanitizePdfBookmarks, type PdfBookmark, type PdfBookmarksChange } from '#lib/document/pdf/pdf-bookmarks.js'
 import { derivePdfStateIdSecret, pdfStateDocId } from '#lib/document/pdf/state-doc-id.js'
 import { performanceRecorder } from '#lib/diagnostics/performance.js'
-import { SOCKETS_LIMIT_CLOSE_CODE, SYNC_PROTOCOL_LIMITS, type QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
+import {
+    SOCKETS_LIMIT_CLOSE_CODE,
+    SYNC_PROTOCOL_LIMITS,
+    UNSUPPORTED_VERSION_CLOSE_CODE,
+    newestCommonVersion,
+    syncConnectUrl,
+    type QuotaErrorCode,
+    type SyncClientInfo,
+    type SyncProtocol,
+    type SyncVersionRange,
+} from '@appsoftwareltd/etherpk-shared'
 import { CACHE_SEED, RECREATED, REMOTE, SUPPRESSED, createDocSync, type DocSync } from './doc-sync'
 import type { GraphCache } from './local-cache'
 import {
     SyncProtocolMismatchError,
     readServerMessage,
     serializeClientMessage,
+    syncProtocol,
     type RelayClientMessage,
+    type RelayServerMessage,
 } from './messages'
 import { createPresenceSession, type PresenceSession } from './presence-session'
 import type { SyncTokenSource } from './sync-token'
+import { thisClient } from './this-client'
 import { keyRetryDelayMs, reconnectDelayMs, refusalRetryDelayMs, STABLE_CONNECTION_MS } from './reconnect-backoff'
 import { type QuickNote, sanitizeQuickNotes } from '#lib/document/quick-notes.js'
 import { sanitizeDictionaryWords } from '#lib/document/spelling/graph-dictionary.js'
@@ -67,6 +80,8 @@ export type SyncAccessLoss = { kind: 'membership' } | { kind: 'credentials'; cau
 export interface WriteRefusal {
     /** The allowance the write would have passed; absent when the server did not say. */
     quotaCode?: QuotaErrorCode
+    /** A newer server refused it for a reason this build has no word for, a quota or not. */
+    unrecognised?: true
 }
 
 /** What a synced workspace shows about its sync; see {@link GraphSync.activity}. */
@@ -122,6 +137,10 @@ export interface GraphSyncDeps {
     token: SyncTokenSource
     cache: GraphCache
     connect(url: string): TransportSocket
+    /** What the session says this Client is when it connects; a test names its own. */
+    clientInfo?: SyncClientInfo | null
+    /** The protocol versions this session speaks; a test passes others. */
+    protocol?: SyncProtocol
     debounceMs?: number
     /** Called whenever the registry Y.Map changes (membership of the doc set). */
     onRegistryChange?: () => void
@@ -1128,16 +1147,27 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             for (const listener of activityListeners) listener(current)
         }, ACTIVITY_COALESCE_MS)
     }
+    const protocol = deps.protocol ?? syncProtocol
+    const clientInfo = clientOf(deps)
+    /** The protocol version this session speaks: the newest, until a server turns out not to speak it. */
+    let protocolVersion = protocol.range.max
     /**
-     * Set when the Sync Server turned out to speak another protocol version. The session then
-     * stops for good: every reconnect would meet the same server, and nothing either side
+     * The versions refused by the server, and the range it said it speaks. A server that refuses what it
+     * says it speaks ends the session, and one redeployed with another range starts the list afresh.
+     */
+    const refusedVersions = new Set<number>()
+    let refusedBy = ''
+    const encode = (message: RelayClientMessage) => serializeClientMessage(message, protocolVersion, protocol)
+    /**
+     * Set when the Sync Server turned out to speak no protocol version this build does. The session
+     * then stops for good: every reconnect would meet the same server, and nothing either side
      * sends can be read by the other. Pending appends stay in the cache for a later session.
      */
     let protocolMismatch: SyncProtocolMismatchError | undefined
     const reportError = (error: unknown) => {
         if (!disposed) deps.onError?.(error instanceof Error ? error : new Error(String(error)))
     }
-    const outboundSnapshots: string[] = []
+    const outboundSnapshots: RelayClientMessage[] = []
     type OperationMessage = Extract<RelayClientMessage, { type: 'append' | 'delete' | 'resurrect' }>
     /** Documents whose operation this socket has sent and the relay has not answered, to its outbox id. */
     const operationsInFlight = new Map<string, string>()
@@ -1209,7 +1239,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                     }, 15_000)
                     watermarkRequests.set(requestId, { resolve, reject, timer })
                     activeSocket.send(
-                        serializeClientMessage({
+                        encode({
                             type: 'watermarks',
                             requestId,
                             docIds: [...docIds],
@@ -1238,12 +1268,11 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
 
     function sendNow(message: RelayClientMessage): void {
         if (message.type === 'presence' && !subscribed.has(message.docId)) return
-        const data = serializeClientMessage(message)
         if (open && socket) {
-            socket.send(data)
+            socket.send(encode(message))
             if (message.type === 'subscribe' && 'docIds' in message) for (const docId of message.docIds) subscribed.add(docId)
             if (message.type === 'unsubscribe') for (const docId of message.docIds) subscribed.delete(docId)
-        } else if (message.type === 'snapshot_put') outboundSnapshots.push(data)
+        } else if (message.type === 'snapshot_put') outboundSnapshots.push(message)
         // Appends are already durable and replay on open. Catch-up is regenerated from the
         // current watermark. Presence is ephemeral, and a lost ack confirmation merely
         // leaves a harmless server receipt, so none belongs in a volatile socket queue.
@@ -1276,7 +1305,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     function pumpCatchups(): void {
         if (!open || !socket || catchupInFlight) return
         catchupInFlight = foregroundCatchups.shift() ?? backgroundCatchups.shift()
-        if (catchupInFlight) socket.send(serializeClientMessage(catchupInFlight))
+        if (catchupInFlight) socket.send(encode(catchupInFlight))
     }
 
     function queueCatchup(message: CatchupRequest): void {
@@ -1436,10 +1465,10 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
      * refused outbox operation (named by its outbox id), or a refusal a server too old to name
      * anything sent, counts.
      */
-    function noteRefusal(message: { docId?: string; outboxId?: string; quotaCode?: QuotaErrorCode }): void {
+    function noteRefusal(message: { docId?: string; outboxId?: string; quotaCode?: QuotaErrorCode; unrecognised?: true }): void {
         if (message.docId && !message.outboxId) return
         if (message.docId) refusedDocs.add(message.docId)
-        refusal = message.quotaCode ? { quotaCode: message.quotaCode } : {}
+        refusal = message.quotaCode ? { quotaCode: message.quotaCode } : message.unrecognised ? { unrecognised: true } : {}
         refusalCount += 1
         scheduleRefusalRetry()
         activityChanged()
@@ -1671,10 +1700,51 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
         )
     }
 
-    /** Report once, fail everything waiting for a connection, and close without reconnecting. */
-    function stopForProtocolMismatch(serverVersion: number): void {
+    /**
+     * The server does not speak the version this session is using. Go on in the newest one both speak,
+     * on a new connection, or stop when there is none. A refused version stored nothing, and every edit
+     * is still in the outbox. A server was redeployed, rolled back or never had this build's newest.
+     */
+    function versionRefused(serverRange: SyncVersionRange): void {
         if (protocolMismatch) return
-        protocolMismatch = new SyncProtocolMismatchError(serverVersion)
+        const range = `${serverRange.min}-${serverRange.max}`
+        if (range !== refusedBy) refusedVersions.clear()
+        refusedBy = range
+        refusedVersions.add(protocolVersion)
+        const common = newestCommonVersion(protocol.range, serverRange)
+        if (common === null || refusedVersions.has(common)) {
+            stopForProtocolMismatch(serverRange)
+            return
+        }
+        protocolVersion = common
+        const refused = socket
+        socket = undefined
+        open = false
+        forgetSocketGeneration()
+        connection = 'reconnecting'
+        activityChanged()
+        refused?.close()
+        // Backed off, so that a server that keeps changing its mind is not asked in a tight loop.
+        backOff()
+    }
+
+    /**
+     * The socket closed with 4426, and the `unsupported_version` frame that says which versions the
+     * server speaks did not arrive first (a frame that did has moved this session on already, and
+     * the close is of a socket it let go). With no range to go by, the next older version this build
+     * speaks is tried, and after the oldest the newest again, backed off each time: the frame a later
+     * connection gets then decides, as `versionRefused` does.
+     */
+    function closedForVersion(): void {
+        protocolVersion = protocolVersion > protocol.range.min ? protocolVersion - 1 : protocol.range.max
+        connection = 'reconnecting'
+        activityChanged()
+        backOff()
+    }
+
+    /** Report once, fail everything waiting for a connection, and close without reconnecting. */
+    function stopForProtocolMismatch(serverRange: SyncVersionRange): void {
+        protocolMismatch = new SyncProtocolMismatchError(serverRange, protocol.range)
         connection = 'ended'
         clearTimeout(reconnectTimer)
         clearTimeout(refusalTimer)
@@ -1686,13 +1756,57 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
         socket?.close()
     }
 
-    function handleMessage(raw: string): void {
-        const read = readServerMessage(raw)
-        if (read.kind === 'protocol_mismatch') {
-            stopForProtocolMismatch(read.serverVersion)
+    /** A refusal or a fault the relay reports. */
+    function handleError(message: Extract<RelayServerMessage, { type: 'error' }>): void {
+        if (message.code === 'membership_revoked') {
+            endAccess({ kind: 'membership' })
             return
         }
-        if (read.kind === 'malformed') return
+        if (message.code === 'quota_denied') {
+            if (message.docId) operationAnswered(message.docId, message.outboxId)
+            noteRefusal(message)
+            return
+        }
+        if (message.code === 'unknown_error') {
+            // Refused for a reason this build does not know. An operation it names is kept and sent
+            // again on the slow schedule, so that a full window does not wait for an ack that never comes.
+            if (message.docId && message.outboxId) {
+                operationAnswered(message.docId, message.outboxId)
+                noteRefusal({ docId: message.docId, outboxId: message.outboxId, unrecognised: true })
+            }
+            return
+        }
+        if (
+            message.code === 'stale_generation' &&
+            message.docId &&
+            message.currentGeneration !== undefined
+        ) {
+            if (catchupInFlight?.docId === message.docId) {
+                catchupInFlight = undefined
+                catchupRepeat = undefined
+            }
+            // The engine discards its operations for the old generation.
+            operationAnswered(message.docId)
+            void engine(message.docId).staleGeneration(message.currentGeneration)
+            pumpCatchups()
+        }
+        if (message.code === 'stale_epoch' && message.docId) {
+            // Nothing was stored. The write is sealed again under the current epoch once this
+            // device holds its key (ADR 0127).
+            operationAnswered(message.docId, message.outboxId)
+            engine(message.docId).staleEpoch(message.outboxId)
+            void followEpoch(message.currentEpoch ?? currentEpoch(keyring()).epochId + 1)
+        }
+    }
+
+    function handleMessage(raw: string): void {
+        const read = readServerMessage(raw, protocol)
+        if (read.kind === 'version_refused') {
+            versionRefused(read.serverRange)
+            return
+        }
+        // A newer server may send kinds of message this build has no use for.
+        if (read.kind !== 'message') return
         const message = read.message
         if (message.type === 'catchup_batch') {
             performanceRecorder.mark('sync.catchup.batch', {
@@ -1702,36 +1816,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             })
         }
         if (message.type === 'error') {
-            if (message.code === 'membership_revoked') {
-                endAccess({ kind: 'membership' })
-                return
-            }
-            if (message.code === 'quota_denied') {
-                if (message.docId) operationAnswered(message.docId, message.outboxId)
-                noteRefusal(message)
-                return
-            }
-            if (
-                message.code === 'stale_generation' &&
-                message.docId &&
-                message.currentGeneration !== undefined
-            ) {
-                if (catchupInFlight?.docId === message.docId) {
-                    catchupInFlight = undefined
-                    catchupRepeat = undefined
-                }
-                // The engine discards its operations for the old generation.
-                operationAnswered(message.docId)
-                void engine(message.docId).staleGeneration(message.currentGeneration)
-                pumpCatchups()
-            }
-            if (message.code === 'stale_epoch' && message.docId) {
-                // Nothing was stored. The write is sealed again under the current epoch once this
-                // device holds its key (ADR 0127).
-                operationAnswered(message.docId, message.outboxId)
-                engine(message.docId).staleEpoch(message.outboxId)
-                void followEpoch(message.currentEpoch ?? currentEpoch(keyring()).epochId + 1)
-            }
+            handleError(message)
             return
         }
         if (message.type === 'epoch_changed') {
@@ -1887,7 +1972,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
         void deps.token(force ? { force: true } : undefined).then(
             (token) => {
                 if (disposed || lost) return
-                const s = deps.connect(`${deps.relayUrl}?token=${encodeURIComponent(token)}`)
+                const s = deps.connect(syncConnectUrl(deps.relayUrl, token, protocolVersion, clientInfo))
                 socket = s
                 s.onOpen(() => {
                     if (disposed || lost || socket !== s) return
@@ -1901,7 +1986,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                     connectionWaiters.clear()
                     subscribeRetained()
                     if (deps.subscribeAll) sendNow({ type: 'subscribe', all: true })
-                    for (const data of outboundSnapshots.splice(0)) s.send(data)
+                    for (const message of outboundSnapshots.splice(0)) s.send(encode(message))
                     // A local awareness state set while the socket was closed was dropped
                     // (presence never queues). Advertise every retained document now so the
                     // relay can store the envelope and replay it to late subscribers.
@@ -1920,7 +2005,10 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                             .catch(reportError)
                     }
                 })
-                s.onMessage(handleMessage)
+                s.onMessage((raw) => {
+                    // A refused socket may still have answers in flight, in a version left behind.
+                    if (socket === s) handleMessage(raw)
+                })
                 s.onClose((event) => {
                     if (socket !== s) return
                     const upFor = open ? Date.now() - openedAt : 0
@@ -1929,6 +2017,10 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                     forgetSocketGeneration()
                     if (disposed || lost || protocolMismatch) return
                     const code = event?.code
+                    if (code === UNSUPPORTED_VERSION_CLOSE_CODE) {
+                        closedForVersion()
+                        return
+                    }
                     if (turnedAway(code)) return
                     connection = 'reconnecting'
                     activityChanged()
@@ -2644,6 +2736,11 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             connectionWaiters.clear()
         },
     }
+}
+
+/** What a session says this Client is: what its owner said, or else what the build says. Null says nothing. */
+function clientOf(deps: Pick<GraphSyncDeps, 'clientInfo'>): SyncClientInfo | null {
+    return deps.clientInfo === undefined ? thisClient() : deps.clientInfo
 }
 
 /** The real browser WebSocket adapter (not used in unit tests). */

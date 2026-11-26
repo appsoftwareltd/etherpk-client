@@ -13,7 +13,8 @@ export default defineConfig({
         __SVELTEKIT_APP_VERSION_FILE__: JSON.stringify('/_app/version.json'),
         __SVELTEKIT_APP_VERSION_POLL_INTERVAL__: 0,
         // The release version vite.config.ts reads from package.json.
-        __RELEASE_VERSION__: JSON.stringify('0.0.0-test')
+        __RELEASE_VERSION__: JSON.stringify('0.0.0-test'),
+        __INSTALLED_BUILD__: 'null'
     },
     // Provide inline esbuild tsconfig so vitest doesn't try to resolve
     // ./.svelte-kit/tsconfig.json (which is only present after `svelte-kit sync`)

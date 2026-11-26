@@ -1,44 +1,17 @@
 /**
- * DOM glue for external-change detection. The File System Access API has no file
- * watcher, so we re-scan on window focus and on a light interval poll (DESIGN.md →
- * The git workflow). All decisions live in the store's `reconcile()`; this just
- * triggers it, guarding against overlapping runs.
+ * When a Folder graph's store looks for changes made outside the app (folder-rescan.ts). All
+ * decisions live in the store's `reconcile()`; this just triggers it.
  */
-
 import type { FilesystemDocumentStore } from './filesystem-store'
+import { attachFolderRescan, type FolderRescanOptions } from './folder-rescan'
 
-export interface ReconciliationOptions {
-    /** Poll interval (ms) while the tab is active. */
-    pollMs?: number
-}
-
-/** Wire focus + poll to `store.reconcile()`. Returns a detach function. */
-export function attachReconciliation(
-    store: FilesystemDocumentStore,
-    { pollMs = 4000 }: ReconciliationOptions = {},
-): () => void {
-    let running = false
-
-    async function run() {
-        if (running) return // never overlap reconcile passes
-        running = true
-        try {
-            await store.reconcile()
-        } catch (error) {
-            // Nothing awaits a poll, so a failed pass is logged here rather than left as an
-            // unhandled rejection. The next focus or tick runs the pass again.
-            console.warn('[reconcile] a pass over the graph folder failed; the next one tries again', error)
-        } finally {
-            running = false
-        }
-    }
-
-    const onFocus = () => void run()
-    window.addEventListener('focus', onFocus)
-    const timer = setInterval(() => void run(), pollMs)
-
-    return () => {
-        window.removeEventListener('focus', onFocus)
-        clearInterval(timer)
-    }
+/**
+ * Wire focus, the timer and a watch to `store.reconcile()`. Returns a detach function. A watch's
+ * changes that are all the app's own saves run no pass (`changesAreOwn`), as a Plain Folder's do not.
+ */
+export function attachReconciliation(store: Pick<FilesystemDocumentStore, 'reconcile' | 'changesAreOwn'>, options: FolderRescanOptions = {}): () => void {
+    return attachFolderRescan(async (changed) => {
+        if (changed !== null && (await store.changesAreOwn(changed))) return
+        await store.reconcile()
+    }, options)
 }

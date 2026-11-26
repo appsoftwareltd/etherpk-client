@@ -4,7 +4,8 @@
  *
  * A drop carries handles only in browsers with the File System Access API
  * (`getAsFileSystemHandle`). Elsewhere a drop carries copies of files, which could not be saved
- * back, so nothing is taken from it.
+ * back, so nothing is taken from it. A Native App's pages leave a drop to its shell (the Graphs page's
+ * `openDropped`), so nothing here runs there.
  */
 
 type HandleItem = DataTransferItem & { getAsFileSystemHandle?: () => Promise<FileSystemHandle | null> }

@@ -10,6 +10,7 @@
      * and its copies in this browser. No server is "the current one": each is a SyncServerView,
      * and every action names the server it acts on. Folder graphs belong to no server.
      */
+    import { STORAGE_LIMIT_OF, THIS_PLACE, THIS_PLACE_START } from "#lib/native/place.js";
     import { onMount, tick, untrack } from "svelte";
 
     import { dev } from "$app/env";
@@ -37,16 +38,20 @@
         createIdbGraphRegistry,
         applyGraphOrder,
         createIdbGraphStoragePort,
-        createWebFsDirectoryAdapter,
+        type FileHandle,
+        type FolderHandle,
+        canPickFolder,
+        directoryAdapterFor,
+        isFolderLost,
+        isFolderOnDisk,
+        pickFolder,
+        treeAdapterFor,
         browserAsksBeforePersisting,
         describeDeviceStorage,
         ensurePermission,
         ensurePersistentStorage,
         getLastGraphId,
-        isFsaSupported,
-        isOnDisk,
         isPickerCancel,
-        pickGraphDirectory,
         readGraphSettings,
         PLACEHOLDER_SYNCED_GRAPH_NAME,
         registerSyncedGraphOnDevice,
@@ -64,6 +69,9 @@
     import { graphUrl } from "#lib/navigation/document-url.js";
     import { graphAddressOf, graphsSharingAnAddress } from "#lib/navigation/graph-address.js";
     import { chosenGraphState } from "#lib/workspace/chosen-graph.js";
+    import { releaseFolder } from "#lib/storage/release-folder.js";
+    import { describeChosenFolderFailure } from "#lib/workspace/folder-open-copy.js";
+    import { lostFolderOf } from "#lib/workspace/lost-folder-copy.js";
     import { openChosenFolder } from "#lib/workspace/open-chosen-folder.js";
     import { examineChosenFolder, registerPlainFolder } from "#lib/plain/choose-folder.js";
     import type { FolderChoice, FolderVerdict } from "#lib/plain/classify-folder.js";
@@ -74,7 +82,6 @@
     import { createIdbPlainFolderRegistry } from "#lib/plain/plain-folder-registry-idb.js";
     import OpenFolderDialog from "#lib/plain/ui/OpenFolderDialog.svelte";
     import PlainFoldersSection from "#lib/plain/ui/PlainFoldersSection.svelte";
-    import { createWebTreeAdapter } from "#lib/plain/web-tree-adapter.js";
     import { forgetFileEditors } from "#lib/plain/file-editors.js";
     import { forgetRemoteImageTrust } from "#lib/plain/remote-images.js";
     import { LOCAL_LAYOUT_KEY_PREFIX } from "#lib/layout/store.js";
@@ -151,7 +158,6 @@
         safeReturnPath,
     } from "@appsoftwareltd/etherpk-shared";
     import {
-        managedSignInHref,
         returnHereSignedIn,
     } from "#lib/auth/sign-in-links.js";
     import {
@@ -205,7 +211,7 @@
         pendingSyncPlusImport,
         recordSyncPlusCopy,
     } from "#lib/import/sync-plus-import-store.svelte.js";
-    import { walkDirectory, type WalkableDirectory } from "#lib/import/directory-handle-source.js";
+    import { sourceFilesOf } from "#lib/import/directory-handle-source.js";
     import { startImport } from "#lib/import/import-activity.js";
     import type { SourceFile } from "#lib/import/types.js";
     import { isRunning } from "#lib/activity/store.js";
@@ -213,8 +219,14 @@
         importMarkers,
         type ImportMarker,
     } from "#lib/import/import-marker.js";
+    import { signInToEtherPK, signOutOfInstalledApp } from "#lib/auth/managed-sign-in.js";
     import { clearManagedAccessToken, freshManagedBearerToken } from "#lib/auth/managed-token.js";
     import { showNotice } from "#lib/activity/notices.js";
+    import AppUpdateStatus from "#lib/native/AppUpdateStatus.svelte";
+    import { isNativeApp } from "#lib/native/bridge.js";
+    import { leaveFor } from "#lib/native/links.js";
+    import { launchedFolder } from "#lib/plain/launched-folder.svelte.js";
+    import { saveFailureReason } from "#lib/native/save-file.js";
     import type { GraphGripProps } from "#lib/workspace/GraphGrip.svelte";
     import { iconSvg } from "#lib/surface/icons.js";
     import GraphOrderList from "#lib/workspace/GraphOrderList.svelte";
@@ -282,7 +294,7 @@
     import { leaveWelcomeClaim } from "#lib/welcome/welcome-claims-browser.js";
 
     const registry = createIdbGraphRegistry();
-    const supported = isFsaSupported();
+    const supported = canPickFolder();
     const managedSyncAvailable = isManagedSyncConfigured(env);
     const configuredCustomSyncUrl = defaultCustomSyncUrl(env);
 
@@ -701,7 +713,7 @@
     // Import a graph from a Logseq / Obsidian / EtherPK / AS Notes source folder.
     let importDialog = $state(false);
     /** A folder the person chose on the way to an import: the dialog opens with it as its source. */
-    let importSourceFolder = $state.raw<FileSystemDirectoryHandle | null>(null);
+    let importSourceFolder = $state.raw<FolderHandle | null>(null);
     let importSourceFormat = $state<ImportFormat | null>(null);
 
     // Plain Folders (ADR 0194): kept apart from the graphs, in a registry of their own.
@@ -709,7 +721,7 @@
     let plainFolders = $state.raw<PlainFolderRecord[]>([]);
     let plainFoldersListing = $state<PlainFoldersListing>("pending");
     /** A chosen folder that is not a graph, and the question it raises. */
-    let folderQuestion = $state.raw<{ handle: FileSystemDirectoryHandle; verdict: Extract<FolderVerdict, { kind: "ask" }> } | null>(null);
+    let folderQuestion = $state.raw<{ handle: FolderHandle; verdict: Extract<FolderVerdict, { kind: "ask" }> } | null>(null);
     let folderQuestionBusy = $state(false);
     let folderQuestionError = $state<string | null>(null);
     let plainFolderMessage = $state.raw<{ id: string; text: string; tone: "info" | "error" } | null>(null);
@@ -852,8 +864,8 @@
             list
                 .filter((graph) => graph.backend !== "server")
                 .map(async (graph) => {
-                    const handle = graph.handle as FileSystemDirectoryHandle;
-                    return [graph.id, (await isOnDisk(handle)) ? handle.name : null] as const;
+                    const handle = graph.handle as FolderHandle;
+                    return [graph.id, (await isFolderOnDisk(handle)) ? handle.name : null] as const;
                 }),
         );
         const next = Object.fromEntries(entries);
@@ -1171,7 +1183,7 @@
             graphsListed = true;
             console.error("Could not read the graph list:", err);
             setStatus(
-                `Your graphs could not be read from this browser's storage, so none are listed. Nothing has been deleted.`,
+                `Your graphs could not be read from ${THIS_PLACE}'s storage, so none are listed. Nothing has been deleted.`,
                 "error",
             );
             return false;
@@ -1927,7 +1939,7 @@
         saveManagedSyncConnection();
         // Back to the page that sent the person here to connect, if one did; otherwise to this
         // page as it is now, tab and server sub-tab included, which then says the sign-in worked.
-        window.location.href = managedSignInHref(
+        void signInToEtherPK(
             returnTo ?? returnHereSignedIn(window.location),
         );
     }
@@ -1947,13 +1959,22 @@
         const { connection } = server;
         forgettingServer = connection.origin;
         try {
+            // In an installed app the shell holds the sign-in. One it could not forget comes back when
+            // the app opens again, so nothing here is forgotten and the notice it showed says why.
+            if (
+                connection.kind === "managed" &&
+                isNativeApp() &&
+                !(await signOutOfInstalledApp())
+            )
+                return;
             lockVault(connection.origin);
             clearSyncAccount(connection.origin);
             if (connection.kind === "managed") {
                 clearManagedAccessToken();
-                await fetch("/auth/logout", { method: "POST" }).catch(
-                    () => undefined,
-                );
+                if (!isNativeApp())
+                    await fetch("/auth/logout", { method: "POST" }).catch(
+                        () => undefined,
+                    );
             }
             await ownConnectionChange(() =>
                 forgetSyncConnection(connection.origin),
@@ -2203,7 +2224,7 @@
             if (!graph) {
                 pendingSyncPlusImport.clear();
                 setStatus(
-                    "The folder graph to import to Sync+ is no longer in this browser's list. Open it again from its folder to import it.",
+                    `The folder graph to import to Sync+ is no longer in ${THIS_PLACE}'s list. Open it again from its folder to import it.`,
                     "error",
                 );
                 return;
@@ -2250,7 +2271,7 @@
                         return;
                     }
                     pendingSyncPlusImport.write({ graphId: source.graphId, name });
-                    if (action.kind === "link") window.location.assign(action.href);
+                    if (action.kind === "link") leaveFor(action.href);
                     else runChoice(action);
                 },
             }));
@@ -2263,20 +2284,33 @@
         const graph = source ? await registry.getGraph(source.graphId) : undefined;
         if (!graph || graph.backend !== "filesystem")
             throw new SyncPlusImportRefusal(
-                "This folder graph is no longer in this browser's list. Open it again from its folder to import it.",
+                `This folder graph is no longer in ${THIS_PLACE}'s list. Open it again from its folder to import it.`,
             );
+        if (await isFolderLost(graph.handle)) throw new SyncPlusImportRefusal(lostFolderOf(graph.name));
         if (!(await ensurePermission(graph.handle, "read")))
             throw new SyncPlusImportRefusal(
                 "EtherPK needs permission to read the graph's folder. Choose Import again and allow it when the browser asks.",
             );
+        let walked;
         try {
-            return await walkDirectory(graph.handle as WalkableDirectory);
+            walked = await sourceFilesOf(graph.handle as FolderHandle);
         } catch (err) {
             console.error("Could not read the folder for Import to Sync+:", err);
             throw new SyncPlusImportRefusal(
                 "Could not read the graph's folder. Check that it is still where it was, then try again.",
             );
         }
+        // A copy of the graph that left files out would look whole, so a file that cannot be read stops it.
+        refuseUnreadable(walked.unreadable);
+        return walked.files;
+    }
+
+    function refuseUnreadable([first, ...others]: string[]): void {
+        if (first === undefined) return;
+        const more = others.length > 0 ? ` and ${others.length} other ${others.length === 1 ? "file" : "files"}` : "";
+        throw new SyncPlusImportRefusal(
+            `${first}${more} could not be read. Close any program using ${others.length > 0 ? "the files" : "the file"}, then choose Import again.`,
+        );
     }
 
     /**
@@ -2340,6 +2374,16 @@
         syncPlusDialog = null;
     }
 
+    /**
+     * The person closed the question without choosing. In a Native App the shell was given the folder
+     * when it was chosen or handed over, and gives it back unless a record of it is kept.
+     */
+    function declineFolderQuestion() {
+        const question = folderQuestion;
+        folderQuestion = null;
+        if (question) void releaseFolder(question.handle);
+    }
+
     /** The person answered the question a chosen folder raised. Nothing was written before this. */
     async function answerFolderQuestion(choice: FolderChoice) {
         const question = folderQuestion;
@@ -2364,7 +2408,7 @@
             }
         } catch (err) {
             console.error("Could not open the chosen folder:", err);
-            folderQuestionError = `Could not open that folder: ${err instanceof Error ? err.message : String(err)}. Try again, or choose a different one.`;
+            folderQuestionError = describeChosenFolderFailure(err);
         } finally {
             folderQuestionBusy = false;
         }
@@ -2388,6 +2432,7 @@
     async function forgetPlainFolder(folder: PlainFolderRecord) {
         try {
             await plainRegistry.remove(folder.id);
+            await releaseFolder(folder.handle);
             localStorage.removeItem(`${LOCAL_LAYOUT_KEY_PREFIX}plain-folder:${folder.id}`);
             forgetRemoteImageTrust(folder.id, localStorage);
             forgetFileEditors(folder.id, localStorage);
@@ -2406,7 +2451,7 @@
     }
 
     /** Register the folder as a Folder graph and open it: what choosing a folder always did until ADR 0194. */
-    async function openAsFolderGraph(handle: FileSystemDirectoryHandle): Promise<string | null> {
+    async function openAsFolderGraph(handle: FolderHandle): Promise<string | null> {
         // A mirror's folder is refused, a folder already open as a graph opens as that
         // graph, and any other is registered (open-chosen-folder.ts).
         const outcome = await openChosenFolder(handle, registry);
@@ -2419,10 +2464,21 @@
         return queueHistoryWrite(() => goto(plainFolderUrl(folder.name), { state: chosenPlainFolderState(folder) }));
     }
 
+    // A folder the operating system handed to a Native App, opened as one chosen here.
+    $effect(() => {
+        const folder = launchedFolder.current;
+        if (!folder || !listReady) return;
+        launchedFolder.set(null);
+        untrack(() => openFolderHandle(folder)).catch((err: unknown) => {
+            console.error("Could not open a folder:", err);
+            setStatus("Could not open that folder. Try again, or choose a different one.", "error");
+        });
+    });
+
     /** Choose a folder and open it. `preferred` is what the person asked to open it as, if they said. */
     async function openFolder(preferred?: FolderChoice) {
         try {
-            await openFolderHandle(await pickGraphDirectory(), preferred);
+            await openFolderHandle(await pickFolder(), preferred);
         } catch (err) {
             // Closing the picker is a choice, not a failure: nothing is said and the page stays
             // as it was.
@@ -2441,14 +2497,16 @@
      */
     async function openDropped(event: DragEvent) {
         if (!carriesFiles(event.dataTransfer) || (event.target as Element | null)?.closest?.("dialog, [role='dialog']")) return;
+        // A Native App's shell takes the drop, which gives it access to what was dropped.
+        if (isNativeApp()) return;
         event.preventDefault();
         try {
             const dropped = await droppedHandle(event.dataTransfer);
             const refusal = dropRefusal(dropped);
             if (refusal) setStatus(refusal, "error");
-            else if (dropped!.kind === "directory") await openFolderHandle(dropped as FileSystemDirectoryHandle);
+            else if (dropped!.kind === "directory") await openFolderHandle(dropped as FolderHandle);
             else {
-                launchedFile.set(dropped as FileSystemFileHandle);
+                launchedFile.set(dropped as FileHandle);
                 await goto("/open-file");
             }
         } catch (err) {
@@ -2458,16 +2516,17 @@
     }
 
     /** Open a folder the person chose or dropped. Rejects when it cannot be read. */
-    async function openFolderHandle(handle: FileSystemDirectoryHandle, preferred?: FolderChoice) {
+    async function openFolderHandle(handle: FolderHandle, preferred?: FolderChoice) {
         // Look inside before anything is written: a graph's folder opens as before, and any
         // other folder is asked about (choose-folder.ts).
         const chosen = await examineChosenFolder(handle, {
             plainFolders: () => plainRegistry.list(),
             knownFolders: () => readKnownGraphFolders(),
-            treeOf: createWebTreeAdapter,
+            treeOf: treeAdapterFor,
         });
         if (chosen.kind === "refused") {
             setStatus(chosen.message, "error");
+            void releaseFolder(handle);
         } else if (chosen.kind === "plain-folder") {
             await openPlainFolder(chosen.folder);
         } else if (chosen.kind === "folder-graph") {
@@ -2523,7 +2582,7 @@
                     }
                     // An account without Sync+: Billing, where it starts, in place of a refusal.
                     if (only.syncPlusRequired && corporateBillingUrl) {
-                        window.location.assign(corporateBillingUrl);
+                        leaveFor(corporateBillingUrl);
                         return;
                     }
                     if (only.createBlockedReason) {
@@ -2796,7 +2855,7 @@
         } catch (err) {
             console.error(`Could not check the copy of ${name}:`, err);
             setStatus(
-                `Could not check this browser's copy of "${name}" for changes the server has not received, so nothing was changed. Try again.`,
+                `Could not check ${THIS_PLACE}'s copy of "${name}" for changes the server has not received, so nothing was changed. Try again.`,
                 "error",
             );
             return false;
@@ -2868,8 +2927,8 @@
                 await listRegistry();
                 setStatus(
                     server
-                        ? `No synced graphs from ${server.host} are stored in this browser.`
-                        : "No synced graphs from other Sync Servers are stored in this browser.",
+                        ? `No synced graphs from ${server.host} are stored in ${THIS_PLACE}.`
+                        : `No synced graphs from other Sync Servers are stored in ${THIS_PLACE}.`,
                 );
                 return;
             }
@@ -2882,7 +2941,7 @@
         } catch (err) {
             console.error("Could not check this browser's synced graphs:", err);
             setStatus(
-                `Could not check this browser's synced graphs for changes the server has not received, so nothing was removed. Try again.`,
+                `Could not check ${THIS_PLACE}'s synced graphs for changes the server has not received, so nothing was removed. Try again.`,
                 "error",
             );
         } finally {
@@ -2890,12 +2949,28 @@
         }
     }
 
-    function downloadRemoveSyncedUnsent() {
-        if (!removeSynced) return;
-        for (const { graph, unsent } of removeSynced.held) {
-            if (unsent.length > 0) saveUnsentChangesFile(unsent, graph.name);
+    /**
+     * Save unsent changes before they are discarded. True once every file is kept: an app that asks
+     * where to save can be told not to, and then nothing may say that they were downloaded.
+     */
+    async function savedUnsent(copies: { unsent: UnsentDocument[]; name: string }[]): Promise<boolean> {
+        try {
+            for (const { unsent, name } of copies) {
+                if (unsent.length > 0 && (await saveUnsentChangesFile(unsent, name)) === "cancelled") return false;
+            }
+            return true;
+        } catch (err) {
+            console.error("Could not save unsent changes:", err);
+            showNotice({ id: "unsent-changes", tone: "error", text: `The unsent changes were not saved. ${saveFailureReason(err)}` });
+            return false;
         }
-        removeSynced = { ...removeSynced, downloaded: true };
+    }
+
+    async function downloadRemoveSyncedUnsent() {
+        const shown = removeSynced;
+        if (!shown) return;
+        const copies = shown.held.map(({ graph, unsent }) => ({ unsent, name: graph.name }));
+        if ((await savedUnsent(copies)) && removeSynced === shown) removeSynced = { ...shown, downloaded: true };
     }
 
     /**
@@ -2947,14 +3022,14 @@
                         ? "copy of 1 synced graph"
                         : `copies of ${removed} synced graphs`;
                 setStatus(
-                    `Removed this browser's ${copies} from ${where}, and locked the Encryption Keys held here for ${pending.server ? "it" : "them"}. The graphs are still on the sync server.`,
+                    `Removed ${THIS_PLACE}'s ${copies} from ${where}, and locked the Encryption Keys held here for ${pending.server ? "it" : "them"}. The graphs are still on the sync server.`,
                 );
             }
         } catch (err) {
             removeSynced = null;
             await refresh();
             setStatus(
-                `${describeSyncFailure(err, `remove the synced graphs from ${where} from this browser`)} ${removed} of ${pending.held.length} were removed - try again for the rest.`,
+                `${describeSyncFailure(err, `remove the synced graphs from ${where} from ${THIS_PLACE}`)} ${removed} of ${pending.held.length} were removed - try again for the rest.`,
                 "error",
             );
         } finally {
@@ -2962,10 +3037,10 @@
         }
     }
 
-    function downloadDiscardUnsent(name: string) {
-        if (!discardUnsent) return;
-        saveUnsentChangesFile(discardUnsent.unsent, name);
-        discardUnsent = { ...discardUnsent, downloaded: true };
+    async function downloadDiscardUnsent(name: string) {
+        const shown = discardUnsent;
+        if (!shown) return;
+        if ((await savedUnsent([{ unsent: shown.unsent, name }])) && discardUnsent === shown) discardUnsent = { ...shown, downloaded: true };
     }
 
     /**
@@ -3100,6 +3175,10 @@
     /** Open the shared Graph Settings dialog for a folder graph: resolve the folder, read settings.json. */
     async function openLocalSettings(graph: GraphRecord) {
         try {
+            if (await isFolderLost(graph.handle)) {
+                setRowStatus(graph.id, lostFolderOf(graph.name), "error");
+                return;
+            }
             const granted = await ensurePermission(graph.handle);
             if (!granted) {
                 setRowStatus(
@@ -3109,9 +3188,7 @@
                 );
                 return;
             }
-            const adapter = createWebFsDirectoryAdapter(
-                graph.handle as FileSystemDirectoryHandle,
-            );
+            const adapter = directoryAdapterFor(graph.handle as FolderHandle);
             const settings = await readGraphSettings(adapter);
             localSettings = {
                 record: graph,
@@ -3543,7 +3620,7 @@
         } catch (err) {
             console.error("Could not check this browser's copy of the graph:", err);
             setStatus(
-                `Could not check this browser's copy of the graph, so nothing was accepted or deleted. Try again.`,
+                `Could not check ${THIS_PLACE}'s copy of the graph, so nothing was accepted or deleted. Try again.`,
                 "error",
             );
         } finally {
@@ -3719,10 +3796,10 @@
         );
     }
 
-    function downloadStaleCopy() {
-        if (!staleCopy) return;
-        saveUnsentChangesFile(staleCopy.unsent, staleCopy.graphName);
-        staleCopy = { ...staleCopy, downloaded: true };
+    async function downloadStaleCopy() {
+        const shown = staleCopy;
+        if (!shown) return;
+        if ((await savedUnsent([{ unsent: shown.unsent, name: shown.graphName }])) && staleCopy === shown) staleCopy = { ...shown, downloaded: true };
     }
 
     /**
@@ -5559,10 +5636,10 @@
                             id="synced-copies-heading"
                             class="text-lg font-semibold text-neutral-950 dark:text-white"
                         >
-                            Synced graphs in this browser
+                            Synced graphs in {THIS_PLACE}
                         </h2>
                         <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                            This browser keeps a readable copy of each synced
+                            {THIS_PLACE_START} keeps a readable copy of each synced
                             graph it has opened, for every account that has used
                             it. Signing out leaves the copies in place, so on a
                             shared machine, remove them before you leave.
@@ -5574,7 +5651,7 @@
                             class="text-sm text-neutral-500 dark:text-neutral-400"
                             data-testid="synced-copies-none"
                         >
-                            No synced graphs are stored in this browser.
+                            No synced graphs are stored in {THIS_PLACE}.
                         </p>
                     {:else}
                         <!-- A row per Sync Server, and one for servers this device no longer holds,
@@ -5608,7 +5685,7 @@
                                                 {held === 1
                                                     ? "1 synced graph"
                                                     : `${held} synced graphs`} stored
-                                                in this browser.
+                                                in {THIS_PLACE}.
                                             </p>
                                         {:else}
                                             <p
@@ -5616,7 +5693,7 @@
                                                 data-testid="remove-synced-none"
                                             >
                                                 No synced graphs from {server.host}
-                                                are stored in this browser.
+                                                are stored in {THIS_PLACE}.
                                             </p>
                                         {/if}
                                     </div>
@@ -5699,14 +5776,16 @@
                         id="device-storage-heading"
                         class="text-lg font-semibold text-neutral-950 dark:text-white"
                     >
-                        This browser
+                        {THIS_PLACE_START}
                     </h2>
-                    {#if deviceStorage?.persisted === true}
+                    {#if isNativeApp()}
+                        <AppUpdateStatus />
+                    {:else if deviceStorage?.persisted === true}
                         <p
                             class="text-sm text-neutral-500 dark:text-neutral-400"
                             data-testid="device-storage-persisted"
                         >
-                            This browser has agreed to keep EtherPK's data on
+                            {THIS_PLACE_START} has agreed to keep EtherPK's data on
                             this device rather than clear it to free up space.
                         </p>
                     {:else if deviceStorage?.persisted === false}
@@ -5716,9 +5795,9 @@
                             class="text-sm text-neutral-500 dark:text-neutral-400"
                             data-testid="device-storage-best-effort"
                         >
-                            This browser may clear EtherPK's data on this device
+                            {THIS_PLACE_START} may clear EtherPK's data on this device
                             to free up space. Information about graphs and
-                            passkeys in this browser is also kept in local
+                            passkeys in {THIS_PLACE} is also kept in local
                             storage (which survives browser data eviction),
                             though graphs will re-download from the sync server.
                             {#if !installedApp}
@@ -5741,9 +5820,9 @@
                             class="text-sm text-neutral-500 dark:text-neutral-400"
                             data-testid="device-storage-unknown"
                         >
-                            This browser does not say whether it will keep
+                            {THIS_PLACE_START} does not say whether it will keep
                             EtherPK's data when space runs low. Information
-                            about graphs and passkeys in this browser is also
+                            about graphs and passkeys in {THIS_PLACE} is also
                             kept in local storage (which survives browser data
                             eviction).
                         </p>
@@ -5755,7 +5834,7 @@
                         >
                             EtherPK is using {formatBytes(deviceStorage.usage)} here{deviceStorage.quota !==
                             null
-                                ? ` of the ${formatBytes(deviceStorage.quota)} this browser allows`
+                                ? ` of the ${formatBytes(deviceStorage.quota)} ${STORAGE_LIMIT_OF}`
                                 : ""}.
                         </p>
                     {/if}
@@ -5787,7 +5866,7 @@
         busy={folderQuestionBusy}
         error={folderQuestionError}
         onchoose={(choice) => void answerFolderQuestion(choice)}
-        onclose={() => (folderQuestion = null)}
+        onclose={declineFolderQuestion}
     />
 {/if}
 
@@ -5946,7 +6025,7 @@
                     class="text-sm text-neutral-600 dark:text-neutral-400"
                     data-testid="delete-local-note"
                 >
-                    The synced copy in this browser, and its search index, are
+                    The synced copy in {THIS_PLACE}, and its search index, are
                     deleted with the graph. Files you mirrored to a local folder are
                     not deleted.
                 </p>
@@ -6216,7 +6295,7 @@
             <p>
                 Changes to {count === 1
                     ? "1 document"
-                    : `${count.toLocaleString()} documents`} in this browser have
+                    : `${count.toLocaleString()} documents`} in {THIS_PLACE} have
                 not reached the sync server yet. {action} deletes them.
             </p>
             <p>
@@ -6263,7 +6342,7 @@
         {#snippet body()}
             <div class="space-y-3">
                 <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                    This removes this browser's copy of {removeSynced!.held
+                    This removes {THIS_PLACE}'s copy of {removeSynced!.held
                         .length === 1
                         ? "1 synced graph"
                         : `${removeSynced!.held.length} synced graphs`} from {where}:
@@ -6351,7 +6430,7 @@
                             class="font-medium text-neutral-900 dark:text-neutral-200"
                             >{forgetConfirm!.name}</span
                         >? This deletes the graph's local copy and its search
-                        index from this browser.
+                        index from {THIS_PLACE}.
                         {unsentCount > 0
                             ? "The graph stays on the sync server without the changes above."
                             : "The graph remains on the sync server - add it back any time."}
@@ -6365,7 +6444,7 @@
                         class="font-medium text-neutral-900 dark:text-neutral-200"
                         >{forgetConfirm!.name}</span
                     >? Forgetting removes the graph from this list and its
-                    search index from this browser. Delete the files on disk
+                    search index from {THIS_PLACE}. Delete the files on disk
                     manually if you require full deletion.
                 </p>
             {/if}
@@ -6444,7 +6523,7 @@
                         >{nameToConfirm(leavingServer, leaving)}</span
                     >? You lose access until the owner invites you again. The
                     graph itself, and the other members, are untouched. The copy
-                    in this browser, and its search index, are deleted.
+                    in {THIS_PLACE}, and its search index, are deleted.
                     Devices running the Headless Client for this graph drop
                     their copy the next time it starts.
                 </p>
@@ -6492,14 +6571,14 @@
         count === 1 ? "1 document" : `${count.toLocaleString()} documents`}
     <Modal
         open={true}
-        title="Unsent changes in this browser"
+        title="Unsent changes in {THIS_PLACE}"
         onclose={() => (staleCopy = null)}
         onsubmit={() => void confirmStaleCopyDiscard()}
     >
         {#snippet body()}
             <div data-testid="invite-unsent-changes" class="space-y-3">
                 <p class="text-sm text-neutral-600 dark:text-neutral-400">
-                    This browser still holds a copy of <span
+                    {THIS_PLACE_START} still holds a copy of <span
                         class="font-medium text-neutral-900 dark:text-neutral-200"
                         >{staleCopy!.graphName}</span
                     >

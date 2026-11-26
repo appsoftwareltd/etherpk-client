@@ -31,6 +31,14 @@ describe('resolveGraphTarget', () => {
     })
 })
 
+describe('rootDestination in a Native App', () => {
+    it('goes to the Graphs page with no graphs, and resumes a graph as ever', () => {
+        expect(rootDestination({ kind: 'home' }, '', () => '2026-11-25', { installedApp: true })).toBe('/graphs')
+        expect(rootDestination({ kind: 'picker' }, '', () => '2026-11-25', { installedApp: true })).toBe('/graphs')
+        expect(rootDestination({ kind: 'home' }, '', () => '2026-11-25', { installedApp: false })).toBe('/home')
+    })
+})
+
 describe('rootDestination', () => {
     const today = () => '2026-10-17'
     // A folder graph, so the address is its folder's name (ADR 0192).

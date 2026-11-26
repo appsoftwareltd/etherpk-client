@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { blockLinkAddress, blockSeen, blockViewAt, blockViewDocument, blockViewTarget, noteBlockSeen, parseBlockViewTarget, type SeenStorage } from './block-view'
+import { blockSeen, blockViewAt, blockViewDocument, blockViewTarget, noteBlockSeen, parseBlockViewTarget, type SeenStorage } from './block-view'
 
 function memoryStorage(): SeenStorage & { data: Map<string, string> } {
     const data = new Map<string, string>()
@@ -50,15 +50,6 @@ describe('where a Block View last saw its Block', () => {
     })
 })
 
-describe('blockLinkAddress', () => {
-    it("is the Client's own address of the Block, on the graph it has open", () => {
-        const link = { document: 'Garden', line: 2, fingerprint: 'abcdef012345' }
-        expect(blockLinkAddress(link, { origin: 'https://client.example', pathname: '/graph/sync/abc/d/Kitchen' })).toBe(
-            'https://client.example/graph/sync/abc/d/Garden#block=2-abcdef012345',
-        )
-        expect(blockLinkAddress(link, { origin: 'https://client.example', pathname: '/graphs' })).toBeNull()
-    })
-})
 
 describe('blockViewAt and blockViewDocument', () => {
     it('names the Block View an address holds, under the name its document answers to', () => {

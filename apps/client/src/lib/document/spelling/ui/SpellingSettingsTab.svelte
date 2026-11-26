@@ -9,6 +9,7 @@
      * nothing for the dialog's Save to commit. Renders into someone else's form, so every button
      * declares `type="button"` (an untyped one would submit and close the dialog).
      */
+    import { THE_STORE_YOURS } from "#lib/native/place.js";
     import { createSubscriber } from "svelte/reactivity";
 
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
@@ -128,7 +129,7 @@
         {:else}
             <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
                 {#if spell.followsBrowser}
-                    Until you change them, these follow your browser's languages.
+                    Until you change them, these follow {THE_STORE_YOURS} languages.
                 {:else}
                     Chosen for this graph on this device.
                 {/if}
@@ -137,7 +138,7 @@
 
             {#if spell.languages.length === 0}
                 <p class="mt-2 text-sm text-neutral-600 dark:text-neutral-400" data-testid="spelling-no-languages">
-                    None of your browser's languages has a dictionary here. Add one below.
+                    None of {THE_STORE_YOURS} languages has a dictionary here. Add one below.
                 </p>
             {:else}
                 <ul class="mt-2 divide-y divide-neutral-100 dark:divide-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-800" data-testid="spelling-languages">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { describeFolderOpenFailure } from './folder-open-copy'
+import { describeChosenFolderFailure, describeFolderOpenFailure } from './folder-open-copy'
 
 describe('describeFolderOpenFailure', () => {
     const copyFor = (name: string, message = 'x') => describeFolderOpenFailure(new DOMException(message, name))
@@ -60,5 +60,34 @@ describe('describeFolderOpenFailure', () => {
             'not an error',
         ]
         for (const fault of faults) expect(describeFolderOpenFailure(fault)).not.toMatch(/server/i)
+    })
+
+    it('in an installed app names no browser, and says to choose the folder where permission is gone', () => {
+        for (const name of ['NotFoundError', 'NotAllowedError', 'SecurityError', 'NoModificationAllowedError', 'NotReadableError', 'OperationError']) {
+            expect([name, describeFolderOpenFailure(new DOMException('x', name), true)]).not.toEqual([name, expect.stringMatching(/browser/i)])
+        }
+        expect(describeFolderOpenFailure(new DOMException('x', 'NotAllowedError'), true)).toContain('choose the folder')
+    })
+})
+
+describe('describeChosenFolderFailure', () => {
+    const copyFor = (name: string, installed = false, message = 'x') => describeChosenFolderFailure(new DOMException(message, name), installed)
+
+    it('says the folder did not open, and names no graph', () => {
+        for (const name of ['NotFoundError', 'NotAllowedError', 'SecurityError', 'NoModificationAllowedError', 'NotReadableError', 'OperationError']) {
+            expect(copyFor(name)).toMatch(/^Could not open that folder\. /)
+            expect(copyFor(name)).not.toMatch(/graph/i)
+        }
+    })
+
+    it('asks for the folder again when it is gone or access was refused', () => {
+        expect(copyFor('NotFoundError')).toContain('could not be found on disk')
+        expect(copyFor('NotAllowedError')).toContain('allow access if the browser asks')
+        expect(copyFor('NotAllowedError', true)).not.toContain('browser')
+        for (const name of ['NotFoundError', 'NotAllowedError']) expect(copyFor(name)).toContain('Choose the folder again')
+    })
+
+    it('reports what an unknown fault said, as the system in an installed app', () => {
+        expect(copyFor('OperationError', true, 'The disk is offline.')).toContain('The system reported: The disk is offline.')
     })
 })

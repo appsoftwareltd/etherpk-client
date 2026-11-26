@@ -15,6 +15,7 @@
  */
 import * as Y from 'yjs'
 import { sanitizeQuickNotes } from '#lib/document/quick-notes.js'
+import { saveBlob, type SaveOutcome } from '#lib/native/save-file.js'
 import { openGraphCache, type GraphCache } from './local-cache'
 import type { RegistryEntry } from './graph-sync'
 
@@ -141,13 +142,7 @@ export function unsentChangesMarkdown(documents: readonly UnsentDocument[]): str
     return `${documents.map((document) => `# ${document.name}\n\n${document.text}`).join('\n\n')}\n`
 }
 
-/** Hand the file to the browser as a download. */
-export function saveUnsentChangesFile(documents: readonly UnsentDocument[], graphName: string): void {
-    const url = URL.createObjectURL(new Blob([unsentChangesMarkdown(documents)], { type: 'text/markdown;charset=utf-8' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${graphName} unsent changes.md`
-    link.click()
-    // Long enough for the browser to start the download; the URL holds the text in memory.
-    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+/** Give the file to the person to keep. `cancelled` when they chose not to, in an app that asks where. */
+export function saveUnsentChangesFile(documents: readonly UnsentDocument[], graphName: string): Promise<SaveOutcome> {
+    return saveBlob(new Blob([unsentChangesMarkdown(documents)], { type: 'text/markdown;charset=utf-8' }), `${graphName} unsent changes.md`)
 }

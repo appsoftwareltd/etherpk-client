@@ -1,12 +1,13 @@
 {
     "name": "@appsoftwareltd/etherpk-client",
-    "version": "0.54.0",
+    "version": "0.55.0",
     "license": "Elastic-2.0",
     "private": true,
     "type": "module",
     "scripts": {
         "dev": "node build-extensions.mjs && vite dev",
         "build": "node build-extensions.mjs && node scripts/vite-build.mjs && node scripts/build-server.mjs",
+        "build:installed": "node build-extensions.mjs && node scripts/build-installed.mjs",
         "preview": "vite preview",
         "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p src/service-worker/tsconfig.json",
         "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -37,6 +38,7 @@
     },
     "dependencies": {
         "@appsoftwareltd/etherpk-extension-api": "workspace:*",
+        "@appsoftwareltd/etherpk-native-bridge": "workspace:*",
         "@appsoftwareltd/etherpk-shared": "workspace:*",
         "@appsoftwareltd/etherpk-themes": "workspace:*",
         "@cantoo/pdf-lib": "^2.11.1",

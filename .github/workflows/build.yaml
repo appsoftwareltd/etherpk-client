@@ -2,10 +2,11 @@ name: Build and release
 
 # Every push to main publishes `edge` images. A push whose apps/client/package.json version has no
 # `v<version>` tag yet is a release: versioned images, the Headless Client and the Extension API on
-# npm, then the tag and a GitHub Release with the Node bundle. Each publishing step can run twice
-# without harm, and the tag is created last, so a release that fails part-way completes on a re-run
-# or the next push. The Headless Client's entry in the MCP Registry is the one step the tag does not
-# wait for: when it fails, re-run that job.
+# npm, then the tag and a GitHub Release with the Node bundle and the installers of the Native
+# Apps. Each publishing step can run twice without harm, and the tag is created last, so a release that
+# fails part-way completes on a re-run or the next push. An installer that could not be made does not
+# hold it back (see `installed-build`). The Headless Client's entry in the MCP Registry is the one step
+# the tag does not wait for: when it fails, re-run that job.
 
 on:
   push:
@@ -37,6 +38,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Type check
+        # svelte-check over the Client ran out of Node's default heap on the runner (exit 134,
+        # "JavaScript heap out of memory"), and passed or failed with the load beside it.
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: pnpm check
       - name: Lint
         run: pnpm lint
@@ -203,6 +208,7 @@ jobs:
           path: ${{ runner.temp }}/npm/*.tgz
           if-no-files-found: error
           retention-days: 7
+          overwrite: true
 
   npm-publish:
     name: Publish the Headless Client and the Extension API to npm
@@ -316,15 +322,389 @@ jobs:
           "$RUNNER_TEMP/mcp-publisher" login github-oidc
           "$RUNNER_TEMP/mcp-publisher" publish
 
-  release:
-    name: Tag and GitHub Release with the Node bundle
+  # The Native Apps. Each job below may fail without holding the release back: the image, npm and the
+  # Node bundle never wait for one. `release` takes the installers whose smoke tests passed, says which
+  # are missing, and keeps "Latest" on the release before until every installer is there, so a download
+  # link to the latest release never stops working. Re-running the failed jobs adds what was missing.
+  #
+  # No job that runs a package's code or a build plugin's holds a secret or can write to the repository.
+  # The one signature, the APK's, is made by `sign-android`, which has no checkout and no install. The
+  # one job that can write, `release`, installs nothing and checks out only scripts/native-apps.
+  #
+  # "Run workflow" builds and tests the desktop installers without a release, and leaves them as
+  # artifacts. Android is built and left unsigned and untested, since only a release is signed.
+  installed-build:
+    name: Installed Build
+    needs: [verify, version]
+    if: needs.version.outputs.release == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # An app has no server to read settings from, so it carries these (apps/client/installed-build.ts).
+      # A variable the repository does not have is taken out, since an empty setting is not an unset one.
+      # The apps open with the managed servers named here, so the build stops when one is missing, unless
+      # INSTALLED_STANDALONE is "true" (installed-settings.mjs, ADR 0214).
+      - name: Build the Client as static files
+        env:
+          GIT_COMMIT: ${{ github.sha }}
+          INSTALLED_STANDALONE: ${{ vars.INSTALLED_STANDALONE }}
+          INSTALLED_ACCOUNT_ISSUER: ${{ vars.INSTALLED_ACCOUNT_ISSUER }}
+          INSTALLED_MANAGED_SYNC_URL: ${{ vars.INSTALLED_MANAGED_SYNC_URL }}
+          INSTALLED_WEB_CLIENT_URL: ${{ vars.INSTALLED_WEB_CLIENT_URL }}
+          PUBLIC_DICTIONARY_URL: ${{ vars.PUBLIC_DICTIONARY_URL }}
+          PUBLIC_MAP_STYLE_URL: ${{ vars.PUBLIC_MAP_STYLE_URL }}
+          PUBLIC_MAP_STYLE_URL_DARK: ${{ vars.PUBLIC_MAP_STYLE_URL_DARK }}
+          PUBLIC_PLACE_SEARCH_URL: ${{ vars.PUBLIC_PLACE_SEARCH_URL }}
+          PUBLIC_POSTCODES_URL: ${{ vars.PUBLIC_POSTCODES_URL }}
+          PUBLIC_TELEMETRY_URL: ${{ vars.PUBLIC_TELEMETRY_URL }}
+          PUBLIC_TELEMETRY_WEBSITE_ID: ${{ vars.PUBLIC_TELEMETRY_WEBSITE_ID }}
+          PUBLIC_TERMS_URL: ${{ vars.PUBLIC_TERMS_URL }}
+          PUBLIC_PRIVACY_URL: ${{ vars.PUBLIC_PRIVACY_URL }}
+        run: |
+          set -euo pipefail
+          node scripts/native-apps/installed-settings.mjs
+          for name in INSTALLED_STANDALONE INSTALLED_ACCOUNT_ISSUER INSTALLED_MANAGED_SYNC_URL INSTALLED_WEB_CLIENT_URL "${!PUBLIC_@}"; do
+            [ -n "${!name:-}" ] || unset "$name"
+          done
+          pnpm build:installed
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installed-build
+          path: apps/client/build-installed
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  package-linux:
+    name: Package for Linux
+    needs: [version, installed-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts --filter @appsoftwareltd/etherpk-desktop...
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: installed-build
+          path: apps/client/build-installed
+      - name: Package
+        env:
+          INSTALLED_ACCOUNT_ISSUER: ${{ vars.INSTALLED_ACCOUNT_ISSUER }}
+          INSTALLED_UPDATE_FEED_URL: ${{ vars.INSTALLED_UPDATE_FEED_URL }}
+        run: pnpm --filter @appsoftwareltd/etherpk-desktop package:linux
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installer-linux
+          path: |
+            apps/desktop/release/EtherPK-linux-x64.AppImage
+            apps/desktop/release/EtherPK-linux-x64.deb
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  # On Windows, where electron-builder needs no Wine to make the uninstaller. Not signed.
+  package-windows:
+    name: Package for Windows
+    needs: [version, installed-build]
+    runs-on: windows-2025
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts --filter "@appsoftwareltd/etherpk-desktop..."
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: installed-build
+          path: apps/client/build-installed
+      - name: Package
+        env:
+          INSTALLED_ACCOUNT_ISSUER: ${{ vars.INSTALLED_ACCOUNT_ISSUER }}
+          INSTALLED_UPDATE_FEED_URL: ${{ vars.INSTALLED_UPDATE_FEED_URL }}
+        run: pnpm --filter "@appsoftwareltd/etherpk-desktop" package:windows
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installer-windows
+          path: apps/desktop/release/EtherPK-windows-x64.exe
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  # Made unsigned: Gradle and its plugins never see the key. Until the repository variable
+  # ANDROID_CERT_SHA256 says which certificate a release is signed with, there is no key to sign with
+  # and the three Android jobs are skipped.
+  package-android:
+    name: Package for Android
+    needs: [version, installed-build]
+    if: vars.ANDROID_CERT_SHA256 != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install the Android SDK packages the build names
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;37.0.0" < <(yes) >/dev/null
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: installed-build
+          path: apps/client/build-installed
+      # No cache: what is released is built from the checksums in gradle/verification-metadata.xml alone.
+      - name: Build the release APK
+        working-directory: apps/android
+        env:
+          INSTALLED_ACCOUNT_ISSUER: ${{ vars.INSTALLED_ACCOUNT_ISSUER }}
+          INSTALLED_UPDATE_FEED_URL: ${{ vars.INSTALLED_UPDATE_FEED_URL }}
+        run: ./gradlew --no-daemon :app:assembleDirectRelease
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unsigned-android
+          path: apps/android/app/build/outputs/apk/direct/release/app-direct-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  # A release only. A run by hand leaves the unsigned APK as its artifact, so nothing but a released
+  # version ever carries the key every installed app's updates are checked against.
+  sign-android:
+    name: Sign the APK
+    needs: [version, package-android]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Restrict this environment to main in the repository settings. It holds the key every installed
+    # app's updates must be signed with.
+    environment: android-signing
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: unsigned-android
+      - name: Sign
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "::error title=No Android key::ANDROID_CERT_SHA256 is set and the environment android-signing has no ANDROID_KEYSTORE_BASE64 or no ANDROID_KEYSTORE_PASSWORD."
+            exit 1
+          fi
+          tools="$ANDROID_HOME/build-tools/37.0.0"
+          keystore="$RUNNER_TEMP/signing.p12"
+          trap 'rm -f "$keystore"' EXIT
+          (umask 077; base64 -d <<<"$ANDROID_KEYSTORE_BASE64" > "$keystore")
+          "$tools/zipalign" -f -P 16 4 app-direct-release-unsigned.apk aligned.apk
+          "$tools/apksigner" sign --ks "$keystore" --ks-key-alias etherpk --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --min-sdk-version 30 --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
+            --v4-signing-enabled false --out EtherPK-android.apk aligned.apk
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installer-android
+          path: EtherPK-android.apk
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  smoke-linux:
+    name: Smoke test the Linux packages
+    needs: [version, package-linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb fuse3 desktop-file-utils
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: installer-linux
+          path: packages-linux
+      - run: scripts/native-apps/smoke-linux.sh packages-linux "$VERSION" smoke-linux
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: smoke-linux
+          path: smoke-linux
+          retention-days: 7
+          overwrite: true
+
+  smoke-windows:
+    name: Smoke test the Windows installer
+    needs: [version, package-windows]
+    runs-on: windows-2025
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: installer-windows
+      - run: scripts/native-apps/smoke-windows.ps1 -Installer EtherPK-windows-x64.exe -Version $env:VERSION
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: smoke-windows
+          path: smoke-windows.png
+          if-no-files-found: ignore
+          retention-days: 7
+          overwrite: true
+
+  # The APK that will be released, checked against the pinned certificate and started on an emulator
+  # of API 37, whose WebView is new enough for the app. Older images have one it asks to have updated.
+  smoke-android:
+    name: Smoke test the APK
+    needs: [version, sign-android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: installer-android
+      - name: Start an emulator
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          # Google names the image of API 37 for its 16 KB pages. The plain one is taken if there is one.
+          image=$("$sdkmanager" --list 2>/dev/null | grep -oE 'system-images;android-37\.0;google_apis(_ps16k)?;x86_64' | sort | head -n 1)
+          [ -n "$image" ] || { echo '::error::No API 37 emulator image is offered.'; exit 1; }
+          "$sdkmanager" "emulator" "platform-tools" "$image" < <(yes) >/dev/null
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name smoke --package "$image" --device pixel_6
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          nohup "$ANDROID_HOME/emulator/emulator" -avd smoke -no-window -no-audio -no-boot-anim -no-snapshot -memory 4096 -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          # shellcheck disable=SC2016 # The emulator's shell reads that, not this one.
+          timeout 600 "$ANDROID_HOME/platform-tools/adb" wait-for-device shell 'until [ "$(getprop sys.boot_completed)" = 1 ]; do sleep 2; done'
+      - run: scripts/native-apps/smoke-android.sh EtherPK-android.apk "$VERSION" "$ANDROID_CERT_SHA256" --boot
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: smoke-android
+          path: smoke-android.png
+          if-no-files-found: ignore
+          retention-days: 7
+          overwrite: true
+
+  # Runs whatever became of the jobs before it, so that the release has what passed.
+  installers:
+    name: Checksums and provenance of the installers
+    needs: [version, installed-build, package-linux, package-windows, package-android, sign-android, smoke-linux, smoke-windows, smoke-android]
+    if: ${{ !cancelled() && needs.version.outputs.release == 'true' && needs.installed-build.result != 'skipped' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # The attestation is signed with this job's OIDC identity and kept by GitHub.
+      id-token: write
+      attestations: write
+    outputs:
+      complete: ${{ steps.collect.outputs.complete }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: installer-*
+          path: artifacts
+      - name: Collect what passed
+        id: collect
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
+        run: mkdir -p artifacts && node scripts/native-apps/collect.mjs --from artifacts --out installers
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: steps.collect.outputs.made != '0'
+        with:
+          subject-path: installers/EtherPK-*
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installers
+          path: installers
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  # Building the bundle runs the code of every package it installs, so this job can read the
+  # repository and write nothing. `release` publishes what it makes.
+  bundle:
+    name: Build the Node bundle
     needs: [version, image, npm-pack, npm-publish]
-    # npm-publish is skipped when the version is already on npm; the release still runs then,
-    # but never after a failure.
-    if: ${{ !failure() && !cancelled() && needs.version.outputs.release == 'true' }}
+    # npm-publish is skipped when the version is already on npm; the bundle is still built then, but
+    # never after a failure.
+    if: >-
+      ${{ !cancelled() && needs.version.outputs.release == 'true'
+      && needs.image.result == 'success'
+      && needs.npm-pack.result == 'success'
+      && (needs.npm-publish.result == 'success' || needs.npm-publish.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     env:
       VERSION: ${{ needs.version.outputs.version }}
       BUNDLE_STEM: etherpk-client-${{ needs.version.outputs.version }}
@@ -332,7 +712,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -413,27 +792,105 @@ jobs:
 
       - name: Pack
         run: tar czf "${BUNDLE_STEM}.tar.gz" -C stage etherpk-client
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: node-bundle
+          path: ${{ env.BUNDLE_STEM }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  # Tags and publishes. It holds the one token that can write to the repository, so it installs no
+  # package and checks out only scripts/native-apps, whose scripts use Node alone. The history comes
+  # too, for the release notes.
+  release:
+    name: Tag and GitHub Release with the Node bundle and the installers
+    needs: [version, bundle, installers]
+    # An installer job that failed must not hold the release back, so `installers` may have any result.
+    if: ${{ !cancelled() && needs.version.outputs.release == 'true' && needs.bundle.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      BUNDLE_STEM: etherpk-client-${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          sparse-checkout: scripts/native-apps
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: node-bundle
+
+      # Named by its job's result, so an installer left over from a job that failed is never taken.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.installers.result == 'success'
+        with:
+          name: installers
+          path: installers
 
       # The notes are the change lists of the exports since the previous release, without the
-      # trailers that tie each export to its private commit.
+      # trailers that tie each export to its private commit. A release that is there already is the one
+      # before it in `git describe` on a re-run, so its own tag is left out.
       - name: Write the release notes
         run: |
           set -euo pipefail
-          previous=$(git describe --tags --abbrev=0 --match 'v*' HEAD 2>/dev/null || true)
+          previous=$(git describe --tags --abbrev=0 --match 'v*' --exclude "v${VERSION}" HEAD 2>/dev/null || true)
           range=${previous:+${previous}..}HEAD
           {
             echo "The Client and the Headless Client (\`@appsoftwareltd/etherpk-mcp@${VERSION}\`) at ${VERSION}."
             echo
             echo "Run it with \`docker run -p 3000:3000 ${IMAGE}:${VERSION}\`, or unpack \`${BUNDLE_STEM}.tar.gz\` and run \`node build\` inside it (Node.js 24 or later)."
             echo
+            if [ -s installers/installer-notes.md ]; then
+              cat installers/installer-notes.md
+              echo
+            fi
             git log --format='%b' "$range" | grep -vE '^(GitOrigin-RevId|Co-authored-by):|^Changes from the private repository:|^$' || true
           } > notes.md
           cat notes.md
 
+      # Made with the Node bundle alone, so that the tag never waits for an upload of an installer. A
+      # release that lacks an installer is not marked Latest: the release before keeps the mark, and
+      # with it the links people download the installers from.
       - name: Create the tag and the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release create "v${VERSION}" "${BUNDLE_STEM}.tar.gz" \
-            --target "$GITHUB_SHA" --title "v${VERSION}" --notes-file notes.md
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "v${VERSION} is there already: this run adds to it"
+            gh release edit "v${VERSION}" --notes-file notes.md
+          else
+            gh release create "v${VERSION}" "${BUNDLE_STEM}.tar.gz" \
+              --target "$GITHUB_SHA" --title "v${VERSION}" --notes-file notes.md --latest=false
+          fi
+
+      - name: Attach the installers
+        if: needs.installers.result == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(installers/EtherPK-* installers/SHA256SUMS)
+          if [ ${#files[@]} -gt 1 ]; then node scripts/native-apps/attach.mjs "v${VERSION}" "${files[@]}"; fi
+
+      - name: Mark it Latest, or say why not
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPLETE: ${{ needs.installers.result == 'success' && needs.installers.outputs.complete == 'true' }}
+        run: |
+          set -euo pipefail
+          if [ "$COMPLETE" = true ]; then
+            # A failed job re-run after a newer release went out completes this one and no more.
+            newest=$(gh release list --limit 100 --json tagName --jq '.[].tagName' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+            if [ "$newest" = "v${VERSION}" ]; then gh release edit "v${VERSION}" --latest; fi
+          else
+            echo "::warning title=An installer is missing::v${VERSION} is released, and is not marked Latest, because an installer job did not pass. Re-run the failed jobs."
+          fi

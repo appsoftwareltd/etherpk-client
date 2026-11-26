@@ -5,6 +5,29 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.55.0 - 2026-11-26
+
+### Client
+
+- **Native Apps for Windows, Linux and Android.** A release attaches a Windows installer and a Linux
+  AppImage and `.deb` when each passes its tests on GitHub's machines, and an Android APK once the
+  APK is signed, with `SHA256SUMS` and a build provenance attestation for each. The apps open folders
+  on your device directly and need no browser. They check a signed list of
+  releases for updates, and are offered a version some time after its release. The Windows and Linux
+  files are not signed by a certificate authority: the README says how to check a download. On Android
+  the app is on the share sheet. Each app opens Markdown files and `etherpk:` links from the rest of
+  the device. The Windows and Linux apps can be pointed at another Sync Server with
+  `ETHERPK_SYNC_SERVER` or `syncServer` in their `settings.json`.
+- **The Client and the Headless Client say what they are when they connect.** A Sync Server is told
+  whether it is the web Client, a Native App or the Headless Client, and which version. Nothing about
+  you or your device is sent with it.
+- **Fixes.**
+  - An edit made to a folder graph just before its tab closed is saved. Closing a tab while an edit is
+    not yet on disk asks first.
+  - The PDF reader opens in Chrome and Edge 140 to 146, where it did not start or drew some text in
+    the wrong font.
+  - A second share sent to EtherPK while its share page is open no longer stops at "Reading the file".
+
 ## 0.54.0 - 2026-11-26
 
 ### Client

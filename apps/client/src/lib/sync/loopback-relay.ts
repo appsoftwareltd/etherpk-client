@@ -26,7 +26,7 @@ interface DocLifecycle {
 }
 
 type ServerPayload = SyncServerMessage extends infer Message
-    ? Message extends { v: typeof SYNC_PROTOCOL_VERSION }
+    ? Message extends { v: number }
         ? Omit<Message, 'v'>
         : never
     : never

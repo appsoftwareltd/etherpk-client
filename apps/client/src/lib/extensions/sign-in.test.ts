@@ -34,6 +34,13 @@ describe('signing in from an extension', () => {
     beforeEach(() => vi.useFakeTimers())
     afterEach(() => vi.useRealTimers())
 
+    it('says why where nobody can sign in, and opens nothing', async () => {
+        const openWindow = vi.fn(() => null)
+        const signIn = createExtensionSignIn({ origin: 'app://etherpk', openWindow, channel: channels().make, unavailable: 'Open EtherPK in a browser to use this extension.' })
+        await expect(signIn.authorize('https://example.com/authorize?state=1')).rejects.toThrow('Open EtherPK in a browser')
+        expect(openWindow).not.toHaveBeenCalled()
+    })
+
     it('names one return address on the Client', () => {
         expect(setUp().signIn.redirectUri).toBe(`https://client.example${SIGN_IN_PATH}`)
         expect(SIGN_IN_PATH).toBe('/extension-sign-in')

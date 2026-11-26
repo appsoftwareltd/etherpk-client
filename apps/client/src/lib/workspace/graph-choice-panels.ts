@@ -9,6 +9,7 @@
  */
 import { syncPlusPricePhrase, type SyncPlusOfferTerms } from '@appsoftwareltd/etherpk-shared'
 import type { ServerAuthState } from './graph-picker-helpers'
+import { isNativeApp } from '../native/bridge.js'
 
 /** What pressing a panel's button does. The page runs every kind but `link`, which is an anchor. */
 export type GraphChoiceAction =
@@ -254,8 +255,11 @@ function syncedPanel(input: GraphChoiceInput): SyncedChoicePanel {
                 ? 'End-to-end encrypted, so EtherPK cannot read your notes'
                 : 'End-to-end encrypted, so the server cannot read your notes',
             'Share a notes graph and collaborate in real time',
-            // The mirror writes to a folder, so it needs what a Folder Graph needs of the browser.
-            'Keep a Local Mirror as plain Markdown files, in a browser that can open folders',
+            // The mirror writes to a folder, so in a browser it needs what a Folder Graph needs. A Native
+            // App opens folders itself, and naming a browser there would send the person to look for one.
+            isNativeApp()
+                ? 'Keep a Local Mirror as plain Markdown files'
+                : 'Keep a Local Mirror as plain Markdown files, in a browser that can open folders',
         ],
         ...syncedOffer(input, route),
     }

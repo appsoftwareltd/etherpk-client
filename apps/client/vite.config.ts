@@ -23,6 +23,10 @@ import { CLIENT_TRUSTED_TYPES_POLICIES } from './src/lib/security/trusted-types-
 // version, so the Agents tab can name the Headless Client released with this Client.
 const releaseVersion = readPackageVersion(new URL('./package.json', import.meta.url))
 
+// The Installed Build (installed-build.ts): the same Client, with no server behind it. It is built to a
+// folder of its own, so that making one leaves the web build as it is.
+const installedBuild = process.env.INSTALLED_BUILD === 'true' ? { accountIssuer: process.env.INSTALLED_ACCOUNT_ISSUER || null, webClientUrl: process.env.INSTALLED_WEB_CLIENT_URL || null } : null
+
 const appHtmlPath = fileURLToPath(new URL('./src/app.html', import.meta.url))
 
 export default defineConfig({
@@ -32,12 +36,13 @@ export default defineConfig({
     define: {
         __BUILD_INFO__: JSON.stringify(resolveBuildInfo(releaseVersion)),
         __RELEASE_VERSION__: JSON.stringify(releaseVersion),
+        __INSTALLED_BUILD__: JSON.stringify(installedBuild),
     },
     plugins: [
         tailwindcss(),
         sveltekit({
             preprocess: vitePreprocess(),
-            adapter: adapter(),
+            adapter: adapter(installedBuild ? { out: process.env.INSTALLED_SERVER_DIR, precompress: false } : {}),
             compilerOptions: {
                 // `aria-description` is a global attribute in WAI-ARIA 1.3, so it belongs on any
                 // role, but Svelte's table of which role takes which attribute predates it. The
@@ -84,8 +89,9 @@ export default defineConfig({
                 // Assets are content-hashed by the build already; this closes the OTHER
                 // stale-code gap — a long-lived tab running old client code. The app polls
                 // /_app/version.json and the root layout hard-navigates on the next route
-                // change once a new version is live (see +layout.svelte).
-                pollInterval: 60_000
+                // change once a new version is live (see +layout.svelte). A Native App's files are
+                // packaged with it and change only when it is restarted, so it does not ask.
+                pollInterval: installedBuild ? 0 : 60_000
             },
             // The service worker serves one cached page, the shell, at any app address (ADR 0142),
             // so the files a page loads must be named from the root: a relative `./_app/...` written
@@ -113,6 +119,9 @@ export default defineConfig({
     server: {
         port: 5173,
         strictPort: true,
+        // What builds write is nobody's source: thousands of files that would each take a watch. With
+        // VITE_NO_WATCH nothing is watched, so an edit made while a browser suite runs reloads none of its pages.
+        watch: process.env.VITE_NO_WATCH === 'true' ? null : { ignored: ['build', 'build-installed'].map((folder) => `${fileURLToPath(new URL(`./${folder}`, import.meta.url))}/**`) },
         // HTTPS and extra allowed hosts when the DEV_SERVER_* settings ask for them, to test from
         // another device through a TLS proxy such as Tailscale Serve (see dev-server-https.ts).
         ...devServerHttps(),

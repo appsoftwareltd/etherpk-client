@@ -32,7 +32,14 @@
                 if (carried) {
                     document.cookie = `${cookieName}=${carried}; Path=/; Max-Age=31536000; SameSite=Lax`;
                 }
-                const preference = carried ?? (supportedPreferences.has(cookieValue) ? cookieValue : 'system');
+                // A Native App's address may keep no cookies: lib/native/theme.ts keeps it here too.
+                let kept = null;
+                try {
+                    kept = window.etherpkNative ? localStorage.getItem(cookieName) : null;
+                } catch {
+                    // Storage refused: the system's theme.
+                }
+                const preference = [carried, cookieValue, kept].find((value) => supportedPreferences.has(value)) ?? 'system';
                 const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
                 const resolvedTheme = preference === 'system' ? (systemPrefersDark ? 'dark' : 'light') : preference;
                 const root = document.documentElement;

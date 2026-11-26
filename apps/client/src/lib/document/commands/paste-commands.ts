@@ -5,6 +5,7 @@
  * inside a selection the browser's menu opens.
  */
 
+import { pageReadsClipboard, shellClipboardText } from '#lib/native/clipboard.js'
 import type { EditorView } from '@codemirror/view'
 
 import { showNotice } from '#lib/activity/notices.js'
@@ -68,31 +69,42 @@ export async function pasteInto(view: EditorView): Promise<void> {
 
 /** The clipboard's contents as a paste carries them, or null when the browser refused, which a notice explains. */
 export async function readClipboard(): Promise<DataTransfer | null> {
-    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
     const data = new DataTransfer()
     try {
-        if (typeof clipboard?.read === 'function') {
-            for (const item of await clipboard.read()) {
-                for (const type of item.types) {
-                    const blob = await item.getType(type)
-                    if (type.startsWith('text/')) data.setData(type, await blob.text())
-                    else data.items.add(new File([blob], 'pasted', { type }))
-                }
-            }
-        } else if (typeof clipboard?.readText === 'function') {
-            data.setData('text/plain', await clipboard.readText())
-        } else {
-            throw new Error('no clipboard')
-        }
+        const shellText = await shellClipboardText()
+        if (shellText !== null) data.setData('text/plain', shellText)
+        else await readPageClipboard(data)
     } catch {
         showNotice({
             id: 'editor-paste',
             tone: 'info',
-            text: 'The browser did not let EtherPK read the clipboard. Press Ctrl+V (⌘V on a Mac) to paste instead.',
+            text: pageReadsClipboard()
+                ? 'The browser did not let EtherPK read the clipboard. Press Ctrl+V (⌘V on a Mac) to paste instead.'
+                : 'EtherPK could not read the clipboard. Touch and hold the text, then choose Paste.',
         })
         return null
     }
     return data
+}
+
+/** The clipboard as the page itself reads it, into `data`. Rejects when the browser refuses. */
+async function readPageClipboard(data: DataTransfer): Promise<void> {
+    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
+    if (typeof clipboard?.read === 'function') {
+        for (const item of await clipboard.read()) await addItem(item, data)
+    } else if (typeof clipboard?.readText === 'function') {
+        data.setData('text/plain', await clipboard.readText())
+    } else {
+        throw new Error('no clipboard')
+    }
+}
+
+async function addItem(item: ClipboardItem, data: DataTransfer): Promise<void> {
+    for (const type of item.types) {
+        const blob = await item.getType(type)
+        if (type.startsWith('text/')) data.setData(type, await blob.text())
+        else data.items.add(new File([blob], 'pasted', { type }))
+    }
 }
 
 /** Hand `data` to the editor as a paste event at the caret, so every paste route runs as for a key. */

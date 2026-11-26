@@ -41,6 +41,14 @@ describe('the default Trusted Types policy (ADR 0130)', () => {
         expect(rules.createScriptURL(`blob:${ORIGIN}/0f1e2d3c`)).toBe(`blob:${ORIGIN}/0f1e2d3c`)
     })
 
+    it('knows a desktop Native App’s own scheme, whose addresses have no origin of their own in every engine', () => {
+        const desktop = defaultPolicyRules((html) => html, 'app://etherpk')
+        expect(desktop.createScriptURL('/service-worker.js')).toBe('/service-worker.js')
+        expect(desktop.createScriptURL('app://etherpk/_app/immutable/workers/index.js')).toBe('app://etherpk/_app/immutable/workers/index.js')
+        expect(desktop.createScriptURL('blob:app://etherpk/0f1e2d3c')).toBe('blob:app://etherpk/0f1e2d3c')
+        for (const other of ['app://etherpk.example/x.js', 'app://other/x.js', 'https://etherpk/x.js', 'blob:app://other/0f1e2d3c', 'data:text/javascript,alert(1)']) expect(desktop.createScriptURL(other)).toBeNull()
+    })
+
     it('refuses script URLs from anywhere else, and ones that carry script themselves', () => {
         expect(rules.createScriptURL('https://cdn.example.net/x.js')).toBeNull()
         expect(rules.createScriptURL('//cdn.example.net/x.js')).toBeNull()

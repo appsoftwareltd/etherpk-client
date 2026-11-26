@@ -37,6 +37,19 @@ describe('describeWriteRefusal', () => {
         expect(copy.billing).toBeNull()
     })
 
+    it('never calls a refusal it has no word for a plan limit, whoever owns the graph', () => {
+        for (const owner of [true, false, null]) {
+            for (const managed of [true, false]) {
+                const copy = describeWriteRefusal({ refusal: { unrecognised: true }, owner, plan: null, managed })
+                expect(copy.reason).toBe('The sync server does not accept changes to this graph at the moment, for a reason this version of EtherPK does not know.')
+                expect(copy.next).toBe('Your changes are kept on this device and sync once it does. Updating EtherPK may show the reason.')
+                expect(copy.billing).toBeNull()
+            }
+        }
+        expect(writeRefusalForAgent({ unrecognised: true }, 1))
+            .toBe('The Sync Server refused the edit: the reason is one this version of etherpk-mcp does not know, so it may need updating. 1 operation is held here and sent automatically once the server accepts changes again.')
+    })
+
     it('names a storage allowance, for the owner and for everyone else', () => {
         expect(
             describeWriteRefusal({ refusal: { quotaCode: 'owned_storage_limit' }, owner: true, plan: null, managed: true }),

@@ -15,8 +15,9 @@ let loaded: Promise<{ lib: PdfLib; web: PdfWeb; dataFiles: unknown }> | undefine
 /** The library and its viewer, once per session, with the worker and the viewer's styles in place. */
 export function loadPdfLibrary(): Promise<{ lib: PdfLib; web: PdfWeb; dataFiles: unknown }> {
     loaded ??= (async () => {
+        await import('./pdf-polyfills')
         const lib = await import('pdfjs-dist')
-        const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+        const worker = await import('./pdf-worker?worker&url')
         lib.GlobalWorkerOptions.workerSrc = worker.default
         // The viewer module reads the library from this global as it evaluates.
         ;(globalThis as { pdfjsLib?: PdfLib }).pdfjsLib = lib

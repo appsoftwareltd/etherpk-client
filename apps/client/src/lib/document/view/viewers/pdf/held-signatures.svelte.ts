@@ -1,5 +1,7 @@
 import { SvelteMap } from 'svelte/reactivity'
 
+import { guardLeaving } from '#lib/native/leave-guard.js'
+
 import type { PlacedSignature } from './pdf-overlay'
 
 /**
@@ -15,6 +17,11 @@ export interface HeldSignatures {
 
 const held = new SvelteMap<string, HeldSignatures>()
 
+const anyUnsaved = (): boolean => [...held.values()].some(({ saved }) => !saved)
+
+// The same question, where a Native App's window is closed (leave-guard.ts).
+guardLeaving(() => (anyUnsaved() ? 'A signature placed on a PDF is in no saved copy yet, and closing loses the signature.' : null))
+
 const warnBeforeUnload = (event: BeforeUnloadEvent) => event.preventDefault()
 
 export const signaturesKey = (graphId: string, hash: string): string => `${graphId}:${hash}`
@@ -27,7 +34,7 @@ export function holdSignatures(key: string, signatures: HeldSignatures): void {
     if (signatures.list.length > 0) held.set(key, signatures)
     else held.delete(key)
     // Here and not in the tab, which a phone takes away while the signature waits.
-    if ([...held.values()].some(({ saved }) => !saved)) window.addEventListener('beforeunload', warnBeforeUnload)
+    if (anyUnsaved()) window.addEventListener('beforeunload', warnBeforeUnload)
     else window.removeEventListener('beforeunload', warnBeforeUnload)
 }
 

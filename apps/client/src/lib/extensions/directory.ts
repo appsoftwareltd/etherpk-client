@@ -54,6 +54,8 @@ export interface ExtensionDirectoryOptions {
     /** Where installed extensions keep their values (`etherpk-<id>:<key>`), cleared on removal. */
     storage?: Storage
     now?: () => number
+    /** Whether this Client has no server to fetch releases, as a Native App has none. */
+    serverless?: boolean
 }
 
 /** The message a refusing response carries (`{ message }`), or its status. */
@@ -116,6 +118,8 @@ export function createExtensionDirectory(options: ExtensionDirectoryOptions): Ex
     const directory: ExtensionDirectory = {
         clientVersion,
         async load(signal, { fresh = false } = {}) {
+            // The Directory's releases come from the Client's server, which a Native App has none of.
+            if (options.serverless) return { state: 'off' }
             const response = await fetcher(fresh ? '/api/extensions/directory?fresh=1' : '/api/extensions/directory', { signal, cache: 'no-store' })
             if (!response.ok) return { state: 'unavailable', error: await refusal(response) }
             return (await response.json()) as DirectoryState

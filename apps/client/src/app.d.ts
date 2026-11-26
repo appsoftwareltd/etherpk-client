@@ -43,6 +43,12 @@ declare global {
 
     /** This Client's release (`apps/client/package.json`), frozen in by vite.config.ts. */
     const __RELEASE_VERSION__: string
+
+    /**
+     * What an Installed Build was made with, frozen in by vite.config.ts. Null in every other build.
+     * Only for what the captured page has to carry: ask `isNativeApp()` at run time.
+     */
+    const __INSTALLED_BUILD__: { accountIssuer: string | null; webClientUrl: string | null } | null
 }
 
 // `aria-description` (WAI-ARIA 1.3) is read by browsers and screen readers, but Svelte's element

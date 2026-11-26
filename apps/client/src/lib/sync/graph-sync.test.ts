@@ -1496,11 +1496,11 @@ describe('graph-sync', () => {
             retryDelayMs: () => 0,
         })
         await gs.connected()
-        expect(urls).toEqual(['ws://loopback/sync?token=tok-1'])
+        expect(urls.map((url) => new URL(url).searchParams.get('token'))).toEqual(['tok-1'])
 
         fireClose!()
         await vi.waitFor(() => expect(urls).toHaveLength(2), { timeout: 2000 })
-        expect(urls[1]).toBe('ws://loopback/sync?token=tok-2')
+        expect(new URL(urls[1]).searchParams.get('token')).toBe('tok-2')
         gs.dispose()
     })
 

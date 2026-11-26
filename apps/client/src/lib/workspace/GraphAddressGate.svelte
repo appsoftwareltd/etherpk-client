@@ -14,6 +14,7 @@
      *
      * The decisions are graph-address-gate.ts; this component reads the registry and draws.
      */
+    import { THIS_PLACE, THIS_PLACE_START } from '#lib/native/place.js'
     import { onDestroy, onMount } from 'svelte'
 
     import { dev } from '$app/env'
@@ -26,7 +27,7 @@
     import { queueHistoryWrite } from '#lib/navigation/history-writes.js'
     import { readGraphFolderPath } from '#lib/storage/fs/folder-path.js'
     import { isPickerCancel } from '#lib/storage/fs/picker-cancel.js'
-    import { isFsaSupported, pickGraphDirectory } from '#lib/storage/fs/web-fs-adapter.js'
+    import { canPickFolder, pickFolder } from '#lib/storage/folder-access.js'
     import type { GraphRecord } from '#lib/storage/graph-registry.js'
     import { createIdbGraphRegistry } from '#lib/storage/graph-registry-idb.js'
 
@@ -73,14 +74,14 @@
             gate = gateFor(address, graphs, dev, chosenId())
         } catch (error) {
             console.error('[graph-address] the graph list could not be read', error)
-            gate = { kind: 'unreadable', message: 'EtherPK could not read its list of graphs in this browser.' }
+            gate = { kind: 'unreadable', message: `EtherPK could not read its list of graphs in ${THIS_PLACE}.` }
         }
     }
 
     // The registry is IndexedDB, and the folder picker is the browser's: both are read once
     // mounted, so a server render draws the same "reading" notice the browser starts from.
     onMount(() => {
-        folderSupported = isFsaSupported()
+        folderSupported = canPickFolder()
         shareWaiting = address.where === 'browser' && peekPendingShare()?.graphId === address.name
         if (gate.kind === 'reading') void read()
     })
@@ -150,7 +151,7 @@
         choosing = true
         problem = null
         try {
-            const handle = await pickGraphDirectory()
+            const handle = await pickFolder()
             const wrong = wrongFolderMessage(handle.name, address.name)
             if (wrong) {
                 problem = wrong
@@ -208,7 +209,7 @@
     <div class="notice" data-testid="graph-choose-folder">
         <h2 tabindex="-1" {@attach focusOnShow}>Open the folder “{address.name}”</h2>
         <p>
-            This link opens a page in a graph folder on this device. This browser has not opened that folder yet. Choose the
+            This link opens a page in a graph folder on this device. {THIS_PLACE_START} has not opened that folder yet. Choose the
             “{address.name}” folder to give EtherPK permission to open it. EtherPK remembers the folder for any future links.
         </p>
         {#if problem}
@@ -232,7 +233,7 @@
 {:else if gate.kind === 'choose-graph'}
     <div class="notice" data-testid="graph-choose-graph">
         <h2 tabindex="-1" {@attach focusOnShow}>{foldersNamedHeading(gate.graphs.length, address.name)}</h2>
-        <p>This browser has opened more than one folder with that name. Choose the one this link is for.</p>
+        <p>{THIS_PLACE_START} has opened more than one folder with that name. Choose the one this link is for.</p>
         <ul class="notice__choices">
             {#each gate.graphs as graph (graph.id)}
                 {@const described = describe(graph)}
@@ -255,7 +256,7 @@
     </div>
 {:else}
     <div class="notice" data-testid="graph-not-in-browser" role="alert">
-        <h2 tabindex="-1" {@attach focusOnShow}>That graph is not in this browser</h2>
+        <h2 tabindex="-1" {@attach focusOnShow}>That graph is not in {THIS_PLACE}</h2>
         <p>
             {gate.kind === 'unreadable'
                 ? gate.message

@@ -13,6 +13,9 @@ import {
 
 vi.mock('./storage-persistence', () => ({ ensurePersistentStorage: vi.fn(async () => ({})) }))
 
+const native = vi.hoisted(() => ({ installed: false }))
+vi.mock('#lib/native/bridge.js', () => ({ isNativeApp: () => native.installed }))
+
 type Listener = (event: Event) => void
 
 function fakeHost(opts: { standalone?: boolean } = {}) {
@@ -53,6 +56,22 @@ describe('watchAppInstall', () => {
         const { host } = fakeHost({ standalone: true })
         watchAppInstall(host)
         expect(appInstallState()).toEqual({ installed: true, promptAvailable: false, installedOnDevice: false })
+    })
+
+    it('reports an app with its own shell as installed, listens for no offer and counts nothing', () => {
+        native.installed = true
+        const addEventListener = vi.fn()
+        vi.stubGlobal('window', { addEventListener })
+        vi.stubGlobal('fetch', vi.fn())
+        try {
+            watchAppInstall()()
+            expect(appInstallState()).toEqual({ installed: true, promptAvailable: false, installedOnDevice: false })
+            expect(addEventListener).not.toHaveBeenCalled()
+            expect(fetch).not.toHaveBeenCalled()
+        } finally {
+            native.installed = false
+            vi.unstubAllGlobals()
+        }
     })
 
     it('captures the browser offer and suppresses the mini-infobar', () => {

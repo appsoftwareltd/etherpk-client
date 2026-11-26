@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { THE_STORE_YOURS } from "#lib/native/place.js";
     import { untrack } from "svelte";
     /**
      * One EBook, in its tab: the toolbar, the pages and the panels. Behaviour is in `EbookReader`, and the
@@ -18,6 +19,7 @@
     import { refusingEbookState, type EbookHighlight } from "#lib/document/ebook/ebook-state.js";
     import { writeClipboardText } from "#lib/document/commands/clipboard-text.js";
     import { editorContext } from "#lib/document/index.js";
+    import { downloadUrl } from "#lib/native/save-file.js";
     import { registerFileSelection } from "#lib/document/file-in-front.js";
     import { openConcept } from "#lib/document/open-concept.js";
     import { READING_RATES } from "#lib/document/ebook/read-aloud-voices.js";
@@ -334,7 +336,7 @@
             clearTimeout(selectionCopiedTimer);
             selectionCopiedTimer = setTimeout(() => (selectionCopied = false), 1500);
         } catch (error) {
-            showToast(`That could not be copied (${error instanceof Error ? error.message : String(error)}). It is still selected, so try your browser's own copy.`);
+            showToast(`That could not be copied (${error instanceof Error ? error.message : String(error)}). It is still selected, so try ${THE_STORE_YOURS} own copy.`);
         }
     }
 
@@ -363,12 +365,7 @@
 
     function downloadOriginal() {
         moreOpen = false;
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = displayName;
-        document.body.append(anchor);
-        anchor.click();
-        anchor.remove();
+        downloadUrl(url, displayName);
     }
 
     async function toggleFavourite() {

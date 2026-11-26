@@ -43,11 +43,14 @@ const INTRODUCTION = 'This page is for trying things. Your own notes go in the j
 const TODAYS_JOURNAL =
     "To open today's journal entry, select its tab, or select **Today** in the left sidebar. On a phone, tap the calendar icon in the top bar."
 
-/** The lines after the ones to try. The demo is the one this Client serves, at `demoUrl`. */
-function whereNext(demoUrl: string): string[] {
+/**
+ * The lines after the ones to try. The demo is the one this Client serves, at `demoUrl`, or with no
+ * address where there is none a person could open from the page (a Native App built with no web Client).
+ */
+function whereNext(demoUrl: string | null): string[] {
     return [
         '- [Your First Graph](https://docs.etherpk.com/your-first-graph) is the tutorial in the user docs.',
-        `- [The demo](${demoUrl}) is a graph full of notes.`,
+        demoUrl === null ? '- The demo is a graph full of notes. Open the demo from the Graphs page, with **Try the demo**.' : `- [The demo](${demoUrl}) is a graph full of notes.`,
         '- To delete this page, right-click its tab, or on a phone long-press its name in the top bar, and select **Delete…**. It does not come back.',
     ]
 }
@@ -60,7 +63,7 @@ function whereNext(demoUrl: string): string[] {
  * Client links to its own demo. It is written in full, since the page is also read where a
  * relative address means nothing: a text editor, a published site.
  */
-export function welcomePageBody(demoUrl: string): string {
+export function welcomePageBody(demoUrl: string | null): string {
     return [INTRODUCTION, '', TODAYS_JOURNAL, '', '**Try these**', '', ...WELCOME_TRY_LINES, '', ...whereNext(demoUrl), ''].join('\n')
 }
 
@@ -188,7 +191,7 @@ export function browserWelcomeClaims(): WelcomeClaims {
 export interface SeedWelcomePageDeps {
     graphId: string
     /** Where this Client serves the Demo Graph, as a whole address. */
-    demoUrl: string
+    demoUrl: string | null
     claims: WelcomeClaims
     /** How many documents the open graph holds, pages and journal entries. */
     documentCount: () => number

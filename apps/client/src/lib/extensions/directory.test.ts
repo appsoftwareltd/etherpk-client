@@ -52,6 +52,20 @@ function setUp(answers: Record<string, () => Response> = {}, builtIns: Catalogue
     return { host, installed, directory, requests, activate, storage, settings }
 }
 
+describe('the Extension Directory in a Native App', () => {
+    it('is off, and asks no server for a list', async () => {
+        const { host, installed, settings, requests } = setUp()
+        const fetchNothing = (async (input: RequestInfo | URL) => {
+            requests.push(String(input))
+            return new Response(null, { status: 404 })
+        }) as typeof fetch
+        const directory = createExtensionDirectory({ host, installed, settings, clientVersion: '0.9.6', fetch: fetchNothing, serverless: true })
+        expect(await directory.load()).toEqual({ state: 'off' })
+        expect(await directory.load(undefined, { fresh: true })).toEqual({ state: 'off' })
+        expect(requests).toEqual([])
+    })
+})
+
 describe('the Extension Directory in the browser', () => {
     it("reads the list as the Client's server gives it, or says why it cannot", async () => {
         const listing = { state: 'ok', listing: { version: 1, extensions: [orchard] } }

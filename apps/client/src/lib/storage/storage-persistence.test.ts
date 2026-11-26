@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const shell = vi.hoisted(() => ({ installed: false }))
+vi.mock('#lib/native/bridge.js', () => ({ isNativeApp: () => shell.installed }))
 
 import { browserAsksBeforePersisting, ensurePersistentStorage, persistenceStep } from './storage-persistence'
 
@@ -137,5 +140,19 @@ describe('persistenceStep', () => {
     it('treats a Permissions API that throws as not knowing, not as a refusal', async () => {
         const throwing = { query: async () => { throw new TypeError('not a permission name') } }
         expect(await persistenceStep({ storage: notYet, permissions: throwing, userAgent: FIREFOX, explained: false })).toBe('explain')
+    })
+})
+
+describe('persistent storage in a Native App', () => {
+    afterEach(() => {
+        shell.installed = false
+    })
+
+    it('is never asked for: the app keeps its own data, and a WebView refuses every time', async () => {
+        shell.installed = true
+        const storage = { persisted: vi.fn(async () => false), persist: vi.fn(async () => false) }
+        expect(await ensurePersistentStorage(storage)).toEqual({ supported: false, persisted: false, requested: false })
+        expect(await persistenceStep({ storage, userAgent: 'Firefox/140', explained: false })).toBe('none')
+        expect(storage.persist).not.toHaveBeenCalled()
     })
 })

@@ -9,6 +9,8 @@
      * share as the parts they are: the Layout controller and its presenters, `DocumentView` in its
      * plain profile, the toolbar, and the Commands that need only an editor or the Layout.
      */
+    import { isNativeApp } from '#lib/native/bridge.js'
+    import { guardLeaving } from '#lib/native/leave-guard.js'
     import { onMount, tick } from 'svelte'
 
     import { goto, pushState, replaceState } from '$app/navigation'
@@ -68,6 +70,9 @@
     import { plainHeading } from '#lib/workspace/workspace-heading.js'
     import { chosenGraphState } from '#lib/workspace/chosen-graph.js'
     import { openChosenFolder } from '#lib/workspace/open-chosen-folder.js'
+    import { folderWatch } from '#lib/native/folder-watch.js'
+    import { type FileHandle, type FolderHandle, singleFileTreeFor, treeAdapterFor } from '#lib/storage/folder-access.js'
+    import { attachFolderRescan, type ChangedPaths } from '#lib/storage/fs/folder-rescan.js'
     import { graphUrl } from '#lib/navigation/document-url.js'
     import { graphAddressOf } from '#lib/navigation/graph-address.js'
     import { APP_KEYBINDINGS, EDITOR_SHORTCUTS, TEXT_EDITOR_SHORTCUTS, type ShortcutBinding } from '#lib/workspace/keyboard-shortcuts.js'
@@ -110,8 +115,6 @@
     import type { LinkPlacement, PlainProfile } from '../plain-profile'
     import { type PlainSession, plainSession } from '../plain-session.svelte'
     import { createRemoteImageTrust } from '../remote-images'
-    import { createSingleFileAdapter } from '../single-file-adapter'
-    import { createWebTreeAdapter } from '../web-tree-adapter'
     import FileTreeView from './FileTreeView.svelte'
     import OutlineView from './OutlineView.svelte'
     import GoToFileDialog from './GoToFileDialog.svelte'
@@ -134,13 +137,13 @@
         /** The folder's own name, which is also its name in its address. */
         name: string
         /** The folder. Absent when one file was opened on its own. */
-        handle?: FileSystemDirectoryHandle
+        handle?: FolderHandle
         /**
          * One file opened on its own, from the device's file manager: the browser gave EtherPK the
          * file and not its folder. The workspace shows it with no address of its own, and offers
          * to open the folder.
          */
-        file?: FileSystemFileHandle
+        file?: FileHandle
         /** Asked for by the bar a file opened on its own is shown under. */
         onopenfolder?: () => void
         /** Dev and end-to-end tests only: how long after an edit a save starts. */
@@ -497,13 +500,13 @@
             notesGoingWith: (target) => notesGoingWith(folderTree, kept, target),
             async deleteAsset(target) {
                 await deleteFromFolder(target)
-                void rescan()
+                lookOver()
                 return { deleted: true }
             },
             async renameAsset(target, name) {
                 const to = await moveEntry(folderTree, folderStore, target, joinPath(dirOf(target), name))
                 entryMoved(target, to)
-                void rescan()
+                lookOver()
                 // The bookmarks that named the file by its old path follow it.
                 await followPdfRename(target, to, baseName(to)).catch(() => {})
                 await followEbookRename(target, to, baseName(to)).catch(() => {})
@@ -564,7 +567,7 @@
         },
         openAsGraph,
         openFile,
-        listingChanged: () => void rescan(),
+        listingChanged: () => lookOver(),
         entryMoved,
         notesGoingWith: async (path) => (tree && stateFolder ? notesGoingWith(tree, stateFolder, path) : null),
         deleteEntry: deleteFromFolder,
@@ -716,6 +719,14 @@
         mobileRenderer = undefined
     }
 
+    /** Before a Native App's window closes: write every edit, and name the files that cannot be written. */
+    async function saveBeforeLeaving(): Promise<string | null> {
+        saveLayout()
+        await store?.flushAll()
+        const unsaved = store?.unsavedPaths() ?? []
+        return unsaved.length === 0 ? null : `Your latest edits to ${unsaved.map(baseName).join(', ')} could not be saved, and closing loses those edits.`
+    }
+
     /**
      * Reset workspace, confirmed: what a folder opens with the first time, over a fresh presenter,
      * with the person's Sidebar Arrangement back at its defaults (ADR 0199). An edit not yet saved
@@ -774,20 +785,38 @@
         return turn
     }
 
-    /** Compare the open files and the listing with the folder: on focus and on a light poll. */
-    let rescanning = false
-    async function rescan(): Promise<void> {
-        if (rescanning || !store) return
-        rescanning = true
+    /** Look the folder over now: the tree changed something in it. */
+    function lookOver(): void {
+        rescan(null).catch((error: unknown) => console.warn('[plain-folder] a pass over the folder failed; the next one tries again', error))
+    }
+
+    /** Compare the open files and the listing with the folder, one pass after another (folder-rescan.ts says when). */
+    let lastPass: Promise<void> = Promise.resolve()
+    function rescan(changed: ChangedPaths): Promise<void> {
+        const pass = lastPass.then(() => compareWithFolder(changed))
+        lastPass = pass.catch(() => {})
+        return pass
+    }
+
+    async function compareWithFolder(changed: ChangedPaths): Promise<void> {
+        if (!store || disposed) return
         try {
             await store.reconcile()
-        } catch (error) {
-            console.warn('[plain-folder] a pass over the folder failed; the next one tries again', error)
         } finally {
-            rescanning = false
-            listingEpoch++
-            void index?.refresh()
+            // A change to files that are open, and still there, adds and removes no name. That is every
+            // save of the app's own, which a watch reports too, and the whole folder is not walked for it.
+            if (!onlyOpenFiles(changed, store)) {
+                listingEpoch++
+                void index?.refresh()
+            }
         }
+    }
+
+    function onlyOpenFiles(changed: ChangedPaths, files: PlainFolderStore): boolean {
+        return changed !== null && [...changed].every((path) => {
+            const state = files.stateOf(path)
+            return state !== null && state.loaded && !state.removedElsewhere && !state.missing
+        })
     }
 
     async function resolveConflict(choice: 'keep-mine' | 'take-disk'): Promise<void> {
@@ -809,8 +838,8 @@
 
     /** The folder, or the one file opened on its own, as a tree. */
     function openTree(): FolderTreeAdapter {
-        if (onlyFile) return createSingleFileAdapter(onlyFile)
-        if (handle) return createWebTreeAdapter(handle)
+        if (onlyFile) return singleFileTreeFor(onlyFile)
+        if (handle) return treeAdapterFor(handle)
         throw new Error('no folder was given')
     }
 
@@ -1009,7 +1038,6 @@
             }
         })()
 
-        const onFocus = () => void rescan()
         // Back and Forward between two files of this folder change the address without a navigation.
         const onPopState = () => {
             if (ready) followAddress()
@@ -1019,16 +1047,31 @@
             saveLayout()
             void store?.flushAll()
         }
-        window.addEventListener('focus', onFocus)
+        // The last event a phone reliably sends, and one a page has time to act on.
+        const onHidden = () => {
+            if (document.visibilityState === 'hidden') onPageHide()
+        }
+        document.addEventListener('visibilitychange', onHidden)
+        // A write started as the page goes is dropped with it, so the browser asks first (GraphWorkspace
+        // says more). A Native App's shell waits for the page instead.
+        const onBeforeUnload = (event: BeforeUnloadEvent) => {
+            if (isNativeApp() || (store?.unsavedPaths().length ?? 0) === 0) return
+            void store?.flushAll()
+            event.preventDefault()
+        }
+        window.addEventListener('beforeunload', onBeforeUnload)
+        const stopGuarding = guardLeaving(saveBeforeLeaving)
         window.addEventListener('pagehide', onPageHide)
-        const poll = setInterval(() => void rescan(), 4000)
+        const stopRescan = attachFolderRescan(rescan, { watch: folderWatch(handle) })
 
         return () => {
             disposed = true
-            window.removeEventListener('focus', onFocus)
             window.removeEventListener('popstate', onPopState)
             window.removeEventListener('pagehide', onPageHide)
-            clearInterval(poll)
+            document.removeEventListener('visibilitychange', onHidden)
+            window.removeEventListener('beforeunload', onBeforeUnload)
+            stopGuarding()
+            stopRescan()
             saveLayout()
             sidebars.dispose()
             // The editors go before the lists they save to: each stores where its bookmarks are as it

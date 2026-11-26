@@ -16,6 +16,7 @@
      * Nothing here is a setting. The one secret is the Agent Setup Code, which lives in
      * `HeadlessClientSignIn` and nowhere else.
      */
+    import { THIS_PLACE } from "#lib/native/place.js";
     import type { Snippet } from "svelte";
 
     import { iconSvg } from "#lib/surface/icons.js";
@@ -278,7 +279,7 @@
     <div class="space-y-4" data-testid="agents-tab-browser">
         {@render heading()}
         <p class="text-sm text-neutral-600 dark:text-neutral-400">
-            Use to allow an AI agent on your device to read and modify a graph. This graph is kept inside this browser, so an agent cannot reach it.
+            Use to allow an AI agent on your device to read and modify a graph. This graph is kept inside {THIS_PLACE}, so an agent cannot reach it.
         </p>
         <p class="text-sm text-neutral-950 dark:text-neutral-100">
             To work with an agent, open a folder graph, which is a folder of plain files an agent can open like any other project, or a synced graph, which an

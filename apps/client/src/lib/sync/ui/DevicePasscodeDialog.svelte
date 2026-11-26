@@ -12,6 +12,7 @@
      * device is then unlocked as a new one is, with the Recovery Code or by approval, and a custom
      * server needs a new access token. The caller hears of it through `onforgotten`.
      */
+    import { OPEN_HERE, THIS_PLACE } from "#lib/native/place.js";
     import { tick } from "svelte";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import { focusFirstInvalid } from "@appsoftwareltd/etherpk-shared/ui";
@@ -184,11 +185,11 @@
                     {intro}
                 {:else if mode === "unlock"}
                     The Encryption Keys this device holds for your synced graphs are protected by its passcode. Enter
-                    it to use them in this browser session.
+                    it to use them in {THIS_PLACE} session.
                 {:else if mode === "set"}
                     With a passcode, the Encryption Keys this device holds for your synced graphs, and the access
                     tokens for your own Sync Servers, are stored encrypted. You enter it once each time you
-                    open EtherPK in this browser.
+                    {OPEN_HERE}.
                 {:else if mode === "change"}
                     The Encryption Keys and access tokens this device holds are encrypted again under the new
                     passcode.

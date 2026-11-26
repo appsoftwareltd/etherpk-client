@@ -7,6 +7,7 @@
      * Folder graph's is (graph-card.ts), with Open as its one primary action. With no folder yet the
      * section says so and opens one (plain-folders-section.ts).
      */
+    import { START_AGAIN, THIS_PLACE } from '#lib/native/place.js'
     import ConfirmDialog from '@appsoftwareltd/etherpk-shared/confirm-dialog'
 
     import { CARD_ICONS, CARD_WORDS, GRAPH_CARD, NOT_SYNCED_NOTE } from '#lib/workspace/graph-card.js'
@@ -108,7 +109,7 @@
                 data-testid="plain-folders-unreadable"
                 class="rounded-xl border border-red-200 px-4 py-6 text-center text-sm text-red-600 dark:border-red-500/30 dark:text-red-400"
             >
-                Your Plain Folders could not be read from this browser's storage. Nothing has been deleted. Reload the page to try again.
+                Your Plain Folders could not be read from {THIS_PLACE}'s storage. Nothing has been deleted. {START_AGAIN} to try again.
             </p>
         {:else}
             <div data-testid="plain-folders-empty" class="rounded-xl border border-neutral-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
