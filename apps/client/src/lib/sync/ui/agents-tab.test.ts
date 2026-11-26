@@ -199,16 +199,15 @@ describe('the Claude Code plugin', () => {
         expect(pluginInstallCommand({ ...synced, headlessClient: headlessClientPackage('0.8.1') })).toBeNull()
     })
 
-    // The marketplace file is under public-repos/client here, and at the root of etherpk-client.
+    // The marketplace file and the plugin's skills/ folder are under public-repos/client here, and at
+    // the root of etherpk-client.
     const REPO = fileURLToPath(new URL('../../../../../../', import.meta.url))
-    const marketplace = ['public-repos/client', '.']
-        .map((path) => join(REPO, path, '.claude-plugin', 'marketplace.json'))
-        .find((path) => existsSync(path))
+    const root = ['public-repos/client', '.'].map((path) => join(REPO, path)).find((path) => existsSync(join(path, '.claude-plugin', 'marketplace.json')))
 
     it('sets only options the plugin has, under the plugin and marketplace names it is published as', () => {
-        expect(marketplace, '.claude-plugin/marketplace.json').toBeDefined()
-        const file = JSON.parse(readFileSync(marketplace!, 'utf8')) as { name: string; plugins: { name: string; userConfig: Record<string, unknown> }[] }
-        const [plugin] = file.plugins
+        expect(root, '.claude-plugin/marketplace.json').toBeDefined()
+        const file = JSON.parse(readFileSync(join(root!, '.claude-plugin', 'marketplace.json'), 'utf8')) as { name: string; plugins: { source: string }[] }
+        const plugin = JSON.parse(readFileSync(join(root!, file.plugins[0].source, '.claude-plugin', 'plugin.json'), 'utf8')) as { name: string; userConfig: Record<string, unknown> }
         for (const command of [pluginInstallCommand(synced)!, pluginInstallCommand(folder)!]) {
             expect(command).toContain(`claude plugin install ${plugin.name} --marketplace`)
             const keys = [...command.matchAll(/--config '?(\w+)=/g)].map((match) => match[1])

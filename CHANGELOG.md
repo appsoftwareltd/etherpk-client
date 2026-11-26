@@ -5,6 +5,14 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.53.0 - 2026-11-26
+
+### Headless Client
+
+- **The Claude Code plugin has a manifest and an icon of its own.** Its definition moved from the
+  marketplace file to `skills/.claude-plugin/plugin.json`, beside the EtherPK icon, so the plugin can
+  be submitted to Anthropic's plugin directory. Installing and using it is unchanged.
+
 ## 0.52.0 - 2026-11-26
 
 ### Client

@@ -99,7 +99,7 @@ agent skill's starter folders are under the [MIT License](format/LICENSE).
 | `extensions` | The extensions that come with the Client: Agent Chat, Excalidraw drawings, the Graph View, Kanban boards and maps |
 | `format` | An example graph folder in the EtherPK Format, and the result a program gets from reading it ([README](format/README.md)) |
 | `skills/etherpk` | The agent skill: how an AI agent makes, edits and publishes EtherPK graph folders ([SKILL.md](skills/etherpk/SKILL.md)) |
-| `.claude-plugin` | The Claude Code plugin's marketplace file. The plugin is the `skills/` folder, with the Headless Client started for the graph a person chooses |
+| `.claude-plugin` | The Claude Code plugin's marketplace file. The plugin is the `skills/` folder, whose `.claude-plugin/plugin.json` starts the Headless Client for the graph a person chooses |
 
 ## Run it
 

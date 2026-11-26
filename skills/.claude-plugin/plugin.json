@@ -1,0 +1,58 @@
+{
+    "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+    "name": "etherpk",
+    "displayName": "EtherPK",
+    "description": "Your EtherPK notes in Claude Code. Claude searches, reads and edits a synced graph, kept end-to-end encrypted across your devices, or a graph folder on this device, and writes pages, journal entries and tasks in the EtherPK Format.",
+    "version": "0.53.0",
+    "author": {
+        "name": "App Software Ltd",
+        "url": "https://etherpk.com"
+    },
+    "homepage": "https://docs.etherpk.com/claude-code-plugin",
+    "repository": "https://github.com/appsoftwareltd/etherpk-client",
+    "license": "Elastic-2.0",
+    "keywords": [
+        "notes",
+        "markdown",
+        "knowledge-base",
+        "wikilinks",
+        "tasks",
+        "journal",
+        "end-to-end-encryption"
+    ],
+    "skills": [
+        "./etherpk"
+    ],
+    "userConfig": {
+        "graph": {
+            "type": "string",
+            "title": "Synced graph",
+            "description": "The name or id of a synced graph, as the graph's Settings → Agents tab in EtherPK shows it. Leave it empty to use a graph folder instead."
+        },
+        "graph_folder": {
+            "type": "directory",
+            "title": "Graph folder",
+            "description": "A graph folder on this device, which holds pages/ and journals/. Leave it empty to use a synced graph instead."
+        },
+        "sync_server": {
+            "type": "string",
+            "title": "Sync Server",
+            "description": "Only for a synced graph on a Sync Server of your own, when this device is logged in to more than one. Leave it empty otherwise."
+        }
+    },
+    "mcpServers": {
+        "etherpk": {
+            "command": "npx",
+            "args": [
+                "@appsoftwareltd/etherpk-mcp",
+                "serve",
+                "--graph",
+                "${user_config.graph}",
+                "--folder",
+                "${user_config.graph_folder}",
+                "--sync-server",
+                "${user_config.sync_server}"
+            ]
+        }
+    }
+}
