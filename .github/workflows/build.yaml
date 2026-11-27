@@ -39,9 +39,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Type check
         # svelte-check over the Client ran out of Node's default heap on the runner (exit 134,
-        # "JavaScript heap out of memory"), and passed or failed with the load beside it.
+        # "JavaScript heap out of memory"), and passed or failed with the load beside it. It peaks at
+        # about 3 GB; a private runner has 8 GB in all, shared with the checks running beside it.
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm check
       - name: Lint
         run: pnpm lint

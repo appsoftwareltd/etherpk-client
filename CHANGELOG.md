@@ -5,6 +5,14 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.55.1 - 2026-11-27
+
+### Client
+
+- **The Android app is on the release.** `EtherPK-android.apk` is signed with EtherPK's own key and
+  attached beside the Windows and Linux installers, with its checksum and a build provenance
+  attestation.
+
 ## 0.55.0 - 2026-11-26
 
 ### Client
