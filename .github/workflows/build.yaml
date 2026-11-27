@@ -641,7 +641,9 @@ jobs:
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name smoke --package "$image" --device pixel_6
           "$ANDROID_HOME/emulator/emulator" -list-avds | grep -qx smoke || { echo '::error::The emulator cannot see the virtual device just created.'; exit 1; }
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-          nohup "$ANDROID_HOME/emulator/emulator" -avd smoke -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -memory 4096 -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          # A data partition the APK fits in: API 37's default one refused the install for space
+          # ("Requested internal only, but not enough space") in the 1.0.2 release.
+          nohup "$ANDROID_HOME/emulator/emulator" -avd smoke -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -memory 4096 -partition-size 6144 -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
           # shellcheck disable=SC2016 # The emulator's shell reads that, not this one.
           if ! timeout 900 "$ANDROID_HOME/platform-tools/adb" wait-for-device shell 'until [ "$(getprop sys.boot_completed)" = 1 ]; do sleep 2; done'; then
             echo '::error::The emulator did not finish booting within 15 minutes. The end of its log follows.'

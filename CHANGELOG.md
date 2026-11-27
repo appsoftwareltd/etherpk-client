@@ -5,13 +5,21 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## 1.0.2 - 2026-11-27
+## 1.0.3 - 2026-11-27
 
 ### Client
 
 - **Fixes.**
   - The Android app is on the release again: `EtherPK-android.apk` is attached beside the Windows
-    and Linux installers. Releases 1.0.0 and 1.0.1 went out without it.
+    and Linux installers. Releases 1.0.0 to 1.0.2 went out without it.
+
+## 1.0.2 - 2026-11-27
+
+### Client
+
+- **Fixes.**
+  - The release's test of the Android app runs on Android 17, whose WebView the app supports. The
+    1.0.2 release still went out without `EtherPK-android.apk`.
 
 ## 1.0.1 - 2026-11-27
 
