@@ -126,7 +126,14 @@ function write(graph: GraphSync, text: string): void {
     content.insert(content.length, text)
 }
 
-const stored = (door: Door) => door.fromServer.map((text) => JSON.parse(text) as { type: string }).filter(({ type }) => type === 'ack').length
+/**
+ * The edits the server has stored, each counted once. An append whose acknowledgement went down with a
+ * socket is sent again on the next one under the same outbox id, and acknowledged again.
+ */
+const stored = (door: Door) => new Set(door.fromServer
+    .map((text) => JSON.parse(text) as { type: string; outboxId?: string })
+    .filter(({ type }) => type === 'ack')
+    .map(({ outboxId }) => outboxId)).size
 
 describe('what a session says of itself when it connects', () => {
     it('is the version it speaks and what the build says it is', async () => {
