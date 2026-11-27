@@ -117,8 +117,39 @@ device and offers a **Custom server** form for connecting to a Sync Server by it
 settings it reads are listed, with their defaults, in
 [`apps/client/.env.example`](apps/client/.env.example) - pass them with `--env-file`.
 
-An example Docker Compose file is in
-[Running EtherPK With Docker](https://docs.etherpk.com/running-etherpk-with-docker).
+To keep it running, and start it again after a restart, save this as `compose.yaml` and run
+`docker compose up -d` beside it:
+
+```yaml
+name: etherpk
+
+services:
+    etherpk-client:
+        # The public image, built from https://github.com/appsoftwareltd/etherpk-client.
+        # Set ETHERPK_VERSION in .env to pin a release, for example 0.41.0.
+        image: ghcr.io/appsoftwareltd/etherpk-client:${ETHERPK_VERSION:-latest}
+        container_name: etherpk-client
+        restart: unless-stopped
+        # `latest` moves with each release, so fetch it on every `up`.
+        pull_policy: always
+        ports:
+            # address:host port:container port. The image listens on 3000.
+            # 127.0.0.1 lets only this device reach EtherPK.
+            - "${ETHERPK_BIND_ADDRESS:-127.0.0.1}:${ETHERPK_PORT:-3000}:3000"
+        # Settings go here, one per line.
+        # environment:
+        #     PUBLIC_DICTIONARY_URL: ""
+        healthcheck:
+            # The image has BusyBox wget and no curl.
+            test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 20s
+```
+
+[Running EtherPK With Docker](https://docs.etherpk.com/running-etherpk-with-docker) covers
+choosing a version, the address and port, settings and updates.
 
 ### Node bundle
 
