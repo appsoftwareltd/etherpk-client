@@ -626,15 +626,21 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          # Google names the image of API 37 for its 16 KB pages. The plain one is taken if there is one.
-          image=$("$sdkmanager" --list 2>/dev/null | grep -oE 'system-images;android-37\.0;google_apis(_ps16k)?;x86_64' | sort | head -n 1)
-          [ -n "$image" ] || { echo '::error::No API 37 emulator image is offered.'; exit 1; }
+          # API 35's image boots on a hosted runner. The API 37 image (Google's 16 KB page build)
+          # did not finish booting within ten minutes on two attempts of the 0.55.1 release. The app
+          # supports Android 11 and later, so API 35 tests what is released.
+          image='system-images;android-35;google_apis;x86_64'
           "$sdkmanager" "emulator" "platform-tools" "$image" < <(yes) >/dev/null
+          "$ANDROID_HOME/emulator/emulator" -accel-check
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name smoke --package "$image" --device pixel_6
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-          nohup "$ANDROID_HOME/emulator/emulator" -avd smoke -no-window -no-audio -no-boot-anim -no-snapshot -memory 4096 -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          nohup "$ANDROID_HOME/emulator/emulator" -avd smoke -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -memory 4096 -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
           # shellcheck disable=SC2016 # The emulator's shell reads that, not this one.
-          timeout 600 "$ANDROID_HOME/platform-tools/adb" wait-for-device shell 'until [ "$(getprop sys.boot_completed)" = 1 ]; do sleep 2; done'
+          if ! timeout 900 "$ANDROID_HOME/platform-tools/adb" wait-for-device shell 'until [ "$(getprop sys.boot_completed)" = 1 ]; do sleep 2; done'; then
+            echo '::error::The emulator did not finish booting within 15 minutes. The end of its log follows.'
+            tail -n 100 "$RUNNER_TEMP/emulator.log"
+            exit 1
+          fi
       - run: scripts/native-apps/smoke-android.sh EtherPK-android.apk "$VERSION" "$ANDROID_CERT_SHA256" --boot
         env:
           VERSION: ${{ needs.version.outputs.version }}
@@ -643,7 +649,9 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: smoke-android
-          path: smoke-android.png
+          path: |
+            smoke-android.png
+            ${{ runner.temp }}/emulator.log
           if-no-files-found: ignore
           retention-days: 7
           overwrite: true

@@ -132,7 +132,7 @@ HOST=127.0.0.1 PORT=3000 node build
 ```
 
 The full guide, including Windows commands, is
-[Running EtherPK On Your Own Device](https://docs.etherpk.com/running-etherpk-on-your-own-computer).
+[Ways to run EtherPK](https://docs.etherpk.com/running-etherpk-on-your-own-computer).
 
 ### Windows, Linux and Android apps
 
