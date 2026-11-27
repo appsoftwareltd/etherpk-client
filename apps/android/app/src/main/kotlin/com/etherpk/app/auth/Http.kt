@@ -38,20 +38,22 @@ class UrlConnectionHttp(private val limit: Int = 256 * 1024) : Http {
             connection.connectTimeout = budgetMs
             connection.readTimeout = budgetMs
             headers.forEach(connection::setRequestProperty)
+            val bytes = form?.toByteArray()
+            // The method and the body's length are set before the connection is made: the platform
+            // refuses them after, with "Already connected".
+            if (bytes != null) {
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                // A fixed length also keeps the platform from sending the request again by itself when
+                // a reused connection turns out to be closed. A code or a refresh token is sent once.
+                connection.setFixedLengthStreamingMode(bytes.size)
+            }
             try {
                 connection.connect()
             } catch (error: IOException) {
                 throw NotSent(error.message ?: error.javaClass.simpleName, error)
             }
-            if (form != null) {
-                connection.requestMethod = "POST"
-                connection.doOutput = true
-                val bytes = form.toByteArray()
-                // A fixed length also keeps the platform from sending the request again by itself when
-                // a reused connection turns out to be closed. A code or a refresh token is sent once.
-                connection.setFixedLengthStreamingMode(bytes.size)
-                connection.outputStream.use { it.write(bytes) }
-            }
+            if (bytes != null) connection.outputStream.use { it.write(bytes) }
             val status = connection.responseCode
             val stream = if (status < 400) connection.inputStream else connection.errorStream
             return HttpAnswer(status, stream?.use(::text).orEmpty())

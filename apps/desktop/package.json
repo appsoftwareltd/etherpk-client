@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-desktop",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "license": "Elastic-2.0",
     "private": true,
     "description": "EtherPK for Windows and Linux: the Client in an Electron shell, with native folder access.",

@@ -5,6 +5,14 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 1.0.5 - 2026-11-27
+
+### Client
+
+- **Fixes.**
+  - Signing in to EtherPK in the Android app works. In 1.0.4 it ended with "The sign-in was not
+    completed" once the browser came back to the app.
+
 ## 1.0.4 - 2026-11-27
 
 ### Client

@@ -123,6 +123,9 @@ android {
     testOptions {
         unitTests.all {
             it.systemProperty("etherpk.repository", rootDir.resolve("../..").path)
+            // The JDK's HttpURLConnection drops an Origin header unless told otherwise, and Android's
+            // sends it. UrlConnectionHttpTest checks the app's requests carry the one the account site wants.
+            it.systemProperty("sun.net.http.allowRestrictedHeaders", "true")
             // Files outside this project the tests compare it with.
             for (path in listOf("packages/native-bridge/src/index.ts", "packages/native-bridge/test-vectors", "apps/client/src/installed-build.test.ts", "apps/android/app/src/main/res/raw/port.js")) {
                 it.inputs.files(rootDir.resolve("../..").resolve(path)).withPathSensitivity(PathSensitivity.RELATIVE)
