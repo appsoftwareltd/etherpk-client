@@ -632,7 +632,13 @@ jobs:
           image='system-images;android-35;google_apis;x86_64'
           "$sdkmanager" "emulator" "platform-tools" "$image" < <(yes) >/dev/null
           "$ANDROID_HOME/emulator/emulator" -accel-check
+          # One folder for the virtual device, named to both tools: avdmanager writes under
+          # $XDG_CONFIG_HOME/.android on a hosted runner and the emulator looks in $HOME/.android,
+          # so the 1.0.0 release's emulator found no device called smoke.
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name smoke --package "$image" --device pixel_6
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -qx smoke || { echo '::error::The emulator cannot see the virtual device just created.'; exit 1; }
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           nohup "$ANDROID_HOME/emulator/emulator" -avd smoke -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -memory 4096 -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
           # shellcheck disable=SC2016 # The emulator's shell reads that, not this one.
