@@ -12,7 +12,7 @@
      * close, Tab stays inside, Escape dismisses, Enter in a field runs the primary action, and
      * a busy dialog refuses dismissal and says why.
      */
-    import type { Snippet } from "svelte";
+    import { untrack, type Snippet } from "svelte";
     import { dialogLayer, dialogStack, type OpenDialog } from "../ui/dialog-stack";
     import { dialogFocus } from "../ui/index.svelte";
 
@@ -32,6 +32,7 @@
         tools,
         icon,
         fillPhone = false,
+        closeOnBack = true,
     }: {
         /**
          * Visibility is owned by the caller. Deliberately not `$bindable`: half the original
@@ -107,6 +108,12 @@
          * breakpoint up it is the panel `size` gives.
          */
         fillPhone?: boolean;
+        /**
+         * Whether the browser's Back dismisses it, as Escape does, in an app that listens for Back
+         * on the dialog stack (the Client). Off for a dialog that is a place in the history with
+         * an entry of its own (Settings), whose own entry takes Back.
+         */
+        closeOnBack?: boolean;
     } = $props();
 
     const dismissible = $derived(closeOnBackdrop && !busy);
@@ -128,7 +135,8 @@
     let place = $state.raw<OpenDialog | null>(null);
     $effect.pre(() => {
         if (!open) return;
-        const opened = dialogStack.open();
+        // Back dismisses it as Escape does: not while it is busy, nor a dialog that must be answered.
+        const opened = dialogStack.open(untrack(() => closeOnBack) ? { dismiss: () => dismissible && close() } : {});
         place = opened;
         return () => {
             opened.close();

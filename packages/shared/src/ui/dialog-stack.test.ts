@@ -45,6 +45,39 @@ describe('the dialog stack', () => {
     })
 })
 
+describe('closing the dialog on top with Back', () => {
+    it('names the dialog on top that Back closes, and none when the one on top keeps its own entry', () => {
+        const stack = createDialogStack()
+        expect(stack.top()).toBeNull()
+        const closed: string[] = []
+        const outer = stack.open({ dismiss: () => closed.push('outer') })
+        expect(stack.top()?.dismiss).toBeDefined()
+        // Settings is a place in the history, with an entry of its own: Back is not the stack's to give it.
+        const settings = stack.open()
+        expect(stack.top()).toBe(settings)
+        expect(stack.top()?.dismiss).toBeUndefined()
+        settings.close()
+        stack.top()?.dismiss?.()
+        expect(closed).toEqual(['outer'])
+        outer.close()
+        expect(stack.top()).toBeNull()
+    })
+
+    it('tells each listener when a dialog opens or closes, until it stops listening', () => {
+        const stack = createDialogStack()
+        let heard = 0
+        const stop = stack.subscribe(() => heard++)
+        const dialog = stack.open()
+        dialog.close()
+        // A second close takes nothing off, so there is nothing to hear.
+        dialog.close()
+        expect(heard).toBe(2)
+        stop()
+        stack.open()
+        expect(heard).toBe(2)
+    })
+})
+
 describe('a dialog’s layers', () => {
     it('are the sheet’s backdrop and dialog layers for a dialog over the page', () => {
         expect(dialogLayer('backdrop', 0)).toBe('var(--z-backdrop)')

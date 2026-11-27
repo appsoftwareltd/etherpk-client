@@ -211,6 +211,8 @@ export const ICON_PATHS: Record<string, string> = {
     copy: '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5V4a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/>',
     /** A bare tick: that just happened. Swapped in for an action's own icon as its confirmation. */
     check: '<path d="M3.5 8.5 6.5 11.5 12.5 5"/>',
+    /** A frame with an arrow curling clockwise over its corner: turn this picture a quarter turn. */
+    'rotate-cw': '<rect x="2.5" y="6.5" width="7" height="7" rx="1"/><path d="M7 2.5h1.5a4 4 0 0 1 4 4v2"/><path d="M10.5 6.5l2 2 2-2"/>',
 
     // Sidebar
     /**

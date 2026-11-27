@@ -38,7 +38,7 @@
         type SearchSuggestion,
     } from "../search-suggest";
     import { iconSvg } from "#lib/surface/icons.js";
-    import { trapTab } from "@appsoftwareltd/etherpk-shared/ui";
+    import { dialogStack, trapTab } from "@appsoftwareltd/etherpk-shared/ui";
 
     const { controller }: { controller: SearchController } = $props();
 
@@ -137,7 +137,18 @@
         getActiveLayoutController().openView({ kind: "document", target: item.target });
     }
 
-    /** Escape, or a click on the backdrop: close, and give focus back to where it came from. */
+    // A Dismissable Overlay: the browser's Back closes it as Escape does, and moves nothing under
+    // it (overlay-history.ts). On the dialog stack, a dialog it was opened over leaves Escape to it.
+    // Keyed on whether it is open alone: `search` is replaced on every keystroke, and a place taken
+    // again for each one would put its history entry away and back with every letter typed.
+    const isOpen = $derived(search.open);
+    $effect.pre(() => {
+        if (!isOpen) return;
+        const place = dialogStack.open({ dismiss });
+        return () => place.close();
+    });
+
+    /** Escape, a click on the backdrop, or Back: close, and give focus back to where it came from. */
     function dismiss() {
         const target = returnFocusTo;
         returnFocusTo = null;

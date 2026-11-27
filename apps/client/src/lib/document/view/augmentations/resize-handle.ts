@@ -13,9 +13,9 @@
  * `W`: the handle sizes by width and keeps the aspect ratio.
  *
  * The handle is not focusable: the keyboard route is the hint itself (Editor Content Rules →
- * Selection). It is hidden until its owner raises it: a video's under the pointer, and always where
- * there is no hover (a phone), a picture's once a click or a tap selects the picture
- * (image-select.ts). It is not there at all while the editor is read-only.
+ * Selection). It is hidden until its owner raises it under the pointer, and always shows where there
+ * is no hover (a phone) unless its owner holds it back: a picture's waits for the tap that selects the
+ * picture (image-select.ts). It is not there at all while the editor is read-only.
  */
 
 import { isolateHistory } from '@codemirror/commands'
@@ -145,9 +145,10 @@ interface Drag {
 /**
  * Put the resize handle and its width readout in `wrap`, over `target`'s bottom-right corner. Where
  * `target` does not fill its wrap, the wrap's `--gk-image-gap-right` and `--gk-image-gap-bottom` say
- * how far in that corner is.
+ * how far in that corner is. Returns the handle, so its owner can count the pointer over it as over
+ * the target.
  */
-export function attachResizeHandle(view: EditorView, wrap: HTMLElement, target: HTMLElement, options: ResizeHandleOptions): void {
+export function attachResizeHandle(view: EditorView, wrap: HTMLElement, target: HTMLElement, options: ResizeHandleOptions): HTMLElement {
     const handle = document.createElement('span')
     handle.className = 'cm-md-resize-handle'
     handle.title = options.title
@@ -254,6 +255,7 @@ export function attachResizeHandle(view: EditorView, wrap: HTMLElement, target: 
     // The compatibility mouse events a press makes stay out of the editor, which would otherwise
     // reveal the markdown under the handle (image-embed.ts's widget handler).
     handle.addEventListener('mousedown', (event) => event.stopPropagation())
+    return handle
 }
 
 /**

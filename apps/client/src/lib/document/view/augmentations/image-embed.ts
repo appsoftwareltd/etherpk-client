@@ -5,13 +5,17 @@
  * (preserving aspect ratio) but a smaller image is never enlarged. A pure decoration over unaltered
  * markdown (ADR 0001).
  *
- * A click or a tap **selects** the picture (image-select.ts): its actions and its resize handle show,
- * **Edit as text** first. A clicked picture also takes the keyboard (image-keyboard.ts); a tap leaves
- * it as it was. Edit as text, or a double click, puts the caret on the picture's line, which reveals
- * its raw markdown for editing (the line kind of reveal-policy.ts); a click anywhere on that line
- * places the caret on it too (judged by the line you *click*, via the DOM), so repositioning the
- * caret with the mouse cannot collapse it. It collapses again as soon as the caret is on another
- * line, however it got there.
+ * A mouse over the picture shows its actions and its resize handle, and a click on it puts the caret
+ * on the picture's line, which reveals its raw markdown for editing (the line kind of
+ * reveal-policy.ts). A finger or a pen has no hover, so its tap **selects** the picture instead
+ * (image-select.ts): the actions and the handle show, **Edit as text** first, which is the mouse's
+ * click. A click anywhere on a revealed line places the caret on it too (judged by the line you
+ * *click*, via the DOM), so repositioning the caret with the mouse cannot collapse it. It collapses
+ * again as soon as the caret is on another line, however it got there: a click on another picture
+ * is one such way, and a tap on one parks the caret there for the same reason (image-select.ts).
+ *
+ * The Context Menu key and Shift+F10, with the caret on an image line over an asset, raise the
+ * asset's [[Context Menu]], as a right-click on the picture does ({@link imageMenuTargetAtCaret}).
  *
  * The widget keeps CodeMirror's height map true (ADR 0022's height-integrity rule): its vertical
  * spacing is **padding, never margin**, because CM measures a block widget by its border box and
@@ -45,27 +49,39 @@
  * asks again (`asset-load-retry.ts`); any other failure shows the broken state.
  */
 
-import { EditorSelection, type EditorState, type Extension, Facet, findClusterBreak, type Range, StateEffect, StateField, type TransactionSpec } from '@codemirror/state'
-import { Decoration, type DecorationSet, EditorView, type MouseSelectionStyle, ViewPlugin, WidgetType } from '@codemirror/view'
+import { EditorSelection, EditorState, type Extension, Facet, findClusterBreak, Prec, type Range, StateEffect, StateField, type TransactionSpec } from '@codemirror/state'
+import { Decoration, type DecorationSet, EditorView, type MouseSelectionStyle, ViewPlugin, WidgetType, keymap } from '@codemirror/view'
 
 import { AssetUnavailableError, type ResolvedAsset, assetNameFromRef, displayNameForRef } from '#lib/storage/fs/asset-store.js'
+import { type AssetContextMenuTarget, tryGetActiveCommandRegistry } from '#lib/surface/index.js'
 
-import { assetTargetAt, attachAssetContextMenu, buildAssetActions } from './asset-actions'
+import { assetTargetAt, attachAssetContextMenu, buildAssetActions, raiseAssetMenu } from './asset-actions'
 import { loadAssetWithRetry } from './asset-load-retry'
 import { withinClickSlop } from './click-slop'
 import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, blockWidgetIndent, proseTextInset } from './content-clamp'
 import { displayMaxWidth, parseImageDisplaySizeHint } from './image-display-size'
 import { type ImageFootprint, activeImageFootprints, persistableImageUrl } from './image-footprints'
 import { isDirectImageUrl } from './image-target'
-import { holdControlsThroughDoubleClick } from './image-double-click'
-import { leaveOnEscape, pictureKeepsEvent, pictureKeyboard } from './image-keyboard'
-import { imageDeselectSpec, imagePressSpec, imageTapSpec, isRenderedImageLine, selectedImageField, selectedImageHoldsKeyboard, selectedImageLine } from './image-select'
+import { ASSET_SAVE_ROTATION } from '../../commands/asset-commands'
+import { leaveOnEscape, pictureKeepsEvent } from './image-keyboard'
+import { type PictureRotation, endRotationSpec, pictureRotation, rotationField, savingSpec, turnRotationSpec } from './image-rotate'
+import {
+    imageDeselectSpec,
+    imageTapSpec,
+    isRenderedImageLine,
+    leavePictureEffects,
+    parkedImageField,
+    parkedImageLine,
+    selectedImageField,
+    selectedImageLine,
+} from './image-select'
 import { actionButtonTheme, buildActionCluster } from './inline-actions'
 import { HANDLE_INSIDE_MIN, MIN_DISPLAY_WIDTH, attachResizeHandle, displayWidthChange, resizeHandleTheme } from './resize-handle'
 import { isProtectedDocumentFacet } from './protected-document'
 import { lineRevealed, revealInputsChanged, revealedLines } from './reveal-policy'
 import { isBulletImageLine, isImageLine, parseImageLine } from '../../image-line'
 import { analysisFor } from '../analysis/editor-analysis'
+import { editorDocument } from '../editor-document'
 import { keyboardStaysFor } from '../keyboard-hold'
 import { uploadingImagesField } from '../uploading-images'
 
@@ -137,14 +153,15 @@ function hostOf(url: string): string {
 const OVERLAY_INSET = 6
 
 /**
- * The first of a selected picture's actions: show its markdown, as a double click on it does. The
- * label is an Extension Fence's for the same thing.
+ * The first of a tapped picture's actions: show its markdown, as a mouse's click on it does. A tap
+ * selects the picture, so this is how a finger gets to the text. The label is an Extension Fence's
+ * for the same thing.
  */
 const EDIT_AS_TEXT = { command: 'edit-as-text', icon: 'rename', label: 'Edit as text' }
 
 /**
- * Whether the press under way in an editor is a finger's or a pen's, which leaves the keyboard as it
- * is and deselects a picture it selected, where a mouse's does neither. Set from `pointerdown`, which comes before the `mousedown`
+ * Whether the press under way in an editor is a finger's or a pen's, which a tap on a picture
+ * selects where a mouse's click reveals. Set from `pointerdown`, which comes before the `mousedown`
  * a tap makes.
  */
 const fingerPress = new WeakMap<EditorView, boolean>()
@@ -248,18 +265,18 @@ function textRowY(view: EditorView, from: number, to: number, y: number): number
 }
 
 /**
- * What Edit as text, or a double click, on the rendered image at the line starting `lineFrom`
- * dispatches: the caret at the end of its markdown ({@link imageClickCaret}), which reveals the line.
- * A click on a picture still loading does the same. Shared with the rule rows, so
- * they drive the same transaction the pointer handler does.
+ * What a mouse's click, or Edit as text, on the rendered image at the line starting `lineFrom`
+ * dispatches: the caret at the end of its markdown ({@link imageClickCaret}), which reveals the line,
+ * and the caret leaving whatever line it was on, which draws another picture opened as text again.
+ * Shared with the rule rows, so they drive the same transaction the pointer handler does.
  */
 export function imageClickSpec(state: EditorState, lineFrom: number): TransactionSpec {
-    // The deselection is said outright: a caret already there moves nowhere.
-    return { selection: { anchor: imageClickCaret(state, lineFrom) }, ...imageDeselectSpec() }
+    // The selection and the park end outright: a caret already there moves nowhere.
+    return { selection: { anchor: imageClickCaret(state, lineFrom) }, effects: leavePictureEffects() }
 }
 
 /**
- * Where Edit as text on a rendered image puts the caret: the end of its line's markdown, after the `)`,
+ * Where a click on a rendered image puts the caret: the end of its line's markdown, after the `)`,
  * so what is typed next follows the image and the size hint is a few keys to the left.
  */
 export function imageClickCaret(state: EditorState, pos: number): number {
@@ -331,8 +348,10 @@ class ImageWidget extends WidgetType {
         readonly uploading = false,
         /** See {@link decodeGenerations}: differs from the previous widget's once its picture has decoded. */
         readonly decodeGeneration = 0,
-        /** A click or a tap selected it (image-select.ts): its controls show, Edit as text among them. */
+        /** A tap selected it (image-select.ts): its controls show, Edit as text among them. */
         readonly selected = false,
+        /** Rotate is showing it turned (image-rotate.ts): Rotate again, Save and Cancel stand in for its actions. */
+        readonly rotation: Omit<PictureRotation, 'pos'> | null = null,
     ) {
         super()
     }
@@ -347,7 +366,8 @@ class ImageWidget extends WidgetType {
             this.inline === other.inline &&
             this.uploading === other.uploading &&
             this.decodeGeneration === other.decodeGeneration &&
-            this.selected === other.selected
+            this.selected === other.selected &&
+            sameRotation(this.rotation, other.rotation)
         )
     }
 
@@ -382,7 +402,7 @@ class ImageWidget extends WidgetType {
     }
 
     /**
-     * A notice appearing or clearing, the decode generation moving on, a press selecting or deselecting
+     * A notice appearing or clearing, the decode generation moving on, a tap selecting or deselecting
      * it, or a shown picture's size hint changing (a drag of the resize handle) is the only difference
      * between two widgets of the same identity, and updating in place keeps the picture where it is;
      * anything else rebuilds the widget, which would otherwise reload the picture through its placeholder.
@@ -399,6 +419,7 @@ class ImageWidget extends WidgetType {
         if (this.uploading && !notice) wrap.appendChild(this.buildUploadingNotice())
         else if (!this.uploading && notice) notice.remove()
         wrap.classList.toggle('cm-md-image--selected', this.selected)
+        this.applyRotationIfDrawn(wrap, img)
         if (resized && img) {
             this.applySize(img)
             dom.dataset.imageSize = this.sizeStamp()
@@ -447,6 +468,7 @@ class ImageWidget extends WidgetType {
             wrap.appendChild(img)
             pictures.set(root, img)
             this.addOverlays(view, root, img, canDownload, broken)
+            this.applyRotation(wrap, img)
             // The swap changed the widget's height behind CodeMirror's height map; redraw through the
             // state so CM measures again (see `decodeGenerations`). A widget torn down while the picture
             // was in flight (its line revealed, its pane closed) is not in the document and has nothing
@@ -685,8 +707,8 @@ class ImageWidget extends WidgetType {
 
     /**
      * What sits over a shown picture: the actions at its top-right corner ({@link addActions}) and
-     * the resize handle at its bottom-right (resize-handle.ts), both raised once a click or a tap has
-     * selected it (image-select.ts). A broken
+     * the resize handle at its bottom-right (resize-handle.ts), both raised while a mouse or a
+     * hovering pen is over the picture, or once a tap has selected it (image-select.ts). A broken
      * picture has no size to change, so it gets no handle.
      *
      * The overlays are **siblings of the image inside the wrap**, positioned from the image's
@@ -702,27 +724,28 @@ class ImageWidget extends WidgetType {
         const wrap = wrapOf(root)
         const actions = this.addActions(view, root, wrap, canDownload)
         // A read-only editor (a theme preview) has nothing to write, so it offers no handle.
-        if (!broken && !view.state.readOnly) {
-            attachResizeHandle(view, wrap, img, {
-                title: 'Drag to resize. Double-click for the original size.',
-                // A picture is never enlarged, so a width past its own would write a number it cannot show.
-                limits: () => ({ narrowest: MIN_DISPLAY_WIDTH, widest: Math.min(img.naturalWidth || img.getBoundingClientRect().width, columnWidth(wrap, img)) }),
-                commit: (width) => {
-                    // Read the line live from the widget's DOM, as the click handler does: CM reuses
-                    // the DOM across edits above it, so an offset kept from building it goes stale.
-                    const spec = displayWidthChange(view.state, view.posAtDOM(root), this.url, width)
-                    if (spec) view.dispatch(spec)
-                },
-                // A cancelled drag puts the picture's height back with no transaction: redraw, as for a decode.
-                ended: () => {
-                    if (!root.isConnected) return
-                    const key = imageKeyOn(view.state.doc.lineAt(view.posAtDOM(root)).text)
-                    if (key === null) return
-                    markImageDecoded(key)
-                    view.dispatch({ effects: imageDecoded.of(key) })
-                },
-            })
-        }
+        const handle =
+            broken || view.state.readOnly
+                ? null
+                : attachResizeHandle(view, wrap, img, {
+                      title: 'Drag to resize. Double-click for the original size.',
+                      // A picture is never enlarged, so a width past its own would write a number it cannot show.
+                      limits: () => ({ narrowest: MIN_DISPLAY_WIDTH, widest: Math.min(img.naturalWidth || img.getBoundingClientRect().width, columnWidth(wrap, img)) }),
+                      commit: (width) => {
+                          // Read the line live from the widget's DOM, as the click handler does: CM reuses
+                          // the DOM across edits above it, so an offset kept from building it goes stale.
+                          const spec = displayWidthChange(view.state, view.posAtDOM(root), this.url, width)
+                          if (spec) view.dispatch(spec)
+                      },
+                      // A cancelled drag puts the picture's height back with no transaction: redraw, as for a decode.
+                      ended: () => {
+                          if (!root.isConnected) return
+                          const key = imageKeyOn(view.state.doc.lineAt(view.posAtDOM(root)).text)
+                          if (key === null) return
+                          markImageDecoded(key)
+                          view.dispatch({ effects: imageDecoded.of(key) })
+                      },
+                  })
 
         const trackImageBox = () => {
             const gap = Math.max(0, wrap.clientWidth - (img.offsetLeft + img.offsetWidth))
@@ -736,8 +759,8 @@ class ImageWidget extends WidgetType {
         // the picture. The image AND the wrap: the gap is the difference between them, and a
         // drawer or split-pane resize widens the block wrap (it spans the editor) while an image
         // narrower than the editor keeps its size - watching the image alone misses that entirely,
-        // and the overlay slides off along with the wrap's edge. And the actions, which grow when the
-        // picture is selected: Edit as text joins them.
+        // and the overlay slides off along with the wrap's edge. And the actions, which grow when a
+        // tap selects the picture: Edit as text joins them and each is sized for a finger.
         if (typeof ResizeObserver === 'function') {
             const observer = new ResizeObserver(trackImageBox)
             observer.observe(img)
@@ -745,6 +768,7 @@ class ImageWidget extends WidgetType {
             observer.observe(actions)
         }
         leaveOnEscape(view, actions)
+        trackHover(wrap, actions, [img, handle])
     }
 
     /** What a person calls the picture: the file's name, or the alt text of one that is no asset. */
@@ -753,12 +777,13 @@ class ImageWidget extends WidgetType {
     }
 
     /**
-     * The actions pinned to the image's top-right corner: Edit as text, which shows only on a selected
-     * picture, then the ones the trailing cluster on a link shows. Those are only for an
+     * The actions pinned to the image's top-right corner: Edit as text, which shows only on a picture
+     * a tap selected (a mouse's click on the picture does the same), then the ones the trailing
+     * cluster on a link shows. Those are only for an
      * [[Asset Reference]] — a remote image (`https:`, `data:`, `blob:`) is not stored here, so there
      * is nothing to delete and the browser's own "Save image as" already covers saving it; offering
      * a trash for it would be a lie. Such a picture has Edit as text alone, and so no overlay until
-     * it is selected.
+     * it is tapped.
      *
      * The buttons stop their own `mousedown` from propagating, which is what keeps a click on one
      * from also reaching the widget handler below and revealing the raw markdown behind the
@@ -791,20 +816,108 @@ class ImageWidget extends WidgetType {
             className: 'cm-md-image-actions',
             size: 18,
             canDownload,
+            canRotate: !view.state.readOnly,
         })
         actions.prepend(edit)
         wrap.appendChild(actions)
+        wrap.appendChild(this.buildRotateBar(view, resolve))
         // A long press on the image raises the same actions through the [[Context Menu]] as well,
         // and right-click does on a desktop.
         attachAssetContextMenu(view, wrap, resolve)
         return actions
     }
 
+    /**
+     * What stands in for the actions while Rotate shows the picture turned: Rotate again, Save and
+     * Cancel, and a line saying what a Save would change besides this document.
+     */
+    private buildRotateBar(view: EditorView, resolve: () => AssetContextMenuTarget | null): HTMLElement {
+        const bar = document.createElement('span')
+        bar.className = 'cm-md-image-rotate'
+        bar.setAttribute('role', 'group')
+        bar.setAttribute('aria-label', `Rotate ${this.name()}`)
+        const buttons = buildActionCluster<AssetContextMenuTarget>(view, {
+            className: 'cm-md-image-rotate-buttons',
+            buttonClass: 'cm-asset-action',
+            actionAttr: 'data-rotate-action',
+            name: this.name(),
+            actions: ROTATE_ACTIONS,
+            size: 18,
+            resolveTarget: resolve,
+            run: (command, target) => runRotateAction(view, command, target),
+        })
+        const note = document.createElement('span')
+        note.className = 'cm-md-image-rotate-note'
+        note.setAttribute('aria-live', 'polite')
+        bar.append(buttons, note)
+        leaveOnEscape(view, bar)
+        return bar
+    }
+
+    /** {@link applyRotation}, once the picture is drawn: a placeholder has nothing to turn. */
+    private applyRotationIfDrawn(wrap: HTMLElement, img: HTMLImageElement | undefined): void {
+        if (img) this.applyRotation(wrap, img)
+    }
+
+    /** Show the picture turned as Rotate has it, or as it is stored, and the bar's words to match. */
+    private applyRotation(wrap: HTMLElement, img: HTMLImageElement): void {
+        const rotation = this.rotation
+        const saving = rotation?.saving === true
+        wrap.classList.toggle('cm-md-image--rotating', rotation !== null)
+        wrap.classList.toggle('cm-md-image--saving', saving)
+        img.style.transform = rotationTransform(rotation, img)
+        const note = wrap.querySelector('.cm-md-image-rotate-note')
+        if (note) note.textContent = rotationNote(rotation)
+        for (const button of wrap.querySelectorAll<HTMLButtonElement>('.cm-md-image-rotate .cm-asset-action')) button.disabled = saving
+    }
+
     ignoreEvent(event: Event): boolean {
         // The resize handle runs its own gesture; every other event reaches the editor handler
-        // (a mousedown selects the picture), the keys of an action button that has the focus aside.
+        // (a click reveals the markdown, a tap selects the picture), the keys of an action button
+        // that has the focus aside.
         return pictureKeepsEvent(event) || (event.target instanceof Element && event.target.closest('.cm-md-resize-handle') !== null)
     }
+}
+
+/**
+ * Raise a picture's overlays while a mouse or a hovering pen is over the picture or one of them
+ * (`parts`), by the wrap's `cm-md-image--hovered` class. Over the parts specifically, not the wrap: a
+ * block wrap spans the editor, so keying off it would raise the overlays from anywhere on the row.
+ * `pointerover` and `pointerout` rather than enter and leave because these bubble, which is what lets
+ * a button, the only part of the actions that takes the pointer, report for the actions as a whole. A
+ * finger is over the picture only while it presses or scrolls, which is no hover: its tap selects the
+ * picture instead (image-select.ts).
+ */
+function trackHover(wrap: HTMLElement, actions: HTMLElement, parts: readonly (HTMLElement | null)[]): void {
+    const setHovered = (on: boolean) => wrap.classList.toggle('cm-md-image--hovered', on)
+    const within = (node: Node | null) => node !== null && (actions.contains(node) || parts.some((part) => part?.contains(node)))
+    // The row of actions takes no pointer itself, only its buttons, so the gap between two buttons
+    // beside a narrow picture is not part of it: the pointer there is still over the row.
+    const overActions = (event: PointerEvent) => {
+        const box = actions.getBoundingClientRect()
+        return event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom
+    }
+    wrap.addEventListener('pointerover', (event) => {
+        if (event.pointerType !== 'touch' && within(event.target as Node)) setHovered(true)
+    })
+    // In such a gap no element of the picture's hears the pointer leave, so the page is watched until
+    // it is back on a part or off the row.
+    const watchTheGap = () => {
+        const page = wrap.ownerDocument
+        const moved = (event: PointerEvent) => {
+            if (within(event.target as Node)) return page.removeEventListener('pointermove', moved, true)
+            if (overActions(event)) return
+            page.removeEventListener('pointermove', moved, true)
+            setHovered(false)
+        }
+        page.addEventListener('pointermove', moved, true)
+    }
+    wrap.addEventListener('pointerout', (event) => {
+        // Moving between the image and an overlay must not flicker the overlays away.
+        if (within(event.relatedTarget as Node | null)) return
+        if (overActions(event)) watchTheGap()
+        else setHovered(false)
+    })
 }
 
 /** The width (px) the picture may take: from its left edge to the right of its line's text column. */
@@ -886,8 +999,9 @@ function buildDecorations(state: EditorState, options: ImageEmbedOptions): Decor
     for (const imageLine of analysisFor(state).imageLines) {
         const n = imageLine.line
         const line = state.doc.line(n)
-        // Reveal raw source while the caret is on the line, but reserve the image's last rendered
-        // height so the line doesn't collapse (no page jump).
+        // Reveal raw source while the caret is on the line (unless a tap parked it there, which the
+        // reveal policy leaves out), but reserve the image's last rendered height so the line
+        // doesn't collapse (no page jump).
         if (active.has(n)) {
             // Hold the frozen snapshot for the line being edited; fall back to the text-derived size
             // for any other revealed image line.
@@ -920,7 +1034,7 @@ function buildDecorations(state: EditorState, options: ImageEmbedOptions): Decor
             const indent = blockWidgetIndent(state, line.from)
             decos.push(
                 Decoration.replace({
-                    widget: new ImageWidget(image.url, cleanAlt, maxWidth, maxHeight, options.resolveAsset, indent, false, uploading.has(image.url), decoded, selected === n),
+                    widget: new ImageWidget(image.url, cleanAlt, maxWidth, maxHeight, options.resolveAsset, indent, false, uploading.has(image.url), decoded, selected === n, rotationForLine(state, n)),
                     block: true,
                 }).range(line.from, line.to),
             )
@@ -930,7 +1044,7 @@ function buildDecorations(state: EditorState, options: ImageEmbedOptions): Decor
         // just the image span, leaving the `- ` marker as real text so the line stays a list item.
         decos.push(
             Decoration.replace({
-                widget: new ImageWidget(image.url, cleanAlt, maxWidth, maxHeight, options.resolveAsset, null, true, uploading.has(image.url), decoded, selected === n),
+                widget: new ImageWidget(image.url, cleanAlt, maxWidth, maxHeight, options.resolveAsset, null, true, uploading.has(image.url), decoded, selected === n, rotationForLine(state, n)),
                 block: false,
             }).range(line.from + image.imageStart, line.to),
         )
@@ -1069,8 +1183,8 @@ const theme = EditorView.baseTheme({
         color: '#fff',
         pointerEvents: 'none',
     },
-    // The overlay: pinned top-right, invisible until a click or a tap has selected the picture, or
-    // a button has keyboard focus, so it is reachable by tab. It sits ON the image,
+    // The overlay: pinned top-right, invisible until the pointer is over the image, a tap has
+    // selected it, or a button has keyboard focus, so it is reachable by tab. It sits ON the image,
     // so it carries its own surface rather than borrowing the page's - an icon over a photograph is
     // otherwise unreadable.
     '.cm-md-image-actions': {
@@ -1091,14 +1205,14 @@ const theme = EditorView.baseTheme({
         transition: 'opacity 120ms ease',
         // The CONTAINER never takes pointer events, only its buttons do. An overlay is easily
         // wider than the image it sits on (a 40px-wide image, three icons), and a container that
-        // swallowed the pointer would make such an image impossible to click -
+        // swallowed the pointer would make such an image impossible to hover or click through -
         // it would disappear under its own controls.
         pointerEvents: 'none',
     },
-    '.cm-md-image--selected .cm-md-image-actions, .cm-md-image-actions:focus-within': { opacity: '1' },
-    '.cm-md-image--selected .cm-md-resize-handle': { opacity: '1', pointerEvents: 'auto' },
+    '.cm-md-image--hovered .cm-md-image-actions, .cm-md-image--selected .cm-md-image-actions, .cm-md-image-actions:focus-within': { opacity: '1' },
+    '.cm-md-image--hovered .cm-md-resize-handle, .cm-md-image--selected .cm-md-resize-handle': { opacity: '1', pointerEvents: 'auto' },
     // The shared handle always shows where there is no hover, as a video's must. A picture's waits
-    // with its actions for the click or tap that selects it.
+    // with its actions for the tap that selects it.
     '@media (hover: none)': {
         '.cm-md-image:not(.cm-md-image--selected) .cm-md-resize-handle': { opacity: '0', pointerEvents: 'none' },
     },
@@ -1107,23 +1221,44 @@ const theme = EditorView.baseTheme({
         right: 'calc(var(--gk-image-gap-right, 0px) - 20px)',
         bottom: 'calc(var(--gk-image-gap-bottom, 0px) - 20px)',
     },
-    '.cm-md-image--selected .cm-asset-action, .cm-md-image-actions:focus-within .cm-asset-action': {
+    '.cm-md-image--hovered .cm-asset-action, .cm-md-image--selected .cm-asset-action, .cm-md-image-actions:focus-within .cm-asset-action': {
         pointerEvents: 'auto',
     },
-    // Where a finger may press them, each button is big enough for one (36px). Only the buttons take
-    // presses - they stop their own mousedown, so a press on one never selects or reveals - and a
-    // press anywhere else on the image still belongs to the editor. Long press still raises the
-    // asset's actions as a Context Menu.
+    // A picture a tap selected: no hover showed its actions first, so the tap does, with Edit as text
+    // ahead of them, which is how a finger gets to the markdown. Where a finger may press them, each
+    // button is big enough for one (36px). Only the buttons take touches - they stop their own
+    // mousedown, so a tap on one never selects or reveals - and a tap anywhere else on the image still
+    // belongs to the editor. Long press still raises the asset's actions as a Context Menu.
     '@media (any-pointer: coarse)': {
-        '.cm-md-image--selected .cm-md-image-actions .cm-asset-action': { minWidth: '36px', minHeight: '36px' },
+        '.cm-md-image--selected .cm-md-image-actions .cm-asset-action, .cm-md-image-rotate .cm-asset-action': { minWidth: '36px', minHeight: '36px' },
     },
-    // The press that selected it may be the first of a double click, whose second is the picture's too
-    // (image-double-click.ts).
-    '.cm-md-image.cm-md-image--pressed .cm-asset-action, .cm-md-image.cm-md-image--pressed .cm-md-resize-handle': { pointerEvents: 'none' },
-    // Edit as text is the selected picture's alone.
+    // Edit as text is the selected picture's alone: a mouse's click on the picture already does it.
+    // While Rotate shows the picture turned, its bar stands in for the actions and the handle, and
+    // stays shown: the person is in the middle of something.
+    '.cm-md-image-rotate': {
+        position: 'absolute',
+        top: `${OVERLAY_INSET}px`,
+        right: `calc(var(--gk-actions-right, 0px) + ${OVERLAY_INSET}px)`,
+        display: 'none',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '2px 2px 2px 8px',
+        borderRadius: '5px',
+        background: 'var(--gk-surface-1, rgba(255,255,255,0.92))',
+        border: '1px solid var(--gk-border-soft, rgba(0,0,0,0.12))',
+        boxShadow: 'var(--gk-shadow, 0 1px 3px rgba(0,0,0,0.25))',
+        zIndex: '1',
+    },
+    '.cm-md-image--rotating .cm-md-image-rotate': { display: 'flex', flexDirection: 'row-reverse' },
+    '.cm-md-image--rotating .cm-md-image-rotate .cm-asset-action': { pointerEvents: 'auto' },
+    '.cm-md-image--rotating .cm-md-image-actions, .cm-md-image--rotating .cm-md-resize-handle': { display: 'none' },
+    '.cm-md-image-rotate-buttons': { display: 'flex', gap: '2px' },
+    '.cm-md-image-rotate-note': { fontSize: '14px', lineHeight: '1.3', color: 'var(--gk-text-muted)' },
+    '.cm-md-image-rotate-note:empty': { display: 'none' },
+    '.cm-md-image--rotating img': { transition: 'transform 160ms ease-out' },
     '.cm-md-image-edit': { display: 'none' },
     '.cm-md-image--selected .cm-md-image-edit': { display: 'contents' },
-    // A picture that is no asset has no other action, so nothing to show until it is selected.
+    // A picture that is no asset has no other action, so nothing to show until it is tapped.
     '.cm-md-image:not(.cm-md-image--selected) .cm-md-image-actions--edit-only': { display: 'none' },
     // A broken image has no intrinsic size, so these minimums are what keep the overlay's corner
     // on screen - leaving the trash clickable on exactly the reference a user most wants to
@@ -1197,31 +1332,106 @@ const theme = EditorView.baseTheme({
             animation: 'cm-md-image-pulse 1.6s ease-in-out infinite',
         },
         '.cm-md-image-actions': { transition: 'none' },
+        '.cm-md-image--rotating img': { transition: 'none' },
     },
 })
 
 /**
- * Select the shown picture that was pressed, and say whether that was all the press asks. The second
- * press of a double click asks for more.
+ * A caret a tap parked on a picture (image-select.ts) is not drawn: the line shows its picture, and a
+ * caret beside it would say a key types there, which nobody tapping a picture meant.
  */
-function selectOnPress(view: EditorView, widget: HTMLElement, lineFrom: number, event: MouseEvent): boolean {
-    // A finger's or a pen's tap selects it, or deselects the selected one: its controls come and go,
-    // the caret stays, and so does the keyboard.
-    if (fingerPress.get(view)) {
-        view.dispatch(imageTapSpec(view.state, lineFrom))
-        return true
-    }
-    if (event.detail > 1) return false
-    holdControlsThroughDoubleClick(wrapOf(widget), event)
-    view.dispatch(imagePressSpec(view.state, lineFrom))
-    if (selectedImageHoldsKeyboard(view.state)) view.focus()
-    return true
+const caretParkedTheme: Extension = [
+    EditorView.editorAttributes.of((view) => (parkedImageLine(view.state) === null ? null : { class: 'cm-image-caret-parked' })),
+    EditorView.baseTheme({
+        '&.cm-image-caret-parked .cm-cursorLayer': { display: 'none' },
+        '&.cm-image-caret-parked .cm-content': { caretColor: 'transparent !important' },
+    }),
+]
+
+/** Keys that write or delete at a caret, besides a character: what a key at a parked caret must not do. */
+const WRITING_KEYS = new Set(['Enter', 'Tab', 'Backspace', 'Delete'])
+
+/**
+ * What a key pressed at a caret a tap parked on a picture (image-select.ts) dispatches, or null for a
+ * key that writes nothing there (an arrow, a function key, a shortcut). The caret is not drawn and
+ * sits at the picture's `!`, so a key that writes or deletes would change the picture's line where
+ * nobody can see: it opens the picture as text instead, the caret at the end of its markdown, as a
+ * click does, and writes nothing. The next key is the text's.
+ */
+export function parkedKeySpec(state: EditorState, key: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey'>): TransactionSpec | null {
+    const line = parkedImageLine(state)
+    if (line === null || key.ctrlKey || key.metaKey || key.altKey) return null
+    return [...key.key].length === 1 || WRITING_KEYS.has(key.key) ? imageClickSpec(state, state.doc.line(line).from) : null
 }
 
-/** Edit as text on the selected picture, from the keyboard. */
-function editSelectedAsText(view: EditorView): void {
-    const line = selectedImageLine(view.state)
-    if (line !== null) view.dispatch(imageClickSpec(view.state, view.state.doc.line(line).from), { scrollIntoView: true })
+/**
+ * The same for writing that comes without a key of its own: what an input method, dictation or a
+ * phone's keyboard writes, a paste or a cut, and a shortcut's own change. A change the person makes on
+ * the parked line opens the picture as text in its place. A change made elsewhere, or by a peer,
+ * goes ahead.
+ */
+const parkedCaretWritesNothing = EditorState.transactionFilter.of((tr) => {
+    const line = parkedImageLine(tr.startState)
+    if (line === null || !tr.docChanged || tr.isUserEvent('undo') || tr.isUserEvent('redo')) return tr
+    if (!tr.isUserEvent('input') && !tr.isUserEvent('delete') && !tr.isUserEvent('move')) return tr
+    const { from, to } = tr.startState.doc.line(line)
+    let touches = false
+    tr.changes.iterChangedRanges((fromA, toA) => {
+        if (fromA <= to && toA >= from) touches = true
+    })
+    return touches ? imageClickSpec(tr.startState, from) : tr
+})
+
+/** A key at a parked caret: {@link parkedKeySpec}, ahead of every other keymap. */
+const parkedCaretKeys: Extension = [
+    Prec.highest(
+        EditorView.domEventHandlers({
+            keydown(event, view) {
+                const spec = parkedKeySpec(view.state, event)
+                if (spec === null) return false
+                event.preventDefault()
+                view.dispatch(spec)
+                return true
+            },
+        }),
+    ),
+    // What the browser writes with no key of its own: an input method, dictation, a phone's keyboard.
+    Prec.highest(
+        EditorView.inputHandler.of((view) => {
+            const line = parkedImageLine(view.state)
+            if (line === null) return false
+            view.dispatch(imageClickSpec(view.state, view.state.doc.line(line).from))
+            return true
+        }),
+    ),
+    parkedCaretWritesNothing,
+]
+
+/**
+ * The asset whose [[Context Menu]] the Context Menu key and Shift+F10 raise at the caret: the one
+ * the caret's line shows, when that line is an image line over an [[Asset Reference]], or null. The
+ * target a right-click on its picture raises the menu for (asset-actions.ts → assetTargetAt), with
+ * the line it stands on, whose rows the keys raise on any other line.
+ */
+export function imageMenuTargetAtCaret(state: EditorState): AssetContextMenuTarget | null {
+    const line = state.doc.lineAt(state.selection.main.head)
+    if (!isRenderedImageLine(state, line.number)) return null
+    const image = parseImageLine(line.text)
+    if (!image || assetNameFromRef(image.url) === null) return null
+    // The line too, so the menu carries the line's rows (Bookmark line, a task's status) that the keys
+    // open everywhere else on a line.
+    const doc = state.facet(editorDocument)
+    const editorLine = doc ? { concept: doc.concept, panelId: doc.panelId, line: line.number, text: line.text } : undefined
+    return { kind: 'asset', ref: image.url, line: line.number, occurrence: 0, concept: doc?.concept, editorLine }
+}
+
+/** The Context Menu key and Shift+F10 on an image line over an asset: the asset's menu, below the caret. */
+function imageMenuAtCaret(view: EditorView): boolean {
+    const target = imageMenuTargetAtCaret(view.state)
+    const coords = target && view.coordsAtPos(view.state.selection.main.head)
+    if (!target || !coords) return false
+    raiseAssetMenu(view, target, coords.left, coords.bottom)
+    return true
 }
 
 /**
@@ -1260,6 +1470,86 @@ const deselectOnPressElsewhere = ViewPlugin.define((view) => {
     return { destroy: () => view.dom.removeEventListener('mousedown', onMousedown, true) }
 })
 
+/**
+ * The CSS transform that shows a picture turned, within the box it takes: a quarter turn of a wide
+ * picture is scaled to its height. None for a picture shown as it is stored.
+ */
+function rotationTransform(rotation: Omit<PictureRotation, 'pos'> | null, img: HTMLImageElement): string {
+    if (rotation === null || rotation.turns === 0) return ''
+    const width = img.offsetWidth || img.naturalWidth
+    const height = img.offsetHeight || img.naturalHeight
+    const scale = rotation.turns % 2 === 1 && width > 0 && height > 0 ? Math.min(width / height, height / width) : 1
+    return `rotate(${rotation.turns * 90}deg) scale(${scale})`
+}
+
+/** What a widget on line `n` is told of Rotate: the turn, when it is that picture being turned. */
+function rotationForLine(state: EditorState, n: number): Omit<PictureRotation, 'pos'> | null {
+    const rotation = pictureRotation(state)
+    if (rotation === null || state.doc.lineAt(rotation.pos).number !== n) return null
+    return { turns: rotation.turns, elsewhere: rotation.elsewhere, saving: rotation.saving }
+}
+
+/** Whether two rotations would draw the same. */
+function sameRotation(a: Omit<PictureRotation, 'pos'> | null, b: Omit<PictureRotation, 'pos'> | null): boolean {
+    return a === b || (a !== null && b !== null && a.turns === b.turns && a.elsewhere === b.elsewhere && a.saving === b.saving)
+}
+
+/** The line of the picture Rotate is turning, or null. */
+function rotatingLineOf(state: EditorState): number | null {
+    const rotation = pictureRotation(state)
+    return rotation === null ? null : state.doc.lineAt(rotation.pos).number
+}
+
+/** What the bar says besides its buttons: that a Save changes other documents too, or that it is saving. */
+export function rotationNote(rotation: Omit<PictureRotation, 'pos'> | null): string {
+    if (rotation === null) return ''
+    if (rotation.saving) return 'Saving…'
+    const others = rotation.elsewhere ?? 0
+    if (others === 0) return ''
+    return others === 1 ? 'Also changes 1 other document' : `Also changes ${others} other documents`
+}
+
+const ROTATE_AGAIN = 'rotate-again'
+const SAVE_ROTATION = 'save-rotation'
+const CANCEL_ROTATION = 'cancel-rotation'
+
+/** The bar's buttons, right to left as drawn: Rotate again nearest the corner, then Save, then Cancel. */
+const ROTATE_ACTIONS = [
+    { command: ROTATE_AGAIN, icon: 'rotate-cw', label: 'Rotate again' },
+    { command: SAVE_ROTATION, icon: 'check', label: 'Save rotation' },
+    { command: CANCEL_ROTATION, icon: 'close', label: 'Cancel rotation' },
+]
+
+/** Escape while a picture is turned: Cancel. */
+function cancelRotation(view: EditorView): boolean {
+    if (pictureRotation(view.state) === null) return false
+    view.dispatch(endRotationSpec())
+    return true
+}
+
+/** One of the bar's buttons. Save runs the workspace's `asset.save-rotation` and waits for it. */
+async function runRotateAction(view: EditorView, command: string, target: AssetContextMenuTarget): Promise<boolean> {
+    const rotation = pictureRotation(view.state)
+    if (rotation === null) return false
+    if (command === ROTATE_AGAIN) view.dispatch(turnRotationSpec())
+    else if (command === CANCEL_ROTATION) view.dispatch(endRotationSpec())
+    else if (command === SAVE_ROTATION) {
+        // A whole turn changes nothing: put the bar away.
+        if (rotation.turns === 0) {
+            view.dispatch(endRotationSpec())
+            return true
+        }
+        const commands = tryGetActiveCommandRegistry()
+        if (!commands?.has(ASSET_SAVE_ROTATION)) return false
+        view.dispatch(savingSpec(true))
+        const saved = (await commands.execute(ASSET_SAVE_ROTATION, { ...target, turns: rotation.turns })) === true
+        // The editor may have gone, or the turn ended, while the picture was saved.
+        if (pictureRotation(view.state) !== null) view.dispatch(saved ? endRotationSpec() : savingSpec(false))
+        return saved
+    }
+    return true
+}
+
 /** The inline image augmentation (Dual Mode Editor.md). */
 export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
     // Block widgets must come from the state (CM needs them before measuring heights).
@@ -1273,6 +1563,8 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
             if (tr.effects.some((e) => e.is(imageDecoded))) return buildDecorations(tr.state, options)
             // A picture was selected or its controls put away: that widget changes in place.
             if (tr.startState.field(selectedImageField) !== tr.state.field(selectedImageField)) return buildDecorations(tr.state, options)
+            // Rotate began, turned, counted, saved or ended: that widget changes in place.
+            if (tr.startState.field(rotationField) !== tr.state.field(rotationField)) return buildDecorations(tr.state, options)
             return deco
         },
         provide: (f) => EditorView.decorations.from(f),
@@ -1295,11 +1587,19 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
             const line = widget && widgetLineFrom(view, widget)
             if (!widget || !line) return false
             event.preventDefault()
-            if (pictures.has(widget) && selectOnPress(view, widget, line.lineFrom, event)) return true
-            // A double click reveals it, as does a press on a picture still loading, which has no
-            // controls to show. The caret goes to the end of the markdown ({@link imageClickCaret}):
-            // there is no character under the pointer to map the press onto, as the picture stands
-            // in for the whole line. Clicking the revealed markdown positions precisely.
+            // A press on a picture Rotate is turning keeps the turn: only its own buttons, Escape or a
+            // press elsewhere end it.
+            if (view.state.doc.lineAt(line.lineFrom).number === rotatingLineOf(view.state)) return true
+            // A finger's or a pen's tap on a shown picture selects it, or deselects the selected one:
+            // its controls come and go, and so does the keyboard. A picture still loading has no
+            // controls to show, so the tap is a click.
+            if (fingerPress.get(view) && pictures.has(widget)) {
+                view.dispatch(imageTapSpec(view.state, line.lineFrom))
+                return true
+            }
+            // A click reveals it, with the caret at the end of the markdown ({@link imageClickCaret}).
+            // There is no character under the pointer to map the click onto: the picture stands in
+            // for the whole line. Clicking the revealed markdown positions precisely.
             view.dispatch(imageClickSpec(view.state, line.lineFrom))
             view.focus()
             return true
@@ -1321,12 +1621,25 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
         return anchor === null ? null : imageLineSelection(view, event, anchor)
     })
 
-    // Field order matters: frozen-height → uploading → selected → imageField (reads all three).
+    // Ahead of the line menu's binding for the same keys (bookmarks.ts, Prec.low), which would
+    // otherwise take them on an image line.
+    const menuKeys = keymap.of([
+        { key: 'Shift-F10', run: imageMenuAtCaret },
+        { key: 'ContextMenu', run: imageMenuAtCaret },
+    ])
+    // Escape while Rotate shows a picture turned is Cancel, ahead of every other binding for the key
+    // (the outliner's own takes it otherwise). It does nothing while no picture is turned.
+    const rotationKeys = Prec.highest(keymap.of([{ key: 'Escape', run: cancelRotation }]))
+
+    // imageField reads the other fields; CodeMirror works out each field from the ones it reads, so
+    // the order below is for the reader: the parked caret, which the reveal policy and the frozen
+    // height read, then the selection, which reads the reveal.
     return [
+        parkedImageField,
         frozenHeightField,
         uploadingImagesField,
         selectedImageField,
-        pictureKeyboard(editSelectedAsText),
+        rotationField,
         imageField,
         pointer,
         presses,
@@ -1334,6 +1647,10 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
         focusLeavesWithTheActions,
         keyboardStaysFor(touchKeepsKeyboard),
         imageLinePointer,
+        menuKeys,
+        rotationKeys,
+        parkedCaretKeys,
+        caretParkedTheme,
         theme,
         // The overlay's buttons are the asset cluster's. Asked for here too, as an editor with no
         // asset links (a Plain Folder's) still draws Edit as text on its pictures.

@@ -6,6 +6,8 @@
  */
 import { ETHERPK_LINK_SCHEME } from '@appsoftwareltd/etherpk-native-bridge'
 
+import type { AddressPlace } from '#lib/navigation/page-address.js'
+
 import { isNativeApp } from './bridge.js'
 
 /** The origin of a web Client a person can open anywhere, or null where there is none to name. */
@@ -26,4 +28,10 @@ export function webClientAddress(path: string): string | null {
  */
 export function openingAddress(path: string): string {
     return isNativeApp() ? `${ETHERPK_LINK_SCHEME}:${path}` : `${location.origin}${path}`
+}
+
+/** Where the app is running, as the page address reads and writes addresses (`navigation/page-address.ts`). */
+export function addressPlace(): AddressPlace {
+    const native = isNativeApp()
+    return { origin: location.origin, webOrigin: native ? webClientOrigin() : null, native }
 }

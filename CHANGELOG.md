@@ -5,6 +5,41 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 1.0.0 - 2026-11-27
+
+### Client
+
+- **Back closes Search, a dialog or a drawer.** With Search, a dialog, a picture viewed larger, a
+  full window or a phone's drawer open, the browser's Back button, or a phone's, closes it and
+  leaves the page under it where it was. Forward then does nothing. Pressed again and again, Back
+  no longer leaves the app.
+- **A click on a picture edits it.** With a mouse, a picture's actions and its resize handle show
+  while you point at it, and a click anywhere on the picture shows its line of Markdown with the
+  cursor at its end. With the cursor on a picture's line, Shift+F10 or the Menu key opens the
+  picture's menu, the one a right-click opens. Taps on a touch screen work as before.
+- **Rotate a picture.** **Rotate** among a picture's actions turns a PNG, JPEG or WebP picture a
+  quarter turn clockwise, with **Rotate again**, **Save** and **Cancel**. Save stores the turned
+  picture as a new file and points every use of the picture at it, in every document, and a notice
+  offers **Undo**. The original file stays until you delete it.
+- **The home page lists the native apps.** The "Ways to run EtherPK" table links the Windows, Linux
+  and Android installers of the newest release, each with a download icon, says the macOS and iOS
+  apps are not out yet, and links the docs page that compares every way to run EtherPK. The Status
+  column is gone.
+- **The address of the page you are on, in an installed app.** An installed web app and a Native App
+  have no address bar, so on a desktop the address shows above the tabs, after the graph's name.
+  **Copy link** copies it: the web address in a web app, and an `etherpk:` link in a Native App, with
+  **Copy web address** beside it on a synced graph. Paste or type an address, an `etherpk:` link or a
+  whole agent instruction there and press Enter to go to the page. **Go to address…** in the Activity
+  Bar's menu and the Command Menu does the same on a phone and in a browser tab, and the Command Menu
+  has **Copy link to page**.
+- **Fixes.**
+  - A wide table on a published site scrolls sideways on its own, so the page no longer moves
+    sideways on a phone.
+  - Tapping or clicking a picture while another picture shows its Markdown shows the other one as a
+    picture again.
+  - On a narrow phone, the Regenerate Recovery Code button wraps its label rather than sticking out of
+    its box.
+
 ## 0.55.1 - 2026-11-27
 
 ### Client

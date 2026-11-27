@@ -103,3 +103,12 @@ stryker-setup-*.js
 *.p12
 *.jks
 *.keystore
+
+# A home folder that an app started with HOME, or XDG_*_HOME, set inside the repository writes:
+# Chromium's, Electron's and fontconfig's caches and profiles. Desktop tests give the app a temporary
+# folder (tests-desktop/app.ts); one of these at the root means a command got its working directory wrong.
+
+/home/
+/.cache/
+/.config/
+/.local/

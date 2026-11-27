@@ -32,6 +32,11 @@ declare global {
              * two folder graphs kept in folders with one name is meant (ADR 0192).
              */
             etherpkGraph?: string
+            /**
+             * This entry is the one a [[Dismissable Overlay]] holds while it is open, by its marker
+             * (overlay-history.ts): Back takes it away and closes the overlay.
+             */
+            etherpkOverlay?: string
         }
     }
 

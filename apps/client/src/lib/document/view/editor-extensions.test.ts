@@ -4,6 +4,7 @@
  * true, the code that depended on it has changed and this file should change with it.
  */
 
+import { readFileSync } from 'node:fs'
 import { undoDepth } from '@codemirror/commands'
 import { EditorState, type Transaction } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
@@ -244,6 +245,17 @@ describe('editor feature stack', () => {
 
     it('opens the line menu only where no link, asset or misspelling menu claimed the right-click', () => {
         for (const claimant of ['wikilink', 'asset-link', 'spell-check']) before(claimant, 'bookmarks')
+    })
+
+    it('gives an image line its asset menu from the keyboard, and a misspelt word in its markdown its spelling menu first', () => {
+        // Shift+F10 and the Menu key. Against the line menu the precedence decides, its binding being
+        // Prec.low (asserted below); the order here keeps the two in the same order as the right-click
+        // claimants above. A misspelt word in the alt text is the one place the spelling menu and the
+        // image's meet, and there the stack order decides.
+        before('image-embed', 'bookmarks')
+        before('spell-check', 'image-embed')
+        const bookmarks = readFileSync(new URL('./augmentations/bookmarks.ts', import.meta.url), 'utf8')
+        expect(bookmarks).toMatch(/Prec\.low\(\s*keymap\.of\(\[\s*\{ key: 'Shift-F10'/)
     })
 
     it('gives every open popover Enter and Tab before the YAML typing keys', () => {

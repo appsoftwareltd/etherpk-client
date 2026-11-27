@@ -554,7 +554,7 @@
                     type="button"
                     data-testid="regenerate-code"
                     onclick={actions.regenerate}
-                    class="mt-2 {SECONDARY_BUTTON}"
+                    class="mt-2 max-w-full whitespace-normal {SECONDARY_BUTTON}"
                     >Regenerate Recovery Code</button
                 >
             </div>

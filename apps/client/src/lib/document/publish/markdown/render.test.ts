@@ -64,7 +64,7 @@ describe('createDocumentRenderer', () => {
         expect(renderer().render('- a\nb\n---\n').html).toBe('<ul>\n<li>a</li>\n</ul>\n<p>b</p>\n<hr>\n')
         expect(renderer().render('- a\nb\n===\n').html).toBe('<ul>\n<li>a</li>\n</ul>\n<p>b\n===</p>\n')
         // A table there is a table, as the editor draws it.
-        expect(renderer().render('- a\nb | c\n--|--\n').html).toMatch(/^<ul>\n<li>a<\/li>\n<\/ul>\n<table>/)
+        expect(renderer().render('- a\nb | c\n--|--\n').html).toMatch(/^<ul>\n<li>a<\/li>\n<\/ul>\n<div class="table-scroll"[^>]*>\n<table>/)
         // After a blank line the text above an underline is a heading, in both.
         expect(renderer().render('- a\n\nb\n---\n').html).toMatch(/<h2[^>]*>b<\/h2>/)
         // Nor a link reference definition, which would hide a line the editor shows as text.
@@ -267,8 +267,13 @@ describe('createDocumentRenderer', () => {
 
     it('ends a table at a --- under it and draws the rule, as the editor does', () => {
         const { html } = renderer().render('| a | b |\n| - | - |\n| 1 | 2 |\n---\n')
-        expect(html).toMatch(/<\/table>\s*<hr>/)
+        expect(html).toMatch(/<\/table>\s*<\/div>\s*<hr>/)
         expect(html).not.toContain('<h2')
+    })
+
+    it('puts each table in a box that scrolls sideways, so a wide one never widens the page', () => {
+        const { html } = renderer().render('| a | b |\n| - | - |\n| 1 | 2 |\n')
+        expect(html).toMatch(/^<div class="table-scroll" tabindex="0" style="overflow-x:auto">\n<table>[\s\S]*<\/table>\n<\/div>\n$/)
     })
 
     it('renders GFM tables, strikethrough and autolinks', () => {

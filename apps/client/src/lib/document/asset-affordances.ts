@@ -18,7 +18,8 @@
 import { displayNameForRef, isImageAssetRef } from '#lib/storage/fs/asset-store.js'
 import { type AssetContextMenuTarget, canViewAsset, tryGetActiveCommandRegistry, tryGetActiveContributionRegistry } from '#lib/surface/index.js'
 
-import { ASSET_COPY_IMAGE, ASSET_DELETE, ASSET_DOWNLOAD, ASSET_OPEN, ASSET_VIEW_IMAGE } from './commands/asset-commands'
+import { ASSET_COPY_IMAGE, ASSET_DELETE, ASSET_DOWNLOAD, ASSET_OPEN, ASSET_ROTATE_IMAGE, ASSET_VIEW_IMAGE } from './commands/asset-commands'
+import { canRotateImageRef } from './image-rotation'
 import type { InlineAction } from './inline-action'
 // A browser-capability probe, not DOM: the one thing this module asks of the platform.
 import { canCopyImages } from './view/clipboard-image'
@@ -82,22 +83,34 @@ export interface AssetActionOptions {
      * user cannot act on off the screen in the first place.
      */
     canDelete?: boolean
+    /**
+     * True on a rendered picture in an editor that can change it: Rotate turns the picture where it
+     * is drawn, so a link or a read-only editor offers none.
+     */
+    canRotate?: boolean
 }
 
 /**
- * The actions, in order. Copy leads, only on an image; View larger, also only on an image, sits
+ * The actions, in order. Copy leads, only on an image, then Rotate, only on a rendered picture that
+ * can be turned; View larger, also only on an image, sits
  * just before open, the other way of seeing it bigger; open is absent when nothing can show the
  * type; copy, download and View larger are all absent when there are no bytes to show or hand
  * over — an asset
  * whose bytes have gone still offers delete, because clearing a dead reference is exactly what a
  * user wants from one.
  */
+/** Copy, on an image the clipboard takes, then Rotate, on a rendered picture that can be turned. */
+function pictureActions(ref: string, options: AssetActionOptions): AssetAction[] {
+    const actions: AssetAction[] = []
+    if (canCopyImageAsset(ref)) actions.push({ command: ASSET_COPY_IMAGE, icon: 'copy', label: 'Copy image', confirm: { icon: 'check', label: 'Copied' } })
+    if (options.canRotate === true && canRotateImageRef(ref)) actions.push({ command: ASSET_ROTATE_IMAGE, icon: 'rotate-cw', label: 'Rotate' })
+    return actions
+}
+
 export function assetActions(ref: string, options: AssetActionOptions = {}): AssetAction[] {
     const hasBytes = options.canDownload !== false
     return [
-        ...(hasBytes && canCopyImageAsset(ref)
-            ? [{ command: ASSET_COPY_IMAGE, icon: 'copy', label: 'Copy image', confirm: { icon: 'check', label: 'Copied' } }]
-            : []),
+        ...(hasBytes ? pictureActions(ref, options) : []),
         ...(hasBytes ? [{ command: ASSET_DOWNLOAD, icon: 'download', label: 'Download' }] : []),
         ...(hasBytes && isImageAssetRef(ref) ? [{ command: ASSET_VIEW_IMAGE, icon: 'view-larger', label: 'View larger' }] : []),
         ...(canOpenAsset(ref) ? [{ command: ASSET_OPEN, icon: 'open-external', label: 'Open in a new tab' }] : []),

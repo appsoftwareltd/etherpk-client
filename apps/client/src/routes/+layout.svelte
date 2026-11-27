@@ -19,8 +19,12 @@
     import { launchTarget } from "#lib/install/launch-target.js";
     import { type FileLaunch, fileOfLaunch } from "#lib/plain/launched-file.js";
     import { launchedFile } from "#lib/plain/launched-file.svelte.js";
+    import { watchOverlayHistory } from "#lib/navigation/overlay-history.svelte.js";
 
     let { children, data } = $props();
+
+    // Back closes the Search, dialog, full window or drawer on top, on every page (ADR 0023, 2026-11-27).
+    watchOverlayHistory();
 
     // A link to another of the deployment's apps carries the theme chosen here (theme.ts).
     function carryTheme(event: Event) {
@@ -33,12 +37,24 @@
     // that opened the page also arrives in the queue, and must not be carried out twice.
     const openedHref = typeof location === "undefined" ? "" : location.href;
 
+    /**
+     * A navigation that changes only a history entry's state: a shallow write of the app's own, or
+     * Back or Forward between two entries of one address (a Dismissable Overlay's entry going, two
+     * Visits to one page). Loading the page again there would throw away the open graph to close a
+     * dialog.
+     */
+    function changesStateOnly({ from, to, shallow, type }: Parameters<Parameters<typeof beforeNavigate>[0]>[0]): boolean {
+        if (shallow && type === "goto") return true;
+        return type === "popstate" && from?.url.href === to?.url.href;
+    }
+
     // A deployed update must not leave this tab running stale client code: once the
     // version poll (vite.config `version.pollInterval`) sees a new build, the next
     // client-side navigation becomes a full-page load, picking up the new hashed assets.
     // Mixed-version tabs caused days of unreproducible bug reports (2026-07-28/29).
-    beforeNavigate(({ willUnload, to, shallow, type, cancel }) => {
-        if (shallow && type === 'goto') return;
+    beforeNavigate((navigation) => {
+        if (changesStateOnly(navigation)) return;
+        const { willUnload, to, cancel } = navigation;
 
         // A Native App holds no public pages, and nothing answers for one.
         if (willUnload || !to?.url) return;

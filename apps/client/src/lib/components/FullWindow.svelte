@@ -15,6 +15,7 @@
      */
     import type { Snippet } from "svelte";
     import type { Attachment } from "svelte/attachments";
+    import { dialogStack } from "@appsoftwareltd/etherpk-shared/ui";
 
     import { watchKeyboardInset } from "#lib/layout/keyboard-inset.js";
 
@@ -82,6 +83,13 @@
         onclose();
         returnTo?.focus();
     }
+
+    // A Dismissable Overlay: the browser's Back closes it as its close button does, while it is on
+    // top (overlay-history.ts). It is mounted only while open, so its place lasts as long as it does.
+    $effect(() => {
+        const place = dialogStack.open({ dismiss: close });
+        return () => place.close();
+    });
 
     const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 

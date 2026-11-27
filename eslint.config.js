@@ -363,6 +363,20 @@ export default tseslint.config(
         files: ['**/*.test.ts', '**/*.spec.ts', 'tests-*/**/*.ts', '**/__mocks__/**'],
         rules: { 'no-console': 'off' },
     },
+    {
+        // Firefox refuses a context that asks for `isMobile`, so a phone spec written with `true`
+        // fails at once in the Client's Firefox run (Browser Tests.md).
+        files: ['tests-client/**/*.ts'],
+        rules: {
+            'no-restricted-syntax': [
+                'error',
+                {
+                    selector: "Property[key.name='isMobile'][value.value=true]",
+                    message: 'Write isMobile: CAN_EMULATE_MOBILE (helpers/client-browser.ts): Firefox refuses a context that asks for isMobile.',
+                },
+            ],
+        },
+    },
     // The extension boundary (ADR 0121), both ways. Tests of the boundary's own code reach across it
     // as the app does, so the rules cover the tests too, but not the Playwright suites.
     {

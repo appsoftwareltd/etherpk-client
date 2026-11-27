@@ -19,7 +19,7 @@ import { toggleComment, undoDepth } from '@codemirror/commands'
 import { EditorSelection, EditorState, type Extension, type StateCommand, type Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, type WidgetType } from '@codemirror/view'
 
-import { createCommandRegistry, createContributionRegistry, registerCommandMenuItem, setActiveCommandRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
+import { createCommandRegistry, createContributionRegistry, editorLineOf, registerCommandMenuItem, setActiveCommandRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
 import { caretKeptOff, editAsTextSpec, followFenceRegistrations, interactiveFenceAugmentation, widgetEditsChanges } from './augmentations/interactive-fence'
@@ -33,8 +33,9 @@ import { markdownFormatSpec, RULE_LINE_CLASS } from './augmentations/markdown-fo
 import { assetExtension } from '../asset-affordances'
 import { assetLinkSpec } from './augmentations/asset-link'
 import { linkClickCaret, markdownLinkSpec } from './augmentations/markdown-link'
-import { imageClickCaret, imageClickSpec, imageEmbedAugmentation, imageLineGesture } from './augmentations/image-embed'
-import { imagePressSpec, imageTapSpec, selectedImageHoldsKeyboard, selectedImageLine } from './augmentations/image-select'
+import { imageClickCaret, imageClickSpec, imageEmbedAugmentation, imageLineGesture, imageMenuTargetAtCaret, parkedKeySpec } from './augmentations/image-embed'
+import { imageTapSpec, parkedImageLine, selectedImageLine } from './augmentations/image-select'
+import { endRotationSpec, pictureRotation, rotatingImageLine, startRotationSpec, turnRotationSpec } from './augmentations/image-rotate'
 import { mediaEmbedAugmentation, mediaLineOfPlayer, mediaWidgetPos } from './augmentations/media-embed'
 import { displayWidthChange } from './augmentations/resize-handle'
 import { markdownTableAugmentation } from './augmentations/markdown-table'
@@ -51,6 +52,7 @@ import { refreshWikilinks, wikilinkAugmentation } from './augmentations/wikilink
 import { displayNameForRef } from '../../storage/fs/asset-store'
 import { collaborative, isEdit } from './cm-document'
 import { editorDefaultKeymap } from './editor-default-keymap'
+import { editorDocument } from './editor-document'
 import { bookmarkMarks, bookmarkedLines, syncBookmarkMarks } from './augmentations/bookmark-marks'
 import { captureAnchor } from '../bookmarks/anchor'
 import { outdentBranch, outlinerBindings, toggleBullet } from './outliner-keymap'
@@ -2034,9 +2036,10 @@ describe('an image opened as text shows its picture again once the caret leaves 
 
 // A tap with a finger or a pen on a rendered image selects it: its actions and resize handle show,
 // with Edit as text among them, and its markdown stays hidden with the caret where it was
-// (augmentations/image-select.ts → imageTapSpec). Edit as text is the click of a mouse: the markdown
-// revealed, the caret at its end. The taps themselves, on an emulated phone:
-// tests-client/image-touch.test.ts.
+// (augmentations/image-select.ts → imageTapSpec). With the caret on another image line showing its
+// markdown, the tap parks the caret on the tapped picture, so that line is drawn again. Edit as text
+// is the click of a mouse: the markdown revealed, the caret at its end. The taps themselves, on an
+// emulated phone: tests-client/image-touch.test.ts.
 describe('a tap on a rendered image shows its actions and leaves its markdown hidden (EtherPK)', () => {
     const DOC = '- Garden¦\n- ![Beds|800](../assets/beds.png)\n- Kitchen\n- ![Shed|800](../assets/shed.png)'
     const imageAugmentation = imageEmbedAugmentation({ resolveAsset: async () => null })
@@ -2108,6 +2111,111 @@ describe('a tap on a rendered image shows its actions and leaves its markdown hi
         expect(selectedImageLine(editor.state)).toBeNull()
     })
 
+    /** The image on line 2 opened as text, then the one on line 4 tapped. */
+    function tappedWhileOpen(): HeadlessEditor {
+        const editor = editorFixture(DOC, { caret: '¦', extensions: [imageAugmentation] })
+        editor.dispatch(editor.state.update(imageClickSpec(editor.state, editor.state.doc.line(2).from)))
+        expect(pictureShown(editor.state, 2)).toBe(false)
+        tap(editor, 4)
+        return editor
+    }
+
+    it('a tap on another image while one shows its markdown draws that one again, and the tapped one is selected and still drawn', () => {
+        const editor = tappedWhileOpen()
+        expect(pictureShown(editor.state, 2)).toBe(true)
+        expect(selectedImageLine(editor.state)).toBe(4)
+        expect(pictureShown(editor.state, 4)).toBe(true)
+        // The caret left the line it showed, for the tapped picture's, which it does not reveal.
+        expect(editor.state.doc.lineAt(editor.head()).number).toBe(4)
+        expect(parkedImageLine(editor.state)).toBe(4)
+    })
+
+    it('a second tap on it puts its actions away and leaves it drawn', () => {
+        const editor = tappedWhileOpen()
+        tap(editor, 4)
+        expect(selectedImageLine(editor.state)).toBeNull()
+        expect(pictureShown(editor.state, 4)).toBe(true)
+    })
+
+    it('a tap on a third image leaves the caret where the last tap put it, and both drawn', () => {
+        const editor = tappedWhileOpen()
+        const caret = editor.head()
+        tap(editor, 2)
+        expect(selectedImageLine(editor.state)).toBe(2)
+        expect(editor.head()).toBe(caret)
+        expect(pictureShown(editor.state, 2)).toBe(true)
+        expect(pictureShown(editor.state, 4)).toBe(true)
+    })
+
+    it('Edit as text on it shows its markdown with the caret at the end', () => {
+        const editor = tappedWhileOpen()
+        editor.dispatch(editor.state.update(imageClickSpec(editor.state, editor.state.doc.line(4).from)))
+        expect(pictureShown(editor.state, 4)).toBe(false)
+        expect(editor.head()).toBe(editor.state.doc.line(4).to)
+        expect(parkedImageLine(editor.state)).toBeNull()
+    })
+
+    it('the caret moved along its line shows its markdown, as any caret on an image line does', () => {
+        const editor = tappedWhileOpen()
+        editor.select(editor.state.doc.line(4).to)
+        expect(parkedImageLine(editor.state)).toBeNull()
+        expect(pictureShown(editor.state, 4)).toBe(false)
+    })
+
+    it('the caret moved off it leaves it drawn', () => {
+        const editor = tappedWhileOpen()
+        editor.select(editor.state.doc.line(3).to)
+        expect(pictureShown(editor.state, 4)).toBe(true)
+        expect(selectedImageLine(editor.state)).toBeNull()
+    })
+
+    const key = (name: string, held: { ctrlKey?: boolean } = {}) => ({ key: name, ctrlKey: held.ctrlKey ?? false, metaKey: false, altKey: false })
+
+    for (const name of ['s', ' ', 'Enter', 'Tab', 'Backspace', 'Delete']) {
+        it(`${name === ' ' ? 'Space' : name} at the parked caret opens the tapped picture as text and writes nothing`, () => {
+            const editor = tappedWhileOpen()
+            const doc = editor.state.doc.toString()
+            const spec = parkedKeySpec(editor.state, key(name))
+            expect(spec).not.toBeNull()
+            editor.dispatch(editor.state.update(spec!))
+            expect(editor.state.doc.toString()).toBe(doc)
+            expect(pictureShown(editor.state, 4)).toBe(false)
+            expect(editor.head()).toBe(editor.state.doc.line(4).to)
+        })
+    }
+
+    it('an arrow, a shortcut, or any key with no caret parked, is not the parked caret’s', () => {
+        const editor = tappedWhileOpen()
+        expect(parkedKeySpec(editor.state, key('ArrowRight'))).toBeNull()
+        expect(parkedKeySpec(editor.state, key('z', { ctrlKey: true }))).toBeNull()
+        expect(parkedKeySpec(editorFixture(DOC, { caret: '¦', extensions: [imageAugmentation] }).state, key('s'))).toBeNull()
+    })
+
+    it('what an input method, a paste or a cut writes on its line opens it as text instead', () => {
+        for (const userEvent of ['input.type', 'input.paste', 'delete.cut', 'delete.backward']) {
+            const editor = tappedWhileOpen()
+            const doc = editor.state.doc.toString()
+            const at = editor.head()
+            const changes = userEvent.startsWith('delete') ? { from: at - 1, to: at } : { from: at, insert: 'beans' }
+            editor.dispatch(editor.state.update({ changes, userEvent }))
+            expect(editor.state.doc.toString(), userEvent).toBe(doc)
+            expect(pictureShown(editor.state, 4), userEvent).toBe(false)
+        }
+    })
+
+    it('a peer’s edit on its line goes ahead', () => {
+        const editor = tappedWhileOpen()
+        editor.dispatch(editor.state.update({ changes: { from: editor.state.doc.line(4).to, insert: ' and more' } }))
+        expect(editor.state.doc.line(4).text).toMatch(/ and more$/)
+    })
+
+    it('a line written above it leaves the caret parked on it, on its new line', () => {
+        const editor = tappedWhileOpen()
+        editor.dispatch(editor.state.update({ changes: { from: 0, insert: '- Orchard\n' } }))
+        expect(parkedImageLine(editor.state)).toBe(5)
+        expect(pictureShown(editor.state, 5)).toBe(true)
+    })
+
     for (const row of [
         { rule: 'the caret moving', leave: (e: HeadlessEditor) => e.select(e.state.doc.line(3).to) },
         { rule: 'a key typed', leave: (e: HeadlessEditor) => e.type('s') },
@@ -2130,70 +2238,145 @@ describe('a tap on a rendered image shows its actions and leaves its markdown hi
     }
 })
 
-// A press of a mouse on a rendered image selects it too, and the picture holds the keyboard while it
-// is selected (augmentations/image-select.ts → imagePressSpec, image-keyboard.ts). A double click is
-// Edit as text, imageClickSpec above. The presses and keys themselves, in a browser:
-// tests-client/image-mouse.test.ts.
-describe('a click on a rendered image shows its actions and leaves its markdown hidden (EtherPK)', () => {
+// A click of a mouse on a rendered image shows its markdown, with the caret at the end of it, as
+// Edit as text does (augmentations/image-embed.ts → imageClickSpec). The caret leaving the line of a
+// picture opened as text draws that picture again, so a click on another picture does. The clicks
+// themselves, in a browser: tests-client/image-mouse.test.ts.
+describe('a click on a rendered image shows its markdown, and draws any other picture opened as text again (EtherPK)', () => {
     const DOC = '- Garden¦\n- ![Beds|800](../assets/beds.png)\n- Kitchen\n- ![Shed|800](../assets/shed.png)'
     const imageAugmentation = imageEmbedAugmentation({ resolveAsset: async () => null })
 
-    const press = (editor: HeadlessEditor, n: number) => editor.dispatch(editor.state.update(imagePressSpec(editor.state, editor.state.doc.line(n).from)))
+    const click = (editor: HeadlessEditor, n: number) => editor.dispatch(editor.state.update(imageClickSpec(editor.state, editor.state.doc.line(n).from)))
     const tap = (editor: HeadlessEditor, n: number) => editor.dispatch(editor.state.update(imageTapSpec(editor.state, editor.state.doc.line(n).from)))
 
-    /** The image on line 2 clicked with a mouse. */
-    function pressed(): HeadlessEditor {
+    it('the clicked image shows its markdown, with the caret at its end', () => {
         const editor = editorFixture(DOC, { caret: '¦', extensions: [imageAugmentation] })
-        press(editor, 2)
+        click(editor, 2)
+        expect(pictureShown(editor.state, 2)).toBe(false)
+        expect(editor.head()).toBe(editor.state.doc.line(2).to)
+        expect(selectedImageLine(editor.state)).toBeNull()
+    })
+
+    it('a click on another image while one shows its markdown draws that one again', () => {
+        const editor = editorFixture(DOC, { caret: '¦', extensions: [imageAugmentation] })
+        click(editor, 2)
+        click(editor, 4)
+        expect(pictureShown(editor.state, 2)).toBe(true)
+        expect(pictureShown(editor.state, 4)).toBe(false)
+        expect(editor.head()).toBe(editor.state.doc.line(4).to)
+    })
+
+    it('a click on an image a tap selected puts its actions away and shows its markdown', () => {
+        const editor = editorFixture(DOC, { caret: '¦', extensions: [imageAugmentation] })
+        tap(editor, 2)
+        click(editor, 2)
+        expect(selectedImageLine(editor.state)).toBeNull()
+        expect(pictureShown(editor.state, 2)).toBe(false)
+    })
+
+    it('a click on another image with the caret parked on a tapped one draws the tapped one and shows the clicked one’s markdown', () => {
+        const editor = editorFixture(DOC, { caret: '¦', extensions: [imageAugmentation] })
+        click(editor, 2)
+        tap(editor, 4)
+        expect(parkedImageLine(editor.state)).toBe(4)
+        click(editor, 2)
+        expect(parkedImageLine(editor.state)).toBeNull()
+        expect(pictureShown(editor.state, 4)).toBe(true)
+        expect(pictureShown(editor.state, 2)).toBe(false)
+    })
+})
+
+// The Context Menu key and Shift+F10, with the caret on an image line over an asset, raise the
+// asset's Context Menu, as a right-click on its picture does (augmentations/image-embed.ts →
+// imageMenuTargetAtCaret). Anywhere else the keys are the link's, the spelling's or the line's. The
+// keys and the menu, in a browser: tests-client/asset-actions.test.ts.
+describe('the Context Menu key on an image line raises its asset’s menu (Windows and GTK context-menu keys)', () => {
+    const imageAugmentation = imageEmbedAugmentation({ resolveAsset: async () => null })
+    const targetAt = (doc: string) => imageMenuTargetAtCaret(editorFixture(doc, { caret: '¦', extensions: [imageAugmentation] }).state)
+
+    for (const row of [
+        { rule: 'a bullet’s image', doc: '- Garden\n- ![Beds|800](../assets/beds.png)¦', target: { ref: '../assets/beds.png', line: 2 } },
+        { rule: 'an image on its own line, the caret anywhere on it', doc: '- Garden\n\n![Be¦ds](../assets/beds.png)', target: { ref: '../assets/beds.png', line: 3 } },
+        { rule: 'a task’s image', doc: '- [ ] ![Gate](../assets/gate.png)¦', target: { ref: '../assets/gate.png', line: 1 } },
+        { rule: 'an image from the network has no asset menu', doc: '- ![Beds](https://example.com/beds.png)¦', target: null },
+        { rule: 'a line of text', doc: '- Garden¦\n- ![Beds](../assets/beds.png)', target: null },
+        { rule: 'an image written inside prose, which is a link', doc: '- see ![Beds](../assets/beds.png)¦ here', target: null },
+        { rule: 'an image line inside a code fence', doc: '```\n![Beds](../assets/beds.png)¦\n```', target: null },
+    ]) {
+        it(row.rule, () => {
+            const target = targetAt(row.doc)
+            expect(target === null ? null : { ref: target.ref, line: target.line }).toEqual(row.target)
+            if (target) expect(target).toMatchObject({ kind: 'asset', occurrence: 0 })
+        })
+    }
+
+    it('carries the line it stands on, so the menu has the line’s rows too', () => {
+        const editor = editorFixture('- Garden\n- ![Beds|800](../assets/beds.png)¦', { caret: '¦', extensions: [imageAugmentation, editorDocument.of({ concept: 'Garden', panelId: 'pane-1' })] })
+        const target = imageMenuTargetAtCaret(editor.state)
+        expect(target?.editorLine).toEqual({ concept: 'Garden', panelId: 'pane-1', line: 2, text: '- ![Beds|800](../assets/beds.png)' })
+        expect(editorLineOf(target!)).toEqual(target?.editorLine)
+    })
+
+    it('a caret a tap parked on a picture raises that picture’s menu', () => {
+        const editor = editorFixture('- Garden¦\n- ![Beds|800](../assets/beds.png)\n- ![Shed|800](../assets/shed.png)', { caret: '¦', extensions: [imageAugmentation] })
+        editor.dispatch(editor.state.update(imageClickSpec(editor.state, editor.state.doc.line(2).from)))
+        editor.dispatch(editor.state.update(imageTapSpec(editor.state, editor.state.doc.line(3).from)))
+        expect(imageMenuTargetAtCaret(editor.state)?.ref).toBe('../assets/shed.png')
+    })
+})
+
+// Rotate on a picture's actions shows it a quarter turn clockwise, still drawn, with Rotate again, Save
+// and Cancel in place of its actions (augmentations/image-rotate.ts). Nothing is stored until Save,
+// which tests in image-rotation.test.ts; the buttons in a browser: tests-client/image-rotate.test.ts.
+describe('Rotate shows a picture turned until it is saved or cancelled (EtherPK)', () => {
+    const DOC = '- Garden¦\n- ![Beds|800](../assets/beds.png)\n- Kitchen\n- ![Shed|800](../assets/shed.png)'
+    const imageAugmentation = imageEmbedAugmentation({ resolveAsset: async () => null })
+
+    function rotating(): HeadlessEditor {
+        const editor = editorFixture(DOC, { caret: '¦', extensions: [imageAugmentation] })
+        editor.dispatch(editor.state.update(startRotationSpec(editor.state, 2)))
         return editor
     }
 
-    it('the clicked image is selected and still drawn as its picture, with the caret where it was, and holds the keyboard', () => {
+    it('shows the picture a quarter turn clockwise, still drawn, with the caret where it was', () => {
         const editor = editorFixture(DOC, { caret: '¦', extensions: [imageAugmentation] })
         const caret = editor.head()
-        press(editor, 2)
-        expect(selectedImageLine(editor.state)).toBe(2)
-        expect(selectedImageHoldsKeyboard(editor.state)).toBe(true)
+        editor.dispatch(editor.state.update(startRotationSpec(editor.state, 2)))
+        expect(rotatingImageLine(editor.state)).toBe(2)
+        expect(pictureRotation(editor.state)?.turns).toBe(1)
         expect(pictureShown(editor.state, 2)).toBe(true)
         expect(editor.head()).toBe(caret)
     })
 
-    it('a second click leaves its actions showing', () => {
-        const editor = pressed()
-        press(editor, 2)
-        expect(selectedImageLine(editor.state)).toBe(2)
+    it('Rotate again turns it a quarter turn more, and back to how it is stored after four', () => {
+        const editor = rotating()
+        const turns = [1, 2, 3].map(() => {
+            editor.dispatch(editor.state.update(turnRotationSpec()))
+            return pictureRotation(editor.state)?.turns
+        })
+        expect(turns).toEqual([2, 3, 0])
     })
 
-    it('a click on another image moves the actions to it', () => {
-        const editor = pressed()
-        press(editor, 4)
-        expect(selectedImageLine(editor.state)).toBe(4)
-    })
-
-    it('a tap with a finger on the clicked image puts its actions away', () => {
-        const editor = pressed()
-        tap(editor, 2)
-        expect(selectedImageLine(editor.state)).toBeNull()
-        expect(selectedImageHoldsKeyboard(editor.state)).toBe(false)
-    })
-
-    it('a tapped image leaves the keyboard where it was, and a click on it takes the keyboard', () => {
-        const editor = editorFixture(DOC, { caret: '¦', extensions: [imageAugmentation] })
-        tap(editor, 2)
-        expect(selectedImageHoldsKeyboard(editor.state)).toBe(false)
-        press(editor, 2)
-        expect(selectedImageHoldsKeyboard(editor.state)).toBe(true)
-    })
-
-    it('holds the keyboard through an edit made elsewhere, and not once its line is deleted', () => {
-        const editor = pressed()
+    it('a line written above it keeps the turn, on its new line', () => {
+        const editor = rotating()
         editor.dispatch(editor.state.update({ changes: { from: 0, insert: '- Orchard\n' } }))
-        expect(selectedImageLine(editor.state)).toBe(3)
-        expect(selectedImageHoldsKeyboard(editor.state)).toBe(true)
-        const line = editor.state.doc.line(3)
-        editor.dispatch(editor.state.update({ changes: { from: line.from, to: line.to + 1 } }))
-        expect(selectedImageHoldsKeyboard(editor.state)).toBe(false)
+        expect(rotatingImageLine(editor.state)).toBe(3)
     })
+
+    for (const row of [
+        { rule: 'Cancel', leave: (e: HeadlessEditor) => e.dispatch(e.state.update(endRotationSpec())) },
+        { rule: 'the caret moving', leave: (e: HeadlessEditor) => e.select(e.state.doc.line(3).to) },
+        { rule: 'its line deleted', leave: (e: HeadlessEditor) => e.dispatch(e.state.update({ changes: { from: e.state.doc.line(2).from, to: e.state.doc.line(3).from } })) },
+        { rule: 'its line written into something that is no image', leave: (e: HeadlessEditor) => e.dispatch(e.state.update({ changes: { from: e.state.doc.line(2).to, insert: ' and more' } })) },
+    ]) {
+        it(`${row.rule} ends it with nothing changed`, () => {
+            const editor = rotating()
+            const before = editor.state.doc.toString()
+            row.leave(editor)
+            expect(rotatingImageLine(editor.state)).toBeNull()
+            if (row.rule === 'Cancel' || row.rule === 'the caret moving') expect(editor.state.doc.toString()).toBe(before)
+        })
+    }
 })
 
 // A press on an image line outside its picture (the revealed markdown, or beside a bullet's
@@ -4811,21 +4994,41 @@ describe('a part of a task shows its markdown only while it has the keyboard (Et
         expect(selectedImageLine(editor.state)).toBeNull()
     })
 
-    it('a picture clicked with the caret on its line is selected and leaves the keyboard where it is', () => {
+    it('a picture clicked with the caret already at the end of its line shows its markdown once the part has the keyboard', () => {
         const editor = partEditor('description', task(`    - ${IMAGE}¦`))
-        editor.dispatch(editor.state.update(imagePressSpec(editor.state, editor.state.doc.line(3).from)))
-        expect(selectedImageLine(editor.state)).toBe(3)
-        expect(selectedImageHoldsKeyboard(editor.state)).toBe(false)
+        editor.dispatch(editor.state.update(imageClickSpec(editor.state, editor.state.doc.line(3).from)))
         expect(pictureShown(editor.state, 3)).toBe(true)
+        focus(editor, true)
+        expect(pictureShown(editor.state, 3)).toBe(false)
     })
 
     it('Edit as text with the caret already at the end of its line puts its actions away, and shows its markdown given the keyboard', () => {
         const editor = partEditor('description', task(`    - ${IMAGE}¦`))
-        editor.dispatch(editor.state.update(imagePressSpec(editor.state, editor.state.doc.line(3).from)))
+        editor.dispatch(editor.state.update(imageTapSpec(editor.state, editor.state.doc.line(3).from)))
         editor.dispatch(editor.state.update(imageClickSpec(editor.state, editor.state.doc.line(3).from)))
         expect(selectedImageLine(editor.state)).toBeNull()
         focus(editor, true)
         expect(pictureShown(editor.state, 3)).toBe(false)
+    })
+
+    it('a tap on another picture before the part has the keyboard leaves the caret where it is', () => {
+        const editor = partEditor('description', task(`    - ${IMAGE}¦\n    - ${IMAGE}`))
+        const caret = editor.head()
+        editor.dispatch(editor.state.update(imageTapSpec(editor.state, editor.state.doc.line(4).from)))
+        expect(editor.head()).toBe(caret)
+        expect(parkedImageLine(editor.state)).toBeNull()
+    })
+
+    it('given the keyboard, a tap on another picture draws the one showing its markdown, and the part going and coming back leaves both drawn', () => {
+        const editor = partEditor('description', task(`    - ${IMAGE}¦\n    - ${IMAGE}`))
+        focus(editor, true)
+        expect(pictureShown(editor.state, 3)).toBe(false)
+        editor.dispatch(editor.state.update(imageTapSpec(editor.state, editor.state.doc.line(4).from)))
+        expect(pictureShown(editor.state, 3)).toBe(true)
+        expect(pictureShown(editor.state, 4)).toBe(true)
+        focus(editor, false)
+        focus(editor, true)
+        expect(pictureShown(editor.state, 4)).toBe(true)
     })
 
     it('once the part loses the keyboard, the image is drawn again with the caret where it was', () => {

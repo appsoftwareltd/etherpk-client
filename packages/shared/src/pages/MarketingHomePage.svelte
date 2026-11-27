@@ -170,7 +170,12 @@
         /** The number of the note beneath the table that explains the cell. */
         note?: 1 | 2;
     };
-    type WayLink = { label: string; href: string };
+    type WayLink = {
+        label: string;
+        href: string;
+        /** The link saves a file rather than opening a page: a download icon follows its label. */
+        download?: true;
+    };
     type Way = {
         id: string;
         name: string;
@@ -180,11 +185,12 @@
         detail?: string;
         /** Where to get it and where its setup is described, under the name. */
         links: WayLink[];
+        /** In place of the links, for a way that is not out yet. */
+        pending?: string;
         runsIn: string;
         synced: WayCell;
         folder: WayCell;
         quickShare: WayCell;
-        status: "Available" | "Planned";
     };
 
     const yes: WayCell = { text: "Yes", tone: "yes" };
@@ -201,15 +207,14 @@
      *
      * The three web rows are one app served from three places, so they differ only in synced
      * graphs: a copy a person runs opens folder graphs, and synced graphs through a Sync Server
-     * where its team runs one. The apps are planned. They will read files directly, so a folder
-     * graph there does not depend on a browser.
+     * where its team runs one. The native apps read files directly, so a folder graph there does
+     * not depend on a browser, and each links the installer the newest release carries.
      */
     const webWays = $derived.by<Way[]>(() => {
         const web = {
             runsIn: "A browser, or installed via the browser",
             folder: { text: "In some browsers", tone: "note", note: 1 },
             quickShare: { text: "When installed on Android or ChromeOS", tone: "note" },
-            status: "Available",
         } satisfies Partial<Way>;
         // A copy a person runs: no synced graphs beside EtherPK's hosted app, and the team's own
         // server beside a self-hosted one.
@@ -252,21 +257,59 @@
             },
         ];
     });
-    const plannedApps: Way[] = [
-        { id: "android", name: "Android app", detail: ".apk", runsIn: "Android" },
-        { id: "linux", name: "Linux app", detail: ".AppImage", runsIn: "Linux" },
-        { id: "windows", name: "Windows app", detail: "Installer", runsIn: "Windows" },
-    ].map((app) => ({
-        ...app,
-        links: [],
-        synced: yes,
-        folder: yes,
-        quickShare: { text: "Planned", tone: "note" },
-        status: "Planned",
-    }));
+    /** Each installer of the newest release that carries them, by its file name. */
+    const installer = (file: string): WayLink => ({
+        label: file,
+        href: `${CLIENT_REPOSITORY_URL}/releases/latest/download/${file}`,
+        download: true,
+    });
+    const nativeApps: Way[] = [
+        {
+            id: "android",
+            name: "Android app",
+            detail: "Android 11 and later",
+            links: [installer("EtherPK-android.apk")],
+            runsIn: "Android",
+            synced: yes,
+            folder: yes,
+            quickShare: yes,
+        },
+        {
+            id: "linux",
+            name: "Linux app",
+            detail: "64-bit",
+            links: [installer("EtherPK-linux-x64.AppImage"), installer("EtherPK-linux-x64.deb")],
+            runsIn: "Linux",
+            synced: yes,
+            folder: yes,
+            // Linux has no share sheet for an app to be on.
+            quickShare: no,
+        },
+        {
+            id: "windows",
+            name: "Windows app",
+            detail: "Windows 10 and 11, 64-bit",
+            links: [installer("EtherPK-windows-x64.exe")],
+            runsIn: "Windows",
+            synced: yes,
+            folder: yes,
+            // The Windows app is not on the share sheet; a file is dragged into a graph instead.
+            quickShare: no,
+        },
+        {
+            id: "apple",
+            name: "macOS and iOS apps",
+            links: [],
+            pending: "Not yet (planned)",
+            runsIn: "Mac, iPhone, iPad",
+            synced: { text: "Planned", tone: "note" },
+            folder: { text: "Planned", tone: "note" },
+            quickShare: { text: "Planned", tone: "note" },
+        },
+    ];
     const wayGroups = $derived([
         { label: "Web browser / installed web app", ways: webWays },
-        { label: "Apps", ways: plannedApps },
+        { label: "Native apps", ways: nativeApps },
     ]);
 
     /** Which browsers run the web app: the target of the first table's note on folder graphs. */
@@ -285,10 +328,6 @@
         yes: "font-semibold text-neutral-950 dark:text-white",
         no: "text-neutral-500 dark:text-neutral-400",
         note: "",
-    };
-    const statusClasses: Record<Way["status"], string> = {
-        Available: "border-neutral-950 bg-neutral-950 text-white dark:border-white dark:bg-white dark:text-neutral-950",
-        Planned: "border-neutral-400 dark:border-neutral-500",
     };
 
     // The two buttons are the standard controls at one width, and differ only in their fill; the
@@ -603,7 +642,7 @@
     </td>
 {/snippet}
 
-<!-- Wider than the notes around it, for six columns. Each table scrolls inside its own frame on a
+<!-- Wider than the notes around it, for five columns. Each table scrolls inside its own frame on a
      narrow screen, which the keyboard reaches, so the page never scrolls sideways. -->
 <section
     class="mx-auto max-w-5xl px-4 pt-24 sm:px-6 sm:pt-32"
@@ -628,7 +667,7 @@
             <caption class="sr-only">Ways to get EtherPK</caption>
             <thead>
                 <tr class="bg-neutral-950/3 text-neutral-950 dark:bg-white/5 dark:text-white">
-                    {#each ["Get it from", "You run it in", "Synced graphs", "Folder graphs / plain folders", "Quick share", "Status"] as column (column)}
+                    {#each ["Get it from", "You run it in", "Synced graphs", "Folder graphs / plain folders", "Quick share"] as column (column)}
                         <th scope="col" class="px-3 py-2.5 font-semibold whitespace-nowrap">{column}</th>
                     {/each}
                 </tr>
@@ -636,7 +675,7 @@
             {#each wayGroups as group (group.label)}
                 <tbody>
                     <tr class="border-t border-neutral-950/10 bg-neutral-950/3 dark:border-white/10 dark:bg-white/5">
-                        <th scope="colgroup" colspan="6" class="px-3 py-1.5 font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400">{group.label}</th>
+                        <th scope="colgroup" colspan="5" class="px-3 py-1.5 font-semibold uppercase tracking-wider text-neutral-600 dark:text-neutral-400">{group.label}</th>
                     </tr>
                     {#each group.ways as way (way.id)}
                         <tr class="border-t border-neutral-950/10 dark:border-white/10" data-testid="marketing-way-{way.id}">
@@ -648,16 +687,36 @@
                                     <span class="block text-neutral-500 dark:text-neutral-400">{way.detail}</span>
                                 {/if}
                                 {#each way.links as link (link.href)}
-                                    <a href={link.href} class="gk-link block w-fit whitespace-nowrap">{link.label}</a>
+                                    {#if link.download}
+                                        <a href={link.href} class="gk-link flex w-fit items-center gap-1.5 whitespace-nowrap">
+                                            {link.label}
+                                            <!-- An arrow into a tray: the Client's `download` icon (icons.ts). -->
+                                            <svg
+                                                class="size-4 shrink-0"
+                                                viewBox="0 0 16 16"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="1.4"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                aria-hidden="true"
+                                                data-testid="marketing-download-icon"
+                                            >
+                                                <path d="M8 2.5v7.5M5 7l3 3 3-3M3 12.5h10" />
+                                            </svg>
+                                        </a>
+                                    {:else}
+                                        <a href={link.href} class="gk-link block w-fit whitespace-nowrap">{link.label}</a>
+                                    {/if}
                                 {/each}
+                                {#if way.pending}
+                                    <span class="block text-neutral-500 dark:text-neutral-400">{way.pending}</span>
+                                {/if}
                             </th>
                             <td class="px-3 py-2.5 align-top">{way.runsIn}</td>
                             {@render wayCell(way.synced)}
                             {@render wayCell(way.folder)}
                             {@render wayCell(way.quickShare)}
-                            <td class="px-3 py-2.5 align-top">
-                                <span class={["inline-block rounded-full border px-2.5 whitespace-nowrap", statusClasses[way.status]]}>{way.status}</span>
-                            </td>
                         </tr>
                     {/each}
                 </tbody>
@@ -675,6 +734,10 @@
                 <sup>2</sup> Self run client packages only open folder graphs and plain folders.
             </p>
         {/if}
+        <p data-testid="marketing-ways-docs">
+            <a href={`${docsHref}/running-etherpk-on-your-own-computer`} class="gk-link">Ways to run EtherPK</a>
+            in the docs has the install and set-up steps for each one.
+        </p>
     </div>
 
     <h3 class="mt-10 text-base font-semibold text-neutral-950 dark:text-white">

@@ -309,6 +309,14 @@ export function createDocumentRenderer(options: RendererOptions): DocumentRender
         return `<pre><code${cls}>${inner}</code></pre>\n`
     }
 
+    // A table's narrowest width is set by its longest words, so a table of many columns can be wider
+    // than a phone's column however its cells wrap. Each one sits in a box that scrolls sideways,
+    // styled here rather than by the theme so every theme and every theme's copy gets it. The box
+    // takes focus so a keyboard can scroll it too.
+    md.renderer.rules.table_open = (tokens, idx, opts, _env, self) =>
+        `<div class="table-scroll" tabindex="0" style="overflow-x:auto">\n${self.renderToken(tokens, idx, opts)}`
+    md.renderer.rules.table_close = (tokens, idx, opts, _env, self) => `${self.renderToken(tokens, idx, opts)}</div>\n`
+
     md.renderer.rules.heading_open = (tokens, idx, opts, _env, self) => {
         const token = tokens[idx]
         const inline = tokens[idx + 1]

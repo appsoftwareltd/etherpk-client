@@ -1,6 +1,7 @@
 /**
  * The **action cluster** an [[Asset Reference]] carries **inside the editor**: trailing icons
- * after a link (`asset-link.ts`) and an overlay on a selected image (`image-embed.ts`).
+ * after a link (`asset-link.ts`) and an overlay on a rendered image (`image-embed.ts`), which a mouse
+ * over the picture or a tap on it raises.
  *
  * Which actions those are is not decided here — `asset-affordances.ts` owns the list, because the
  * references [[View]] shows the same set with no CodeMirror anywhere near it — and neither is how
@@ -98,6 +99,13 @@ export function buildAssetActions(
 }
 
 
+/** The [[Context Menu]] of the asset `target` in `view`, at the screen point (`x`, `y`). */
+export function raiseAssetMenu(view: EditorView, target: AssetContextMenuTarget, x: number, y: number): void {
+    // Same reason as the buttons: the menu's Commands act on the ACTIVE editor.
+    view.focus()
+    openContextMenu(target, x, y)
+}
+
 /**
  * Raise the [[Context Menu]] on an asset: right-click anywhere, or a long press on touch.
  * Mirrors `attachContextMenu`, which cannot
@@ -111,10 +119,7 @@ export function attachAssetContextMenu(
 ): void {
     const raise = (x: number, y: number) => {
         const target = resolveTarget()
-        if (!target) return
-        // Same reason as the buttons: the menu's Commands act on the ACTIVE editor.
-        view.focus()
-        openContextMenu(target, x, y)
+        if (target) raiseAssetMenu(view, target, x, y)
     }
 
     el.addEventListener('contextmenu', (event) => {

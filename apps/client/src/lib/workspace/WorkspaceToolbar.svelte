@@ -10,6 +10,9 @@
      * each in the column of the Activity Bar's icons when the bar is under it. With nothing but
      * the two of them to press, a border round each only added weight.
      *
+     * In an installed web app or a Native App, which show no address bar, the page's address follows
+     * the heading (`address`, PageAddressField.svelte): read, copied and edited there.
+     *
      * It holds nothing else to press. Settings and Keyboard shortcuts are rows of the Activity
      * Bar's menu (sidebar-commands.ts), Tasks is an icon of the Activity Bar, and a synced
      * graph's status dot is in the app's header, beside the logo, as it is on a phone
@@ -20,6 +23,8 @@
      * Find not following yet reads as "still working" rather than as a fault. It sits after the
      * spacer, so its coming and going moves neither toggle.
      */
+
+    import type { Snippet } from 'svelte'
 
     import SidebarToggleIcon from '#lib/layout/renderers/SidebarToggleIcon.svelte'
 
@@ -33,6 +38,7 @@
         indexing = false,
         leftLabel = 'Toggle document tree',
         rightLabel = 'Toggle backlinks',
+        address,
     }: {
         ontoggleleft: () => void
         ontoggleright: () => void
@@ -44,6 +50,8 @@
         leftLabel?: string
         /** What the right toggle shows and hides, where it is not Backlinks. */
         rightLabel?: string
+        /** The page's address, where the window has no address bar to show it. */
+        address?: Snippet
     } = $props()
 </script>
 
@@ -62,6 +70,7 @@
          While the name is not known the heading is the kind in words. The icons are never clipped. -->
     <h1 class="heading" data-testid="ws-heading" data-named={heading.name !== null}>{headingText(heading)}</h1>
     <span class="kind"><KindIcons kind={heading.kind} coloured /></span>
+    {@render address?.()}
     <span class="spacer"></span>
     {#if indexing}
         <!-- Not a live region: indexing comes and goes with every rename, and announcing each

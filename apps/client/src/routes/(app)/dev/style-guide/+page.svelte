@@ -7,6 +7,8 @@
      */
     import { sidebarButton, sidebarIconButton } from "#lib/document/view/sidebar-button.js";
     import { iconSvg } from "#lib/surface/icons.js";
+    import PageAddressField from "#lib/workspace/PageAddressField.svelte";
+    import { goto } from "$app/navigation";
 
     const surfaces = ["--gk-surface-0", "--gk-surface-1", "--gk-surface-2", "--gk-field-bg", "--gk-menu-bg", "--gk-primary-bg", "--gk-emphasis-bg"];
     const inks = ["--gk-text-strong", "--gk-text-default", "--gk-text-muted", "--gk-accent", "--gk-text-danger"];
@@ -196,6 +198,12 @@
                     <button type="button" class="gk-button gk-button--small" data-testid="style-guide-button-small">Next</button>
                 </div>
                 <p class="gk-hint">A toolbar row: the small field, select and button, all 30px.</p>
+                <!-- The workspace toolbar's address (PageAddressField, asText): this page's own address,
+                     drawn as muted text that is edited in place. -->
+                <div class="flex items-center" data-testid="style-guide-address">
+                    <PageAddressField small asText id="style-guide-address-input" ongo={(path) => void goto(path)} />
+                </div>
+                <p class="gk-hint">The workspace toolbar's address: text you can edit, muted until the pointer is over it.</p>
             </div>
         </div>
     </section>

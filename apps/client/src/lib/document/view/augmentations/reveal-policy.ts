@@ -38,7 +38,7 @@
  * (`reveal-policy.test.ts`) and every consumer inherits the same behaviour.
  */
 
-import { type EditorState, type Extension, MapMode, StateEffect, StateField, type Transaction } from '@codemirror/state'
+import { type EditorState, type Extension, Facet, MapMode, StateEffect, StateField, type Transaction } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
 // ── Focus: an editor that reveals only while it has the keyboard ─────────────────────────────
@@ -119,9 +119,25 @@ export function selectionReveals(state: EditorState): boolean {
     return focus ? focus.editor || focus.cell : true
 }
 
+// ── A line kept drawn ────────────────────────────────────────────────────────────────────────
+
+/**
+ * A 1-based line the selection touches that is nevertheless not revealed, or null: a picture a tap
+ * parked the caret on (image-select.ts), so that the picture another line showed as markdown is
+ * drawn again while this one stays a picture. An augmentation provides it from its own state; the
+ * first non-null value wins. Every reveal kind reads it through {@link revealedLines}, so all agree
+ * on the line.
+ */
+export const lineKeptDrawn = Facet.define<number | null, number | null>({
+    combine: (values) => values.find((value) => value !== null) ?? null,
+})
+
 // ── The kinds ─────────────────────────────────────────────────────────────────────────────────
 
-/** The 1-based line numbers touched by any selection range — the "active" lines that show raw syntax. */
+/**
+ * The 1-based line numbers touched by any selection range — the "active" lines that show raw syntax
+ * — less a line kept drawn ({@link lineKeptDrawn}).
+ */
 export function revealedLines(state: EditorState): Set<number> {
     const lines = new Set<number>()
     if (!selectionReveals(state)) return lines
@@ -130,6 +146,8 @@ export function revealedLines(state: EditorState): Set<number> {
         const to = state.doc.lineAt(range.to).number
         for (let n = from; n <= to; n++) lines.add(n)
     }
+    const kept = state.facet(lineKeptDrawn)
+    if (kept !== null) lines.delete(kept)
     return lines
 }
 
@@ -215,11 +233,16 @@ export function requestedRevealed(state: EditorState, from: number, to: number):
 
 /**
  * Whether a transaction changed anything a reveal decision depends on: the text, the selection, a
- * request, or the keyboard coming or going in an editor that reveals only while focused. A consumer
+ * request, a line kept drawn, or the keyboard coming or going in an editor that reveals only while focused. A consumer
  * that rebuilds on this, never on the selection alone, follows the focus rule too.
  */
 export function revealInputsChanged(tr: Transaction): boolean {
-    return tr.docChanged || tr.selection !== undefined || tr.effects.some((e) => e.is(requestReveal) || e.is(revealFocus) || e.is(revealCellFocus))
+    return (
+        tr.docChanged ||
+        tr.selection !== undefined ||
+        tr.effects.some((e) => e.is(requestReveal) || e.is(revealFocus) || e.is(revealCellFocus)) ||
+        tr.startState.facet(lineKeptDrawn) !== tr.state.facet(lineKeptDrawn)
+    )
 }
 
 /** {@link revealInputsChanged} for a view plugin's update: whether any of its transactions did. */

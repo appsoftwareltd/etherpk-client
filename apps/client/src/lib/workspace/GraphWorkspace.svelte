@@ -21,6 +21,8 @@
     import { dev } from "$app/env";
     import { afterNavigate, goto } from "$app/navigation";
     import { queueHistoryWrite } from "#lib/navigation/history-writes.js";
+    import { visitReplacesFront } from "#lib/navigation/overlay-history.js";
+    import { droppingOverlayEntry, goBackSettled } from "#lib/navigation/overlay-history.svelte.js";
     import { page } from "$app/state";
     import * as env from "$app/env/public";
     import { currentReturnPath } from "#lib/auth/sign-in-links.js";
@@ -580,6 +582,7 @@
     } from "#lib/cross-tab-lock.js";
     import { isRunning, runActivity } from "#lib/activity/store.js";
     import { dismissNotice, retractNotice, showNotice } from "#lib/activity/notices.js";
+    import { rotateImageBytes } from "#lib/document/view/image-rotate-canvas.js";
     import type { ActivityOutcome } from "#lib/activity/store.js";
     import type { ActivityProgress } from "#lib/activity/types.js";
     import { mirrorIndicatorView } from "./mirror-indicator";
@@ -629,6 +632,14 @@
     /** What the Explorer is called: on its icon in the Activity Bar and in the row that titles it. */
     const EXPLORER_NAME = "Explorer";
     import KeyboardShortcutsDialog from "./KeyboardShortcutsDialog.svelte";
+    import PageAddressDialog from "./PageAddressDialog.svelte";
+    import PageAddressField from "./PageAddressField.svelte";
+    import { registerPageAddressCommands } from "#lib/navigation/page-address-commands.js";
+    import { pageLink } from "#lib/navigation/page-address.js";
+    import { currentAddressPath } from "#lib/navigation/current-address.js";
+    import { copyPageAddress, sayLinkCopied } from "#lib/navigation/page-link-copy.js";
+    import { addressPlace } from "#lib/native/web-address.js";
+    import { subscribeAppInstall } from "#lib/storage/app-install.js";
     import { APP_KEYBINDINGS, type ShortcutBinding } from "./keyboard-shortcuts";
     import {
         createDocumentMutationController,
@@ -1566,6 +1577,16 @@
     let settingsShowToken = 0;
     /** The Keyboard Shortcuts card; a reference, so nothing to carry in but "open". */
     let shortcutsDialogOpen = $state(false);
+    /**
+     * The window has no address bar of its own: an installed web app, or a Native App. The desktop
+     * toolbar then shows the page's address (PageAddressField.svelte); a browser tab has its own.
+     */
+    let installedDisplay = $state(false);
+    $effect(() => subscribeAppInstall((install) => (installedDisplay = install.installed)));
+    const addressInToolbar = $derived(installedDisplay && !useMobile);
+    /** Go to address… where the toolbar does not show the address: a phone, a browser tab. */
+    let addressDialogOpen = $state(false);
+    let addressField = $state<ReturnType<typeof PageAddressField>>();
     /** The Reset workspace confirmation is showing. */
     let resetDialogOpen = $state(false);
     let detachMeta: (() => void) | undefined;
@@ -3755,10 +3776,12 @@
     const activityBar = $derived(useMobile ? null : sidebars.bar());
 
     // Browser Back/Forward over shallow entries: the popped entry's Visit arrives
-    // via page.state. (Our own pushUrl also lands here; apply() is id-idempotent.)
+    // via page.state. (Our own pushUrl also lands here; apply() is id-idempotent.) Not when a closed
+    // overlay takes its own entry away: the entry under it names the page as it was under the
+    // overlay, and the page may have moved on, its Visit still to be written (overlay-history.ts).
     $effect(() => {
         const visit = page.state.etherpkVisit;
-        if (visit && !entryIsAnotherGraphs() && phase === "ready" && !suppressNav) navEngine?.apply(visit);
+        if (visit && !entryIsAnotherGraphs() && phase === "ready" && !suppressNav && !droppingOverlayEntry()) navEngine?.apply(visit);
     });
 
     /**
@@ -5575,6 +5598,30 @@
                           })
                         : false;
                 },
+                activeEditor: () => getActiveEditorView() ?? null,
+                documents: () => store ?? null,
+                rotateImage: rotateImageBytes,
+                onRotated: (message, undo) =>
+                    showNotice({
+                        id: "image-rotated",
+                        tone: "info",
+                        text: message,
+                        actions: [
+                            {
+                                id: "image-rotated-undo",
+                                label: "Undo",
+                                run: async () => {
+                                    dismissNotice("image-rotated");
+                                    try {
+                                        await undo();
+                                    } catch (error) {
+                                        console.warn("[assets] undoing a rotation failed", error);
+                                        showNotice({ id: "image-rotated", tone: "error", text: "The rotation could not be undone. Rotate the picture back instead." });
+                                    }
+                                },
+                            },
+                        ],
+                    }),
                 promptDelete: (prompt) =>
                     new Promise<AssetDeleteChoice>((resolve) => {
                         refreshKeptDays();
@@ -5610,9 +5657,13 @@
             // The Explorer's own name for the row, where a phone has it too.
             settingsRow: { label: "Settings", command: "graph.settings.open" },
         });
+        // Copy link to page and Go to address…: the toolbar's field where it shows the address,
+        // and a dialog everywhere else.
+        const detachPageAddressRows = registerPageAddressCommands(commandRegistry, contributions, { copyLink: copyPageLink, goToAddress });
         detachTabCommands = () => {
             detachTabRows();
             detachSidebarRows();
+            detachPageAddressRows();
         };
         // The built-in Augmentation renderers (mermaid, math) — ADR 0022.
         detachRenderers = registerAugmentationRenderers(contributions);
@@ -5648,19 +5699,24 @@
             // sends someone to a theme or a page, and what lets Back find it again.
             // Every entry says which graph it is in: the address of a folder graph may be two
             // graphs' (chosen-graph.ts), and Back from the other one has to find this one.
+            // A Visit made while a Dismissable Overlay's entry is in front (a page chosen in a phone's
+            // drawer, which closes after the page opens) takes that entry's place, so Back from the
+            // page goes to the page before it rather than to the overlay (overlay-history.ts).
             pushUrl: (url, state) =>
                 void writeOwnHistory(() =>
                     goto(withSearch(url, withoutSettingsTab(page.url.search)), {
                         shallow: true,
+                        replace: visitReplacesFront(page.state.etherpkOverlay),
                         state: { etherpkVisit: state, ...chosenGraphState({ id: graphId }) },
                     }),
                 ),
+            // Replacing the entry in front keeps it an overlay's entry when it is one.
             replaceUrl: (url, state) =>
                 void writeOwnHistory(() =>
                     goto(withSearch(url, withoutSettingsTab(page.url.search)), {
                         shallow: true,
                         replace: true,
-                        state: { etherpkVisit: state, ...chosenGraphState({ id: graphId }) },
+                        state: { etherpkVisit: state, ...chosenGraphState({ id: graphId }), ...overlayMarker() },
                     }),
                 ),
             // The last page closed. Unlike a Visit this keeps Settings: a page can close under an
@@ -7436,10 +7492,12 @@
             }
             pendingPublishReport = options.publishReport;
             pendingAgentsSubTab = options.agentsSubTab;
+            // Settings is a place with an entry of its own, never a Dismissable Overlay's entry.
+            const { etherpkOverlay: _overlay, ...under } = page.state;
             return goto(location.pathname + withSettingsTab(location.search, target), {
                 shallow: true,
                 state: {
-                    ...page.state,
+                    ...under,
                     etherpkSettings: { tab: target, pushed: true },
                 },
             });
@@ -7479,25 +7537,17 @@
         void writeOwnHistory(() => {
             const current = page.state.etherpkSettings;
             if (!current) return undefined;
-            if (current.pushed) return goBack();
+            if (current.pushed) return goBackSettled();
             const state = { ...page.state };
             delete state.etherpkSettings;
             return goto(location.pathname + withoutSettingsTab(location.search), { shallow: true, replace: true, state });
         });
     }
 
-    /** Back one history entry, settled once SvelteKit has put that entry's state in page.state. */
-    async function goBack(): Promise<void> {
-        const before = page.state;
-        await new Promise<void>((resolve) => {
-            addEventListener("popstate", () => resolve(), { once: true });
-            history.back();
-        });
-        // For a shallow entry SvelteKit replaces page.state after it has resolved the route, a
-        // little after the popstate event. Wait for that, for half a second at most.
-        for (let waited = 0; waited < 500 && page.state === before; waited += 10) {
-            await new Promise((resolve) => setTimeout(resolve, 10));
-        }
+    /** The marker of the Dismissable Overlay's entry in front, as state to keep on replacing it. */
+    function overlayMarker(): { etherpkOverlay?: string } {
+        const marker = page.state.etherpkOverlay;
+        return marker === undefined ? {} : { etherpkOverlay: marker };
     }
 
     /**
@@ -8437,6 +8487,27 @@
         }
     }
 
+    /** Copy link to page: the link to the page in front, said in a notice since nothing on screen shows it. */
+    async function copyPageLink(): Promise<void> {
+        if (await copyPageAddress(pageLink(currentAddressPath(), addressPlace()), "the link to this page")) sayLinkCopied();
+    }
+
+    /** Go to address…: the toolbar's field where it shows the address, and a dialog everywhere else. */
+    function goToAddress(): void {
+        if (addressInToolbar && addressField) addressField.focus();
+        else addressDialogOpen = true;
+    }
+
+    /**
+     * Go to the page a person typed or pasted into the page address: a real navigation, as a link
+     * the operating system hands the app is (launch-target.ts, native/launches.ts), so another
+     * graph's address opens that graph.
+     */
+    function goToPagePath(path: string): void {
+        addressDialogOpen = false;
+        void queueHistoryWrite(() => goto(path));
+    }
+
     /**
      * A write to this workspace's own history entry. Writes wait their turn (history-writes.ts),
      * and one can come up after the workspace has closed, when the entry in front belongs to the
@@ -8943,6 +9014,9 @@
     />
 {/if}
 
+{#if addressDialogOpen}
+    <PageAddressDialog ongo={goToPagePath} onclose={() => (addressDialogOpen = false)} />
+{/if}
 {#if shortcutsDialogOpen}
     <KeyboardShortcutsDialog bindings={keybindingTable.bindings} onclose={() => (shortcutsDialogOpen = false)} />
 {/if}
@@ -9192,6 +9266,11 @@
     />
 {/if}
 
+<!-- The page's address after the toolbar's heading, where the window has no address bar. -->
+{#snippet toolbarAddress()}
+    <PageAddressField bind:this={addressField} small asText floatingError ongo={goToPagePath} />
+{/snippet}
+
 <!-- The presenter is chosen by viewport. Desktop: a toolbar + the dockview host
      (which must exist whenever ready & desktop). Mobile: the self-contained
      MobilePresenter, which carries its own chrome (drawer toggles + tab strip),
@@ -9205,6 +9284,7 @@
             rightLabel={sidebars.toggleLabel("right")}
             heading={toolbarHeading}
             indexing={indexingIconShown}
+            address={addressInToolbar ? toolbarAddress : undefined}
         />
         <!-- The Activity Bar stands beside the Layout, on the Primary Sidebar's side, and stays
              while that Sidebar is collapsed (ADR 0198). -->

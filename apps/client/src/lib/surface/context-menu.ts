@@ -317,6 +317,11 @@ export interface AssetContextMenuTarget {
     occurrence?: number
     /** The document holding it, from its own editor rather than whichever document is active. */
     concept?: string
+    /**
+     * The editor line it stands on, when the menu was opened from the keyboard at the caret: the
+     * menu then carries the line's rows too (ADR 0159), as Shift+F10 elsewhere on a line does.
+     */
+    editorLine?: EditorLine
 }
 
 /** An asset target that carries the position an edit needs. */
@@ -337,6 +342,7 @@ export function editorLineOf(target: ContextMenuTarget): EditorLine | null {
         return { concept, panelId, line, text }
     }
     if (isWikilinkTarget(target) || isMisspellingTarget(target)) return target.line ?? null
+    if (target.kind === 'asset') return target.editorLine ?? null
     return null
 }
 

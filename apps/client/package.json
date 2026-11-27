@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-client",
-    "version": "0.55.1",
+    "version": "1.0.0",
     "license": "Elastic-2.0",
     "private": true,
     "type": "module",

@@ -32,6 +32,13 @@ import type { GraphAssetTools } from '#lib/storage/fs/asset-orphans.js'
 
 import { type AssetDeletePlan, type ProtectedAssetUsage, assetUsageNeedles, planAssetDelete, quickNoteReferences } from '../asset-delete'
 import { removeAssetReference } from '../view/asset-remove'
+import type { EditorView } from '@codemirror/view'
+import { whenDocumentText } from '../draft'
+import { editorDocument } from '../view/editor-document'
+import { type Rotation, rotateAsset, undoRotation, type RotationDeps } from '../image-rotation'
+import type { LinkEdit } from '../pdf/rename-links'
+import type { DocumentStore } from '../types'
+import { countElsewhereSpec, rotatingImageLine, startRotationSpec } from '../view/augmentations/image-rotate'
 import type { RemoteGraphIndex } from '../index-worker/client'
 
 export const ASSET_DOWNLOAD = 'asset.download'
@@ -39,6 +46,10 @@ export const ASSET_DELETE = 'asset.delete'
 export const ASSET_OPEN = 'asset.open'
 export const ASSET_COPY_IMAGE = 'asset.copy-image'
 export const ASSET_VIEW_IMAGE = 'asset.view-image'
+/** Show a picture turned, with Rotate again, Save and Cancel (`view/augmentations/image-rotate.ts`). */
+export const ASSET_ROTATE_IMAGE = 'asset.rotate-image'
+/** Save a turn shown by Rotate (`../image-rotation.ts`). */
+export const ASSET_SAVE_ROTATION = 'asset.save-rotation'
 
 /** What the delete dialog was asked about, and what it may offer. */
 export interface AssetDeletePrompt {
@@ -94,6 +105,14 @@ export interface AssetCommandDeps {
     onError?: (message: string) => void
     /** Confirm an outcome nothing on screen shows (the same status line). */
     onNotice?: (message: string) => void
+    /** The editor in use, which Rotate turns a picture in. */
+    activeEditor?: () => EditorView | null
+    /** The graph's documents, whose references a saved rotation moves. */
+    documents?: () => DocumentStore | null
+    /** Turn a picture's pixels (`view/image-rotate-canvas.ts`). */
+    rotateImage?: RotationDeps['rotate']
+    /** Say a rotation was saved, with a way to undo it. */
+    onRotated?: (message: string, undo: () => Promise<void>) => void
 }
 
 /**
@@ -226,7 +245,72 @@ export function registerAssetCommands(
         if (choice === 'delete' && plan.deleteBytes) await tools.remove([assetId])
     }
 
+    /** The documents the index has holding a reference to the Asset, or null while it is building. */
+    async function documentsUsing(assetId: string): Promise<readonly string[] | null> {
+        const index = deps.index()
+        if (!index || index.isBuilding()) return null
+        return (await index.assetUsage(assetUsageNeedles(assetId))).documents.map((document) => document.concept)
+    }
+
+    /** Rotate on a picture: shown turned in the editor, with the count of other documents a Save would change. */
+    async function startRotation(target: EditableAssetTarget): Promise<void> {
+        const view = deps.activeEditor?.()
+        if (!view) return
+        view.dispatch(startRotationSpec(view.state, target.line))
+        const assetId = deps.tools()?.identify(target.ref)
+        const using = assetId ? await documentsUsing(assetId) : null
+        if (using === null || rotatingImageLine(view.state) === null) return
+        view.dispatch(countElsewhereSpec(using.filter((concept) => concept !== target.concept).length))
+    }
+
+    /**
+     * The edits a rotation works out, applied to a document: through its editor when it is the one in
+     * use, so Ctrl+Z there undoes them, and through the store elsewhere.
+     */
+    async function rewrite(concept: string, edits: (text: string) => LinkEdit[]): Promise<void> {
+        const view = deps.activeEditor?.()
+        if (view && view.state.facet(editorDocument)?.concept === concept) {
+            const changes = edits(view.state.doc.toString())
+            if (changes.length > 0) view.dispatch({ changes, userEvent: 'input.rotate' })
+            return
+        }
+        const store = deps.documents?.()
+        if (!store) throw new Error('The graph closed before the rotation was saved.')
+        const document = store.open(concept)
+        const text = await whenDocumentText(store, document, concept)
+        for (const { from, to, insert } of edits(text)) document.applyChange({ from, to, insert }, 'external')
+    }
+
+    /** Save a turn shown by Rotate: the turned picture as a new file, and the references moved to it. */
+    async function saveRotation(target: EditableAssetTarget, turns: number): Promise<void> {
+        const store = deps.store()
+        const tools = deps.tools()
+        const rotate = deps.rotateImage
+        if (!store || !tools || !rotate || !target.concept) throw new Error('This picture cannot be rotated here.')
+        const rotationDeps: RotationDeps = {
+            identify: (ref) => tools.identify(ref),
+            readBytes: (ref) => store.readBytes(ref),
+            rotate,
+            save: (file) => store.save(file),
+            documentsUsing,
+            rewrite,
+        }
+        const rotation: Rotation | null = await rotateAsset(rotationDeps, { ref: target.ref, turns, concept: target.concept })
+        if (!rotation) return
+        const count = rotation.documents.length
+        deps.onRotated?.(count === 1 ? 'Picture rotated.' : `Picture rotated in ${count} documents.`, () => undoRotation(rotationDeps, rotation))
+    }
+
     disposers.push(
+        commands.register(ASSET_ROTATE_IMAGE, (arg) => {
+            const target = editableTargetOf(arg)
+            return target ? guard(startRotation(target)) : undefined
+        }),
+        commands.register(ASSET_SAVE_ROTATION, (arg) => {
+            const target = editableTargetOf(arg)
+            const turns = (arg as { turns?: unknown } | undefined)?.turns
+            return target && typeof turns === 'number' ? guard(saveRotation(target, turns)) : undefined
+        }),
         commands.register(ASSET_DOWNLOAD, (arg) => {
             const target = targetOf(arg)
             return target ? guard(download(target)) : undefined

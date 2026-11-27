@@ -1,7 +1,8 @@
-import { EditorSelection, EditorState } from '@codemirror/state'
+import { EditorSelection, EditorState, StateEffect, StateField } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 
 import {
+    lineKeptDrawn,
     lineRevealed,
     linesAllHidden,
     rangeRevealed,
@@ -20,6 +21,32 @@ import {
 function state(doc: string, anchor: number, head = anchor): EditorState {
     return EditorState.create({ doc, selection: EditorSelection.single(anchor, head), extensions: [requestedRevealField] })
 }
+
+describe('a line kept drawn', () => {
+    // A stand-in for the parked caret (image-select.ts): a field that names a line to keep drawn.
+    const keep = StateEffect.define<number | null>()
+    const kept = StateField.define<number | null>({
+        create: () => null,
+        update: (value, tr) => tr.effects.reduce((v, e) => (e.is(keep) ? e.value : v), value),
+        provide: (field) => lineKeptDrawn.compute([field], (s) => s.field(field)),
+    })
+    const withKept = (doc: string, anchor: number, head = anchor) => EditorState.create({ doc, selection: EditorSelection.single(anchor, head), extensions: [kept] })
+
+    it('is left out of the lines the selection reveals, and every kind built on them', () => {
+        const before = withKept('one\ntwo\nthree', 0, 9)
+        expect([...revealedLines(before)]).toEqual([1, 2, 3])
+        const after = before.update({ effects: keep.of(2) }).state
+        expect([...revealedLines(after)]).toEqual([1, 3])
+        expect(lineRevealed(after, 2)).toBe(false)
+        expect(linesAllHidden(after, 2, 2)).toBe(true)
+    })
+
+    it('changing it is a change a reveal depends on', () => {
+        const tr = withKept('one\ntwo', 4).update({ effects: keep.of(2) })
+        expect(revealInputsChanged(tr)).toBe(true)
+        expect(revealInputsChanged(tr.state.update({ effects: keep.of(2) }))).toBe(false)
+    })
+})
 
 describe('line-kind reveal', () => {
     it('is the set of lines any selection range touches', () => {

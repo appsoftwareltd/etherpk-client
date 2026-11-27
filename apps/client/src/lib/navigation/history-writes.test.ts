@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { queueHistoryWrite } from './history-writes'
+import { afterEachHistoryWrite, queueHistoryWrite } from './history-writes'
 
 describe('queueHistoryWrite', () => {
     it('starts each write only after the one queued before it has finished', async () => {
@@ -32,5 +32,20 @@ describe('queueHistoryWrite', () => {
         await expect(failed).rejects.toThrow('no route')
         expect(next).toHaveBeenCalledOnce()
         warn.mockRestore()
+    })
+})
+
+describe('afterEachHistoryWrite', () => {
+    it('tells a listener after each write, a failed one too, until it stops listening', async () => {
+        const told = vi.fn()
+        const stop = afterEachHistoryWrite(told)
+        await queueHistoryWrite(() => {})
+        await queueHistoryWrite(() => {
+            throw new Error('refused')
+        }).catch(() => {})
+        expect(told).toHaveBeenCalledTimes(2)
+        stop()
+        await queueHistoryWrite(() => {})
+        expect(told).toHaveBeenCalledTimes(2)
     })
 })

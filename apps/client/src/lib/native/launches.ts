@@ -7,7 +7,7 @@
 import type { FileInfo, Launch, NativeBridge } from '@appsoftwareltd/etherpk-native-bridge'
 
 import { MAX_QUICK_NOTE_LENGTH } from '#lib/document/quick-notes.js'
-import { isWorkspaceAddress } from '#lib/install/launch-target.js'
+import { etherpkLinkPath } from '#lib/navigation/page-address.js'
 import { withinShareLimits } from '#lib/share/share-limits.js'
 import { SHARE_FILES_DROPPED, shareAddress } from '#lib/share/share-post.js'
 import { keepSharedFiles } from '#lib/share/shared-files.js'
@@ -16,22 +16,10 @@ import { keepSharedFiles } from '#lib/share/shared-files.js'
 export const READ_PART_BYTES = 4 * 1024 * 1024
 
 /**
- * The address in the app of an `etherpk:` link, or null for one that leads to no page a link may open.
- *
- * The link is the address's path under the scheme, as a task reference writes it
- * (`etherpk:/graph/sync/<id>/d/<document>#task=…`). A program that builds one by the rules of a web
- * address writes two slashes, and a third for the path, so those are read too. Any program can open a
- * link, so only the pages that show notes are reached by one.
+ * The address in the app of an `etherpk:` link (an [[EtherPK Link]]), or null for one that leads to no
+ * page a link may open. Read as Go to address reads one (`navigation/page-address.ts`).
  */
-export function linkAddress(link: string): string | null {
-    const path = /^etherpk:\/{0,3}([^/\\].*)$/i.exec(link.trim())?.[1]
-    if (path === undefined) return null
-    const base = 'https://link.invalid'
-    if (!URL.canParse(`/${path}`, base)) return null
-    const url = new URL(`/${path}`, base)
-    if (url.origin !== base || !isWorkspaceAddress(url.pathname)) return null
-    return `${url.pathname}${url.search}${url.hash}`
-}
+export const linkAddress = etherpkLinkPath
 
 /** What carrying out a launch needs from the app. */
 export interface LaunchHandlers {

@@ -531,6 +531,7 @@
     placement="top"
     onclose={close}
     onsubmit={save}
+    closeOnBack={false}
 >
     {#snippet body()}
         {#if areas.length > 1}

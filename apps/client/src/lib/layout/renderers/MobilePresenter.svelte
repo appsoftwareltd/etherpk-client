@@ -7,6 +7,7 @@
      * identical API — `focusView` to switch tabs, `toggleSidebar` to close a drawer.
      */
     import { untrack } from 'svelte'
+    import { dialogStack } from '@appsoftwareltd/etherpk-shared/ui'
 
     import type { LayoutController, LayoutModel, Region, ViewInstance } from '#lib/layout/index.js'
     import { attachContextMenu, type ContextMenuTarget, createControlHelp, tryGetActiveCommandRegistry } from '#lib/surface/index.js'
@@ -281,6 +282,25 @@
     // menu does exactly that - so the list gets out of the way of the drawer asked for.
     $effect(() => {
         if (leftOpen || rightOpen) menuOpen = false
+    })
+
+    // A drawer and the list of open documents are Dismissable Overlays: the browser's Back puts the
+    // one on top away and moves nothing under it (overlay-history.ts). The drawer keeps its Views
+    // open, as its own close button does.
+    $effect.pre(() => {
+        if (!leftOpen) return
+        const place = dialogStack.open({ dismiss: () => closePrimaryDrawer('left') })
+        return () => place.close()
+    })
+    $effect.pre(() => {
+        if (!rightOpen) return
+        const place = dialogStack.open({ dismiss: () => closePrimaryDrawer('right') })
+        return () => place.close()
+    })
+    $effect.pre(() => {
+        if (!menuOpen) return
+        const place = dialogStack.open({ dismiss: closeList })
+        return () => place.close()
     })
 
     /** Escape puts the list away from the control, as it does from inside the list. */
