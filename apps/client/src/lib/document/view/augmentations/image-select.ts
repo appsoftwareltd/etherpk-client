@@ -9,10 +9,16 @@
  * the caret moving.
  *
  * A tap leaves the caret where it was, with one exception. The caret on another image line shows that
- * line's markdown, and only the caret leaving the line draws the picture again. So a tap while the
- * caret is on such a line moves the caret to the tapped picture's `!` and **parks** it there: the
- * tapped picture's line is drawn as its picture although the caret is on it, and the caret is not
- * drawn. The reveal policy leaves the line unrevealed (reveal-policy.ts → lineKeptDrawn). The park
+ * line's markdown, and only the caret leaving the line, or the editor losing the keyboard, draws the
+ * picture again. So a tap while the caret is on such a line moves the caret to the tapped picture's
+ * `!` and **parks** it there: the tapped picture's line is drawn as its picture although the caret is
+ * on it, and the caret is not drawn.
+ *
+ * The editor losing the keyboard with its caret on an image line parks it there too, where the caret
+ * is (a click outside the document, Escape). The picture is then drawn, and stays drawn when the
+ * keyboard comes back: the picture's own actions and menus give the keyboard back to the editor as
+ * they run, and a picture that opened as text under them would end a Rotate or drop a tap's
+ * selection. The reveal policy leaves the line unrevealed (reveal-policy.ts → lineKeptDrawn). The park
  * ends when the caret moves, which then shows that line's markdown if the caret is still on it, as
  * any caret does, or when the line stops being an image line. A key that would write or delete at the parked caret opens the picture as
  * text instead and writes nothing (image-embed.ts → parkedKeySpec).
@@ -28,7 +34,7 @@ import { foldedRanges } from '@codemirror/language'
 import { type EditorState, MapMode, StateEffect, StateField, type Transaction, type TransactionSpec } from '@codemirror/state'
 
 import { analysisFor } from '../analysis/editor-analysis'
-import { lineKeptDrawn, lineRevealed, revealedLines } from './reveal-policy'
+import { lineKeptDrawn, lineRevealed, revealFocus, revealedLines } from './reveal-policy'
 
 /** Select the image whose `!` is at the position, or none for null. */
 const selectImage = StateEffect.define<number | null>()
@@ -62,6 +68,18 @@ function stillParked(state: EditorState, pos: number): boolean {
 }
 
 /**
+ * Where a transaction parks the caret as the editor loses the keyboard: the `!` of the image line its
+ * one caret is on, or null when it carries no such loss or the caret is not one caret on an image line.
+ */
+function parkedByLeaving(tr: Transaction): number | null {
+    if (!tr.effects.some((effect) => effect.is(revealFocus) && !effect.value)) return null
+    const { ranges } = tr.state.selection
+    if (ranges.length !== 1 || !ranges[0].empty) return null
+    const line = tr.state.doc.lineAt(ranges[0].head)
+    return isRenderedImageLine(tr.state, line.number) ? bangOf(tr.state, line.from) : null
+}
+
+/**
  * The image the caret is parked on, by its `!`, or null. Read it through {@link parkedImageLine}. It
  * gives its line to the reveal policy as the line kept drawn (reveal-policy.ts → lineKeptDrawn), so
  * every reveal kind leaves that line unrevealed.
@@ -72,6 +90,8 @@ export const parkedImageField = StateField.define<number | null>({
         // The caret placed anywhere else, or by the pointer, ends it, and so does a key typed or deleted
         // at it: the person is in the text now.
         let next = caretPlaced(tr) || (tr.docChanged && tr.selection !== undefined) ? null : mappedBang(parked, tr)
+        // The editor losing the keyboard with its caret on an image line parks it there.
+        next ??= parkedByLeaving(tr)
         for (const effect of tr.effects) if (effect.is(parkCaret)) next = effect.value
         return next !== null && stillParked(tr.state, next) ? next : null
     },

@@ -5,23 +5,36 @@
      * address bar, so the workspace toolbar shows this in its place; Go to address… shows it in a
      * dialog wherever there is no toolbar for it.
      *
-     * - It reads as the person would type it: `%20` shown as a space. It scrolls to show the end of
-     *   the address, the page's name, since every address of a graph starts the same.
+     * - It reads as the person would type it: `%20` shown as a space. In the toolbar it shows the address
+     *   from the graph's or the folder's own address on (`/d/Garden Beds`), since every page of a
+     *   workspace starts the same, and a path typed that way leads to a page of the same workspace.
+     *   It is as wide as that text, so the copy button follows it, and a longer one ends in an
+     *   ellipsis. In a dialog it shows the whole address, scrolled to its end, the page's name.
      * - Focus selects the whole address, ready to copy or paste over. Enter goes to what was typed.
      *   In the toolbar, Escape or leaving the field puts the address back. In a dialog what was typed
      *   stays until the dialog closes, since its Go button is outside the field.
      * - An address that leads nowhere is refused under the field. The typed text and the focus stay.
      * - In the toolbar it is drawn as muted text (`asText`, Style Guide: The workspace toolbar), lit
-     *   under the pointer and ringed while edited; in a dialog it is an ordinary field.
-     * - Copy link copies the link of where the app runs: the web address in a browser, an EtherPK
-     *   Link in a Native App. A Native App on a synced graph also offers the web address.
+     *   under the pointer and while edited, with no ring; in a dialog it is an ordinary field.
+     * - Copy link copies the whole link of where the app runs, whatever the field shows: the web
+     *   address in a browser, an EtherPK Link in a Native App. A Native App on a synced graph also
+     *   offers the web address.
      */
     import { browser } from '$app/env'
     import { page } from '$app/state'
 
     import { addressPlace } from '#lib/native/web-address.js'
     import { currentAddressPath } from '#lib/navigation/current-address.js'
-    import { ADDRESS_REFUSAL_COPY, type AddressRefusal, pageLink, pageWebAddress, readableAddress, readAddress } from '#lib/navigation/page-address.js'
+    import {
+        ADDRESS_REFUSAL_COPY,
+        type AddressRefusal,
+        addressInWorkspace,
+        pageLink,
+        pageWebAddress,
+        readableAddress,
+        readAddress,
+        workspaceBase,
+    } from '#lib/navigation/page-address.js'
     import { copyPageAddress } from '#lib/navigation/page-link-copy.js'
     import { iconSvg } from '#lib/surface/icons.js'
 
@@ -70,7 +83,10 @@
     })
     const link = $derived(pageLink(path, place))
     const webAddress = $derived(pageWebAddress(path, place))
-    const shown = $derived(readableAddress(link))
+    /** The graph's or the folder's own address, which a path typed from it on is read against. */
+    const base = $derived(workspaceBase(path))
+    // The toolbar shows the page within its workspace; a dialog, and a page in no workspace, the whole link.
+    const shown = $derived(readableAddress(asText && base !== null ? addressInWorkspace(path) : link))
 
     let input = $state<HTMLInputElement>()
     /** What the person is typing, or null while the field shows the address. */
@@ -91,7 +107,7 @@
 
     /** Go to what is typed, or say why not. */
     export function submit(): void {
-        const reading = readAddress(draft ?? shown, place)
+        const reading = readAddress(draft ?? shown, place, base)
         if (!reading.ok) {
             refusal = reading.refusal
             input?.focus()
@@ -142,12 +158,15 @@
         copiedTimer = setTimeout(() => (copied = null), COPIED_MS)
     }
 
-    /** Show the end of the address, the page's name, whenever it changes while nobody is typing. */
-    function showEnd(node: HTMLInputElement) {
+    /**
+     * Whenever the address changes while nobody is typing, show the end of a whole address, the
+     * page's name, or the start of the toolbar's, which ends in an ellipsis when it is too long.
+     */
+    function showName(node: HTMLInputElement) {
         void shown
         if (draft !== null) return
         requestAnimationFrame(() => {
-            if (draft === null) node.scrollLeft = node.scrollWidth
+            if (draft === null) node.scrollLeft = asText ? 0 : node.scrollWidth
         })
     }
 
@@ -155,7 +174,8 @@
 </script>
 
 <div class="address" class:small data-testid="page-address">
-    <div class="field">
+    <!-- In the toolbar the field is as wide as its text: a hidden copy of the text sizes it (`sized`). -->
+    <div class="field" class:sized={asText} data-text={asText ? (draft ?? shown) : undefined}>
         <input
             bind:this={input}
             {id}
@@ -171,10 +191,12 @@
             aria-describedby={refusal !== null ? errorId : undefined}
             value={draft ?? shown}
             data-testid="page-address-input"
-            {@attach showEnd}
+            {@attach showName}
             {onfocus}
             onblur={() => {
                 if (!inDialog) restore()
+                // Back to the start, where the ellipsis of a long address is drawn.
+                if (asText && input) input.scrollLeft = 0
             }}
             {onkeydown}
             {oninput}
@@ -234,15 +256,37 @@
         max-width: 40rem;
         min-width: 10rem;
     }
-    /* Drawn as text, it is as wide as the address, up to the same 40rem. */
-    @supports (field-sizing: content) {
-        .address.small:has(> .field > .address-text) {
-            flex: 0 1 auto;
-        }
-        /* A set width would win over the content's own. */
-        input.address-text {
-            width: auto;
-        }
+    /* Drawn as text, it is as wide as the address, up to the same 40rem, so the copy button sits
+       after its last character, as a heading's icons sit after its name. */
+    .address.small:has(> .field.sized) {
+        flex: 0 1 auto;
+        min-width: 0;
+    }
+    /*
+     * A hidden copy of the text, in the field's font and padding, gives the field its width in every
+     * browser (`field-sizing` is Chromium's alone), and the input lies over it. The field gives way
+     * when the toolbar is narrow, down to room for a few characters, and the input's text then ends
+     * in an ellipsis.
+     */
+    .field.sized {
+        flex: 0 1 auto;
+        min-width: 2.5rem;
+    }
+    .field.sized::after {
+        content: attr(data-text);
+        display: block;
+        height: 1.875rem;
+        overflow: hidden;
+        visibility: hidden;
+        white-space: pre;
+        padding: 0 calc(0.5rem + 1px);
+        font: inherit;
+        font-size: 0.875rem;
+        line-height: 1.875rem;
+    }
+    .field.sized > input.address-text {
+        position: absolute;
+        inset: 0 auto auto 0;
     }
     /* The icon buttons on a graph's toolbar colour take the ink that reads on it, as the toggles do. */
     .address.small > .gk-icon-button {
@@ -256,17 +300,14 @@
     /*
      * The toolbar's address as text: no border and no fill, 14px in the ink of the toolbar's colour
      * where one is set and otherwise the theme's muted grey, as the heading's icons are. The pointer
-     * lights it with the toggles' wash, and editing keeps the wash, darkens the text and draws the
-     * focus ring, so it is plain that the text can be typed over. Same 30px box as a small field in
-     * every state, so nothing moves when it is clicked.
+     * lights it with the toggles' wash, and editing keeps the wash and darkens the text, so it is
+     * plain that the text can be typed over. It draws no focus ring. Same 30px box as a small field
+     * in every state, so nothing moves when it is clicked.
      */
     input.address-text {
         display: block;
         width: 100%;
         min-width: 0;
-        /* As wide as the address, so the copy button sits after its last word, as a heading's icons
-           sit after its name. A browser without it (Firefox, Safari) keeps the toolbar's width. */
-        field-sizing: content;
         max-width: 100%;
         height: 1.875rem;
         margin: 0;
@@ -278,6 +319,8 @@
         font: inherit;
         font-size: 0.875rem;
         line-height: 1.25rem;
+        /* An address longer than the room ends in an ellipsis at rest; while edited it scrolls. */
+        text-overflow: ellipsis;
         cursor: text;
     }
     input.address-text:hover,
@@ -285,10 +328,10 @@
         background: var(--gk-toolbar-hover, var(--gk-menu-hover));
         color: var(--gk-toolbar-ink, var(--gk-text-strong));
     }
+    /* Edited, it keeps the wash and the strong text, and draws no ring: the wash and the selected
+       address say it has the keyboard, and the toolbar stays a heading rather than a form. */
     input.address-text:focus {
         outline: none;
-        border-color: var(--gk-field-focus);
-        box-shadow: 0 0 0 1px var(--gk-field-focus);
     }
     input.address-text[aria-invalid='true'] {
         border-color: var(--gk-text-danger);

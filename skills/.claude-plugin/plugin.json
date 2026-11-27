@@ -3,7 +3,7 @@
     "name": "etherpk",
     "displayName": "EtherPK",
     "description": "Your EtherPK notes in Claude Code. Claude searches, reads and edits a synced graph, kept end-to-end encrypted across your devices, or a graph folder on this device, and writes pages, journal entries and tasks in the EtherPK Format.",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "author": {
         "name": "EtherPK",
         "url": "https://etherpk.com"

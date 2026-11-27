@@ -34,16 +34,22 @@
  * The line, range and block kinds read {@link selectionReveals} first, so the rule holds for each of
  * them alike. The requested kind does not: a request is the person's own, made with Edit as text.
  *
+ * An editor showing a whole document follows the keyboard too ({@link followKeyboard}), and reveals
+ * the caret's line whether it has the keyboard or not, except for the lines an augmentation names as
+ * {@link drawnWithoutKeyboard}: an image line (image-embed.ts). A click outside the document or
+ * Escape (which blurs the editor in a tab) then draws the picture again, as Logseq renders a block
+ * once it leaves editing, rather than leaving its markdown over the picture's empty box.
+ *
  * Everything here is pure over `EditorState`, so the rules are unit-tested in Node
  * (`reveal-policy.test.ts`) and every consumer inherits the same behaviour.
  */
 
 import { type EditorState, type Extension, Facet, MapMode, StateEffect, StateField, type Transaction } from '@codemirror/state'
-import { EditorView } from '@codemirror/view'
+import { EditorView, ViewPlugin } from '@codemirror/view'
 
-// ── Focus: an editor that reveals only while it has the keyboard ─────────────────────────────
+// ── The keyboard: whether the editor has it ─────────────────────────────────────────────────
 
-/** The editor gained (true) or lost (false) the keyboard, in an editor that reveals only while focused. */
+/** The editor gained (true) or lost (false) the keyboard, in an editor that follows it ({@link followKeyboard}). */
 export const revealFocus = StateEffect.define<boolean>()
 
 /**
@@ -53,43 +59,88 @@ export const revealFocus = StateEffect.define<boolean>()
  */
 export const revealCellFocus = StateEffect.define<boolean>()
 
-/** Where the keyboard is, for an editor that reveals only while focused: in its own text, or in a cell of a table in it. */
-interface RevealFocus {
+/** Where the keyboard is, for an editor that follows it: in its own text, or in a cell of a table in it. */
+interface KeyboardAt {
     readonly editor: boolean
     readonly cell: boolean
 }
 
 /**
- * Whether the editor has the keyboard, kept only in an editor that reveals only while focused. It
- * starts false: an editor is made without focus, and CodeMirror says when it gains it.
+ * Whether the editor has the keyboard, kept only in an editor that follows it. It starts false: an
+ * editor is made without focus, and CodeMirror says when it gains it.
  */
-const revealFocusField = StateField.define<RevealFocus>({
+const keyboardField = StateField.define<KeyboardAt>({
     create: () => ({ editor: false, cell: false }),
-    update(focus, tr) {
-        let { editor, cell } = focus
+    update(at, tr) {
+        let { editor, cell } = at
         for (const effect of tr.effects) {
             if (effect.is(revealFocus)) editor = effect.value
             else if (effect.is(revealCellFocus)) cell = effect.value
         }
-        return editor === focus.editor && cell === focus.cell ? focus : { editor, cell }
+        return editor === at.editor && cell === at.cell ? at : { editor, cell }
     },
 })
 
 /**
- * Reveal only while the editor has the keyboard: the part editors of the Task Editor (`shown-range.ts`).
- * CodeMirror's focus change carries {@link revealFocus} into the state, so the reveal stays pure over
- * the state and every consumer rebuilds on it through {@link revealInputsChanged}. One value, so an
- * editor given it twice (a run and a held part) still has one field and one effect.
+ * CodeMirror sends its focus change as a transaction of its own a moment later, and drops it when
+ * another transaction is dispatched first: a remount does that, carrying the outgoing editor's state
+ * into an incoming one that already has the keyboard (`DocumentView.remount`, a Draft's first
+ * keystroke). The field would then say the keyboard is away while the person types. So after every
+ * update, and once the editor is made, the field is checked against the view and put right.
  */
-const onlyWhileFocused: Extension = [revealFocusField, EditorView.focusChangeEffect.of((_state, focusing) => revealFocus.of(focusing))]
+const keyboardChecked = ViewPlugin.define((view) => {
+    let queued = false
+    const check = () => {
+        if (queued) return
+        queued = true
+        queueMicrotask(() => {
+            queued = false
+            const at = view.state.field(keyboardField, false)
+            if (at && at.editor !== view.hasFocus && view.dom.isConnected) view.dispatch({ effects: revealFocus.of(view.hasFocus) })
+        })
+    }
+    check()
+    return { update: check }
+})
 
+/**
+ * Keep in the state whether the editor has the keyboard: CodeMirror's focus change carries
+ * {@link revealFocus} in, so a reveal stays pure over the state and every consumer rebuilds on it
+ * through {@link revealInputsChanged}. One value, so an editor given it more than once (a tab's
+ * stack and a part's gate) still has one field, one effect and one check.
+ */
+const keyboardFollowed: Extension = [keyboardField, EditorView.focusChangeEffect.of((_state, focusing) => revealFocus.of(focusing)), keyboardChecked]
+
+/**
+ * Follow the keyboard, as every editor the app builds does (editor-extensions.ts). On its own it
+ * changes only the lines an augmentation names as {@link drawnWithoutKeyboard}.
+ */
+export function followKeyboard(): Extension {
+    return keyboardFollowed
+}
+
+/** An editor reveals nothing at all while it does not have the keyboard ({@link revealOnlyWhileFocused}). */
+const revealsNothingWithoutKeyboard = Facet.define<boolean, boolean>({ combine: (values) => values.some(Boolean) })
+
+const onlyWhileFocused: Extension = [keyboardFollowed, revealsNothingWithoutKeyboard.of(true)]
+
+/** Reveal only while the editor has the keyboard: the part editors of the Task Editor (`shown-range.ts`). */
 export function revealOnlyWhileFocused(): Extension {
     return onlyWhileFocused
 }
 
 /** Whether this editor reveals only while it has the keyboard: a part editor ({@link revealOnlyWhileFocused}). */
 export function revealsOnlyWhileFocused(state: EditorState): boolean {
-    return state.field(revealFocusField, false) !== undefined
+    return state.facet(revealsNothingWithoutKeyboard)
+}
+
+/**
+ * Whether the editor, or a cell of a table in it, has the keyboard, as far as a reveal goes. An editor
+ * that does not follow it ({@link followKeyboard}) is taken to have it: it reveals as before.
+ */
+function keyboardHere(state: EditorState): boolean {
+    const at = state.field(keyboardField, false)
+    return at ? at.editor || at.cell : true
 }
 
 /**
@@ -115,9 +166,39 @@ export function cellHasKeyboard(state: EditorState): boolean {
  * reveals only while focused, only while it or a cell of a table in it has the keyboard.
  */
 export function selectionReveals(state: EditorState): boolean {
-    const focus = state.field(revealFocusField, false)
-    return focus ? focus.editor || focus.cell : true
+    return !revealsOnlyWhileFocused(state) || keyboardHere(state)
 }
+
+/** Whether two sets of line numbers hold the same lines. */
+function sameLines(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
+    if (a.size !== b.size) return false
+    for (const n of a) if (!b.has(n)) return false
+    return true
+}
+
+/**
+ * A set of 1-based line numbers that augmentations provide as data. It keeps its identity while the
+ * lines stay the same, so {@link revealInputsChanged} can tell a change from a recomputation.
+ */
+function lineSetFacet() {
+    return Facet.define<readonly number[], ReadonlySet<number>>({ combine: (values) => new Set(values.flat()), compare: sameLines })
+}
+
+/**
+ * The 1-based lines drawn, not revealed, while the editor does not have the keyboard, though the
+ * selection touches them. An augmentation provides its own: every image line (image-embed.ts), whose
+ * markdown over the picture's empty box reads as a picture that failed to draw once the person has
+ * gone elsewhere. {@link revealedLines} leaves them out, so every kind built on it agrees. Read only
+ * in an editor that follows the keyboard ({@link followKeyboard}).
+ */
+export const drawnWithoutKeyboard = lineSetFacet()
+
+/**
+ * The 1-based lines that stay revealed without the keyboard though {@link drawnWithoutKeyboard} names
+ * them: the lines of Find's match while the selection is still the one Find put there
+ * (find-highlight.ts), since the keyboard is in Find's box while the person reads the match.
+ */
+export const heldWithoutKeyboard = lineSetFacet()
 
 // ── A line kept drawn ────────────────────────────────────────────────────────────────────────
 
@@ -134,20 +215,32 @@ export const lineKeptDrawn = Facet.define<number | null, number | null>({
 
 // ── The kinds ─────────────────────────────────────────────────────────────────────────────────
 
-/**
- * The 1-based line numbers touched by any selection range — the "active" lines that show raw syntax
- * — less a line kept drawn ({@link lineKeptDrawn}).
- */
-export function revealedLines(state: EditorState): Set<number> {
+/** The 1-based line numbers any selection range touches, focused or not, kept drawn or not. */
+export function selectionLines(state: EditorState): Set<number> {
     const lines = new Set<number>()
-    if (!selectionReveals(state)) return lines
     for (const range of state.selection.ranges) {
         const from = state.doc.lineAt(range.from).number
         const to = state.doc.lineAt(range.to).number
         for (let n = from; n <= to; n++) lines.add(n)
     }
+    return lines
+}
+
+/**
+ * The 1-based line numbers touched by any selection range — the "active" lines that show raw syntax
+ * — less a line kept drawn ({@link lineKeptDrawn}), and less the lines drawn while the editor does
+ * not have the keyboard ({@link drawnWithoutKeyboard}) when it does not.
+ */
+export function revealedLines(state: EditorState): Set<number> {
+    if (!selectionReveals(state)) return new Set<number>()
+    const lines = selectionLines(state)
     const kept = state.facet(lineKeptDrawn)
     if (kept !== null) lines.delete(kept)
+    const drawn = state.facet(drawnWithoutKeyboard)
+    if (drawn.size > 0 && !keyboardHere(state)) {
+        const held = state.facet(heldWithoutKeyboard)
+        for (const n of lines) if (drawn.has(n) && !held.has(n)) lines.delete(n)
+    }
     return lines
 }
 
@@ -233,15 +326,18 @@ export function requestedRevealed(state: EditorState, from: number, to: number):
 
 /**
  * Whether a transaction changed anything a reveal decision depends on: the text, the selection, a
- * request, a line kept drawn, or the keyboard coming or going in an editor that reveals only while focused. A consumer
- * that rebuilds on this, never on the selection alone, follows the focus rule too.
+ * request, a line kept drawn, the lines drawn or held without the keyboard, or the keyboard coming or
+ * going in an editor that follows it. A consumer
+ * that rebuilds on this, never on the selection alone, follows the focus rules too.
  */
 export function revealInputsChanged(tr: Transaction): boolean {
     return (
         tr.docChanged ||
         tr.selection !== undefined ||
         tr.effects.some((e) => e.is(requestReveal) || e.is(revealFocus) || e.is(revealCellFocus)) ||
-        tr.startState.facet(lineKeptDrawn) !== tr.state.facet(lineKeptDrawn)
+        tr.startState.facet(lineKeptDrawn) !== tr.state.facet(lineKeptDrawn) ||
+        tr.startState.facet(drawnWithoutKeyboard) !== tr.state.facet(drawnWithoutKeyboard) ||
+        tr.startState.facet(heldWithoutKeyboard) !== tr.state.facet(heldWithoutKeyboard)
     )
 }
 

@@ -174,6 +174,7 @@ Each release attaches installers that need no browser and no server:
 | Windows 10 and 11 (x64) | [`EtherPK-windows-x64.exe`](https://github.com/appsoftwareltd/etherpk-client/releases/latest/download/EtherPK-windows-x64.exe) |
 | Linux (x64), any distribution | [`EtherPK-linux-x64.AppImage`](https://github.com/appsoftwareltd/etherpk-client/releases/latest/download/EtherPK-linux-x64.AppImage) |
 | Debian and Ubuntu (x64) | [`EtherPK-linux-x64.deb`](https://github.com/appsoftwareltd/etherpk-client/releases/latest/download/EtherPK-linux-x64.deb) |
+| NixOS (x64) | [`EtherPK-linux-x64.nix`](https://github.com/appsoftwareltd/etherpk-client/releases/latest/download/EtherPK-linux-x64.nix), a Nix package of the `.deb` |
 
 The app for Android 11 and later, `EtherPK-android.apk`, is not on every release yet. The
 [releases page](https://github.com/appsoftwareltd/etherpk-client/releases) lists each release's files:
@@ -191,10 +192,28 @@ gh attestation verify EtherPK-windows-x64.exe --repo appsoftwareltd/etherpk-clie
 On Ubuntu 24.04 and later, install the `.deb` rather than the AppImage: the system lets the AppImage
 start only with part of Chromium's sandbox off, and the app says so.
 
+On NixOS, add the Nix package to your system's flake as an input, and install it from there. Its
+licence counts as unfree in nixpkgs, so allow it by name:
+
+```nix
+# flake.nix
+inputs.etherpk = {
+  url = "file+https://github.com/appsoftwareltd/etherpk-client/releases/latest/download/EtherPK-linux-x64.nix";
+  flake = false;
+};
+
+# your configuration, with inputs passed in specialArgs
+environment.systemPackages = [ (pkgs.callPackage inputs.etherpk { }) ];
+nixpkgs.config.allowUnfreePredicate = pkg: lib.getName pkg == "etherpk";
+```
+
+`nix flake update etherpk` takes the newest release. `nix/package.nix` is the same package, with
+the version and checksum of the release it was last tested against.
+
 The apps check a feed signed by App Software for newer versions, and offer a version some time after
 its release. The Graphs page's **This Device** tab says when there is one. In the Windows app and the
 AppImage, select **Update**, then **Restart and update** once it has downloaded. The `.deb` and the
-Android app open the release page for you to download it.
+Android app open the release page for you to download it. The Nix package leaves updates to Nix.
 
 ### Headless Client / MCP Server
 

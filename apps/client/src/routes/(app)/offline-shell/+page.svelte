@@ -12,6 +12,7 @@
     import { onMount } from 'svelte'
 
     import { goto } from '$app/navigation'
+    import OpeningNotice from '#lib/components/OpeningNotice.svelte'
     import { SHELL_PATH } from '#lib/offline/app-shell.js'
 
     let failed = $state(false)
@@ -33,7 +34,7 @@
         <button class="gk-button justify-self-center" onclick={() => goto('/graphs')}>Go to graphs</button>
     </div>
 {:else}
-    <div class="notice" data-testid="offline-shell" role="status"><p>Opening your notes…</p></div>
+    <OpeningNotice testid="offline-shell" />
 {/if}
 
 <style>

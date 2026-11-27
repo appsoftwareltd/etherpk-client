@@ -625,24 +625,46 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules >/dev/null
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+          # Room for the image and the device's data partition: the runner's disk is nearly full, and
+          # this job uses neither the NDKs nor .NET.
+          sudo rm -rf "$ANDROID_HOME/ndk" /usr/share/dotnet
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           # API 37's image: the app needs a recent Android System WebView (WebViewVersion.OLDEST), and
           # API 35's image ships WebView 124, on which the app shows its update page. Google names the
           # image of API 37 for its 16 KB pages. The plain one is taken if there is one.
-          image=$("$sdkmanager" --list 2>/dev/null | grep -oE 'system-images;android-37\.0;google_apis(_ps16k)?;x86_64' | sort | head -n 1)
+          offered=$("$sdkmanager" --list 2>/dev/null)
+          image=$(grep -oE 'system-images;android-37\.0;google_apis(_ps16k)?;x86_64' <<<"$offered" | sort | head -n 1)
           [ -n "$image" ] || { echo '::error::No API 37 emulator image is offered.'; exit 1; }
-          "$sdkmanager" "emulator" "platform-tools" "$image" < <(yes) >/dev/null
+          # The newest command-line tools, for their avdmanager. The runner's own (12.0) cannot read an API
+          # level written 37.0 and give the device target=android-0. The emulator then takes the device for
+          # API 3, leaves Vulkan and direct memory off, and the system's display service aborts on its first
+          # frames.
+          tools=$(grep -oE 'cmdline-tools;[0-9]+\.[0-9]+' <<<"$offered" | sort -uV | tail -n 1)
+          [ -n "$tools" ] || { echo '::error::No numbered command-line tools are offered.'; exit 1; }
+          "$sdkmanager" "emulator" "platform-tools" "$tools" "$image" < <(yes) >/dev/null
           "$ANDROID_HOME/emulator/emulator" -accel-check
           # One folder for the virtual device, named to both tools: avdmanager writes under
           # $XDG_CONFIG_HOME/.android on a hosted runner and the emulator looks in $HOME/.android,
           # so the 1.0.0 release's emulator found no device called smoke.
           export ANDROID_AVD_HOME="$RUNNER_TEMP/avd"
           mkdir -p "$ANDROID_AVD_HOME"
-          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name smoke --package "$image" --device pixel_6
+          echo no | "$ANDROID_HOME/cmdline-tools/${tools#*;}/bin/avdmanager" create avd --name smoke --package "$image" --device pixel_6
           "$ANDROID_HOME/emulator/emulator" -list-avds | grep -qx smoke || { echo '::error::The emulator cannot see the virtual device just created.'; exit 1; }
+          # The emulator reads the device's API level from this line.
+          level=${image#system-images;android-}
+          level=${level%%;*}
+          if ! grep -qx "target=android-$level" "$ANDROID_AVD_HOME/smoke.ini"; then
+            echo "::error::avdmanager gave the device $(grep '^target=' "$ANDROID_AVD_HOME/smoke.ini" || echo 'no target'), not target=android-$level, so the emulator would take it for another API level. Use command-line tools that know this API level."
+            exit 1
+          fi
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-          # A data partition the APK fits in: API 37's default one refused the install for space
-          # ("Requested internal only, but not enough space") in the 1.0.2 release.
+          # A 6 GB data partition, the smallest the emulator takes for this API level. It asks the
+          # runner's disk for 1.2 times the size, and the device's own 10 GB would ask for 12 GB.
+          free=$(df --output=avail -m "$ANDROID_AVD_HOME" | tail -n 1 | tr -d ' ')
+          if [ "$free" -lt 7400 ]; then
+            echo "::error::The runner has $free MB free for the device's data partition, and the emulator needs 7373 MB."
+            exit 1
+          fi
           nohup "$ANDROID_HOME/emulator/emulator" -avd smoke -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -memory 4096 -partition-size 6144 -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
           # shellcheck disable=SC2016 # The emulator's shell reads that, not this one.
           if ! timeout 900 "$ANDROID_HOME/platform-tools/adb" wait-for-device shell 'until [ "$(getprop sys.boot_completed)" = 1 ]; do sleep 2; done'; then
@@ -669,6 +691,7 @@ jobs:
           name: smoke-android
           path: |
             smoke-android.png
+            smoke-android.log
             ${{ runner.temp }}/emulator.log
           if-no-files-found: ignore
           retention-days: 7
@@ -699,12 +722,14 @@ jobs:
         with:
           pattern: installer-*
           path: artifacts
+      # With the .deb goes EtherPK-linux-x64.nix: nix/package.nix set to this release's version and .deb.
       - name: Collect what passed
         id: collect
         env:
           NEEDS: ${{ toJSON(needs) }}
           ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
-        run: mkdir -p artifacts && node scripts/native-apps/collect.mjs --from artifacts --out installers
+          VERSION: ${{ needs.version.outputs.version }}
+        run: mkdir -p artifacts && node scripts/native-apps/collect.mjs --from artifacts --out installers --nix-template nix/package.nix --version "$VERSION"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         if: steps.collect.outputs.made != '0'
         with:

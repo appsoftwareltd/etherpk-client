@@ -1,3 +1,4 @@
+import fc from 'fast-check'
 import { EventEmitter } from 'node:events'
 import type { ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -167,6 +168,22 @@ describe('installers', () => {
         expect(installedAs({}, 'linux', 'x64', '/home/someone/etherpk', true)).toBe(null)
         expect(installedAs({ APPIMAGE: '/a' }, 'linux', 'x64', '/x', false)).toBe(null)
         expect(installedAs({}, 'linux', 'arm64', '/opt/EtherPK/etherpk', true)).toBe(null)
+        // The Nix package runs the .deb's files from the store, which only Nix changes, so no update is offered.
+        expect(installedAs({}, 'linux', 'x64', '/nix/store/0000-etherpk-1.0.1/lib/etherpk/etherpk', true)).toBe(null)
+        // nixpkgs' AppImage wrapper exports APPIMAGE empty.
+        expect(installedAs({ APPIMAGE: '' }, 'linux', 'x64', '/nix/store/0000-etherpk-1.0.1/etherpk', true)).toBe(null)
+    })
+    it('property: a Linux copy that is no AppImage and not in /opt/EtherPK is offered no updates', () => {
+        const path = fc.oneof(
+            fc.constantFrom('/nix/store/0000-etherpk/lib/etherpk/etherpk', '/opt/EtherPKX/etherpk', '/opt/etherpk/etherpk', '/usr/lib/etherpk/etherpk', 'opt/EtherPK/etherpk'),
+            fc.array(fc.string({ minLength: 1 }), { maxLength: 4 }).map((parts) => `/${parts.join('/')}`),
+            fc.string(),
+        )
+        fc.assert(fc.property(path, fc.constantFrom(undefined, ''), (executable, appImage) => {
+            fc.pre(!executable.startsWith('/opt/EtherPK/'))
+            const env = appImage === undefined ? {} : { APPIMAGE: appImage }
+            expect(installedAs(env, 'linux', 'x64', executable, true)).toBe(null)
+        }), { seed: 20261127, numRuns: Number(process.env.UPDATE_FUZZ_RUNS ?? 300) })
     })
     it('replace an AppImage whole, executable, and start the new one', async () => {
         const [source, target] = [join(dir, 'new.bin'), join(dir, 'Apps', 'EtherPK.AppImage')]

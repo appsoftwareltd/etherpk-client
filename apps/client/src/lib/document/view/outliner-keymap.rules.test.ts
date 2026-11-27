@@ -64,7 +64,8 @@ import { taskChangeSpec } from './task-change'
 import { anchorLine, lineAnchor } from './line-anchor'
 import { type ShownRangeEdge } from './edit-refused'
 import { shownRange, shownRangeIn, showsPart } from './shown-range'
-import { requestReveal, revealCellFocus, revealFocus, revealOnlyWhileFocused } from './augmentations/reveal-policy'
+import { followKeyboard, requestReveal, revealCellFocus, revealFocus, revealOnlyWhileFocused } from './augmentations/reveal-policy'
+import { findHighlight, selectMatch, showFindMatches } from './augmentations/find-highlight'
 import { deleteTableAtCaret } from './table-edit'
 import { activeCell, cellBlock, editTableAsText, fromCell } from './table-cell'
 import {
@@ -2032,6 +2033,99 @@ describe('an image opened as text shows its picture again once the caret leaves 
             expect(pictureShown(editor.state, 2)).toBe(true)
         })
     }
+})
+
+// An image opened as text shows its markdown only while the editor has the keyboard: a click outside
+// the document or Escape (which blurs the editor in a tab, `blurEditor`) draws the picture again,
+// with the caret where it was, as Logseq renders a block once it leaves editing. The rest of the
+// caret's line kind is unchanged, and Find's match on an image line still shows its markdown while
+// the keyboard is in Find's box (reveal-policy.ts → followKeyboard, drawnWithoutKeyboard;
+// image-embed.ts). Real focus, clicks and Escape: tests-client/image-reveal-leave.test.ts.
+describe('an image opened as text shows its picture again once the editor loses the keyboard (Logseq)', () => {
+    const IMAGE = '- ![Garden|800](../assets/garden.png)'
+    const imageAugmentation = imageEmbedAugmentation({ resolveAsset: async () => null })
+    const focus = (editor: HeadlessEditor, focused: boolean) => editor.dispatch(editor.state.update({ effects: revealFocus.of(focused) }))
+
+    /** A tab with the editor's keyboard followed, the image on line 2 clicked while it has the keyboard. */
+    function clicked(extensions: Extension[] = []): HeadlessEditor {
+        const editor = editorFixture(`- Garden¦\n${IMAGE}\n- **Kitchen**`, { caret: '¦', extensions: [followKeyboard(), imageAugmentation, ...extensions] })
+        focus(editor, true)
+        editor.dispatch(editor.state.update(imageClickSpec(editor.state, editor.state.doc.line(2).from)))
+        expect(pictureShown(editor.state, 2)).toBe(false)
+        return editor
+    }
+
+    it('the editor losing the keyboard draws the picture again, the caret where it was', () => {
+        const editor = clicked()
+        const head = editor.head()
+        focus(editor, false)
+        expect(editor.head()).toBe(head)
+        expect(pictureShown(editor.state, 2)).toBe(true)
+    })
+
+    it('given the keyboard back, the picture stays drawn, the caret parked on it, until the person goes into its text', () => {
+        const editor = clicked()
+        focus(editor, false)
+        focus(editor, true)
+        expect(pictureShown(editor.state, 2)).toBe(true)
+        expect(parkedImageLine(editor.state)).toBe(2)
+        // A key that writes opens it as text, as at any parked caret, and writes nothing.
+        const before = editor.state.doc.toString()
+        editor.dispatch(editor.state.update(parkedKeySpec(editor.state, { key: 's', ctrlKey: false, metaKey: false, altKey: false })!))
+        expect(editor.state.doc.toString()).toBe(before)
+        expect(pictureShown(editor.state, 2)).toBe(false)
+    })
+
+    it('the picture’s own actions, which give the keyboard back to the editor, act on the picture: Rotate shows it turned', () => {
+        const editor = clicked()
+        focus(editor, false)
+        editor.dispatch(editor.state.update(startRotationSpec(editor.state, 2)))
+        focus(editor, true)
+        expect(rotatingImageLine(editor.state)).toBe(2)
+        expect(pictureShown(editor.state, 2)).toBe(true)
+    })
+
+    it('a picture tapped after the editor lost the keyboard stays selected as its actions take it back', () => {
+        const editor = clicked()
+        focus(editor, false)
+        editor.dispatch(editor.state.update(imageTapSpec(editor.state, editor.state.doc.line(2).from)))
+        focus(editor, true)
+        expect(selectedImageLine(editor.state)).toBe(2)
+    })
+
+    it('the caret moved after the keyboard came back shows the line’s markdown again while it is on it', () => {
+        const editor = clicked()
+        focus(editor, false)
+        focus(editor, true)
+        editor.select(editor.state.doc.line(2).to - 1)
+        expect(pictureShown(editor.state, 2)).toBe(false)
+    })
+
+    it('an image line the caret is on is drawn before the editor has the keyboard', () => {
+        const editor = editorFixture(`- Garden\n${IMAGE}¦`, { caret: '¦', extensions: [followKeyboard(), imageAugmentation] })
+        expect(pictureShown(editor.state, 2)).toBe(true)
+    })
+
+    it('a line of text keeps its markdown without the keyboard, as a tab always has', () => {
+        const editor = clicked([markdownWithCodeHighlight()])
+        editor.select(editor.state.doc.line(3).to - 3)
+        focus(editor, false)
+        const line = editor.state.doc.line(3)
+        const hidden = hiddenSyntaxPieces(markdownFormatSpec, editor.state, [{ from: line.from, to: line.to }]).some((d) => d.value === hiddenSyntax)
+        expect(hidden).toBe(false)
+    })
+
+    it('Find’s match on an image line shows its markdown while the keyboard is in Find’s box', () => {
+        const editor = editorFixture(`- Garden¦\n${IMAGE}`, { caret: '¦', extensions: [followKeyboard(), imageAugmentation, findHighlight()] })
+        const from = editor.state.doc.toString().indexOf('Garden|')
+        const match = { from, to: from + 'Garden'.length }
+        editor.dispatch(editor.state.update({ effects: showFindMatches.of({ ranges: [match], current: 0 }) }))
+        editor.dispatch(editor.state.update(selectMatch(editor.state, match, 0)))
+        expect(pictureShown(editor.state, 2)).toBe(false)
+        // Find closed with the keyboard still outside the editor: the picture is drawn again.
+        editor.dispatch(editor.state.update({ effects: showFindMatches.of(null) }))
+        expect(pictureShown(editor.state, 2)).toBe(true)
+    })
 })
 
 // A tap with a finger or a pen on a rendered image selects it: its actions and resize handle show,
@@ -4938,8 +5032,9 @@ describe('a Block View (ADR 0209)', () => {
 // the caret's line as markdown only while it has the keyboard. The part opens with its caret on the
 // first line shown (`shown-range.ts` keeps it there), so a picture or bold text on that line would
 // otherwise open as markdown before the person has gone into the part. An editor showing the whole
-// document reveals the caret's line whether it has focus or not, as it always has
-// (`reveal-policy.ts` → `revealOnlyWhileFocused`). Real focus, clicks and Tab:
+// document reveals the caret's line whether it has focus or not, an image line aside, which it draws
+// while it does not have the keyboard (`reveal-policy.ts` → `revealOnlyWhileFocused`,
+// `drawnWithoutKeyboard`). Real focus, clicks and Tab:
 // tests-client/kanban-task-editor.test.ts.
 describe('a part of a task shows its markdown only while it has the keyboard (EtherPK)', () => {
     const IMAGE = '![Garden|800](../assets/garden.png)'
@@ -5087,11 +5182,15 @@ describe('a part of a task shows its markdown only while it has the keyboard (Et
         expect(pictureShown(editor.state, 1)).toBe(false)
     })
 
-    it('an editor showing the whole document shows the markdown of the caret’s image line, focused or not', () => {
-        const editor = editorFixture(`- Garden\n- ${IMAGE}¦`, { caret: '¦', extensions: [markdownWithCodeHighlight(), imageAugmentation] })
+    it('an editor showing the whole document shows the markdown of the caret’s other lines, focused or not, and draws its image line without the keyboard', () => {
+        const editor = editorFixture(`- **Garden**\n- ${IMAGE}¦`, { caret: '¦', extensions: [followKeyboard(), markdownWithCodeHighlight(), imageAugmentation] })
+        expect(pictureShown(editor.state, 2)).toBe(true)
+        focus(editor, true)
         expect(pictureShown(editor.state, 2)).toBe(false)
         focus(editor, false)
-        expect(pictureShown(editor.state, 2)).toBe(false)
+        expect(pictureShown(editor.state, 2)).toBe(true)
+        editor.select(5)
+        expect(marksHidden(editor.state, 1)).toBe(false)
     })
 })
 

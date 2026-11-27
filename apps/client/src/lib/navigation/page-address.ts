@@ -15,6 +15,8 @@
  * - **The readable form**: escapes such as `%20` shown as the letters they stand for, except the
  *   few that would change where the address leads once it is read back.
  * - **Reading what a person typed or pasted** into a page's path, or a reason it leads nowhere.
+ * - **The address in its workspace**: the part after the graph's or the Plain Folder's own address
+ *   (`/d/Garden Beds`), which the workspace toolbar shows, and which reads back in that workspace.
  *
  * Pure: the caller says where the app is running (`AddressPlace`), so Node tests every case.
  */
@@ -87,12 +89,42 @@ export function readableAddress(address: string): string {
 }
 
 /**
+ * A workspace's own address at the start of a path: `/graph/<where>/<name>` for a graph (ADR 0192),
+ * `/folder/<name>` for a Plain Folder (ADR 0194).
+ */
+const WORKSPACE_BASE = /^(?:\/graph\/(?:folder|sync|browser)|\/folder)\/[^/?#]+/
+
+/** The address of the workspace a path is in (`/graph/sync/0f4e2a`), or null for a path that is in none. */
+export function workspaceBase(path: string): string | null {
+    return WORKSPACE_BASE.exec(path)?.[0] ?? null
+}
+
+/**
+ * The address from the workspace's own address on, as the workspace toolbar shows it: `/d/Garden%20Beds`
+ * for `/graph/sync/0f4e2a/d/Garden%20Beds`, with any query and fragment, and `/` for the workspace's
+ * own page. Every page of a workspace starts the same, so the rest is what tells one from another.
+ * A path that is in no workspace is returned whole.
+ */
+export function addressInWorkspace(path: string): string {
+    const base = workspaceBase(path)
+    if (base === null) return path
+    const rest = path.slice(base.length)
+    return rest.startsWith('/') ? rest : `/${rest}`
+}
+
+/** The app's own pages, which a path typed in a workspace names rather than a page of the workspace. */
+const APP_PAGE = /^\/(?:graph|folder|g|graphs|share|open-file)(?:[/?#]|$)/
+
+/**
  * The page's path a person's text leads to: an address of this app or of its web Client, an
  * EtherPK Link, a bare path, or text with an EtherPK Link in it, such as an Agent Instruction.
+ * In a workspace (`base`, its own address), a path from that address on leads to a page of the
+ * same workspace, as the toolbar shows it ({@link addressInWorkspace}).
  */
-export function readAddress(input: string, place: AddressPlace): AddressReading {
+export function readAddress(input: string, place: AddressPlace, base: string | null = null): AddressReading {
     const text = input.trim()
     if (text === '') return { ok: false, refusal: 'empty' }
+    if (base !== null && text.startsWith('/') && !/^\/[/\\]/.test(text) && !APP_PAGE.test(text)) return reading(pathOf(inWorkspace(base, text)))
     const whole = readOne(text, place)
     if (whole.ok) return whole
     // Text with a link in it: the first EtherPK Link that leads to a page. Only EtherPK Links, so an
@@ -164,6 +196,14 @@ function pathOf(path: string): string | null {
         return null
     }
     return isWorkspaceAddress(pathname) ? `${pathname}${url.search}${url.hash}` : null
+}
+
+/** A path from the workspace's own address on, put after that address: `/` is the workspace's own page. */
+function inWorkspace(base: string, text: string): string {
+    const cut = text.search(/[?#]/)
+    const pathname = cut === -1 ? text : text.slice(0, cut)
+    const tail = cut === -1 ? '' : text.slice(cut)
+    return `${base}${pathname === '/' ? '' : pathname}${tail}`
 }
 
 function reading(path: string | null): AddressReading {

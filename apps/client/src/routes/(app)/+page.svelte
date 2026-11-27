@@ -20,6 +20,7 @@
     import { onMount } from 'svelte'
 
     import { goto } from '$app/navigation'
+    import OpeningNotice from '#lib/components/OpeningNotice.svelte'
     import { isNativeApp } from '#lib/native/bridge.js'
     import { openedByLaunch } from '#lib/native/first-launch.js'
     import { todayISO } from '#lib/document/calendar/month-grid-core.js'
@@ -61,7 +62,7 @@
         <button class="gk-button justify-self-center" onclick={() => goto('/graphs')}>Go to graphs</button>
     </div>
 {:else}
-    <div class="notice" data-testid="root-resolving"><p>Opening your notes…</p></div>
+    <OpeningNotice testid="root-resolving" />
 {/if}
 
 <style>

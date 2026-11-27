@@ -2,16 +2,21 @@
  * Property tests over the selected image and the parked caret (image-select.ts): the one rendered
  * image whose controls a tap has raised, and the picture a tap put the caret on without showing its
  * markdown. Random documents of bullets, prose and image lines take random taps, clicks (which are
- * Edit as text), caret moves, typing and edits made elsewhere (a peer's, with no selection of their
- * own: text written and deleted, whole lines deleted, lines indented and outdented), and after every
+ * Edit as text), caret moves, typing, the editor losing and regaining the keyboard (a click outside
+ * the document, Escape, the keyboard given back by a picture's own action) and edits made elsewhere
+ * (a peer's, with no selection of their own: text written and deleted, whole lines deleted, lines
+ * indented and outdented), and after every
  * step the rules of Editor Content Rules.md → "A click on a rendered image shows its markdown" and
  * "A tap on a rendered image shows its actions" must hold:
  *
  * - The selected line, when there is one, is drawn as its picture: never a line that was deleted,
  *   written into something else, or revealed.
  * - Exactly that picture's widget is the selected one, and no other.
- * - An image line shows its markdown exactly when the caret is on it and not parked there: no
- *   picture opened as text stays open once the caret has gone.
+ * - An image line shows its markdown exactly when the caret is on it, not parked there, and the
+ *   editor has the keyboard: no picture opened as text stays open once the caret or the keyboard
+ *   has gone.
+ * - The editor losing the keyboard with its one caret on an image line parks it there, and the park
+ *   outlasts the keyboard coming back.
  * - A parked caret is one caret, on the parked line.
  * - A tap selects the picture tapped, or deselects it when it was the selected one. It leaves the
  *   caret where it was, unless the caret was on another image line showing its markdown: then the
@@ -31,6 +36,7 @@ import { analysisFor } from '../analysis/editor-analysis'
 import { editorFixture, type HeadlessEditor } from '../testing/editor-state-fixture'
 import { imageClickSpec, imageEmbedAugmentation, parkedKeySpec } from './image-embed'
 import { imageTapSpec, parkedImageLine, selectedImageLine } from './image-select'
+import { followKeyboard, revealFocus } from './reveal-policy'
 
 /**
  * A fixed seed keeps the suite deterministic in CI. To hunt for new counterexamples, run with
@@ -44,7 +50,8 @@ function fuzz(runs: number): fc.Parameters<unknown> {
     }
 }
 
-const extensions = [imageEmbedAugmentation({ resolveAsset: () => Promise.resolve(null) })]
+// A tab's editor: it follows the keyboard, as every editor the app builds does.
+const extensions = [followKeyboard(), imageEmbedAugmentation({ resolveAsset: () => Promise.resolve(null) })]
 
 /** The lines a document is made of: standalone and bullet images among bullets, prose and blanks. */
 const line = fc.constantFrom(
@@ -69,6 +76,7 @@ type Step =
     | { kind: 'peer-delete'; from: number; length: number }
     | { kind: 'peer-delete-line'; line: number }
     | { kind: 'peer-indent'; line: number; out: boolean }
+    | { kind: 'keyboard'; focused: boolean }
 
 const step: fc.Arbitrary<Step> = fc.oneof(
     { weight: 4, arbitrary: fc.record({ kind: fc.constant('tap' as const), picture: fc.nat(20) }) },
@@ -83,7 +91,20 @@ const step: fc.Arbitrary<Step> = fc.oneof(
     { weight: 2, arbitrary: fc.record({ kind: fc.constant('peer-delete-line' as const), line: fc.nat(20) }) },
     // A line moved in or out by two spaces, as a peer's Tab or Shift+Tab does.
     { weight: 2, arbitrary: fc.record({ kind: fc.constant('peer-indent' as const), line: fc.nat(20), out: fc.boolean() }) },
+    // The keyboard leaving the editor (a click outside, Escape) or coming back to it (a picture's action, the window).
+    { weight: 3, arbitrary: fc.record({ kind: fc.constant('keyboard' as const), focused: fc.boolean() }) },
 )
+
+/** Whether the editor has the keyboard, as the steps have left it. */
+interface Keyboard {
+    focused: boolean
+}
+
+function setKeyboard(editor: HeadlessEditor, keyboard: Keyboard, focused: boolean): void {
+    if (keyboard.focused === focused) return
+    keyboard.focused = focused
+    editor.dispatch(editor.state.update({ effects: revealFocus.of(focused) }))
+}
 
 /** What this tier reads of an image widget: whether it is drawn selected. */
 interface ImageWidgetShape {
@@ -115,6 +136,8 @@ interface Outcome {
     unparks?: boolean
     /** A key at a parked caret: the document as it was, and the parked picture's line opened as text. */
     keyAtPark?: { doc: string; line: number }
+    /** The keyboard left with the caret on this image line, which is parked on it now. */
+    parksOn?: number
 }
 
 /** The lines any selection range touches. */
@@ -149,8 +172,20 @@ function peerRange(state: EditorState, s: Extract<Step, { kind: `peer-${string}`
 }
 
 /** Run one step and say what it may leave selected. */
-function run(editor: HeadlessEditor, s: Step): Outcome {
+function run(editor: HeadlessEditor, s: Step, keyboard: Keyboard): Outcome {
+    // A key or a click on a picture comes with the keyboard: a key needs it, and a click focuses the editor.
+    if (s.kind === 'type' || s.kind === 'key' || s.kind === 'click') setKeyboard(editor, keyboard, true)
     const { state } = editor
+    if (s.kind === 'keyboard') {
+        const selected = selectedImageLine(state)
+        const parked = parkedImageLine(state)
+        const leaving = keyboard.focused && !s.focused
+        setKeyboard(editor, keyboard, s.focused)
+        const { ranges } = state.selection
+        const caretLine = state.doc.lineAt(ranges[0].head).number
+        const onImage = ranges.length === 1 && ranges[0].empty && analysisFor(state).imageLines.some((image) => image.line === caretLine)
+        return { carried: selected, ...(leaving && onImage ? { parksOn: caretLine } : {}), ...(parked !== null && !leaving ? { parksOn: parked } : {}) }
+    }
     const length = state.doc.length
     const selected = selectedImageLine(state)
     if (s.kind === 'tap' || s.kind === 'click') {
@@ -160,9 +195,11 @@ function run(editor: HeadlessEditor, s: Step): Outcome {
         const target = drawn[s.picture % drawn.length].line
         const from = state.doc.line(target).from
         if (s.kind === 'click') {
-            // The caret goes onto the picture's line, which puts any picture's controls away.
-            editor.dispatch(state.update(imageClickSpec(state, from)))
-            return { pressed: null, caret: { kind: 'opened', line: target }, carried: null }
+            // The caret goes onto the picture's line, which puts any picture's controls away. Leaving
+            // its line may tidy the block it was in (a blank line's spaces), which moves the lines below.
+            const tr = state.update(imageClickSpec(state, from))
+            editor.dispatch(tr)
+            return { pressed: null, caret: { kind: 'opened', line: tr.state.doc.lineAt(tr.changes.mapPos(from)).number }, carried: null }
         }
         const open = openImages(state, target)
         const tr = state.update(imageTapSpec(state, from))
@@ -208,13 +245,15 @@ function run(editor: HeadlessEditor, s: Step): Outcome {
 }
 
 describe('the selected image', () => {
-    it('is always one drawn picture or none, only a tap selects one, and only the caret shows an image line as markdown', () => {
+    it('is always one drawn picture or none, only a tap selects one, and only the caret, with the keyboard, shows an image line as markdown', () => {
         fc.assert(
             fc.property(fc.array(line, { minLength: 1, maxLength: 8 }), fc.array(step, { maxLength: 25 }), (lines, steps) => {
                 const editor = editorFixture(`${lines.join('\n')}\n- Last line§`, { caret: '§', extensions })
+                const keyboard: Keyboard = { focused: false }
+                setKeyboard(editor, keyboard, true)
                 for (const s of steps) {
                     const caret = editor.head()
-                    const outcome = run(editor, s)
+                    const outcome = run(editor, s, keyboard)
                     const { state } = editor
                     const selected = selectedImageLine(state)
                     const parked = parkedImageLine(state)
@@ -236,11 +275,16 @@ describe('the selected image', () => {
                     // The selected line is drawn as its picture, and its widget alone is the selected one.
                     const drawn = pictures(state)
                     expect(drawn.filter((picture) => picture.selected).map((picture) => picture.line)).toEqual(selected === null ? [] : [selected])
-                    // An image line shows its markdown exactly while the caret is on it, unless the caret is parked there.
+                    // An image line shows its markdown exactly while the caret is on it and the editor has the
+                    // keyboard, unless the caret is parked there.
                     const onCaret = caretLines(state)
                     const drawnLines = new Set(drawn.map((picture) => picture.line))
-                    for (const image of analysisFor(state).imageLines) expect(drawnLines.has(image.line), `line ${image.line}`).toBe(!onCaret.has(image.line) || image.line === parked)
+                    for (const image of analysisFor(state).imageLines) {
+                        expect(drawnLines.has(image.line), `line ${image.line}`).toBe(!onCaret.has(image.line) || image.line === parked || !keyboard.focused)
+                    }
                     if (outcome.unparks) expect(parked).toBeNull()
+                    // The keyboard leaving parks the caret on its image line, and coming back keeps a park.
+                    if (outcome.parksOn !== undefined) expect(parked).toBe(outcome.parksOn)
                     // A key at a parked caret writes nothing and opens that picture as text, the caret at its end.
                     if (outcome.keyAtPark) {
                         expect(state.doc.toString()).toBe(outcome.keyAtPark.doc)

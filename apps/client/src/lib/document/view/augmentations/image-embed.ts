@@ -78,16 +78,17 @@ import {
 import { actionButtonTheme, buildActionCluster } from './inline-actions'
 import { HANDLE_INSIDE_MIN, MIN_DISPLAY_WIDTH, attachResizeHandle, displayWidthChange, resizeHandleTheme } from './resize-handle'
 import { isProtectedDocumentFacet } from './protected-document'
-import { lineRevealed, revealInputsChanged, revealedLines } from './reveal-policy'
+import { drawnWithoutKeyboard, lineRevealed, revealInputsChanged, revealedLines } from './reveal-policy'
 import { isBulletImageLine, isImageLine, parseImageLine } from '../../image-line'
-import { analysisFor } from '../analysis/editor-analysis'
+import { analysisFor, editorAnalysisField } from '../analysis/editor-analysis'
 import { editorDocument } from '../editor-document'
 import { keyboardStaysFor } from '../keyboard-hold'
 import { uploadingImagesField } from '../uploading-images'
 
 /**
  * The height (px) reserved for the image line currently being edited, snapshotted when the line is
- * first revealed and **held by line number** until the caret leaves — so editing the size hint
+ * first revealed and **held by line number** until it is drawn again (the caret leaves, or the editor
+ * loses the keyboard) — so editing the size hint
  * (`|800` → `|300`) doesn't make the reserved space jump around mid-edit; it updates only once the
  * markdown is collapsed and the image re-renders.
  */
@@ -1550,6 +1551,14 @@ async function runRotateAction(view: EditorView, command: string, target: AssetC
     return true
 }
 
+/**
+ * Every image line is drawn while the editor does not have the keyboard, the caret on it or not: a
+ * click outside the document or Escape draws the picture again rather than leaving its markdown over
+ * the picture's empty box (reveal-policy.ts → drawnWithoutKeyboard, in an editor that follows the
+ * keyboard).
+ */
+const imageLinesDrawnWithoutKeyboard = drawnWithoutKeyboard.compute([editorAnalysisField], (state) => analysisFor(state).imageLines.map((image) => image.line))
+
 /** The inline image augmentation (Dual Mode Editor.md). */
 export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
     // Block widgets must come from the state (CM needs them before measuring heights).
@@ -1635,6 +1644,7 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
     // the order below is for the reader: the parked caret, which the reveal policy and the frozen
     // height read, then the selection, which reads the reveal.
     return [
+        imageLinesDrawnWithoutKeyboard,
         parkedImageField,
         frozenHeightField,
         uploadingImagesField,

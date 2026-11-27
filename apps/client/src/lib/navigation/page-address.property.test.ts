@@ -5,7 +5,9 @@ import { isWorkspaceAddress } from '#lib/install/launch-target.js'
 
 import { documentUrl } from './document-url'
 import type { GraphAddress } from './graph-address'
-import { type AddressPlace, pageLink, readableAddress, readAddress } from './page-address'
+import { plainFileUrl } from '#lib/plain/plain-address.js'
+
+import { type AddressPlace, addressInWorkspace, pageLink, readableAddress, readAddress, workspaceBase } from './page-address'
 
 /**
  * The page's address, over every name a page can have: what the field shows reads back to the page
@@ -74,6 +76,25 @@ describe('the address a person sees', () => {
     })
 })
 
+describe('the address the workspace toolbar shows', () => {
+    /** A page's path in a graph, or a file's in a Plain Folder. */
+    const pagePath = fc.oneof(
+        fc.tuple(graph, pageName, fragment).map(([where, name, hash]) => `${documentUrl(where, name)}${hash}`),
+        fc.tuple(pageName.filter((name) => !name.includes('/')), pageName).map(([folder, file]) => plainFileUrl(folder, file)),
+    )
+
+    it('reads back, in its workspace, to the page it shows', () => {
+        fc.assert(
+            fc.property(pagePath, fc.constantFrom(...PLACES), (path, place) => {
+                const base = workspaceBase(path)
+                expect(base).not.toBeNull()
+                expect(readAddress(readableAddress(addressInWorkspace(path)), place, base)).toEqual({ ok: true, path })
+            }),
+            fuzz(500),
+        )
+    })
+})
+
 describe('what a person types', () => {
     const typed = fc.oneof(
         fc.string(),
@@ -94,6 +115,22 @@ describe('what a person types', () => {
                 expect(url.origin).toBe('https://address.invalid')
                 expect(isWorkspaceAddress(url.pathname)).toBe(true)
                 expect(readAddress(reading.path, place)).toEqual(reading)
+            }),
+            fuzz(1000),
+        )
+    })
+
+    it('leads only to a page of notes of this app in a workspace too, the same a second time', () => {
+        const typedHere = fc.oneof(typed, fc.webPath(), fc.string().map((text) => `/${text}`))
+        const base = fc.constantFrom('/graph/sync/0f4e2a', '/graph/folder/Notes', '/folder/Notes')
+        fc.assert(
+            fc.property(typedHere, fc.constantFrom(...PLACES), base, (text, place, here) => {
+                const reading = readAddress(text, place, here)
+                if (!reading.ok) return
+                const url = new URL(reading.path, 'https://address.invalid')
+                expect(url.origin).toBe('https://address.invalid')
+                expect(isWorkspaceAddress(url.pathname)).toBe(true)
+                expect(readAddress(reading.path, place, here)).toEqual(reading)
             }),
             fuzz(1000),
         )

@@ -5,13 +5,32 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 1.0.4 - 2026-11-27
+
+### Client
+
+- **A Nix package for NixOS.** Each release attaches `EtherPK-linux-x64.nix`, a Nix package of its
+  `.deb`, to install from a flake or `configuration.nix`. Nix updates it, and the app does not offer
+  updates when it runs from the Nix store.
+- **The page's address in an installed app's toolbar is shorter.** It shows the address from the
+  graph's or the folder's own address on, such as `/d/Garden Beds`, as wide as the text, with the
+  copy button after it and an ellipsis where it is too long. Type a path in the same form to go to
+  another page of the graph. Copy link still copies the whole address.
+- **Fixes.**
+  - A picture opened as text is drawn again when you click outside the document or press Escape.
+  - Opening a graph or a folder shows one message, "Opening your notes…", from start to finish,
+    where it used to show "Opening your notes…" and then "Opening your graph…".
+  - The release's test of the Android app sets its emulator up with current Android tools, so the
+    emulator can draw the app. No release before this one carried `EtherPK-android.apk`: the test
+    stopped each one from attaching it.
+
 ## 1.0.3 - 2026-11-27
 
 ### Client
 
 - **Fixes.**
-  - The Android app is on the release again: `EtherPK-android.apk` is attached beside the Windows
-    and Linux installers. Releases 1.0.0 to 1.0.2 went out without it.
+  - The release's test of the Android app gives its emulator room to install the app. The 1.0.3
+    release still went out without `EtherPK-android.apk`.
 
 ## 1.0.2 - 2026-11-27
 

@@ -49,6 +49,7 @@ describe('editor feature stack', () => {
         expect(new Set(order).size).toBe(order.length)
         expect(order).toEqual([
             'shown-range',
+            'follow-keyboard',
             'block-selection',
             'caret-clamp',
             'fence-pad',
@@ -145,6 +146,19 @@ describe('editor feature stack', () => {
         expect(revealed({ ...services, partOfDocument: true }, true)).toEqual([2])
         expect(revealed({ ...services, shownRange: description })).toEqual([])
         expect(revealed({ ...services, shownRange: description }, true)).toEqual([2])
+    })
+
+    it('a tab draws the image line the caret is on while it does not have the keyboard, and shows its markdown while it does', () => {
+        const doc = '- Garden\n- ![Garden|800](../assets/garden.png)'
+        /** Whether line 2 is revealed with the caret at its end, before focus or after `focused`. */
+        const imageRevealed = (focused?: boolean) => {
+            let state = EditorState.create({ doc, selection: { anchor: doc.length }, extensions: [editorAnalysis(), ...editorExtensions(services)] })
+            if (focused !== undefined) state = state.update({ effects: revealFocus.of(focused) }).state
+            return revealedLines(state).has(2)
+        }
+        expect(imageRevealed()).toBe(false)
+        expect(imageRevealed(true)).toBe(true)
+        expect(imageRevealed(false)).toBe(false)
     })
 
     it('names the document the editor shows, when the host says which', () => {

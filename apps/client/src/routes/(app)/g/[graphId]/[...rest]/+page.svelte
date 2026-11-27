@@ -9,7 +9,7 @@
     import { goto } from '$app/navigation'
     import { page } from '$app/state'
 
-    import LoadingSweep from '#lib/components/LoadingSweep.svelte'
+    import OpeningNotice from '#lib/components/OpeningNotice.svelte'
     import { legacyGraphAddress } from '#lib/navigation/graph-address.js'
     import type { GraphRecord } from '#lib/storage/graph-registry.js'
     import { createIdbGraphRegistry } from '#lib/storage/graph-registry-idb.js'
@@ -30,15 +30,4 @@
     })
 </script>
 
-<div class="redirect" data-testid="legacy-graph-address">
-    <LoadingSweep label="Opening your graph" />
-</div>
-
-<style>
-    .redirect {
-        position: fixed;
-        inset: 3.5rem 0 0 0;
-        display: grid;
-        place-content: center;
-    }
-</style>
+<OpeningNotice testid="legacy-graph-address" />

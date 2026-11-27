@@ -49,6 +49,7 @@ import { interactiveFenceAugmentation } from './augmentations/interactive-fence'
 import { inlinePanelsAugmentation } from './augmentations/inline-panels'
 import { protectedFenceAugmentation } from './augmentations/protected-fence'
 import { imageEmbedAugmentation } from './augmentations/image-embed'
+import { followKeyboard } from './augmentations/reveal-policy'
 import { mediaEmbedAugmentation } from './augmentations/media-embed'
 import { lineNumberGutter } from './augmentations/line-numbers'
 import { linkCursorAugmentation } from './augmentations/link-cursor'
@@ -229,6 +230,10 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // and its hidden lines are `Prec.highest`, and first in that bucket its filter runs after every
         // other (the Extension Fence's caret among them) and its hidden lines draw over any widget.
         { name: 'shown-range', extension: services.shownRange ? shownRange(services.shownRange) : services.partOfDocument ? showsPart() : [] },
+        // Whether the editor has the keyboard, kept in its state: an image line shows its markdown only
+        // while it does, so a click outside the document or Escape draws the picture again
+        // (reveal-policy.ts → drawnWithoutKeyboard). A part editor's gate follows it as well; one field.
+        { name: 'follow-keyboard', extension: followKeyboard() },
         // Transaction filters first: a multi-line selection in a bullet region snaps to whole blocks,
         // and an empty-selection caret can never rest left of a line's content column (ADR 0021).
         { name: 'block-selection', extension: blockSelection() },

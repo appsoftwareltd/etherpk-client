@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { type AddressPlace, pageLink, pageWebAddress, readableAddress, readAddress } from './page-address'
+import { type AddressPlace, addressInWorkspace, pageLink, pageWebAddress, readableAddress, readAddress, workspaceBase } from './page-address'
 
 const BROWSER: AddressPlace = { origin: 'https://app.example.test', webOrigin: null, native: false }
 const NATIVE: AddressPlace = { origin: 'app://etherpk', webOrigin: 'https://app.example.test', native: true }
@@ -142,5 +142,76 @@ describe('reading what a person typed or pasted', () => {
 
     it('refuses a malformed escape rather than guess at it', () => {
         expect(readAddress('/graph/sync/0f4e2a/d/Beds%E0%A4', BROWSER)).toEqual({ ok: false, refusal: 'not-a-page' })
+    })
+})
+
+// The workspace toolbar shows the address from the graph's or folder's own address on: the part a
+// person reads to know which page this is (`/d/Garden Beds`). Copy link still copies the whole link.
+describe('the address in its workspace', () => {
+    it('is the part after the graph’s own address', () => {
+        expect(addressInWorkspace(GARDEN)).toBe('/d/Garden%20Beds')
+        expect(readableAddress(addressInWorkspace(GARDEN))).toBe('/d/Garden Beds')
+        expect(addressInWorkspace('/graph/browser/0f4e2a/a/c0ffee')).toBe('/a/c0ffee')
+    })
+
+    it('is the part after a Plain Folder’s own address', () => {
+        expect(addressInWorkspace('/folder/Notes/f/garden/beds.md')).toBe('/f/garden/beds.md')
+    })
+
+    it('keeps the query and the fragment', () => {
+        expect(addressInWorkspace('/graph/folder/Notes/d/Kitchen#task=3-0123456789ab')).toBe('/d/Kitchen#task=3-0123456789ab')
+        expect(addressInWorkspace('/graph/sync/0f4e2a/d/Kitchen?view=raw')).toBe('/d/Kitchen?view=raw')
+    })
+
+    it('is a slash for the graph’s or the folder’s own page', () => {
+        expect(addressInWorkspace('/graph/sync/0f4e2a')).toBe('/')
+        expect(addressInWorkspace('/graph/sync/0f4e2a/')).toBe('/')
+        expect(addressInWorkspace('/graph/sync/0f4e2a?settings=agents')).toBe('/?settings=agents')
+        expect(addressInWorkspace('/folder/Notes')).toBe('/')
+    })
+
+    it('is the path whole where it is no workspace’s', () => {
+        expect(addressInWorkspace('/graphs')).toBe('/graphs')
+    })
+
+    it('starts from the workspace’s own address', () => {
+        expect(workspaceBase(GARDEN)).toBe('/graph/sync/0f4e2a')
+        expect(workspaceBase('/graph/sync/0f4e2a?settings=agents')).toBe('/graph/sync/0f4e2a')
+        expect(workspaceBase('/folder/Notes/f/garden/beds.md')).toBe('/folder/Notes')
+        expect(workspaceBase('/graphs')).toBeNull()
+    })
+})
+
+describe('reading a path in the workspace', () => {
+    const BASE = '/graph/sync/0f4e2a'
+
+    it('reads a path from the graph’s own address on as a page of the same graph', () => {
+        expect(readAddress('/d/Kitchen', BROWSER, BASE)).toEqual({ ok: true, path: '/graph/sync/0f4e2a/d/Kitchen' })
+        expect(readAddress('/d/Garden Beds', NATIVE, BASE)).toEqual({ ok: true, path: GARDEN })
+        expect(readAddress('/d/Kitchen#task=3-0123456789ab', BROWSER, BASE)).toEqual({ ok: true, path: '/graph/sync/0f4e2a/d/Kitchen#task=3-0123456789ab' })
+    })
+
+    it('reads a slash as the graph’s own page, with any query', () => {
+        expect(readAddress('/', BROWSER, BASE)).toEqual({ ok: true, path: BASE })
+        expect(readAddress('/?settings=agents', BROWSER, BASE)).toEqual({ ok: true, path: `${BASE}?settings=agents` })
+    })
+
+    it('reads a Plain Folder’s file the same way', () => {
+        expect(readAddress('/f/garden/beds.md', BROWSER, '/folder/Notes')).toEqual({ ok: true, path: '/folder/Notes/f/garden/beds.md' })
+    })
+
+    it('still reads a whole address, of this graph or another', () => {
+        expect(readAddress('/graph/browser/c0ffee/d/Kitchen', BROWSER, BASE)).toEqual({ ok: true, path: '/graph/browser/c0ffee/d/Kitchen' })
+        expect(readAddress('https://app.example.test/graph/sync/0f4e2a/d/Kitchen', BROWSER, BASE)).toEqual({ ok: true, path: '/graph/sync/0f4e2a/d/Kitchen' })
+    })
+
+    it('refuses the app’s own pages that show no notes, as before', () => {
+        expect(readAddress('/graphs', BROWSER, BASE)).toEqual({ ok: false, refusal: 'not-a-page' })
+        expect(readAddress('/share', BROWSER, BASE)).toEqual({ ok: false, refusal: 'not-a-page' })
+        expect(readAddress('//elsewhere.example.test/d/Kitchen', BROWSER, BASE)).toEqual({ ok: false, refusal: 'not-a-page' })
+    })
+
+    it('refuses a path of a graph’s page outside any workspace', () => {
+        expect(readAddress('/d/Kitchen', BROWSER)).toEqual({ ok: false, refusal: 'not-a-page' })
     })
 })

@@ -18,6 +18,7 @@ import { Decoration, type DecorationSet, EditorView, keymap, showTooltip, ViewPl
 
 import { FIND_SELECT_EVENT, isFindSelect } from '../../find/find-edit'
 import { isOwnEditing } from '../own-editing'
+import { heldWithoutKeyboard, selectionLines } from './reveal-policy'
 import { FIND_TARGET_GONE, FIND_TEXT_CHANGED, requestFind } from '../../find/find-events'
 
 export interface FindRange {
@@ -169,6 +170,13 @@ const tellFindHost = ViewPlugin.define((view) => ({
 const FIND_BOX_ROOM = 96
 
 /**
+ * The lines of the selection while it is still the one find put on the current match. The keyboard
+ * is in find's box then, and the reveal policy shows the markup on the match's line all the same,
+ * an image line among them (reveal-policy.ts → heldWithoutKeyboard).
+ */
+const matchLinesHeld = heldWithoutKeyboard.compute([findField, 'selection'], (state) => (state.field(findField).selected ? [...selectionLines(state)] : []))
+
+/**
  * The find feature for the editor stack. Esc closes the box first and blurs the editor only when
  * pressed again. Highest precedence, since the outliner's Esc sits at high and is registered first,
  * but it gives way while a popover is showing, so an open completion or menu closes first.
@@ -176,6 +184,7 @@ const FIND_BOX_ROOM = 96
 export function findHighlight(): Extension {
     return [
         findField,
+        matchLinesHeld,
         tellFindHost,
         Prec.highest(
             keymap.of([

@@ -1,6 +1,6 @@
 <script lang="ts">
     import { THIS_PLACE, THIS_PLACE_START } from '#lib/native/place.js'
-    import LoadingSweep from '#lib/components/LoadingSweep.svelte'
+    import OpeningNotice from '#lib/components/OpeningNotice.svelte'
     import InstallOffer from '#lib/install/InstallOffer.svelte'
     import { managedSignInOnClick } from '#lib/auth/managed-sign-in.js'
     import { managedSignInHref, syncConnectHref } from '#lib/auth/sign-in-links.js'
@@ -119,6 +119,22 @@
 
 <!-- The shared text is in sessionStorage, not on this page, so the notice has to say it is safe
      (rule 4 of the interaction standard): waiting behind a prompt, or waiting for another graph. -->
+<!-- What stands in for "Opening your notes…" once documents are being counted. -->
+{#snippet openCount()}
+    {#if indexed && loadingStep !== 'opening'}
+        <div class="notice__count">
+            <!-- The count changes per document; inside a live region that is a running
+                 commentary. The <progress> beside it carries the same numbers on demand. -->
+            <p aria-hidden="true" data-testid="graph-loading-indexing">{openProgressLine(loadingStep, indexed)}</p>
+            <progress
+                max={indexed.total}
+                value={indexed.done}
+                aria-label={loadingStep === 'loading' ? 'Loading documents' : 'Indexing documents'}
+            ></progress>
+        </div>
+    {/if}
+{/snippet}
+
 {#snippet shareWaits()}
     {#if shareWaiting}
         <p data-testid="share-waiting" class="notice__share">
@@ -136,8 +152,8 @@
 {/snippet}
 
 {#if phase === 'loading'}
-    <div class="notice" data-testid="graph-loading">
-        <LoadingSweep label="Opening your graph" />
+    <!-- The notice the steps before this one showed too (OpeningNotice.svelte), so the open reads as one wait. -->
+    <OpeningNotice testid="graph-loading" status={loadingStep !== 'opening' && indexed ? openCount : undefined}>
         <!-- The share lands as soon as the graph's store is reachable, before the index and the
              presenter, so the line flips to "Added" while the sweep is still running. -->
         {#if shareLanded}
@@ -145,21 +161,7 @@
         {:else if shareWaiting}
             <p data-testid="share-waiting" class="notice__share">Adding what you shared to Quick notes…</p>
         {/if}
-        {#if loadingStep !== 'opening' && indexed}
-            <div class="notice__count">
-                <!-- The count changes per document; inside a live region that is a running
-                     commentary. The <progress> beside it carries the same numbers on demand. -->
-                <p aria-hidden="true" data-testid="graph-loading-indexing">{openProgressLine(loadingStep, indexed)}</p>
-                <progress
-                    max={indexed.total}
-                    value={indexed.done}
-                    aria-label={loadingStep === 'loading' ? 'Loading documents' : 'Indexing documents'}
-                ></progress>
-            </div>
-        {:else}
-            <p role="status">Opening your graph…</p>
-        {/if}
-    </div>
+    </OpeningNotice>
 {:else if phase === 'missing'}
     <!-- One registry miss, several causes (graph-availability.ts). The notice names the one
          that applies, because "not in this browser" sent a user whose graph the server still
@@ -412,10 +414,8 @@
         display: none;
     }
     .notice__share {
+        margin: 0;
         color: var(--gk-text-subtle, #737373);
-    }
-    .notice :global(.loading-sweep) {
-        margin: 0 auto;
     }
     /* As wide as the count's line alone, which never changes width (open-progress-line.ts), so a
        longer line beside it, such as the share notice, cannot stretch the bar part way through. */
@@ -427,6 +427,7 @@
         max-width: 100%;
     }
     .notice__count p {
+        margin: 0;
         font-family: var(--gk-mono);
         font-size: 0.875rem;
         /* Keeps the double space "Loading" is padded with. */

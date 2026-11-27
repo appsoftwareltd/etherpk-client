@@ -21,7 +21,7 @@
     import { afterNavigate, goto } from '$app/navigation'
     import { page } from '$app/state'
 
-    import LoadingSweep from '#lib/components/LoadingSweep.svelte'
+    import OpeningNotice from '#lib/components/OpeningNotice.svelte'
     import { peekPendingShare } from '#lib/document/share-target.js'
     import type { GraphAddress } from '#lib/navigation/graph-address.js'
     import { queueHistoryWrite } from '#lib/navigation/history-writes.js'
@@ -202,9 +202,7 @@
          registry read is the first part of opening the graph, and "no graph-loading on the page"
          is what says an open has finished. The workspace's notice takes this one's place in the
          same update, so there is no moment without one. -->
-    <div class="notice" data-testid="graph-loading">
-        <LoadingSweep label="Opening your graph" />
-    </div>
+    <OpeningNotice testid="graph-loading" />
 {:else if gate.kind === 'choose-folder'}
     <div class="notice" data-testid="graph-choose-folder">
         <h2 tabindex="-1" {@attach focusOnShow}>Open the folder “{address.name}”</h2>

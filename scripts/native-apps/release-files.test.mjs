@@ -9,6 +9,7 @@ import { after, test } from 'node:test'
 import { readFeed } from '../../apps/desktop/src/update/feed.ts'
 import { planAttach } from './attach.mjs'
 import { chooseInstallers, notesFor } from './collect.mjs'
+import { NIX_PACKAGE, nixPackageFor, nixPackageValues } from './nix-package.mjs'
 import { feedProblems, keyProblems } from './check-feed.mjs'
 import { keySetsToSatisfy, parseSigningKey } from './feed.mjs'
 
@@ -68,17 +69,85 @@ test('collect copies what passed, with the checksums a person can check', () => 
     writeFileSync(join(linux, 'EtherPK-linux-x64.deb'), 'two')
     const out = join(scratch, 'collected')
     const needs = JSON.stringify({ 'smoke-windows': failed, 'smoke-linux': passed, 'smoke-android': skipped })
-    const result = run('collect.mjs', ['--from', join(scratch, 'artifacts'), '--out', out], { NEEDS: needs, ANDROID_CERT_SHA256: '', GITHUB_REPOSITORY: 'example/app' })
+    const result = run('collect.mjs', ['--from', join(scratch, 'artifacts'), '--out', out, '--nix-template', NIX_TEMPLATE, '--version', '2.3.4'], { NEEDS: needs, ANDROID_CERT_SHA256: '', GITHUB_REPOSITORY: 'example/app' })
     assert.equal(result.status, 0, result.stderr)
     assert.equal(existsSync(join(out, 'EtherPK-windows-x64.exe')), false)
     assert.match(result.stdout, /::error.*Windows/)
     execFileSync('sha256sum', ['--check', '--strict', 'SHA256SUMS'], { cwd: out })
-    assert.equal(readFileSync(join(out, 'SHA256SUMS'), 'utf8').trim().split('\n').length, 2)
+    assert.deepEqual(readFileSync(join(out, 'SHA256SUMS'), 'utf8').trim().split('\n').map((line) => line.split('  ')[1]), ['EtherPK-linux-x64.AppImage', 'EtherPK-linux-x64.deb', NIX_PACKAGE])
+    // The Nix package installs the .deb that was collected, at the version given.
+    const digest = createHash('sha256').update('two').digest('base64')
+    assert.deepEqual(nixPackageValues(readFileSync(join(out, NIX_PACKAGE), 'utf8')), { version: ['2.3.4'], hash: [`sha256-${digest}`] })
+})
+
+test('collect writes no Nix package when the .deb did not pass, and refuses to leave it out when it did', () => {
+    const from = folder('artifacts-windows-only')
+    writeFileSync(join(from, 'EtherPK-windows-x64.exe'), 'an installer')
+    const out = join(scratch, 'collected-windows-only')
+    const env = { ANDROID_CERT_SHA256: '', GITHUB_REPOSITORY: 'example/app' }
+    const windowsOnly = run('collect.mjs', ['--from', from, '--out', out], { ...env, NEEDS: JSON.stringify({ 'smoke-windows': passed, 'smoke-linux': failed }) })
+    assert.equal(windowsOnly.status, 0, windowsOnly.stderr)
+    assert.equal(existsSync(join(out, NIX_PACKAGE)), false)
+
+    const linux = folder('artifacts-linux-only')
+    writeFileSync(join(linux, 'EtherPK-linux-x64.AppImage'), 'one')
+    writeFileSync(join(linux, 'EtherPK-linux-x64.deb'), 'two')
+    const noTemplate = run('collect.mjs', ['--from', linux, '--out', join(scratch, 'collected-no-template')], { ...env, NEEDS: JSON.stringify({ 'smoke-linux': passed }) })
+    assert.notEqual(noTemplate.status, 0)
+    assert.match(noTemplate.stderr, /--nix-template and --version/)
 })
 
 test('collect fails when a file that passed is not there', () => {
     const result = run('collect.mjs', ['--from', folder('empty'), '--out', join(scratch, 'none')], { NEEDS: JSON.stringify({ 'smoke-windows': passed }), ANDROID_CERT_SHA256: '', GITHUB_REPOSITORY: 'example/app' })
     assert.notEqual(result.status, 0)
+})
+
+// --- The Nix package of a release --------------------------------------------------------------------------
+
+const PRIVATE_NIX_TEMPLATE = join(here, '../../public-repos/client/nix/package.nix')
+const NIX_TEMPLATE = existsSync(PRIVATE_NIX_TEMPLATE) ? PRIVATE_NIX_TEMPLATE : join(here, '../../nix/package.nix')
+const NIX_RUNS = Number(process.env.NIX_PACKAGE_RUNS ?? 300)
+
+/** A seeded generator (mulberry32), so a failing case can be run again. */
+function seeded(seed) {
+    let state = seed >>> 0
+    return () => {
+        state = (state + 0x6d2b79f5) >>> 0
+        let t = Math.imul(state ^ (state >>> 15), 1 | state)
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+}
+
+test('the Nix package in the repository has one version and one hash to set', () => {
+    const { version, hash } = nixPackageValues(readFileSync(NIX_TEMPLATE, 'utf8'))
+    assert.equal(version.length, 1, 'nix/package.nix needs exactly one `version = "…";` line')
+    assert.equal(hash.length, 1, 'nix/package.nix needs exactly one `hash = "sha256-…";` line')
+})
+
+test('property: a release\'s Nix package says its version and hash, and changes nothing else', () => {
+    const template = readFileSync(NIX_TEMPLATE, 'utf8')
+    const random = seeded(20261127)
+    for (let run = 0; run < NIX_RUNS; run++) {
+        const version = [0, 0, 0].map(() => Math.floor(random() * 1000)).join('.')
+        const bytes = Buffer.from(Array.from({ length: 32 }, () => Math.floor(random() * 256)))
+        const text = nixPackageFor(template, version, bytes.toString('hex'))
+        assert.deepEqual(nixPackageValues(text), { version: [version], hash: [`sha256-${bytes.toString('base64')}`] }, `run ${run}`)
+        const changed = text.split('\n').filter((line, index) => line !== template.split('\n')[index])
+        assert.ok(changed.length <= 2 && changed.every((line) => /^ *(version|hash) = /.test(line)), `run ${run} changed ${changed.join(' | ')}`)
+        assert.equal(text.split('\n').length, template.split('\n').length)
+    }
+})
+
+test('a Nix package is refused a template it cannot set exactly, and a value that is not a release\'s', () => {
+    const template = readFileSync(NIX_TEMPLATE, 'utf8')
+    const digest = 'ab'.repeat(32)
+    assert.throws(() => nixPackageFor(template.replace(/^ *version = .*$/m, ''), '1.2.3', digest), /0 "version/)
+    assert.throws(() => nixPackageFor(`${template}\n  version = "9.9.9";\n`, '1.2.3', digest), /2 "version/)
+    assert.throws(() => nixPackageFor(template.replace(/^ *hash = .*$/m, ''), '1.2.3', digest), /0 "hash/)
+    assert.throws(() => nixPackageFor(template, '1.2', digest), /not a release version/)
+    assert.throws(() => nixPackageFor(template, '1.2.3"; x = "', digest), /not a release version/)
+    assert.throws(() => nixPackageFor(template, '1.2.3', 'AB'.repeat(32)), /not a SHA-256/)
 })
 
 // --- Attaching to a release that may be there already ----------------------------------------------------
@@ -338,6 +407,19 @@ test('every artifact with a fixed name is replaced on a re-run, so "Re-run faile
             assert.match(step, /\n +overwrite: true/, `${file}: the artifact ${name} has no "overwrite: true", so a re-run cannot upload it again.`)
         }
     }
+})
+
+test('the installers job writes the Nix package from the template the repository has, at the release\'s version', () => {
+    const job = jobsOf('build.yaml').get('installers')
+    const template = /--nix-template (\S+)/.exec(job)?.[1]
+    assert.ok(template, 'collect.mjs is run without --nix-template, so a release has no Nix package')
+    // The workflow names the path in the exported repository, which is public-repos/client here.
+    const root = existsSync(PRIVATE_NIX_TEMPLATE) ? join(here, '../../public-repos/client') : join(here, '../..')
+    assert.equal(join(root, template), NIX_TEMPLATE)
+    assert.match(job, /VERSION: \$\{\{ needs\.version\.outputs\.version \}\}/)
+    assert.match(job, /--version "\$VERSION"/)
+    // The release attaches installers/EtherPK-*, and the attestation covers the same files.
+    assert.ok(NIX_PACKAGE.startsWith('EtherPK-'))
 })
 
 test('only a release is signed with the Android key', () => {
