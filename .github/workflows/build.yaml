@@ -626,10 +626,11 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          # API 35's image boots on a hosted runner. The API 37 image (Google's 16 KB page build)
-          # did not finish booting within ten minutes on two attempts of the 0.55.1 release. The app
-          # supports Android 11 and later, so API 35 tests what is released.
-          image='system-images;android-35;google_apis;x86_64'
+          # API 37's image: the app needs a recent Android System WebView (WebViewVersion.OLDEST), and
+          # API 35's image ships WebView 124, on which the app shows its update page. Google names the
+          # image of API 37 for its 16 KB pages. The plain one is taken if there is one.
+          image=$("$sdkmanager" --list 2>/dev/null | grep -oE 'system-images;android-37\.0;google_apis(_ps16k)?;x86_64' | sort | head -n 1)
+          [ -n "$image" ] || { echo '::error::No API 37 emulator image is offered.'; exit 1; }
           "$sdkmanager" "emulator" "platform-tools" "$image" < <(yes) >/dev/null
           "$ANDROID_HOME/emulator/emulator" -accel-check
           # One folder for the virtual device, named to both tools: avdmanager writes under
@@ -645,6 +646,15 @@ jobs:
           if ! timeout 900 "$ANDROID_HOME/platform-tools/adb" wait-for-device shell 'until [ "$(getprop sys.boot_completed)" = 1 ]; do sleep 2; done'; then
             echo '::error::The emulator did not finish booting within 15 minutes. The end of its log follows.'
             tail -n 100 "$RUNNER_TEMP/emulator.log"
+            exit 1
+          fi
+          # The app shows its own update page on an older WebView, so say so here rather than as a
+          # page that was not drawn.
+          oldest=$(grep -oE 'const val OLDEST = [0-9]+' apps/android/app/src/main/kotlin/com/etherpk/app/WebViewVersion.kt | grep -oE '[0-9]+$')
+          webview=$("$ANDROID_HOME/platform-tools/adb" shell dumpsys webviewupdate | grep -oE 'Current WebView package \(name, version\): \([^,]+, [0-9]+' | grep -oE '[0-9]+$' || true)
+          echo "The emulator's Android System WebView is ${webview:-unknown}; the app needs $oldest or later."
+          if [ -n "$webview" ] && [ "$webview" -lt "$oldest" ]; then
+            echo "::error::The emulator's WebView (${webview:-unknown}) is older than the $oldest the app needs, so the app would show its update page."
             exit 1
           fi
       - run: scripts/native-apps/smoke-android.sh EtherPK-android.apk "$VERSION" "$ANDROID_CERT_SHA256" --boot
